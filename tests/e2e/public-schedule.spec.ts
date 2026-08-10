@@ -1,15 +1,68 @@
 // ABOUTME: Browser coverage for the agenda, itinerary, and speaker gallery surfaces (F-10.6-10.10, F-10.14).
-// ABOUTME: Runs against the real seeded fixture, which has one approved session with no time or room yet.
+// ABOUTME: Seeds its own known placement for the fixture session via the real organizer agenda API so
+// assertions don't depend on what the organizer scheduling suite (agenda.spec.ts) leaves behind in the
+// shared local D1 — with playwright.config's workers: 1, e2e files run sequentially against one database.
 
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
-test("agenda grid renders a day honestly, with TBD placements shown not hidden, and opens session detail", async ({ page }) => {
+const EVENT_ID = "evt_devflow_conf_2027";
+const DOCS_SESSION_ID = "ses_docs_retrieval";
+const DOCS_SUBMISSION_ID = "sub_docs_retrieval";
+const MAIN_STAGE_ROOM_ID = "rm_main_stage";
+const PLACED_DAY = "2027-05-13";
+// ABOUTME: 17:00Z is 10:00 AM in Los Angeles during daylight time (UTC-7) — chosen deliberately so a
+// browser run proves the public surfaces render the event's own timezone, not the raw UTC instant.
+const PLACED_STARTS_AT_ISO = "2027-05-13T17:00:00Z";
+
+type Placement =
+  | { scheduleStatus: "tbd"; scheduledDate: string }
+  | { scheduleStatus: "placed"; scheduledDate: string; roomId: string; startsAt: number };
+
+// ABOUTME: Signs in as organizer and drives the real disposition/agenda APIs to give the fixture's one
+// approved session a known placement, then publishes it — the same effect the organizer's own
+// drag-and-drop UI has, without depending on that other test file's exact day/room/time choices.
+async function placeDocsSession(page: Page, placement: Placement): Promise<void> {
+  await page.goto("/login");
+  await page.getByLabel("Email").fill("sbek-organizer@example.com");
+  await page.getByLabel("Password").fill("SbekTest!2027-org");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page).toHaveURL(/\/organizer$/);
+
+  const result = await page.evaluate(
+    async ({ eventId, submissionId, sessionId, placement }) => {
+      const disposition = await fetch(`/api/events/${eventId}/disposition`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ submissionIds: [submissionId], status: "accepted" }),
+      });
+      const placed = await fetch(`/api/events/${eventId}/agenda/sessions/${sessionId}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(placement),
+      });
+      const published = await fetch(`/api/events/${eventId}/agenda/publish`, { method: "POST" });
+      return { dispositionStatus: disposition.status, placedStatus: placed.status, publishedStatus: published.status };
+    },
+    { eventId: EVENT_ID, submissionId: DOCS_SUBMISSION_ID, sessionId: DOCS_SESSION_ID, placement },
+  );
+  expect(result.dispositionStatus, "disposition accept failed").toBe(200);
+  expect(result.placedStatus, "agenda placement failed").toBe(200);
+  expect(result.publishedStatus, "agenda publish failed").toBe(200);
+}
+
+test("agenda grid renders a real placement with the event's own timezone, and opens session detail", async ({ page }) => {
+  await placeDocsSession(page, {
+    scheduleStatus: "placed",
+    scheduledDate: PLACED_DAY,
+    roomId: MAIN_STAGE_ROOM_ID,
+    startsAt: new Date(PLACED_STARTS_AT_ISO).getTime(),
+  });
+
   await page.goto("/agenda");
-
   await expect(page.getByRole("heading", { name: "Agenda", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Thu, May 13" })).toBeVisible();
-  await expect(page.getByText("Time TBD")).toBeVisible();
-  await expect(page.getByText("Room TBD")).toBeVisible();
+  await expect(page.getByText("Main Stage", { exact: true })).toBeVisible();
+  await expect(page.getByText("10:00 AM", { exact: true })).toBeVisible();
 
   const sessionBlock = page.locator(".agenda-grid__session", { hasText: "Docs That Answer Back" });
   await expect(sessionBlock).toBeVisible();
@@ -18,6 +71,8 @@ test("agenda grid renders a day honestly, with TBD placements shown not hidden, 
   const modal = page.getByRole("dialog");
   await expect(modal).toBeVisible();
   await expect(modal.getByText("Docs That Answer Back", { exact: false })).toBeVisible();
+  await expect(modal).toContainText("10:00 AM–10:10 AM");
+  await expect(modal).toContainText("Main Stage");
   await expect(modal.getByText("Marcus Okafor", { exact: false })).toBeVisible();
 
   await modal.getByRole("button", { name: "← Back" }).click();
@@ -27,18 +82,33 @@ test("agenda grid renders a day honestly, with TBD placements shown not hidden, 
   await expect(sessionBlock).toBeVisible();
 });
 
-test("itinerary lists the day chronologically with track, title, description, time, and room", async ({ page }) => {
-  await page.goto("/schedule");
+test("agenda grid renders an honest TBD placement without inventing a room or time", async ({ page }) => {
+  await placeDocsSession(page, { scheduleStatus: "tbd", scheduledDate: PLACED_DAY });
 
+  await page.goto("/agenda");
+  await expect(page.getByRole("button", { name: "Thu, May 13" })).toBeVisible();
+  await expect(page.getByText("Time TBD")).toBeVisible();
+  await expect(page.getByText("Room TBD")).toBeVisible();
+  await expect(page.locator(".agenda-grid__session", { hasText: "Docs That Answer Back" })).toBeVisible();
+});
+
+test("itinerary lists a real placement chronologically with track, title, description, time, and room", async ({ page }) => {
+  await placeDocsSession(page, {
+    scheduleStatus: "placed",
+    scheduledDate: PLACED_DAY,
+    roomId: MAIN_STAGE_ROOM_ID,
+    startsAt: new Date(PLACED_STARTS_AT_ISO).getTime(),
+  });
+
+  await page.goto("/schedule");
   await expect(page.getByRole("heading", { name: "Schedule", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Thu, May 13" })).toBeVisible();
 
-  const item = page.locator(".itinerary-item");
-  await expect(item).toHaveCount(1);
+  const item = page.locator(".itinerary-item", { hasText: "Docs That Answer Back" });
+  await expect(item).toBeVisible();
   await expect(item).toContainText("Developer Experience");
-  await expect(item).toContainText("Docs That Answer Back");
-  await expect(item).toContainText("Time TBD");
-  await expect(item).toContainText("Room TBD");
+  await expect(item).toContainText("10:00 AM–10:10 AM");
+  await expect(item).toContainText("Main Stage");
 });
 
 test("speaker gallery is alphabetized by surname, searches, and opens a speaker detail", async ({ page }) => {
@@ -64,32 +134,43 @@ test("speaker gallery is alphabetized by surname, searches, and opens a speaker 
   await expect(page.getByRole("heading", { name: "Priya Raman", exact: true })).toBeVisible();
 });
 
-test("a session reads identically on the program, agenda, itinerary, and speaker detail surfaces", async ({ page }) => {
+test("a placed session reads identically on the program, agenda, itinerary, and speaker detail surfaces", async ({ page }) => {
+  await placeDocsSession(page, {
+    scheduleStatus: "placed",
+    scheduledDate: PLACED_DAY,
+    roomId: MAIN_STAGE_ROOM_ID,
+    startsAt: new Date(PLACED_STARTS_AT_ISO).getTime(),
+  });
+
   await page.goto("/program");
-  const programCard = page.locator(".program-session");
+  const programCard = page.locator(".program-session", { hasText: "Docs That Answer Back" });
   await expect(programCard).toContainText("Developer Experience");
   await expect(programCard).toContainText("Docs That Answer Back: Retrieval-Grounded Documentation Sites");
-  await expect(programCard).toContainText("time TBD");
+  await expect(programCard).toContainText("Thu, May 13");
+  await expect(programCard).toContainText("10:00 AM");
+  await expect(programCard).toContainText("Main Stage");
 
   await page.goto("/agenda");
   await page.locator(".agenda-grid__session", { hasText: "Docs That Answer Back" }).click();
   const modal = page.getByRole("dialog");
   await expect(modal).toContainText("Developer Experience");
-  await expect(modal).toContainText("Time TBD");
-  await expect(modal).toContainText("Room TBD");
+  await expect(modal).toContainText("10:00 AM–10:10 AM");
+  await expect(modal).toContainText("Main Stage");
   await expect(modal).toContainText("Marcus Okafor");
 
   await page.goto("/schedule");
-  const itineraryItem = page.locator(".itinerary-item");
+  const itineraryItem = page.locator(".itinerary-item", { hasText: "Docs That Answer Back" });
   await expect(itineraryItem).toContainText("Developer Experience");
-  await expect(itineraryItem).toContainText("Time TBD");
-  await expect(itineraryItem).toContainText("Room TBD");
+  await expect(itineraryItem).toContainText("10:00 AM–10:10 AM");
+  await expect(itineraryItem).toContainText("Main Stage");
 
   await page.goto("/speakers/spk_marcus_devflow_2027");
-  const speakerSession = page.locator(".speaker-sessions__item");
+  const speakerSession = page.locator(".speaker-sessions__item", { hasText: "Docs That Answer Back" });
   await expect(speakerSession).toContainText("Docs That Answer Back: Retrieval-Grounded Documentation Sites");
   await expect(speakerSession).toContainText("Developer Experience");
-  await expect(speakerSession).toContainText("time TBD");
+  await expect(speakerSession).toContainText("Thu, May 13");
+  await expect(speakerSession).toContainText("10:00 AM");
+  await expect(speakerSession).toContainText("Main Stage");
 });
 
 test("the error-state retry control on agenda, itinerary, and gallery actually refetches", async ({ page }) => {
