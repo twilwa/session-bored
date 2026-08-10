@@ -29,6 +29,7 @@ import { authorizeAccess } from "./access.ts";
 import { createAuth, type AuthSession } from "./auth.ts";
 import cfpRoutes from "./routes/cfp.ts";
 import reviewRoutes from "./routes/review.ts";
+import { publicRoutes } from "./routes/public.ts";
 import { ensureSeeded, fixtureIds } from "./seed.ts";
 import dispositionRoutes from "./routes/disposition.ts";
 
@@ -101,6 +102,7 @@ app.get("/api/session", requireAccess("authenticated"), (context) =>
 );
 
 app.route("/api", reviewRoutes);
+app.route("/api/public", publicRoutes);
 
 app.get("/api/public/cfp/:slug", async (context) => {
   const database = drizzle(context.env.DB);
