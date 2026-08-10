@@ -9,7 +9,7 @@ async function signIn(page: import("@playwright/test").Page, email: string, pass
   await page.getByRole("button", { name: "Sign in" }).click();
 }
 
-test("organizer review makes the coverage and decision sorts primary", async ({ page }) => {
+test("organizer review makes the coverage and decision sorts primary", async ({ page }, testInfo) => {
   await signIn(page, "sbek-organizer@example.com", "SbekTest!2027-org");
   await page.getByRole("link", { name: "Review", exact: true }).click();
 
@@ -19,6 +19,12 @@ test("organizer review makes the coverage and decision sorts primary", async ({ 
   await expect(page.getByRole("button", { name: /Decision meeting/ })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByText("ratings", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("No email is sent", { exact: true }).first()).toBeVisible();
+
+  await page.getByText("Committee setup", { exact: true }).click();
+  if (testInfo.project.name === "desktop") {
+    await expect(page.getByLabel("Enable optional AI reading aids")).not.toBeChecked();
+  }
+  await expect(page.getByText("AI never records a score or decision.", { exact: true })).toBeVisible();
 
   await page.getByRole("link", { name: /Taming 40-Minute CI/ }).click();
   await expect(page).toHaveURL(/\/organizer\/review\/submissions\/sub_ci_monorepo/);
@@ -39,4 +45,59 @@ test("reviewer opens only their remit and posts to its durable thread", async ({
   await page.getByRole("button", { name: "Post comment" }).click();
   await expect(page.getByText(comment, { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Initial review" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "AI-generated reading aid" })).toHaveCount(0);
+});
+
+test("reviewer explicitly requests enabled AI assistance", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "One browser owns the event-level toggle.");
+  await signIn(page, "sbek-organizer@example.com", "SbekTest!2027-org");
+  await page.getByRole("link", { name: "Review", exact: true }).click();
+  await page.getByText("Committee setup", { exact: true }).click();
+  const toggle = page.getByLabel("Enable optional AI reading aids");
+  if (!(await toggle.isChecked())) {
+    const saved = page.waitForResponse((response) =>
+      response.request().method() === "PATCH" &&
+      response.url().endsWith("/api/review/events/evt_devflow_conf_2027/ai-assistance")
+    );
+    await toggle.click();
+    expect((await saved).ok()).toBe(true);
+  }
+  await expect(toggle).toBeChecked();
+
+  try {
+    await page.context().clearCookies();
+    let generationRequests = 0;
+    page.on("request", (request) => {
+      if (
+        request.method() === "POST" &&
+        request.url().endsWith("/api/review/submissions/sub_ci_monorepo/ai-assistance")
+      ) {
+        generationRequests += 1;
+      }
+    });
+    await signIn(page, "sbek-reviewer@example.com", "SbekTest!2027-rev");
+    await page.getByRole("link", { name: /Taming 40-Minute CI/ }).click();
+    await expect(page.getByText("The proposal", { exact: false })).toBeVisible();
+    expect(generationRequests).toBe(0);
+
+    await page.getByRole("button", { name: "Generate AI reading aid" }).click();
+    await expect(page.getByRole("heading", { name: "Unavailable right now." })).toBeVisible();
+    expect(generationRequests).toBe(1);
+  } finally {
+    await page.context().clearCookies();
+    await signIn(page, "sbek-organizer@example.com", "SbekTest!2027-org");
+    await page.getByRole("link", { name: "Review", exact: true }).click();
+    await page.getByText("Committee setup", { exact: true }).click();
+    const restoreToggle = page.getByLabel("Enable optional AI reading aids");
+    if (await restoreToggle.isChecked()) {
+      const saved = page.waitForResponse((response) =>
+        response.request().method() === "PATCH" &&
+        response.url().endsWith("/api/review/events/evt_devflow_conf_2027/ai-assistance")
+      );
+      await restoreToggle.click();
+      expect((await saved).ok()).toBe(true);
+    }
+    await expect(restoreToggle).not.toBeChecked();
+    await expect(page.getByText("AI reading aids turned off", { exact: false })).toBeVisible();
+  }
 });

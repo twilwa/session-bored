@@ -632,6 +632,20 @@ export interface ReviewCriterion {
   required: boolean;
 }
 
+export type AIReviewAssistance =
+  | { status: "disabled" }
+  | { status: "available" }
+  | { status: "unavailable" }
+  | {
+    status: "ready";
+    suggestionId: string;
+    attribution: string;
+    summary: string;
+    suggestedScores: Record<string, string | number>;
+    reasoning: Record<string, string>;
+    cached: boolean;
+  };
+
 export interface ReviewComment {
   id: string;
   body: string;

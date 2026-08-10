@@ -27,11 +27,12 @@ import {
 import type { ApiAccess } from "../shared/api.ts";
 import { authorizeAccess } from "./access.ts";
 import { createAuth, type AuthSession } from "./auth.ts";
+import aiReviewRoutes from "./routes/ai-review.ts";
 import cfpBuilderRoutes from "./routes/cfp-builder.ts";
 import cfpRoutes from "./routes/cfp.ts";
 import { publicRoutes } from "./routes/public.ts";
-import submitterRoutes from "./routes/submitter.ts";
 import reviewRoutes from "./routes/review.ts";
+import submitterRoutes from "./routes/submitter.ts";
 import { ensureSeeded, fixtureIds } from "./seed.ts";
 import dispositionRoutes from "./routes/disposition.ts";
 import rosterRoutes from "./routes/roster.ts";
@@ -109,6 +110,7 @@ app.get("/api/session", requireAccess("authenticated"), (context) =>
 );
 
 app.route("/api", reviewRoutes);
+app.route("/api", aiReviewRoutes);
 app.route("/api/public", publicRoutes);
 app.route("/api", submitterRoutes);
 

@@ -43,6 +43,13 @@
       "when": 1786378765172,
       "tag": "0005_backfill-approved-session-publication",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1786379311793,
+      "tag": "0006_nasty_quasar",
+      "breakpoints": true
     }
   ]
 }

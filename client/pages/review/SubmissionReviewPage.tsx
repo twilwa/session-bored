@@ -1,7 +1,11 @@
 // ABOUTME: Renders a proposal permalink with committee discussion and lightweight scoring.
 // ABOUTME: Hides speaker identity during blind rounds while preserving organizer visibility.
 import { useEffect, useState, type FormEvent } from "react";
-import type { ReviewCriterion, ReviewSubmissionDetail } from "../../../shared/api.ts";
+import type {
+  AIReviewAssistance,
+  ReviewCriterion,
+  ReviewSubmissionDetail,
+} from "../../../shared/api.ts";
 import { Button, LoadingState, StatusChip, Toast } from "../../components/ui.tsx";
 import { ReviewLink, reviewRequest } from "./reviewClient.tsx";
 
@@ -69,21 +73,61 @@ export function SubmissionReviewPage({
   roundId?: string;
 }) {
   const [detail, setDetail] = useState<ReviewSubmissionDetail | null>(null);
+  const [assistance, setAssistance] = useState<AIReviewAssistance | null>(null);
+  const [assistanceLoading, setAssistanceLoading] = useState(false);
   const [comment, setComment] = useState("");
   const [scores, setScores] = useState<Record<string, string | number>>({});
+  const [aiStartingPointId, setAIStartingPointId] = useState<string | null>(null);
   const [reviewComment, setReviewComment] = useState("");
   const [message, setMessage] = useState<string | null>(null);
 
   async function load(): Promise<void> {
     try {
       const roundQuery = roundId === undefined ? "" : `?roundId=${encodeURIComponent(roundId)}`;
-      setDetail(await reviewRequest<ReviewSubmissionDetail>(`/api/review/submissions/${submissionId}${roundQuery}`));
+      const loadedDetail = await reviewRequest<ReviewSubmissionDetail>(
+        `/api/review/submissions/${submissionId}${roundQuery}`,
+      );
+      setDetail(loadedDetail);
+      if (role === "reviewer" && loadedDetail.round !== null) {
+        try {
+          const availability = await reviewRequest<AIReviewAssistance>(
+            `/api/review/submissions/${submissionId}/ai-assistance?roundId=${encodeURIComponent(loadedDetail.round.id)}`,
+          );
+          setAssistance((current) =>
+            current?.status === "ready" && availability.status === "available"
+              ? current
+              : availability
+          );
+        } catch {
+          setAssistance({ status: "unavailable" });
+        }
+      } else {
+        setAssistance(null);
+      }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "The proposal could not be loaded.");
     }
   }
 
   useEffect(() => { void load(); }, [submissionId, roundId]);
+
+  async function requestAssistance(): Promise<void> {
+    if (detail?.round === null || detail?.round === undefined) return;
+    setAssistanceLoading(true);
+    try {
+      setAssistance(await reviewRequest<AIReviewAssistance>(
+        `/api/review/submissions/${submissionId}/ai-assistance`,
+        {
+          method: "POST",
+          body: JSON.stringify({ roundId: detail.round.id }),
+        },
+      ));
+    } catch {
+      setAssistance({ status: "unavailable" });
+    } finally {
+      setAssistanceLoading(false);
+    }
+  }
 
   async function addComment(event: FormEvent): Promise<void> {
     event.preventDefault();
@@ -106,8 +150,14 @@ export function SubmissionReviewPage({
     try {
       await reviewRequest(`/api/review/submissions/${submissionId}/reviews`, {
         method: "POST",
-        body: JSON.stringify({ roundId: detail.round.id, scores, comment: reviewComment }),
+        body: JSON.stringify({
+          roundId: detail.round.id,
+          scores,
+          comment: reviewComment,
+          aiSuggestionId: aiStartingPointId,
+        }),
       });
+      setAIStartingPointId(null);
       setMessage("Scorecard saved. Your discussion stays separate and editable.");
       await load();
     } catch (error) {
@@ -137,6 +187,65 @@ export function SubmissionReviewPage({
 
       <div className="review-detail__grid">
         <div>
+          {role === "reviewer" && assistance?.status === "available" ? (
+            <section className="ai-review-assistance" aria-labelledby="ai-assistance-heading">
+              <p className="section-label">OPTIONAL AI READING AID</p>
+              <h2 id="ai-assistance-heading">Ask for a faster first read.</h2>
+              <p>Generate a short summary and suggestions against this round’s criteria when you want them.</p>
+              <Button
+                disabled={assistanceLoading}
+                onClick={() => void requestAssistance()}
+                type="button"
+              >
+                {assistanceLoading ? "Generating reading aid…" : "Generate AI reading aid"}
+              </Button>
+              <small>No proposal content is sent until you choose to generate.</small>
+            </section>
+          ) : null}
+          {role === "reviewer" && assistance?.status === "ready" ? (
+            <section className="ai-review-assistance" aria-labelledby="ai-assistance-heading">
+              <div className="ai-review-assistance__heading">
+                <div>
+                  <p className="section-label">SUGGESTION ONLY</p>
+                  <h2 id="ai-assistance-heading">AI-generated reading aid</h2>
+                </div>
+                <span>{assistance.cached ? "Cached" : "Generated now"}</span>
+              </div>
+              <p className="ai-review-summary">{assistance.summary}</p>
+              <div className="ai-review-suggestions">
+                {detail.criteria.map((criterion) => {
+                  const suggestion = assistance.suggestedScores[criterion.id];
+                  if (suggestion === undefined) return null;
+                  return (
+                    <article key={criterion.id}>
+                      <div><strong>{criterion.label}</strong><span>{suggestion}</span></div>
+                      {assistance.reasoning[criterion.id] === undefined
+                        ? null
+                        : <p>{assistance.reasoning[criterion.id]}</p>}
+                    </article>
+                  );
+                })}
+              </div>
+              <Button
+                disabled={Object.keys(assistance.suggestedScores).length === 0}
+                onClick={() => {
+                  setScores({ ...assistance.suggestedScores });
+                  setAIStartingPointId(assistance.suggestionId);
+                }}
+                type="button"
+              >
+                Use as a starting point
+              </Button>
+              <small>{assistance.attribution}. Change at least one suggested value before submitting.</small>
+            </section>
+          ) : null}
+          {role === "reviewer" && assistance?.status === "unavailable" ? (
+            <section className="ai-review-assistance ai-review-assistance--unavailable" aria-labelledby="ai-assistance-heading">
+              <p className="section-label">AI-GENERATED READING AID</p>
+              <h2 id="ai-assistance-heading">Unavailable right now.</h2>
+              <p>Review normally. Your scorecard and committee thread still work.</p>
+            </section>
+          ) : null}
           <article className="proposal-copy">
             <p className="section-label">THE PROPOSAL</p>
             <p>{detail.abstract}</p>
