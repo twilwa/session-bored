@@ -26,7 +26,12 @@
       "migrations_dir": "migrations"
     }
   ],
-  // TODO: Re-add the FILES R2 binding when wave-2 file uploads land.
+  "r2_buckets": [
+    {
+      "binding": "FILES",
+      "bucket_name": "session-bored-files"
+    }
+  ],
   "vars": {
     "APP_ORIGIN": "https://session-bored.techwilliams-warren.workers.dev"
   },

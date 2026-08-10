@@ -17,6 +17,7 @@ import { SpeakerGalleryPage } from "./pages/public/SpeakerGalleryPage.tsx";
 import { SpeakersPage } from "./pages/public/SpeakersPage.tsx";
 import { SubmitterDashboardPage } from "./pages/submitter/SubmitterDashboardPage.tsx";
 import { RosterPage } from "./pages/roster/RosterPage.tsx";
+import { PortalPage } from "./pages/portal/PortalPage.tsx";
 
 type Role = "organizer" | "reviewer" | "speaker";
 interface SessionPayload {
@@ -33,11 +34,6 @@ interface EventRecord {
 }
 interface NamedRecord { id: string; name: string }
 interface SubmissionRecord { id: string; title: string | null; status: string; audienceLevel?: string | null }
-interface SpeakerContent {
-  profile: { name: string; email: string; jobTitle: string | null; organization: string | null; status: string } | null;
-  submissions: SubmissionRecord[];
-  tasks: Array<{ id: string; title: string; status: string; dueAt: string | null }>;
-}
 interface CfpPayload {
   event: EventRecord & { description: string | null };
   form: { closeAt: string | null; welcomeCopy: string | null; minimumSpeakers: number };
@@ -225,30 +221,6 @@ function ReviewerPage({ path }: { path: string }) {
   );
 }
 
-function SpeakerPage() {
-  const [content, setContent] = useState<SpeakerContent | null>(null);
-  useEffect(() => { getJson<SpeakerContent>("/api/speaker/content").then(setContent).catch(() => undefined); }, []);
-  return (
-    <RoleShell role="speaker">
-      {content === null || content.profile === null ? <LoadingState label="Loading speaker portal" /> : (
-        <>
-          <header className="workspace-header"><div><p className="eyebrow">SPEAKER PORTAL / DEVFLOW 2027</p><h1>{content.profile.name}</h1><p>{content.profile.jobTitle} · {content.profile.organization}</p></div><StatusChip tone="signal">{content.profile.status}</StatusChip></header>
-          <section className="split-workspace">
-            <div className="workspace-section"><p className="section-label">MY PROPOSALS</p><DataTable caption="My proposals" columns={[
-              { key: "title", label: "Proposal", render: (row) => <strong>{row.title}</strong> },
-              { key: "status", label: "Status", render: (row) => <StatusChip>{row.status.replace("_", " ")}</StatusChip> },
-            ]} rows={content.submissions} /></div>
-            <div className="workspace-section"><p className="section-label">ONBOARDING TASKS</p><DataTable caption="My tasks" columns={[
-              { key: "title", label: "Task", render: (row) => <strong>{row.title}</strong> },
-              { key: "status", label: "Status", render: (row) => <StatusChip>{row.status.replace("_", " ")}</StatusChip> },
-            ]} rows={content.tasks} /></div>
-          </section>
-        </>
-      )}
-    </RoleShell>
-  );
-}
-
 export function App() {
   const [path, setPath] = useState(window.location.pathname);
   useEffect(() => {
@@ -277,7 +249,7 @@ export function App() {
   if (path === "/gallery") return <SpeakerGalleryPage />;
   if (path === "/agenda") return <PublicAgendaPage />;
   if (path === "/schedule") return <ItineraryPage />;
-  if (path.startsWith("/speaker")) return <SpeakerPage />;
+  if (path.startsWith("/speaker")) return <RoleShell role="speaker"><PortalPage /></RoleShell>;
   if (path.startsWith("/submitter")) return <SubmitterDashboardPage />;
   return <HomePage />;
 }

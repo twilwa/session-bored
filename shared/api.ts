@@ -84,6 +84,48 @@ export const routeMap = {
     module: "submissions",
     access: "authenticated",
   },
+  portalProfile: {
+    method: "PATCH",
+    path: "/api/portal/profile",
+    module: "speakers",
+    access: "speaker",
+  },
+  portalHeadshot: {
+    method: "POST",
+    path: "/api/portal/profile/headshot",
+    module: "speakers",
+    access: "speaker",
+  },
+  portalSession: {
+    method: "PATCH",
+    path: "/api/portal/sessions/:sessionId",
+    module: "sessions",
+    access: "speaker",
+  },
+  portalTaskStatus: {
+    method: "PATCH",
+    path: "/api/portal/tasks/:taskId",
+    module: "tasks",
+    access: "speaker",
+  },
+  portalTaskFile: {
+    method: "POST",
+    path: "/api/portal/tasks/:taskId/files",
+    module: "files",
+    access: "speaker",
+  },
+  portalFile: {
+    method: "GET",
+    path: "/api/portal/files/:fileId",
+    module: "files",
+    access: "authenticated",
+  },
+  publicHeadshot: {
+    method: "GET",
+    path: "/api/public/portal/speakers/:speakerId/headshot",
+    module: "public",
+    access: "public",
+  },
   sessions: {
     method: "GET",
     path: "/api/events/:eventId/sessions",
@@ -312,6 +354,63 @@ export interface AgendaState {
   sessions: AgendaSession[];
   conflicts: AgendaConflict[];
   metrics: { unplaced: number; conflicts: number; tbd: number };
+}
+
+export interface PortalProfile {
+  speakerId: `spk_${string}`;
+  personId: `psn_${string}`;
+  name: string;
+  email: string;
+  jobTitle: string | null;
+  organization: string | null;
+  bio: string | null;
+  headshotUrl: string | null;
+  twitter: string | null;
+  linkedin: string | null;
+  socialLinks: Record<string, string> | null;
+  status: SpeakerStatus;
+}
+
+export interface PortalSession {
+  id: `ses_${string}`;
+  title: string | null;
+  abstract: string | null;
+  contentStatus: SessionContentStatus;
+  editable: boolean;
+}
+
+export interface PortalTaskFile {
+  taskId: `tsk_${string}`;
+  fileId: `fil_${string}`;
+  displayName: string;
+  version: number;
+}
+
+export type PortalTaskAssigneeStatus = "assigned" | "in_progress" | "completed";
+
+export interface PortalTask {
+  id: `tsk_${string}`;
+  title: string;
+  instructions: string | null;
+  taskType: "general" | "file_request";
+  dueAt: string | null;
+  status: PortalTaskAssigneeStatus;
+  acceptedFileTypes: string[] | null;
+  maximumFileBytes: number | null;
+  file: PortalTaskFile | null;
+}
+
+export interface PortalSubmissionSummary {
+  id: `sub_${string}`;
+  title: string | null;
+  status: SubmissionStatus;
+}
+
+export interface SpeakerContentPayload {
+  profile: PortalProfile | null;
+  submissions: PortalSubmissionSummary[];
+  sessions: PortalSession[];
+  tasks: PortalTask[];
 }
 
 export interface FoundationStub<T> {

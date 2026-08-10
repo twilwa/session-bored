@@ -50,6 +50,13 @@
       "when": 1786379311793,
       "tag": "0006_nasty_quasar",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1786379828446,
+      "tag": "0007_add-file-kind",
+      "breakpoints": true
     }
   ]
 }

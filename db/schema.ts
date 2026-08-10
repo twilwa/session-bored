@@ -614,6 +614,9 @@ export const taskAssignees = sqliteTable(
   (table) => [uniqueIndex("task_assignee_unique").on(table.taskId, table.speakerId)],
 );
 
+export const fileKinds = ["headshot", "deliverable"] as const;
+export type FileKind = (typeof fileKinds)[number];
+
 export const files = sqliteTable(
   "file",
   {
@@ -622,12 +625,17 @@ export const files = sqliteTable(
     taskId: text("task_id").references(() => tasks.id),
     sessionId: text("session_id").references(() => sessions.id),
     speakerId: text("speaker_id").references(() => speakers.id),
+    kind: text("kind", { enum: fileKinds }).$type<FileKind>().notNull().default("deliverable"),
     displayName: text("display_name").notNull(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
     deletedAt: deletedAt(),
   },
-  (table) => [index("file_event_idx").on(table.eventId)],
+  (table) => [
+    index("file_event_idx").on(table.eventId),
+    index("file_speaker_kind_idx").on(table.speakerId, table.kind),
+    check("file_kind_check", sql`${table.kind} in ('headshot','deliverable')`),
+  ],
 );
 
 export const fileVersions = sqliteTable(

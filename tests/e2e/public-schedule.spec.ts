@@ -121,9 +121,11 @@ test("speaker gallery is alphabetized by surname, searches, and opens a speaker 
   const names = await page.locator(".gallery-card__caption h2").allTextContents();
   expect(names).toEqual(["Marcus Okafor", "Priya Raman"]);
 
-  // ABOUTME: Priya Raman has no headshot in the fixture, so her card must fall back to initials, not break.
-  const priyaCard = page.locator(".gallery-card", { hasText: "Priya Raman" });
-  await expect(priyaCard.locator(".gallery-card__photo--placeholder")).toHaveText("PR");
+  // Marcus Okafor has no headshot in the fixture and no other spec ever gives him one (unlike
+  // Priya, whose portal e2e coverage legitimately uploads hers), so his card is the stable one
+  // to assert the no-headshot fallback against: it must render initials, not break.
+  const marcusCard = page.locator(".gallery-card", { hasText: "Marcus Okafor" });
+  await expect(marcusCard.locator(".gallery-card__photo--placeholder")).toHaveText("MO");
 
   await page.fill('input[aria-label="Search speakers by name"]', "priya");
   await expect(page.locator(".gallery-card")).toHaveCount(1);

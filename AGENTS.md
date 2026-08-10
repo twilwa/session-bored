@@ -143,6 +143,39 @@ lifecycle and relationships are fixed as follows:
   with internal scroll; any modal with content that can grow long needs this, since
   the backdrop does not scroll on its own.
 
+## Speaker portal contract
+
+`worker/routes/portal.ts` (mounted under `/api`) and `client/pages/portal/PortalPage.tsx`
+own F-7.x self-service. It reads and extends the M0 `GET /api/speaker/content`
+endpoint rather than duplicating it; that endpoint's `profile` now also carries
+`headshotUrl`, `twitter`, `linkedin`, and `socialLinks`, and it returns a new
+`sessions` array (`editable` is false once `contentStatus` is `approved`) plus
+enriched `tasks` (`taskType`, `instructions`, `acceptedFileTypes`,
+`maximumFileBytes`, and a `file` summary when one has been uploaded).
+
+- Uploads write through the existing `file`/`file_version` tables (R2 binding
+  `FILES`) rather than a parallel model. `file.kind` (`headshot` | `deliverable`)
+  distinguishes a speaker's one profile headshot (`taskId` null, served
+  unauthenticated at `GET /api/public/portal/speakers/:speakerId/headshot`, and
+  mirrored onto `people.headshotUrl`) from a task-scoped deliverable
+  (`taskId` + `speakerId` locate the row). Re-uploading either kind adds a new
+  `file_version` or flips `latest`; prior versions stay downloadable via
+  `GET /api/portal/files/:fileId?version=N`.
+- Uploading to a `file_request` task marks that speaker's `task_assignee`
+  row `completed` — this is the same row the organizer/roster side must read,
+  so no separate completion signal exists. General tasks complete only through
+  an explicit `PATCH /api/portal/tasks/:taskId`. As a convenience, saving a
+  non-empty bio or uploading a headshot also completes any of the speaker's
+  incomplete tasks whose title matches `/bio|profile/i` or `/headshot/i`; this
+  is a title-pattern nicety, not something other code should depend on.
+- Editing session title/abstract (`PATCH /api/portal/sessions/:sessionId`)
+  requires speaker ownership via `session_speaker` and returns `409` once
+  `program_session.content_status` is `approved`; editing a `draft` session
+  bumps it to `in_review` for organizer review.
+- Server-side upload limits default to 5MB/image types for headshots and
+  25MB/office-doc types for deliverables (`worker/storage/files.ts`), overridden
+  per task by `task.maximumFileBytes` / `task.acceptedFileTypes` when set.
+
 ## Maintaining this file
 
 Keep this file for knowledge useful to almost every future agent session in this project.

@@ -1,0 +1,35 @@
+/* ABOUTME: Styles the speaker portal's owe strip, profile editor, session cards, and task list. */
+/* ABOUTME: Keeps upload controls, due dates, and lock states readable without horizontal overflow. */
+.owe-strip { border-left: 6px solid var(--signal); }
+.owe-list { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.owe-list li { display: flex; justify-content: space-between; gap: 16px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.owe-list li:last-child { border-bottom: 0; }
+.owe-list span { color: var(--muted); font-size: 0.85rem; white-space: nowrap; }
+
+.portal-profile__grid { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 40px; align-items: start; }
+.headshot-picker { display: grid; justify-items: center; gap: 14px; }
+.headshot-picker__image { width: 180px; height: 180px; object-fit: cover; border: 1px solid var(--ink); }
+.headshot-picker__placeholder { width: 180px; height: 180px; display: grid; place-items: center; background: var(--paper); border: 1px dashed var(--line); font: 3rem Georgia, serif; color: var(--muted); }
+.file-picker { position: relative; display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 10px 16px; border: 1px solid var(--ink); background: transparent; font-weight: 800; cursor: pointer; overflow: hidden; }
+.file-picker:hover { transform: translate(-2px, -2px); box-shadow: 4px 4px 0 var(--ink); }
+.file-picker input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+
+.session-list { display: grid; gap: 18px; }
+.session-card { display: flex; justify-content: space-between; align-items: start; gap: 20px; padding: 20px; border: 1px solid var(--line); }
+.session-card h3 { margin: 6px 0 10px; font: 1.5rem Georgia, serif; }
+.session-card--editing { display: block; }
+.session-card__actions { display: flex; gap: 10px; margin-top: 6px; }
+
+.task-list { display: grid; gap: 14px; margin: 0; padding: 0; list-style: none; }
+.task-row { position: relative; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 14px; padding: 18px 20px; border: 1px solid var(--line); }
+.task-row--done { background: #f6faec; border-color: var(--signal); }
+.task-row__info p { margin: 4px 0; color: var(--muted); font-size: 0.9rem; }
+.task-row__info small { color: var(--muted); font: 0.72rem monospace; text-transform: uppercase; }
+.task-row__action { display: flex; align-items: center; gap: 12px; }
+.task-row__file { flex-basis: 100%; margin: 0; display: flex; gap: 10px; align-items: baseline; color: var(--muted); font-size: 0.82rem; }
+.task-row__file code { overflow-wrap: anywhere; }
+
+@media (max-width: 820px) {
+  .portal-profile__grid { grid-template-columns: 1fr; }
+  .session-card { flex-direction: column; }
+}
