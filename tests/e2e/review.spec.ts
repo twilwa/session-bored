@@ -20,6 +20,10 @@ test("organizer review makes the coverage and decision sorts primary", async ({ 
   await expect(page.getByText("ratings", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("No email is sent", { exact: true }).first()).toBeVisible();
 
+  await page.getByText("Committee setup", { exact: true }).click();
+  await expect(page.getByLabel("Enable optional AI reading aids")).not.toBeChecked();
+  await expect(page.getByText("AI never records a score or decision.", { exact: true })).toBeVisible();
+
   await page.getByRole("link", { name: /Taming 40-Minute CI/ }).click();
   await expect(page).toHaveURL(/\/organizer\/review\/submissions\/sub_ci_monorepo/);
   await expect(page.getByRole("heading", { name: /Talk it through here/ })).toBeVisible();
@@ -39,4 +43,5 @@ test("reviewer opens only their remit and posts to its durable thread", async ({
   await page.getByRole("button", { name: "Post comment" }).click();
   await expect(page.getByText(comment, { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Initial review" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "AI-generated reading aid" })).toHaveCount(0);
 });

@@ -60,6 +60,27 @@ function hideIdentity(value: string | null, identities: string[]): string | null
   );
 }
 
+function participantIdentityValues(participants: ParticipantIdentity[]): string[] {
+  return participants
+    .flatMap((participant) => [
+      participant.name,
+      participant.email,
+      participant.jobTitle,
+      participant.organization,
+    ])
+    .filter((value): value is string => value !== null && value.trim().length > 1)
+    .sort((left, right) => right.length - left.length);
+}
+
+export function protectGeneratedText(
+  value: string,
+  anonymized: boolean,
+  participants: ParticipantIdentity[],
+): string {
+  if (!anonymized) return value;
+  return hideIdentity(value, participantIdentityValues(participants)) ?? value;
+}
+
 export function buildReviewAssistanceInput({
   anonymized,
   existingSummary,
@@ -76,15 +97,7 @@ export function buildReviewAssistanceInput({
   if (!anonymized) {
     return { anonymized, existingSummary, proposal, criteria };
   }
-  const identities = participants
-    .flatMap((participant) => [
-      participant.name,
-      participant.email,
-      participant.jobTitle,
-      participant.organization,
-    ])
-    .filter((value): value is string => value !== null && value.trim().length > 1)
-    .sort((left, right) => right.length - left.length);
+  const identities = participantIdentityValues(participants);
   return {
     anonymized,
     existingSummary: hideIdentity(existingSummary, identities),

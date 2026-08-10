@@ -1,7 +1,11 @@
 // ABOUTME: Renders a proposal permalink with committee discussion and lightweight scoring.
 // ABOUTME: Hides speaker identity during blind rounds while preserving organizer visibility.
 import { useEffect, useState, type FormEvent } from "react";
-import type { ReviewCriterion, ReviewSubmissionDetail } from "../../../shared/api.ts";
+import type {
+  AIReviewAssistance,
+  ReviewCriterion,
+  ReviewSubmissionDetail,
+} from "../../../shared/api.ts";
 import { Button, LoadingState, StatusChip, Toast } from "../../components/ui.tsx";
 import { ReviewLink, reviewRequest } from "./reviewClient.tsx";
 
@@ -69,6 +73,7 @@ export function SubmissionReviewPage({
   roundId?: string;
 }) {
   const [detail, setDetail] = useState<ReviewSubmissionDetail | null>(null);
+  const [assistance, setAssistance] = useState<AIReviewAssistance | null>(null);
   const [comment, setComment] = useState("");
   const [scores, setScores] = useState<Record<string, string | number>>({});
   const [reviewComment, setReviewComment] = useState("");
@@ -77,7 +82,25 @@ export function SubmissionReviewPage({
   async function load(): Promise<void> {
     try {
       const roundQuery = roundId === undefined ? "" : `?roundId=${encodeURIComponent(roundId)}`;
-      setDetail(await reviewRequest<ReviewSubmissionDetail>(`/api/review/submissions/${submissionId}${roundQuery}`));
+      const loadedDetail = await reviewRequest<ReviewSubmissionDetail>(
+        `/api/review/submissions/${submissionId}${roundQuery}`,
+      );
+      setDetail(loadedDetail);
+      if (role === "reviewer" && loadedDetail.round !== null) {
+        try {
+          setAssistance(await reviewRequest<AIReviewAssistance>(
+            `/api/review/submissions/${submissionId}/ai-assistance`,
+            {
+              method: "POST",
+              body: JSON.stringify({ roundId: loadedDetail.round.id }),
+            },
+          ));
+        } catch {
+          setAssistance({ status: "unavailable" });
+        }
+      } else {
+        setAssistance(null);
+      }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "The proposal could not be loaded.");
     }
@@ -137,6 +160,47 @@ export function SubmissionReviewPage({
 
       <div className="review-detail__grid">
         <div>
+          {role === "reviewer" && assistance?.status === "ready" ? (
+            <section className="ai-review-assistance" aria-labelledby="ai-assistance-heading">
+              <div className="ai-review-assistance__heading">
+                <div>
+                  <p className="section-label">SUGGESTION ONLY</p>
+                  <h2 id="ai-assistance-heading">AI-generated reading aid</h2>
+                </div>
+                <span>{assistance.cached ? "Cached" : "Generated now"}</span>
+              </div>
+              <p className="ai-review-summary">{assistance.summary}</p>
+              <div className="ai-review-suggestions">
+                {detail.criteria.map((criterion) => {
+                  const suggestion = assistance.suggestedScores[criterion.id];
+                  if (suggestion === undefined) return null;
+                  return (
+                    <article key={criterion.id}>
+                      <div><strong>{criterion.label}</strong><span>{suggestion}</span></div>
+                      {assistance.reasoning[criterion.id] === undefined
+                        ? null
+                        : <p>{assistance.reasoning[criterion.id]}</p>}
+                    </article>
+                  );
+                })}
+              </div>
+              <Button
+                disabled={Object.keys(assistance.suggestedScores).length === 0}
+                onClick={() => setScores({ ...assistance.suggestedScores })}
+                type="button"
+              >
+                Use as a starting point
+              </Button>
+              <small>{assistance.attribution}. Nothing is saved until you submit the scorecard.</small>
+            </section>
+          ) : null}
+          {role === "reviewer" && assistance?.status === "unavailable" ? (
+            <section className="ai-review-assistance ai-review-assistance--unavailable" aria-labelledby="ai-assistance-heading">
+              <p className="section-label">AI-GENERATED READING AID</p>
+              <h2 id="ai-assistance-heading">Unavailable right now.</h2>
+              <p>Review normally. Your scorecard and committee thread still work.</p>
+            </section>
+          ) : null}
           <article className="proposal-copy">
             <p className="section-label">THE PROPOSAL</p>
             <p>{detail.abstract}</p>

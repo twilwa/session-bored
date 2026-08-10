@@ -19,6 +19,28 @@ npm install && cp .dev.vars.example .dev.vars && npm run db:migrate:local && npm
 Open <http://127.0.0.1:8787>. The idempotent fixture seed runs on the first API
 request, so the app opens with DevFlow Conf 2027 rather than an empty state.
 
+## Optional AI-assisted review
+
+AI-assisted review is off by default for every event. When an organizer enables
+it in committee setup, reviewers can request an AI-generated proposal summary
+and suggestions against that round's existing scorecard. The reviewer must
+choose **Use as a starting point**, edit the human scorecard, and submit it.
+Generated output never changes a review, submission status, comment, email, or
+notification.
+
+To make the optional feature available locally, set `ANTHROPIC_API_KEY` in
+`.dev.vars`. To make it available in a deployed Worker, add the same binding as
+a Wrangler secret:
+
+```sh
+npx wrangler secret put ANTHROPIC_API_KEY
+```
+
+If the secret is absent, rate-limited, or rejected by the provider, the review
+engine remains usable and shows a quiet unavailable state after event opt-in.
+Greenroom uses `claude-haiku-4-5-20251001` and caches summaries per submission,
+form version, and blind-review visibility.
+
 ## Seeded credentials
 
 Password login is available for every authenticated role. These accounts are

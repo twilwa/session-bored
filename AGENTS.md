@@ -47,6 +47,11 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   whose submission is still accepted, or that were entered directly. Public
   program routes must also require that marker and the live decision before
   exposing schedule data.
+- `worker/routes/ai-review.ts` owns optional, event-scoped AI reading aids. Its
+  caches live in `db/schema/ai-review.ts`; generated output never belongs in a
+  human review, comment, decision, email, or notification. Blind and identified
+  summaries have separate cache entries, and the Worker secret is
+  `ANTHROPIC_API_KEY`.
 
 ## CI
 

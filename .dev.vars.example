@@ -2,3 +2,5 @@
 # ABOUTME: Copy this file to .dev.vars and replace the development-only examples.
 BETTER_AUTH_SECRET=replace-with-at-least-32-random-characters
 BETTER_AUTH_URL=http://127.0.0.1:8787
+# Optional. AI review assistance stays unavailable when this value is empty.
+ANTHROPIC_API_KEY=

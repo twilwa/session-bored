@@ -188,7 +188,7 @@ reviewRoutes.get("/review/queue", requireRole("reviewer"), async (context) => {
   return context.json({ items });
 });
 
-async function reviewerSubmission(
+export async function reviewerSubmission(
   database: ReturnType<typeof drizzle>,
   reviewerUserId: string,
   submissionId: string,

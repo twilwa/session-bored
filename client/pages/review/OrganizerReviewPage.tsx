@@ -36,6 +36,10 @@ interface ReviewConfig {
   rounds: RoundSummary[];
 }
 
+interface AIReviewConfig {
+  enabled: boolean;
+}
+
 interface WorklistPayload {
   sort: ReviewSort;
   progress: ReviewProgress;
@@ -58,6 +62,7 @@ function OrganizerReviewWorklist() {
   const [sort, setSort] = useState<ReviewSort>("coverage");
   const [worklist, setWorklist] = useState<WorklistPayload | null>(null);
   const [config, setConfig] = useState<ReviewConfig | null>(null);
+  const [aiConfig, setAIConfig] = useState<AIReviewConfig | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [reviewerTrackIds, setReviewerTrackIds] = useState<string[]>([]);
   const [reviewerRoundIds, setReviewerRoundIds] = useState<string[]>([]);
@@ -72,7 +77,12 @@ function OrganizerReviewWorklist() {
 
   async function loadConfig(): Promise<void> {
     try {
-      setConfig(await reviewRequest<ReviewConfig>(`/api/review/events/${eventId}/config`));
+      const [reviewConfig, assistanceConfig] = await Promise.all([
+        reviewRequest<ReviewConfig>(`/api/review/events/${eventId}/config`),
+        reviewRequest<AIReviewConfig>(`/api/review/events/${eventId}/ai-assistance`),
+      ]);
+      setConfig(reviewConfig);
+      setAIConfig(assistanceConfig);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Committee setup could not be loaded.");
     }
@@ -80,6 +90,24 @@ function OrganizerReviewWorklist() {
 
   useEffect(() => { void loadWorklist(sort); }, [sort]);
   useEffect(() => { void loadConfig(); }, []);
+
+  async function setAIAssistance(enabled: boolean): Promise<void> {
+    try {
+      const saved = await reviewRequest<AIReviewConfig>(
+        `/api/review/events/${eventId}/ai-assistance`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ enabled }),
+        },
+      );
+      setAIConfig(saved);
+      setMessage(enabled
+        ? "AI reading aids enabled. Reviewers still record every score themselves."
+        : "AI reading aids turned off for this committee.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "AI reading aids could not be updated.");
+    }
+  }
 
   async function changeStatus(submissionId: string, status: string): Promise<void> {
     try {
@@ -226,6 +254,27 @@ function OrganizerReviewWorklist() {
         <summary><span><strong>Committee setup</strong><small>Reviewers, track remits, explicit assignments, rounds, pools, and scorecards</small></span><span>Open setup +</span></summary>
         {config === null ? <LoadingState label="Loading committee setup" /> : (
           <div className="setup-grid">
+            <section className="setup-card setup-card--wide ai-review-config">
+              <div>
+                <p className="section-label">OPTIONAL READING AID</p>
+                <h2>AI assistance stays in the margins.</h2>
+                <p>Reviewers can request a short proposal summary and suggestions against each round’s existing criteria.</p>
+              </div>
+              {aiConfig === null ? <LoadingState label="Loading AI review setting" /> : (
+                <div>
+                  <label className="ai-review-toggle">
+                    <input
+                      checked={aiConfig.enabled}
+                      onChange={(event) => void setAIAssistance(event.target.checked)}
+                      type="checkbox"
+                    />
+                    <span>Enable optional AI reading aids</span>
+                  </label>
+                  <p>AI never records a score or decision.</p>
+                  <small>Off by default · no email or notification is ever sent</small>
+                </div>
+              )}
+            </section>
             <section className="setup-card setup-card--wide">
               <div className="setup-heading"><div><p className="section-label">LIVE PROGRESS</p><h2>Committee coverage</h2></div><StatusChip tone="signal">{config.reviewers.length} reviewers</StatusChip></div>
               <div className="reviewer-progress-list">
