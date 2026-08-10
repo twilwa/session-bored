@@ -1,4 +1,4 @@
-CREATE TABLE `decision_batch_item` (
+CREATE TABLE IF NOT EXISTS `decision_batch_item` (
 	`id` text PRIMARY KEY NOT NULL,
 	`batch_id` text NOT NULL,
 	`submission_id` text NOT NULL,
@@ -12,9 +12,9 @@ CREATE TABLE `decision_batch_item` (
 	`updated_at` integer NOT NULL
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX `decision_batch_item_unique` ON `decision_batch_item` (`batch_id`,`submission_id`);--> statement-breakpoint
-CREATE INDEX `decision_batch_item_submission_idx` ON `decision_batch_item` (`submission_id`);--> statement-breakpoint
-CREATE TABLE `decision_batch` (
+CREATE UNIQUE INDEX IF NOT EXISTS `decision_batch_item_unique` ON `decision_batch_item` (`batch_id`,`submission_id`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `decision_batch_item_submission_idx` ON `decision_batch_item` (`submission_id`);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `decision_batch` (
 	`id` text PRIMARY KEY NOT NULL,
 	`event_id` text NOT NULL,
 	`status` text DEFAULT 'draft' NOT NULL,
@@ -24,8 +24,8 @@ CREATE TABLE `decision_batch` (
 	`updated_at` integer NOT NULL
 );
 --> statement-breakpoint
-CREATE INDEX `decision_batch_event_status_idx` ON `decision_batch` (`event_id`,`status`);--> statement-breakpoint
-CREATE TABLE `decision_notice` (
+CREATE INDEX IF NOT EXISTS `decision_batch_event_status_idx` ON `decision_batch` (`event_id`,`status`);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `decision_notice` (
 	`id` text PRIMARY KEY NOT NULL,
 	`batch_id` text NOT NULL,
 	`submission_id` text NOT NULL,
@@ -40,5 +40,5 @@ CREATE TABLE `decision_notice` (
 	`updated_at` integer NOT NULL
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX `decision_notice_submission_unique` ON `decision_notice` (`submission_id`);--> statement-breakpoint
-CREATE INDEX `decision_notice_batch_idx` ON `decision_notice` (`batch_id`);
+CREATE UNIQUE INDEX IF NOT EXISTS `decision_notice_submission_unique` ON `decision_notice` (`submission_id`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `decision_notice_batch_idx` ON `decision_notice` (`batch_id`);
