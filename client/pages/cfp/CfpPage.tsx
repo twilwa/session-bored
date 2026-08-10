@@ -251,6 +251,26 @@ function PublicHeader() {
   );
 }
 
+export function isProposalFieldVisible(
+  fields: FormFieldRecord[],
+  field: FormFieldRecord,
+  state: FormState,
+  visited = new Set<string>(),
+): boolean {
+  if (field.conditionalFieldId === null) {
+    return true;
+  }
+  if (visited.has(field.id)) {
+    return false;
+  }
+  const controllingField = fields.find((candidate) => candidate.id === field.conditionalFieldId);
+  if (controllingField === undefined) {
+    return false;
+  }
+  return isProposalFieldVisible(fields, controllingField, state, new Set(visited).add(field.id))
+    && fieldValue(controllingField, state) === field.conditionalValue;
+}
+
 function ProposalField({
   field,
   fields,
@@ -270,11 +290,8 @@ function ProposalField({
   disabled: boolean;
   onChange: (value: string) => void;
 }) {
-  if (field.conditionalFieldId !== null) {
-    const controllingField = fields.find((candidate) => candidate.id === field.conditionalFieldId);
-    if (controllingField === undefined || fieldValue(controllingField, state) !== field.conditionalValue) {
-      return null;
-    }
+  if (!isProposalFieldVisible(fields, field, state)) {
+    return null;
   }
   const id = `cfp-${field.key}`;
   const options = field.key === "track" ? tracks : field.key === "format" ? formats : field.options ?? [];

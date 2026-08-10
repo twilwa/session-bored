@@ -1,6 +1,7 @@
 // ABOUTME: Specifies CFP submission validation and deadline behavior at the public interface.
 // ABOUTME: Protects partial draft saves while enforcing complete final submissions server-side.
 import { describe, expect, it } from "vitest";
+import { isProposalFieldVisible } from "../../client/pages/cfp/CfpPage.tsx";
 import { getCfpAvailability, validateCfpSubmission } from "../../worker/routes/cfp.ts";
 
 const requiredFields = [
@@ -75,5 +76,62 @@ describe("CFP submission validation", () => {
       speakerName: "Your name is required to save this proposal.",
       speakerEmail: "Enter a valid email address so you can return to this proposal.",
     });
+  });
+});
+
+describe("CFP conditional field visibility", () => {
+  it("hides a chained dependent when its controlling field is itself hidden", () => {
+    const fields = [
+      {
+        id: "format",
+        key: "format",
+        label: "Format",
+        description: null,
+        fieldType: "dropdown" as const,
+        required: true,
+        sortOrder: 0,
+        options: null,
+        conditionalFieldId: null,
+        conditionalValue: null,
+      },
+      {
+        id: "workshop_kind",
+        key: "workshop_kind",
+        label: "Workshop kind",
+        description: null,
+        fieldType: "dropdown" as const,
+        required: false,
+        sortOrder: 1,
+        options: ["Hands-on"],
+        conditionalFieldId: "format",
+        conditionalValue: "Workshop (120 min)",
+      },
+      {
+        id: "environment",
+        key: "environment",
+        label: "Environment",
+        description: null,
+        fieldType: "short_text" as const,
+        required: false,
+        sortOrder: 2,
+        options: null,
+        conditionalFieldId: "workshop_kind",
+        conditionalValue: "Hands-on",
+      },
+    ];
+    const state = {
+      speaker: { name: "", email: "", jobTitle: "", organization: "", bio: "" },
+      proposal: {
+        title: "",
+        abstract: "",
+        track: "",
+        format: "Talk (30 min)",
+        audienceLevel: "",
+        notesForReviewers: "",
+        answers: { workshop_kind: "Hands-on" },
+      },
+    };
+
+    expect(isProposalFieldVisible(fields, fields[2]!, state)).toBe(false);
   });
 });

@@ -305,11 +305,19 @@ describe.sequential("organizer CFP builder", () => {
       }),
     });
     expect(createResponse.status).toBe(201);
-    expect(await createResponse.json()).toMatchObject({
+    const createdForm = await createResponse.json<{ form: { id: string } }>();
+    expect(createdForm).toMatchObject({
       form: { name: "Partner track CFP", publicSlug: "devflow-partner-track" },
       version: { version: 1, status: "draft" },
       publicUrl: "/cfp/devflow-partner-track",
     });
+
+    const publishResponse = await request(`/api/cfp-builder/forms/${createdForm.form.id}/publish`, {
+      method: "POST",
+      headers: { cookie },
+    });
+    expect(publishResponse.status).toBe(422);
+    expect(await publishResponse.json()).toMatchObject({ error: "invalid_form_contract" });
 
     const publicResponse = await request("/api/public/cfp/devflow-partner-track");
     expect(publicResponse.status).toBe(404);
