@@ -95,6 +95,114 @@ describe("AI review assistance", () => {
     expect(request?.headers.get("anthropic-version")).toBe("2023-06-01");
   });
 
+  it("constrains provider output to a valid suggestion for every round criterion", async () => {
+    const requests: Request[] = [];
+    const assistant = createAnthropicReviewAssistant(
+      "test-key",
+      async (input, init) => {
+        requests.push(new Request(input, init));
+        return new Response(JSON.stringify({
+          content: [{
+            type: "text",
+            text: JSON.stringify({
+              summary: "A concise account of the proposal's delivery lessons.",
+              suggestedScores: {
+                crt_rating: 4,
+                crt_recommendation: "Maybe",
+                crt_notes: "The evidence is specific.",
+              },
+              reasoning: {
+                crt_rating: "The proposal gives concrete evidence.",
+                crt_recommendation: "The fit needs human review.",
+                crt_notes: "The proposal names a repeatable practice.",
+              },
+            }),
+          }],
+        }), { status: 200, headers: { "content-type": "application/json" } });
+      },
+    );
+
+    await assistant.generate({
+      anonymized: false,
+      existingSummary: null,
+      proposal: {
+        title: "Reliable delivery",
+        abstract: "Lessons from repeated production rollouts.",
+        audienceLevel: "Intermediate",
+        notesForReviewers: null,
+      },
+      criteria: [
+        {
+          id: "crt_rating",
+          label: "Rating",
+          description: null,
+          criterionType: "numeric",
+          options: null,
+          weight: 2,
+          required: true,
+        },
+        {
+          id: "crt_recommendation",
+          label: "Recommendation",
+          description: null,
+          criterionType: "dropdown",
+          options: ["Accept", "Maybe", "Decline"],
+          weight: null,
+          required: true,
+        },
+        {
+          id: "crt_notes",
+          label: "Reviewer notes",
+          description: null,
+          criterionType: "free_text",
+          options: null,
+          weight: null,
+          required: false,
+        },
+      ],
+    });
+
+    const body = await requests[0]?.json();
+    expect(body).toEqual(expect.objectContaining({
+      output_config: {
+        format: {
+          type: "json_schema",
+          schema: {
+            type: "object",
+            properties: {
+              summary: { type: "string" },
+              suggestedScores: {
+                type: "object",
+                properties: {
+                  crt_rating: { type: "number", enum: [1, 2, 3, 4, 5] },
+                  crt_recommendation: {
+                    type: "string",
+                    enum: ["Accept", "Maybe", "Decline"],
+                  },
+                  crt_notes: { type: "string" },
+                },
+                required: ["crt_rating", "crt_recommendation", "crt_notes"],
+                additionalProperties: false,
+              },
+              reasoning: {
+                type: "object",
+                properties: {
+                  crt_rating: { type: "string" },
+                  crt_recommendation: { type: "string" },
+                  crt_notes: { type: "string" },
+                },
+                required: ["crt_rating", "crt_recommendation", "crt_notes"],
+                additionalProperties: false,
+              },
+            },
+            required: ["summary", "suggestedScores", "reasoning"],
+            additionalProperties: false,
+          },
+        },
+      },
+    }));
+  });
+
   it("keeps only suggestions a reviewer can submit against the round criteria", () => {
     const suggestions = selectEditableSuggestions(
       {

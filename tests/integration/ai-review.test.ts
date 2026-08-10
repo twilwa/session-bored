@@ -233,8 +233,16 @@ describe("AI-assisted review", () => {
         generatedAbstracts.push(input.proposal.abstract);
         return {
           summary: input.proposal.abstract ?? "No abstract supplied.",
-          suggestedScores: { crt_overall_rating: generatedAbstracts.length === 1 ? 4 : 3 },
-          reasoning: { crt_overall_rating: "The proposal states a concrete cache contract." },
+          suggestedScores: {
+            crt_overall_rating: generatedAbstracts.length === 1 ? 4 : 3,
+            crt_recommendation: "Maybe",
+            crt_notes: "The proposal states a concrete cache contract.",
+          },
+          reasoning: {
+            crt_overall_rating: "The proposal states a concrete cache contract.",
+            crt_recommendation: "The reviewer should confirm the event fit.",
+            crt_notes: "The cache behavior is supported by the abstract.",
+          },
           model: "deterministic-test-model",
         };
       },
@@ -251,7 +259,11 @@ describe("AI-assisted review", () => {
     await expect(first.json()).resolves.toEqual(expect.objectContaining({
       status: "ready",
       summary: proposal.proposal.abstract,
-      suggestedScores: { crt_overall_rating: 4 },
+      suggestedScores: {
+        crt_overall_rating: 4,
+        crt_recommendation: "Maybe",
+        crt_notes: "The proposal states a concrete cache contract.",
+      },
       cached: false,
     }));
     const cached = await injectedApp.request(assistanceUrl, assistanceInit, env);
@@ -277,13 +289,108 @@ describe("AI-assisted review", () => {
     await expect(revised.json()).resolves.toEqual(expect.objectContaining({
       status: "ready",
       summary: revisedAbstract,
-      suggestedScores: { crt_overall_rating: 3 },
+      suggestedScores: {
+        crt_overall_rating: 3,
+        crt_recommendation: "Maybe",
+        crt_notes: "The proposal states a concrete cache contract.",
+      },
       cached: false,
     }));
     expect(generatedAbstracts).toEqual([proposal.proposal.abstract, revisedAbstract]);
   });
 
-  it("requires a reviewer to change an AI starting point before saving it", async () => {
+  it("does not expose incomplete generated or cached scorecard suggestions", async () => {
+    await request("/api/health");
+    const organizerCookie = await signIn("sbek-organizer@example.com", "SbekTest!2027-org");
+    await request("/api/review/events/evt_devflow_conf_2027/ai-assistance", {
+      method: "PATCH",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({ enabled: true }),
+    });
+    const provisionResponse = await request(
+      "/api/review/events/evt_devflow_conf_2027/reviewers",
+      {
+        method: "POST",
+        headers: { cookie: organizerCookie, "content-type": "application/json" },
+        body: JSON.stringify({
+          name: "Complete Suggestion Reviewer",
+          email: "complete-suggestion-reviewer@example.com",
+          password: "CompleteReview!2027",
+        }),
+      },
+    );
+    expect(provisionResponse.status).toBe(201);
+    const provisioned = await provisionResponse.json<{
+      reviewer: { id: string; name: string; email: string };
+    }>();
+    let generationCount = 0;
+    const assistant: ReviewAssistant = {
+      async generate() {
+        generationCount += 1;
+        return {
+          summary: "A concise summary for a human reviewer.",
+          suggestedScores: generationCount === 1
+            ? { crt_recommendation: "Maybe" }
+            : {
+              crt_overall_rating: 4,
+              crt_recommendation: "Maybe",
+              crt_notes: "The proposal supplies concrete evidence.",
+            },
+          reasoning: {},
+          model: "deterministic-test-model",
+        };
+      },
+    };
+    const injectedApp = createInjectedApp(provisioned.reviewer, assistant);
+    const assistanceUrl =
+      "http://example.test/api/review/submissions/sub_ai_verification/ai-assistance";
+    const assistanceInit = {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ roundId: "rnd_initial_review" }),
+    };
+
+    const incompleteResponse = await injectedApp.request(assistanceUrl, assistanceInit, env);
+    await expect(incompleteResponse.json()).resolves.toEqual({ status: "unavailable" });
+
+    const completeResponse = await injectedApp.request(assistanceUrl, assistanceInit, env);
+    const complete = await completeResponse.json<{
+      status: string;
+      suggestionId: string;
+      suggestedScores: Record<string, string | number>;
+      cached: boolean;
+    }>();
+    expect(complete).toEqual(expect.objectContaining({
+      status: "ready",
+      suggestedScores: {
+        crt_overall_rating: 4,
+        crt_recommendation: "Maybe",
+        crt_notes: "The proposal supplies concrete evidence.",
+      },
+      cached: false,
+    }));
+    expect(generationCount).toBe(2);
+
+    await env.DB.prepare("update ai_score_suggestion set scores = ? where id = ?")
+      .bind(JSON.stringify({ crt_recommendation: "Maybe" }), complete.suggestionId)
+      .run();
+    const repairedResponse = await injectedApp.request(assistanceUrl, assistanceInit, env);
+    await expect(repairedResponse.json()).resolves.toEqual(expect.objectContaining({
+      status: "ready",
+      suggestionId: complete.suggestionId,
+      suggestedScores: complete.suggestedScores,
+      cached: false,
+    }));
+    const cachedResponse = await injectedApp.request(assistanceUrl, assistanceInit, env);
+    await expect(cachedResponse.json()).resolves.toEqual(expect.objectContaining({
+      status: "ready",
+      suggestedScores: complete.suggestedScores,
+      cached: true,
+    }));
+    expect(generationCount).toBe(3);
+  });
+
+  it("refuses a complete AI starting point until the reviewer changes a suggested value", async () => {
     await request("/api/health");
     const organizerCookie = await signIn("sbek-organizer@example.com", "SbekTest!2027-org");
     await request("/api/review/events/evt_devflow_conf_2027/ai-assistance", {
@@ -326,6 +433,11 @@ describe("AI-assisted review", () => {
     }>();
     expect(assistance.status).toBe("ready");
     expect(assistance.suggestionId).toMatch(/^aig_/);
+    expect(assistance.suggestedScores).toEqual({
+      crt_overall_rating: 4,
+      crt_recommendation: "Accept",
+      crt_notes: "The proposal supplies concrete evidence.",
+    });
     const reviewUrl = "http://example.test/api/review/submissions/sub_ci_monorepo/reviews";
     const unchangedResponse = await injectedApp.request(
       reviewUrl,
@@ -422,10 +534,14 @@ describe("AI-assisted review", () => {
     const assistant: ReviewAssistant = {
       async generate(input) {
         generatedInputs.push(input);
+        const generatedCriterion = input.criteria[0];
+        if (generatedCriterion === undefined) {
+          throw new Error("The blind review round needs a criterion");
+        }
         return {
           summary: JSON.stringify(input.proposal),
-          suggestedScores: { [criterion.id]: 4 },
-          reasoning: { [criterion.id]: "The proposal supplies concrete evidence." },
+          suggestedScores: { [generatedCriterion.id]: 4 },
+          reasoning: { [generatedCriterion.id]: "The proposal supplies concrete evidence." },
           model: "deterministic-test-model",
         };
       },
@@ -517,7 +633,7 @@ describe("AI-assisted review", () => {
     );
     await expect(laterResponse.json()).resolves.toEqual(expect.objectContaining({
       status: "ready",
-      suggestedScores: {},
+      suggestedScores: { [laterCriterion.id]: 4 },
       cached: false,
     }));
     expect(generatedInputs).toHaveLength(2);

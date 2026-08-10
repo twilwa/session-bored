@@ -21,7 +21,7 @@ import {
   createAnthropicReviewAssistant,
   fingerprintReviewProposal,
   protectGeneratedText,
-  selectEditableSuggestions,
+  selectCompleteEditableSuggestions,
   type ParticipantIdentity,
   type ReviewAssistant,
 } from "../ai/review-assistance.ts";
@@ -234,13 +234,20 @@ export function createAIReviewRoutes(
           ))
           .then((rows) => rows[0]),
       ]);
-      if (cachedSummary !== undefined && cachedScores !== undefined) {
+      const cachedSuggestedScores = cachedScores === undefined
+        ? null
+        : selectCompleteEditableSuggestions(cachedScores.scores, criteria);
+      if (
+        cachedSummary !== undefined &&
+        cachedScores !== undefined &&
+        cachedSuggestedScores !== null
+      ) {
         return context.json({
           status: "ready",
           suggestionId: cachedScores.id,
           attribution: "AI-generated reading aid — review and edit before saving",
           summary: cachedSummary.summary,
-          suggestedScores: cachedScores.scores,
+          suggestedScores: cachedSuggestedScores,
           reasoning: cachedScores.reasoning,
           cached: true,
         });
@@ -259,7 +266,13 @@ export function createAIReviewRoutes(
         if (summary.length === 0) {
           return context.json({ status: "unavailable" });
         }
-        const suggestedScores = selectEditableSuggestions(generated.suggestedScores, criteria);
+        const suggestedScores = selectCompleteEditableSuggestions(
+          generated.suggestedScores,
+          criteria,
+        );
+        if (suggestedScores === null) {
+          return context.json({ status: "unavailable" });
+        }
         const reasoning = Object.fromEntries(criteria.flatMap((criterion) => {
           const value = generated.reasoning[criterion.id];
           return typeof value === "string"
@@ -290,7 +303,21 @@ export function createAIReviewRoutes(
           scores: suggestedScores,
           reasoning,
           model: generated.model,
-        }).onConflictDoNothing();
+        }).onConflictDoUpdate({
+          target: [
+            aiScoreSuggestions.submissionId,
+            aiScoreSuggestions.formVersion,
+            aiScoreSuggestions.contentFingerprint,
+            aiScoreSuggestions.roundId,
+            aiScoreSuggestions.visibility,
+            aiScoreSuggestions.criteriaFingerprint,
+          ],
+          set: {
+            scores: suggestedScores,
+            reasoning,
+            model: generated.model,
+          },
+        });
         const [storedScores] = await database
           .select({ id: aiScoreSuggestions.id })
           .from(aiScoreSuggestions)
