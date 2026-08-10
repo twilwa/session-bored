@@ -2,12 +2,54 @@
 // ABOUTME: Confirms the seeded event exposes a complete morning chase workflow without mocked requests.
 import { expect, test } from "@playwright/test";
 
-test("organizer assigns a file request in bulk and sees who needs chasing", async ({ page }) => {
+async function signInAsOrganizer(page: import("@playwright/test").Page): Promise<void> {
   await page.goto("/login");
   await page.getByLabel("Email").fill("sbek-organizer@example.com");
   await page.getByLabel("Password").fill("SbekTest!2027-org");
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page).toHaveURL(/\/organizer$/);
+}
+
+test("organizer sees sessionless onboarding assignments in the chase list", async ({ page }) => {
+  await signInAsOrganizer(page);
+
+  await page.goto("/organizer/roster");
+  const rosterResponse = await page.request.get("/api/events/evt_devflow_conf_2027/roster");
+  const roster = await rosterResponse.json() as {
+    items: Array<{ id: string; taskSummary: { total: number; incomplete: number } }>;
+  };
+  const priyaRoster = roster.items.find((speaker) => speaker.id === "spk_priya_devflow_2027");
+  expect(priyaRoster).toBeDefined();
+  const priyaRosterRow = page.getByRole("row", { name: /Priya Raman/ });
+  await expect(priyaRosterRow).toContainText(
+    `${priyaRoster?.taskSummary.incomplete} / ${priyaRoster?.taskSummary.total} tasks`,
+  );
+
+  await page.getByRole("navigation", { name: "Speaker operations" })
+    .getByRole("link", { name: "Missing info", exact: true })
+    .click();
+  const tasksResponse = await page.request.get("/api/events/evt_devflow_conf_2027/tasks");
+  const tasks = await tasksResponse.json() as {
+    items: Array<{
+      status: string;
+      title: string;
+      assignees: Array<{ speakerId: string; status: string }>;
+    }>;
+  };
+  const priyaTaskTitles = tasks.items.filter((task) =>
+    task.status === "active" && task.assignees.some((assignee) =>
+      assignee.speakerId === "spk_priya_devflow_2027" && assignee.status !== "completed"
+    )
+  ).map((task) => task.title);
+  expect(priyaTaskTitles).toHaveLength(priyaRoster?.taskSummary.incomplete ?? 0);
+  const priyaChaseCard = page.locator(".chase-card").filter({ hasText: "Priya Raman" });
+  for (const taskTitle of priyaTaskTitles) {
+    await expect(priyaChaseCard).toContainText(taskTitle);
+  }
+});
+
+test("organizer assigns a file request in bulk and sees who needs chasing", async ({ page }) => {
+  await signInAsOrganizer(page);
   await expect(page.getByRole("heading", { name: "DevFlow Conf 2027" })).toBeVisible();
 
   await page.goto("/organizer/disposition");

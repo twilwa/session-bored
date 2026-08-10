@@ -50,17 +50,15 @@ describe("formatTimeRange", () => {
 });
 
 describe("formatFullDateTime", () => {
-  const CLOSE_AT = new Date("2027-04-30T23:59:59Z").getTime();
+  const CLOSE_AT = new Date("2027-05-01T06:59:59Z").getTime();
 
   it("renders the full instant in UTC", () => {
-    expect(formatFullDateTime(CLOSE_AT, "UTC")).toMatch(/April 30, 2027.*11:59 PM.*UTC/);
+    expect(formatFullDateTime(CLOSE_AT, "UTC")).toMatch(/May 1, 2027.*6:59 AM.*UTC/);
   });
 
-  it("renders a non-UTC event's deadline in its own timezone, not UTC — a 7-hour shift for PDT", () => {
-    // ABOUTME: 23:59:59Z on April 30 is 4:59 PM the same day in Los Angeles during daylight time
-    // (UTC-7). Rendering this in UTC instead of the event's zone is exactly the deadline defect:
-    // it reads 11:59 PM, seven hours later than the instant a Pacific-time submitter actually sees.
-    expect(formatFullDateTime(CLOSE_AT, "America/Los_Angeles")).toMatch(/April 30, 2027.*4:59 PM.*PDT/);
+  it("renders an event-local end-of-day deadline in its own timezone", () => {
+    expect(formatFullDateTime(CLOSE_AT, "America/Los_Angeles"))
+      .toMatch(/April 30, 2027.*11:59 PM.*PDT/);
   });
 });
 

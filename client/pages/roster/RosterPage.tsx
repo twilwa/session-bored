@@ -329,60 +329,36 @@ function TasksView() {
 
 function MissingInformationView() {
   const [data, setData] = useState<{
-    acceptedSpeakerCount: number;
+    worklistSpeakerCount: number;
     incompleteSpeakerCount: number;
     generatedAt: string;
     items: MissingInformationItem[];
-    activeTaskCount: number;
-    activeTaskSpeakerCount: number;
   } | null>(null);
   useEffect(() => {
-    Promise.all([
-      requestJson<{
-        acceptedSpeakerCount: number;
-        incompleteSpeakerCount: number;
-        generatedAt: string;
-        items: MissingInformationItem[];
-      }>(`/api/events/${eventId}/missing-information`),
-      requestJson<{ items: RosterSpeakerSummary[] }>(`/api/events/${eventId}/roster`),
-    ]).then(([missingInformation, roster]) => {
-      const speakersWithActiveTasks = roster.items.filter((speaker) => speaker.taskSummary.incomplete > 0);
-      setData({
-        ...missingInformation,
-        activeTaskCount: speakersWithActiveTasks.reduce(
-          (total, speaker) => total + speaker.taskSummary.incomplete,
-          0,
-        ),
-        activeTaskSpeakerCount: speakersWithActiveTasks.length,
-      });
-    }).catch(() => setData({
-      acceptedSpeakerCount: 0,
+    requestJson<{
+      worklistSpeakerCount: number;
+      incompleteSpeakerCount: number;
+      generatedAt: string;
+      items: MissingInformationItem[];
+    }>(`/api/events/${eventId}/missing-information`).then(setData).catch(() => setData({
+      worklistSpeakerCount: 0,
       incompleteSpeakerCount: 0,
       generatedAt: new Date().toISOString(),
       items: [],
-      activeTaskCount: 0,
-      activeTaskSpeakerCount: 0,
     }));
   }, []);
   if (data === null) return <LoadingState label="Finding missing speaker information" />;
   return (
     <section className="missing-board">
       <header className="missing-hero">
-        <div><p className="eyebrow">TODAY'S CHASE LIST / LIVE</p><h2>Who still owes us something?</h2><p>Derived from accepted sessions, profiles, assignments, uploads, and deadlines. Nothing here depends on a manually maintained flag.</p></div>
-        <div className="missing-score"><strong>{data.incompleteSpeakerCount}</strong><span>of {data.acceptedSpeakerCount} accepted speakers need follow-up</span></div>
+        <div><p className="eyebrow">TODAY'S CHASE LIST / LIVE</p><h2>Who still owes us something?</h2><p>Includes profile gaps for accepted speakers and every active incomplete onboarding assignment across the roster.</p></div>
+        <div className="missing-score"><strong>{data.incompleteSpeakerCount}</strong><span>of {data.worklistSpeakerCount} speakers need follow-up</span></div>
       </header>
       {data.items.length === 0 ? (
-        <div>
-          <EmptyState
-            title="Accepted-session follow-up is clear"
-            description={data.activeTaskCount === 0
-              ? "Every accepted speaker has complete onboarding information."
-              : `${data.activeTaskCount} active onboarding tasks for ${data.activeTaskSpeakerCount} ${data.activeTaskSpeakerCount === 1 ? "speaker" : "speakers"} remain outside this accepted-session view.`}
-          />
-          {data.activeTaskCount > 0 ? (
-            <a className="text-link" href="/organizer/roster/tasks">Review outstanding tasks →</a>
-          ) : null}
-        </div>
+        <EmptyState
+          title="Nothing to chase"
+          description="Accepted-speaker profile information is complete and every active onboarding assignment is done."
+        />
       ) : (
         <div className="chase-list">
           {data.items.map((speaker, index) => (

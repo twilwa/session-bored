@@ -1,6 +1,7 @@
 // ABOUTME: Verifies Greenroom's public, organizer, reviewer, and speaker shells in a real browser.
 // ABOUTME: Checks seeded visibility, scoped navigation, password login, and 375-pixel readability.
 import { expect, test } from "@playwright/test";
+import { formatFullDateTime } from "../../client/pages/public/shared.ts";
 
 test("public CFP is populated and mobile readable", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
@@ -45,6 +46,14 @@ test("organizer password opens the populated operations shell", async ({ page })
   await expect(page).toHaveURL(/\/organizer/);
   await expect(page.getByRole("heading", { name: "DevFlow Conf 2027" })).toBeVisible();
   await expect(page.getByText("Taming 40-Minute CI", { exact: false })).toBeVisible();
+  const cfpResponse = await page.request.get("/api/public/cfp/devflow-conf-2027");
+  const cfp = await cfpResponse.json() as {
+    event: { timezone: string };
+    form: { closeAt: string };
+  };
+  await expect(page.locator(".metric-strip article").filter({ hasText: "DEADLINE" })).toContainText(
+    formatFullDateTime(new Date(cfp.form.closeAt).getTime(), cfp.event.timezone),
+  );
   await expect(page.getByRole("link", { name: "Call for speakers", exact: true })).toBeVisible();
   for (const unavailableDestination of ["Submissions", "Sessions", "Files"]) {
     await expect(page.getByRole("link", { name: unavailableDestination, exact: true })).toHaveCount(0);
