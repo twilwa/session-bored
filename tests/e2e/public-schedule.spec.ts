@@ -45,6 +45,9 @@ test("speaker gallery is alphabetized by surname, searches, and opens a speaker 
   await page.goto("/gallery");
 
   await expect(page.getByRole("heading", { name: "Gallery", exact: true })).toBeVisible();
+  // ABOUTME: The heading renders synchronously; the cards depend on an async fetch, so wait for
+  // them to actually land before reading text — a one-shot read here raced the fetch under load.
+  await expect(page.locator(".gallery-card")).toHaveCount(2);
   const names = await page.locator(".gallery-card__caption h2").allTextContents();
   expect(names).toEqual(["Marcus Okafor", "Priya Raman"]);
 
@@ -87,6 +90,36 @@ test("a session reads identically on the program, agenda, itinerary, and speaker
   await expect(speakerSession).toContainText("Docs That Answer Back: Retrieval-Grounded Documentation Sites");
   await expect(speakerSession).toContainText("Developer Experience");
   await expect(speakerSession).toContainText("time TBD");
+});
+
+test("the error-state retry control on agenda, itinerary, and gallery actually refetches", async ({ page }) => {
+  // ABOUTME: Each surface's retry used to be a Link back to its own current URL, which never
+  // remounts the page or reruns its fetch effect — the button must trigger a real new request.
+  for (const [path, apiPattern, heading] of [
+    ["/agenda", "**/api/public/events/*/sessions", "Agenda"],
+    ["/schedule", "**/api/public/events/*/sessions", "Schedule"],
+    ["/gallery", "**/api/public/events/*/speakers", "Gallery"],
+  ] as const) {
+    let requestCount = 0;
+    await page.route(apiPattern, async (route) => {
+      requestCount += 1;
+      if (requestCount === 1) {
+        await route.fulfill({ status: 500, body: "forced failure" });
+      } else {
+        await route.continue();
+      }
+    });
+
+    await page.goto(path);
+    await expect(page.getByText("could not be loaded", { exact: false })).toBeVisible();
+
+    await page.getByRole("button", { name: "Try again" }).click();
+    await expect(page.getByRole("heading", { name: heading, exact: true })).toBeVisible();
+    await expect(page.getByText("could not be loaded", { exact: false })).toHaveCount(0);
+    expect(requestCount, `${path} retry did not send a second request`).toBeGreaterThanOrEqual(2);
+
+    await page.unroute(apiPattern);
+  }
 });
 
 test("agenda, itinerary, and gallery stay readable at a 375-pixel phone width", async ({ page }) => {

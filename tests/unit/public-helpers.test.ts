@@ -16,27 +16,43 @@ import {
 
 describe("formatSchedule", () => {
   it("returns TBD when no date is set", () => {
-    expect(formatSchedule({ scheduledDate: null, startsAt: null, endsAt: null, scheduleStatus: "unplaced" })).toBe(
-      "Schedule TBD",
-    );
+    expect(
+      formatSchedule({ scheduledDate: null, startsAt: null, endsAt: null, scheduleStatus: "unplaced", timezone: "UTC" }),
+    ).toBe("Schedule TBD");
   });
 
   it("shows date with time TBD when date exists but no times", () => {
-    expect(formatSchedule({ scheduledDate: "2027-05-13", startsAt: null, endsAt: null, scheduleStatus: "tbd" })).toContain(
-      "time TBD",
-    );
+    expect(
+      formatSchedule({ scheduledDate: "2027-05-13", startsAt: null, endsAt: null, scheduleStatus: "tbd", timezone: "UTC" }),
+    ).toContain("time TBD");
   });
 
-  it("formats a full placed range", () => {
+  it("formats a full placed range in UTC", () => {
     const text = formatSchedule({
       scheduledDate: "2027-05-13",
       startsAt: new Date("2027-05-13T14:00:00Z").getTime(),
       endsAt: new Date("2027-05-13T14:30:00Z").getTime(),
       scheduleStatus: "placed",
+      timezone: "UTC",
     });
     expect(text).toContain("Thu, May 13");
     expect(text).toContain("2:00 PM");
     expect(text).toContain("2:30 PM");
+  });
+
+  it("formats a full placed range in the event's own timezone, not UTC", () => {
+    // ABOUTME: 17:00Z is 10:00 AM in Los Angeles during daylight time (UTC-7) — the time an
+    // attendee actually walks in for, which is what every public surface must show.
+    const text = formatSchedule({
+      scheduledDate: "2027-05-13",
+      startsAt: new Date("2027-05-13T17:00:00Z").getTime(),
+      endsAt: new Date("2027-05-13T17:30:00Z").getTime(),
+      scheduleStatus: "placed",
+      timezone: "America/Los_Angeles",
+    });
+    expect(text).toContain("10:00 AM");
+    expect(text).toContain("10:30 AM");
+    expect(text).not.toContain("5:00 PM");
   });
 });
 
@@ -50,9 +66,15 @@ describe("formatDayLabel / formatTime", () => {
     expect(formatDayLabel("not-a-date")).toBe("not-a-date");
   });
 
-  it("formatTime renders 12-hour UTC", () => {
-    expect(formatTime(new Date("2027-05-13T09:15:00Z").getTime())).toMatch(/9:15 AM/i);
-    expect(formatTime(new Date("2027-05-13T16:45:00Z").getTime())).toMatch(/4:45 PM/i);
+  it("formatTime renders 12-hour UTC when given the UTC timezone", () => {
+    expect(formatTime(new Date("2027-05-13T09:15:00Z").getTime(), "UTC")).toMatch(/9:15 AM/i);
+    expect(formatTime(new Date("2027-05-13T16:45:00Z").getTime(), "UTC")).toMatch(/4:45 PM/i);
+  });
+
+  it("formatTime renders the instant in the requested event timezone, not UTC", () => {
+    // ABOUTME: Same instant as the UTC case above, rendered for a Los Angeles event — must read
+    // 9:15 AM, not 16:15/4:15 PM UTC. This is the exact regression the P1 review finding covers.
+    expect(formatTime(new Date("2027-05-13T16:15:00Z").getTime(), "America/Los_Angeles")).toMatch(/9:15 AM/i);
   });
 });
 

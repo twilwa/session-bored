@@ -9,7 +9,7 @@ export function formatSchedule(params: {
   startsAt: number | null;
   endsAt: number | null;
   scheduleStatus: string;
-  timezone?: string;
+  timezone: string;
 }): string {
   if (params.scheduledDate === null) {
     return "Schedule TBD";
@@ -18,7 +18,7 @@ export function formatSchedule(params: {
   if (params.startsAt === null || params.endsAt === null) {
     return params.scheduleStatus === "placed" ? `${dateText} · time TBD` : `${dateText} · time TBD`;
   }
-  return `${dateText} · ${formatTime(params.startsAt)}–${formatTime(params.endsAt)}`;
+  return `${dateText} · ${formatTime(params.startsAt, params.timezone)}–${formatTime(params.endsAt, params.timezone)}`;
 }
 
 export function formatDayLabel(iso: string): string {
@@ -34,21 +34,23 @@ export function formatDayLabel(iso: string): string {
   });
 }
 
-export function formatTime(epochMs: number): string {
+// ABOUTME: Renders an instant in the event's own timezone, not the viewer's or UTC — a session
+// scheduled 17:00Z for a Los Angeles event must read 10:00 AM, the time an attendee walks in for.
+export function formatTime(epochMs: number, timeZone: string): string {
   return new Date(epochMs).toLocaleTimeString("en-US", {
     hour: "numeric",
     minute: "2-digit",
-    timeZone: "UTC",
+    timeZone,
   });
 }
 
 // ABOUTME: The single source for a session's full start–end range, used by the agenda grid,
 // the itinerary, and session detail so the same session reads identically everywhere (F-10.14).
-export function formatTimeRange(startsAt: number | null, endsAt: number | null): string {
+export function formatTimeRange(startsAt: number | null, endsAt: number | null, timeZone: string): string {
   if (startsAt === null || endsAt === null) {
     return "Time TBD";
   }
-  return `${formatTime(startsAt)}–${formatTime(endsAt)}`;
+  return `${formatTime(startsAt, timeZone)}–${formatTime(endsAt, timeZone)}`;
 }
 
 export function truncate(text: string, max: number): string {
@@ -180,7 +182,7 @@ export function agendaCellKey(rowKey: string, columnKey: string): string {
 
 // ABOUTME: Lays out one day's sessions on a time (row) x room (column) grid without inventing a
 // time or room a session does not have — unplaced sessions land in an honest "TBD" row/column.
-export function buildAgendaGrid(sessions: PublicSessionCard[], eventRooms: string[]): AgendaGrid {
+export function buildAgendaGrid(sessions: PublicSessionCard[], eventRooms: string[], timeZone: string): AgendaGrid {
   const timesByKey = new Map<string, number>();
   let hasTbdTime = false;
   for (const session of sessions) {
@@ -193,7 +195,7 @@ export function buildAgendaGrid(sessions: PublicSessionCard[], eventRooms: strin
   const sortedTimeKeys = [...timesByKey.entries()].sort((a, b) => a[1] - b[1]).map(([key]) => key);
   const rows: AgendaAxisLabel[] = [
     ...(hasTbdTime ? [{ key: TBD_KEY, label: "Time TBD" }] : []),
-    ...sortedTimeKeys.map((key) => ({ key, label: formatTime(timesByKey.get(key)!) })),
+    ...sortedTimeKeys.map((key) => ({ key, label: formatTime(timesByKey.get(key)!, timeZone) })),
   ];
 
   const roomsPresent = new Set(sessions.flatMap((session) => (session.room === null ? [] : [session.room])));

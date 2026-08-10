@@ -22,9 +22,12 @@ export function AgendaPage() {
   const [loading, setLoading] = useState(true);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [openSession, setOpenSession] = useState<PublicSessionCard | null>(null);
+  const [retryToken, setRetryToken] = useState(0);
 
   useEffect(() => {
     let active = true;
+    setLoading(true);
+    setError(false);
     getJson<PublicSessionsResponse>(`/api/public/events/${DEVFLOW_EVENT_ID}/sessions`)
       .then((payload) => {
         if (!active) {
@@ -43,12 +46,13 @@ export function AgendaPage() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [retryToken]);
 
   const facets = data?.facets ?? null;
+  const timezone = facets?.event.timezone ?? "UTC";
   const { byDay, unscheduled } = useMemo(() => groupSessionsByDay(data?.items ?? []), [data]);
   const dayItems = selectedDay === null ? [] : byDay.get(selectedDay) ?? [];
-  const grid = useMemo(() => buildAgendaGrid(dayItems, facets?.rooms ?? []), [dayItems, facets]);
+  const grid = useMemo(() => buildAgendaGrid(dayItems, facets?.rooms ?? [], timezone), [dayItems, facets, timezone]);
 
   return (
     <div className="public-page">
@@ -63,7 +67,11 @@ export function AgendaPage() {
         {loading ? <LoadingState label="Loading agenda" /> : null}
         {error ? (
           <p className="program-error" role="alert">
-            The agenda could not be loaded. <Link href="/agenda">Try again</Link>.
+            The agenda could not be loaded.{" "}
+            <button className="text-link" onClick={() => setRetryToken((token) => token + 1)} type="button">
+              Try again
+            </button>
+            .
           </p>
         ) : null}
 
@@ -144,7 +152,7 @@ export function AgendaPage() {
           <Link className="text-link" href="/program">Full program →</Link>
         </footer>
       </main>
-      <SessionDetailModal onClose={() => setOpenSession(null)} session={openSession} />
+      <SessionDetailModal onClose={() => setOpenSession(null)} session={openSession} timezone={timezone} />
     </div>
   );
 }

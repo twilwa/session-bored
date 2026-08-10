@@ -9,13 +9,13 @@ import { DEVFLOW_EVENT_ID, formatTimeRange, groupSessionsByDay, sortSessionsChro
 
 const ABSTRACT_PREVIEW = 220;
 
-function ItineraryCard({ session, onOpen }: { session: PublicSessionCard; onOpen: () => void }) {
+function ItineraryCard({ session, onOpen, timezone }: { session: PublicSessionCard; onOpen: () => void; timezone: string }) {
   const abstract = session.abstract ?? "";
   const shown = abstract.length > ABSTRACT_PREVIEW ? truncate(abstract, ABSTRACT_PREVIEW) : abstract;
   return (
     <li className="itinerary-item">
       <div className="itinerary-item__time">
-        <span>{formatTimeRange(session.startsAt, session.endsAt)}</span>
+        <span>{formatTimeRange(session.startsAt, session.endsAt, timezone)}</span>
         <span className="itinerary-item__room">{session.room ?? "Room TBD"}</span>
       </div>
       <div className="itinerary-item__body">
@@ -39,9 +39,12 @@ export function ItineraryPage() {
   const [loading, setLoading] = useState(true);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [openSession, setOpenSession] = useState<PublicSessionCard | null>(null);
+  const [retryToken, setRetryToken] = useState(0);
 
   useEffect(() => {
     let active = true;
+    setLoading(true);
+    setError(false);
     getJson<PublicSessionsResponse>(`/api/public/events/${DEVFLOW_EVENT_ID}/sessions`)
       .then((payload) => {
         if (!active) {
@@ -60,9 +63,10 @@ export function ItineraryPage() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [retryToken]);
 
   const facets = data?.facets ?? null;
+  const timezone = facets?.event.timezone ?? "UTC";
   const { byDay, unscheduled } = useMemo(() => groupSessionsByDay(data?.items ?? []), [data]);
   const dayItems = useMemo(
     () => sortSessionsChronologically(selectedDay === null ? [] : byDay.get(selectedDay) ?? []),
@@ -82,7 +86,11 @@ export function ItineraryPage() {
         {loading ? <LoadingState label="Loading itinerary" /> : null}
         {error ? (
           <p className="program-error" role="alert">
-            The itinerary could not be loaded. <Link href="/schedule">Try again</Link>.
+            The itinerary could not be loaded.{" "}
+            <button className="text-link" onClick={() => setRetryToken((token) => token + 1)} type="button">
+              Try again
+            </button>
+            .
           </p>
         ) : null}
 
@@ -104,7 +112,7 @@ export function ItineraryPage() {
               ) : (
                 <ul className="itinerary-list" aria-label={`Sessions for ${selectedDay ?? ""}`}>
                   {dayItems.map((session) => (
-                    <ItineraryCard key={session.id} onOpen={() => setOpenSession(session)} session={session} />
+                    <ItineraryCard key={session.id} onOpen={() => setOpenSession(session)} session={session} timezone={timezone} />
                   ))}
                 </ul>
               )}
@@ -124,7 +132,7 @@ export function ItineraryPage() {
           <Link className="text-link" href="/program">Full program →</Link>
         </footer>
       </main>
-      <SessionDetailModal onClose={() => setOpenSession(null)} session={openSession} />
+      <SessionDetailModal onClose={() => setOpenSession(null)} session={openSession} timezone={timezone} />
     </div>
   );
 }

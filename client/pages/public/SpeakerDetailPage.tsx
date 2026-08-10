@@ -36,6 +36,7 @@ export function SpeakerDetailPage({ speakerId }: { speakerId: string }) {
 
   const speaker = data?.speaker ?? null;
   const facets = data?.facets ?? null;
+  const timezone = facets?.event.timezone ?? "UTC";
 
   return (
     <div className="public-page">
@@ -116,7 +117,7 @@ export function SpeakerDetailPage({ speakerId }: { speakerId: string }) {
                         <p className="speaker-sessions__when">
                           {formatDayLabel(session.scheduledDate ?? "")}
                           {session.startsAt !== null && session.endsAt !== null
-                            ? ` · ${formatTime(session.startsAt)}–${formatTime(session.endsAt)}`
+                            ? ` · ${formatTime(session.startsAt, timezone)}–${formatTime(session.endsAt, timezone)}`
                             : ""}
                         </p>
                       </div>
@@ -127,6 +128,7 @@ export function SpeakerDetailPage({ speakerId }: { speakerId: string }) {
                             startsAt: session.startsAt,
                             endsAt: session.endsAt,
                             scheduleStatus: session.startsAt !== null ? "placed" : "tbd",
+                            timezone,
                           })}
                         </StatusChip>
                         {session.room === null ? null : <span>@ {session.room}</span>}

@@ -36,9 +36,11 @@ export function DayTabs({
 export function SessionDetailModal({
   session,
   onClose,
+  timezone,
 }: {
   session: PublicSessionCard | null;
   onClose: () => void;
+  timezone: string;
 }) {
   return (
     <Modal onClose={onClose} open={session !== null} title={session?.title ?? "Untitled session"}>
@@ -53,7 +55,7 @@ export function SessionDetailModal({
               <dd>
                 {session.scheduledDate === null ? "Schedule TBD" : formatDayLabel(session.scheduledDate)}
                 {" · "}
-                {formatTimeRange(session.startsAt, session.endsAt)}
+                {formatTimeRange(session.startsAt, session.endsAt, timezone)}
               </dd>
             </div>
             <div>

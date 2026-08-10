@@ -32,13 +32,19 @@ const T2 = new Date("2027-05-13T15:00:00Z").getTime();
 
 describe("formatTimeRange", () => {
   it("renders TBD when either bound is missing", () => {
-    expect(formatTimeRange(null, null)).toBe("Time TBD");
-    expect(formatTimeRange(T1, null)).toBe("Time TBD");
-    expect(formatTimeRange(null, T1_END)).toBe("Time TBD");
+    expect(formatTimeRange(null, null, "UTC")).toBe("Time TBD");
+    expect(formatTimeRange(T1, null, "UTC")).toBe("Time TBD");
+    expect(formatTimeRange(null, T1_END, "UTC")).toBe("Time TBD");
   });
 
-  it("renders a full start-end range when both are known", () => {
-    expect(formatTimeRange(T1, T1_END)).toMatch(/2:00 PM–2:30 PM/i);
+  it("renders a full start-end range in UTC", () => {
+    expect(formatTimeRange(T1, T1_END, "UTC")).toMatch(/2:00 PM–2:30 PM/i);
+  });
+
+  it("renders the range in the event's own timezone on the itinerary, not UTC", () => {
+    // ABOUTME: T1 (14:00Z) is 7:00 AM in Los Angeles during daylight time (UTC-7) — the itinerary
+    // card must show the local start time an attendee would actually see, not the UTC instant.
+    expect(formatTimeRange(T1, T1_END, "America/Los_Angeles")).toMatch(/7:00 AM–7:30 AM/i);
   });
 });
 
@@ -81,7 +87,7 @@ describe("buildAgendaGrid", () => {
 
   it("places a fully-scheduled session at its exact time and room cell", () => {
     const sessions = [session({ id: "a", startsAt: T1, endsAt: T1_END, room: "Main Stage" })];
-    const grid = buildAgendaGrid(sessions, eventRooms);
+    const grid = buildAgendaGrid(sessions, eventRooms, "UTC");
     expect(grid.rows.map((r) => r.label)).toEqual(["2:00 PM"]);
     expect(grid.columns.map((c) => c.label)).toEqual(["Main Stage"]);
     expect(grid.cells.get(agendaCellKey(String(T1), "Main Stage"))?.map((s) => s.id)).toEqual(["a"]);
@@ -89,21 +95,21 @@ describe("buildAgendaGrid", () => {
 
   it("gives sessions with no start time an honest Time TBD row instead of inventing one", () => {
     const sessions = [session({ id: "a", startsAt: null, room: "Main Stage" })];
-    const grid = buildAgendaGrid(sessions, eventRooms);
+    const grid = buildAgendaGrid(sessions, eventRooms, "UTC");
     expect(grid.rows.map((r) => r.label)).toEqual(["Time TBD"]);
     expect(grid.cells.get(agendaCellKey("tbd", "Main Stage"))?.map((s) => s.id)).toEqual(["a"]);
   });
 
   it("gives sessions with no room an honest Room TBD column instead of inventing one", () => {
     const sessions = [session({ id: "a", startsAt: T1, endsAt: T1_END, room: null })];
-    const grid = buildAgendaGrid(sessions, eventRooms);
+    const grid = buildAgendaGrid(sessions, eventRooms, "UTC");
     expect(grid.columns.map((c) => c.label)).toEqual(["Room TBD"]);
     expect(grid.cells.get(agendaCellKey(String(T1), "tbd"))?.map((s) => s.id)).toEqual(["a"]);
   });
 
   it("degrades gracefully when a session has neither a time nor a room", () => {
     const sessions = [session({ id: "a", startsAt: null, room: null })];
-    const grid = buildAgendaGrid(sessions, eventRooms);
+    const grid = buildAgendaGrid(sessions, eventRooms, "UTC");
     expect(grid.rows.map((r) => r.label)).toEqual(["Time TBD"]);
     expect(grid.columns.map((c) => c.label)).toEqual(["Room TBD"]);
     expect(grid.cells.get(agendaCellKey("tbd", "tbd"))?.map((s) => s.id)).toEqual(["a"]);
@@ -115,7 +121,7 @@ describe("buildAgendaGrid", () => {
       session({ id: "b", startsAt: T1, endsAt: T1_END, room: "Main Stage" }),
       session({ id: "c", startsAt: T1, endsAt: T1_END, room: "Main Stage" }),
     ];
-    const grid = buildAgendaGrid(sessions, eventRooms);
+    const grid = buildAgendaGrid(sessions, eventRooms, "UTC");
     expect(grid.columns.map((c) => c.label)).toEqual(["Main Stage", "Room 2A"]);
     expect(grid.cells.get(agendaCellKey(String(T1), "Main Stage"))?.map((s) => s.id)).toEqual(["b", "c"]);
   });
@@ -125,7 +131,18 @@ describe("buildAgendaGrid", () => {
       session({ id: "late", startsAt: T2, room: "Main Stage" }),
       session({ id: "early", startsAt: T1, room: "Main Stage" }),
     ];
-    const grid = buildAgendaGrid(sessions, eventRooms);
+    const grid = buildAgendaGrid(sessions, eventRooms, "UTC");
     expect(grid.rows.map((r) => r.label)).toEqual(["2:00 PM", "3:00 PM"]);
+  });
+
+  it("labels time rows in the event's own timezone on the agenda grid, not UTC", () => {
+    // ABOUTME: T1/T2 (14:00Z/15:00Z) are 7:00/8:00 AM in Los Angeles during daylight time
+    // (UTC-7) — the grid's time gutter must show the local hour an attendee would walk in for.
+    const sessions = [
+      session({ id: "early", startsAt: T1, endsAt: T1_END, room: "Main Stage" }),
+      session({ id: "late", startsAt: T2, room: "Main Stage" }),
+    ];
+    const grid = buildAgendaGrid(sessions, eventRooms, "America/Los_Angeles");
+    expect(grid.rows.map((r) => r.label)).toEqual(["7:00 AM", "8:00 AM"]);
   });
 });

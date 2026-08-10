@@ -64,7 +64,17 @@ function FacetGroup({
   );
 }
 
-function SessionCard({ session, index, filteredOut }: { session: PublicSessionCard; index: number; filteredOut?: boolean }) {
+function SessionCard({
+  session,
+  index,
+  filteredOut,
+  timezone,
+}: {
+  session: PublicSessionCard;
+  index: number;
+  filteredOut?: boolean;
+  timezone: string;
+}) {
   const [expanded, setExpanded] = useState(false);
   const abstract = session.abstract ?? "";
   const canExpand = abstract.length > ABSTRACT_PREVIEW;
@@ -100,7 +110,7 @@ function SessionCard({ session, index, filteredOut }: { session: PublicSessionCa
       </div>
       <div className="program-session__aside">
         <StatusChip tone={session.scheduleStatus === "placed" ? "good" : "signal"}>
-          {formatSchedule(session)}
+          {formatSchedule({ ...session, timezone })}
         </StatusChip>
         {session.room === null ? null : <span className="program-session__room">@ {session.room}</span>}
       </div>
@@ -146,6 +156,7 @@ export function ProgramPage({ sessionId }: { sessionId: string | undefined }) {
   }, [filters]);
 
   const facets: PublicEventFacets | null = data?.facets ?? null;
+  const timezone = facets?.event.timezone ?? "UTC";
   const items = data?.items ?? [];
   const visibleItems = sessionId === undefined ? items : items.filter((item) => item.id === sessionId);
   const total = data?.total ?? 0;
@@ -264,7 +275,7 @@ export function ProgramPage({ sessionId }: { sessionId: string | undefined }) {
         {!loading && !error && items.length > 0 ? (
           <section aria-label="Published sessions" className="program-list">
             {visibleItems.map((session, index) => (
-              <SessionCard index={index} key={session.id} session={session} />
+              <SessionCard index={index} key={session.id} session={session} timezone={timezone} />
             ))}
           </section>
         ) : null}
