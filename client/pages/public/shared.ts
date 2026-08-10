@@ -1,6 +1,6 @@
 // ABOUTME: Shared formatting and URL-state helpers for the public audience surfaces.
 // ABOUTME: Pure functions; safe to unit-test without a DOM.
-import type { PublicSpeakerRef } from "../../../shared/api.ts";
+import type { PublicSessionCard, PublicSpeakerRef } from "../../../shared/api.ts";
 
 export const DEVFLOW_EVENT_ID = "evt_devflow_conf_2027";
 
@@ -40,6 +40,15 @@ export function formatTime(epochMs: number): string {
     minute: "2-digit",
     timeZone: "UTC",
   });
+}
+
+// ABOUTME: The single source for a session's full start–end range, used by the agenda grid,
+// the itinerary, and session detail so the same session reads identically everywhere (F-10.14).
+export function formatTimeRange(startsAt: number | null, endsAt: number | null): string {
+  if (startsAt === null || endsAt === null) {
+    return "Time TBD";
+  }
+  return `${formatTime(startsAt)}–${formatTime(endsAt)}`;
 }
 
 export function truncate(text: string, max: number): string {
@@ -114,4 +123,101 @@ export function activeFilterCount(filters: ProgramFilters): number {
 export function surnameOf(name: string): string {
   const parts = name.trim().split(/\s+/);
   return parts[parts.length - 1] ?? name;
+}
+
+// ABOUTME: Splits approved sessions into per-day buckets for day-tab surfaces; sessions with no
+// scheduledDate at all cannot belong to a day tab and are returned separately, never dropped.
+export function groupSessionsByDay(
+  sessions: PublicSessionCard[],
+): { byDay: Map<string, PublicSessionCard[]>; unscheduled: PublicSessionCard[] } {
+  const byDay = new Map<string, PublicSessionCard[]>();
+  const unscheduled: PublicSessionCard[] = [];
+  for (const session of sessions) {
+    if (session.scheduledDate === null) {
+      unscheduled.push(session);
+      continue;
+    }
+    const list = byDay.get(session.scheduledDate) ?? [];
+    list.push(session);
+    byDay.set(session.scheduledDate, list);
+  }
+  return { byDay, unscheduled };
+}
+
+// ABOUTME: Chronological order for the itinerary; sessions with no start time have no place in a
+// timeline, so they sort last rather than being hidden, then break ties by title.
+export function sortSessionsChronologically(sessions: PublicSessionCard[]): PublicSessionCard[] {
+  return [...sessions].sort((a, b) => {
+    if (a.startsAt === null && b.startsAt === null) {
+      return (a.title ?? "").localeCompare(b.title ?? "");
+    }
+    if (a.startsAt === null) {
+      return 1;
+    }
+    if (b.startsAt === null) {
+      return -1;
+    }
+    return a.startsAt - b.startsAt;
+  });
+}
+
+export const TBD_KEY = "tbd";
+
+export interface AgendaAxisLabel {
+  key: string;
+  label: string;
+}
+
+export interface AgendaGrid {
+  rows: AgendaAxisLabel[];
+  columns: AgendaAxisLabel[];
+  cells: Map<string, PublicSessionCard[]>;
+}
+
+export function agendaCellKey(rowKey: string, columnKey: string): string {
+  return `${rowKey}__${columnKey}`;
+}
+
+// ABOUTME: Lays out one day's sessions on a time (row) x room (column) grid without inventing a
+// time or room a session does not have — unplaced sessions land in an honest "TBD" row/column.
+export function buildAgendaGrid(sessions: PublicSessionCard[], eventRooms: string[]): AgendaGrid {
+  const timesByKey = new Map<string, number>();
+  let hasTbdTime = false;
+  for (const session of sessions) {
+    if (session.startsAt === null) {
+      hasTbdTime = true;
+    } else {
+      timesByKey.set(String(session.startsAt), session.startsAt);
+    }
+  }
+  const sortedTimeKeys = [...timesByKey.entries()].sort((a, b) => a[1] - b[1]).map(([key]) => key);
+  const rows: AgendaAxisLabel[] = [
+    ...(hasTbdTime ? [{ key: TBD_KEY, label: "Time TBD" }] : []),
+    ...sortedTimeKeys.map((key) => ({ key, label: formatTime(timesByKey.get(key)!) })),
+  ];
+
+  const roomsPresent = new Set(sessions.flatMap((session) => (session.room === null ? [] : [session.room])));
+  const hasTbdRoom = sessions.some((session) => session.room === null);
+  const orderedRooms = eventRooms.filter((room) => roomsPresent.has(room));
+  for (const room of roomsPresent) {
+    if (!orderedRooms.includes(room)) {
+      orderedRooms.push(room);
+    }
+  }
+  const columns: AgendaAxisLabel[] = [
+    ...orderedRooms.map((room) => ({ key: room, label: room })),
+    ...(hasTbdRoom ? [{ key: TBD_KEY, label: "Room TBD" }] : []),
+  ];
+
+  const cells = new Map<string, PublicSessionCard[]>();
+  for (const session of sessions) {
+    const rowKey = session.startsAt === null ? TBD_KEY : String(session.startsAt);
+    const columnKey = session.room === null ? TBD_KEY : session.room;
+    const cellKey = agendaCellKey(rowKey, columnKey);
+    const list = cells.get(cellKey) ?? [];
+    list.push(session);
+    cells.set(cellKey, list);
+  }
+
+  return { rows, columns, cells };
 }

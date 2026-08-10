@@ -9,8 +9,11 @@ import { AgendaPage } from "./pages/agenda/AgendaPage.tsx";
 import { OrganizerReviewPage } from "./pages/review/OrganizerReviewPage.tsx";
 import { ReviewerReviewPage } from "./pages/review/ReviewerReviewPage.tsx";
 import { Brand, Link, PublicHeader, getJson, navigate } from "./lib.tsx";
+import { AgendaPage } from "./pages/public/AgendaPage.tsx";
+import { ItineraryPage } from "./pages/public/ItineraryPage.tsx";
 import { ProgramPage } from "./pages/public/ProgramPage.tsx";
 import { SpeakerDetailPage } from "./pages/public/SpeakerDetailPage.tsx";
+import { SpeakerGalleryPage } from "./pages/public/SpeakerGalleryPage.tsx";
 import { SpeakersPage } from "./pages/public/SpeakersPage.tsx";
 import { SubmitterDashboardPage } from "./pages/submitter/SubmitterDashboardPage.tsx";
 import { RosterPage } from "./pages/roster/RosterPage.tsx";
@@ -271,6 +274,9 @@ export function App() {
     const speakerId = path.split("/")[2] ?? "";
     return <SpeakerDetailPage speakerId={speakerId} />;
   }
+  if (path === "/gallery") return <SpeakerGalleryPage />;
+  if (path === "/agenda") return <AgendaPage />;
+  if (path === "/schedule") return <ItineraryPage />;
   if (path.startsWith("/speaker")) return <SpeakerPage />;
   if (path.startsWith("/submitter")) return <SubmitterDashboardPage />;
   return <HomePage />;

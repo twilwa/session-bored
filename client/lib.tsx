@@ -56,7 +56,10 @@ export function PublicHeader() {
       <nav aria-label="Public navigation">
         <Link href="/cfp/devflow-conf-2027">Call for speakers</Link>
         <Link href="/program">Program</Link>
+        <Link href="/agenda">Agenda</Link>
+        <Link href="/schedule">Itinerary</Link>
         <Link href="/speakers">Speakers</Link>
+        <Link href="/gallery">Gallery</Link>
         <Link className="nav-signin" href="/login">Sign in</Link>
       </nav>
     </header>
