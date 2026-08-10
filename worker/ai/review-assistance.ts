@@ -145,6 +145,14 @@ export function selectEditableSuggestions(
   return selected;
 }
 
+export function selectCompleteEditableSuggestions(
+  suggestions: Record<string, unknown>,
+  criteria: ReviewAssistanceCriterion[],
+): Record<string, string | number> | null {
+  const selected = selectEditableSuggestions(suggestions, criteria);
+  return criteria.every((criterion) => Object.hasOwn(selected, criterion.id)) ? selected : null;
+}
+
 function responseText(payload: unknown): string {
   if (typeof payload !== "object" || payload === null || !("content" in payload)) {
     throw new Error("AI review response did not contain content");
@@ -193,6 +201,48 @@ function parseGeneratedAssistance(text: string): Omit<ReviewAssistanceResult, "m
   };
 }
 
+function scoreSuggestionSchema(criterion: ReviewAssistanceCriterion) {
+  if (criterion.criterionType === "numeric") {
+    return { type: "number", enum: [1, 2, 3, 4, 5] };
+  }
+  if (criterion.criterionType === "dropdown") {
+    return criterion.options === null || criterion.options.length === 0
+      ? { type: "string" }
+      : { type: "string", enum: criterion.options };
+  }
+  return { type: "string" };
+}
+
+function reviewAssistanceOutputSchema(criteria: ReviewAssistanceCriterion[]) {
+  const criterionIds = criteria.map((criterion) => criterion.id);
+  return {
+    type: "object",
+    properties: {
+      summary: { type: "string" },
+      suggestedScores: {
+        type: "object",
+        properties: Object.fromEntries(criteria.map((criterion) => [
+          criterion.id,
+          scoreSuggestionSchema(criterion),
+        ])),
+        required: criterionIds,
+        additionalProperties: false,
+      },
+      reasoning: {
+        type: "object",
+        properties: Object.fromEntries(criteria.map((criterion) => [
+          criterion.id,
+          { type: "string" },
+        ])),
+        required: criterionIds,
+        additionalProperties: false,
+      },
+    },
+    required: ["summary", "suggestedScores", "reasoning"],
+    additionalProperties: false,
+  };
+}
+
 export function createAnthropicReviewAssistant(
   apiKey: string,
   fetcher: typeof fetch = fetch,
@@ -210,6 +260,12 @@ export function createAnthropicReviewAssistant(
           model: reviewModel,
           max_tokens: 900,
           temperature: 0,
+          output_config: {
+            format: {
+              type: "json_schema",
+              schema: reviewAssistanceOutputSchema(input.criteria),
+            },
+          },
           system: [
             "You are a reading aid for a human event-program committee.",
             "Summarize only what the proposal says and suggest values against the supplied criteria.",
