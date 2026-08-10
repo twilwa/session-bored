@@ -1,5 +1,5 @@
-# ABOUTME: Runs Greenroom's required validation suite for pull requests and main.
-# ABOUTME: Cancels superseded runs so active branches receive fast feedback.
+# ABOUTME: Validates Greenroom changes and deploys passing main commits to production.
+# ABOUTME: Cancels superseded pull request runs while serializing production releases.
 name: CI
 
 on:
@@ -13,7 +13,7 @@ permissions:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   checks:
@@ -80,3 +80,41 @@ jobs:
             test-results/
           if-no-files-found: ignore
           retention-days: 7
+
+  deploy:
+    name: Deploy production
+    needs:
+      - checks
+      - browser
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: production-deploy
+      cancel-in-progress: false
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      PRODUCTION_URL: https://session-bored.techwilliams-warren.workers.dev
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Migrate production database
+        run: npm run db:migrate:remote
+
+      - name: Deploy production Worker
+        run: npm run deploy
+
+      - name: Verify production health
+        run: curl --fail --show-error --silent --retry 5 --retry-delay 5 --retry-all-errors "$PRODUCTION_URL" > /dev/null
