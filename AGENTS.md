@@ -59,6 +59,20 @@ Preview deployment requires the `CLOUDFLARE_API_TOKEN` and
 `CLOUDFLARE_ACCOUNT_ID` GitHub Actions secrets. The token must be able to upload
 Workers versions and create, list, and migrate D1 databases.
 
+## Deployment
+
+A push to `main` deploys Greenroom to production only after the `Checks` and
+`Browser tests` jobs pass. The deployment applies pending production D1
+migrations before it deploys the Worker, queues behind any active production
+deployment, and verifies that the [production site](https://session-bored.techwilliams-warren.workers.dev)
+returns a successful response. A green `CI / Deploy production` job confirms
+that the full deployment sequence completed.
+
+To roll back Worker code, select the last known-good version from
+`npx wrangler versions list`, then run `npx wrangler rollback <version-id>`.
+Database migrations remain applied, so confirm that the selected Worker version
+is compatible with the current production schema.
+
 ## CFP submission contract
 
 `submissions` is the record consumed by review and disposition. Its public CFP
