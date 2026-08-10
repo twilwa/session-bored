@@ -4,3 +4,11 @@ BETTER_AUTH_SECRET=replace-with-at-least-32-random-characters
 BETTER_AUTH_URL=http://127.0.0.1:8787
 # Optional. AI review assistance stays unavailable when this value is empty.
 ANTHROPIC_API_KEY=
+
+# Optional. Leave unset to keep email delivery in its visibly-unconfigured
+# state (the default for local dev, CI, and every test suite). Set all three
+# to send real mail through Resend during manual local testing only - never
+# commit real values here.
+# RESEND_API_KEY=
+# RESEND_FROM_DOMAIN=
+# RESEND_FROM_ADDRESS=

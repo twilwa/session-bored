@@ -1,0 +1,15 @@
+/* ABOUTME: Styles the organizer communications page - the reminder review queue and dispatch log. */
+/* ABOUTME: Keeps the drafted-versus-sent distinction visible so nothing reads as already told. */
+.comms-header h1 { max-width: 780px; }
+.comms-failed { border-left: 6px solid #9b3417; }
+.comms-draft-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 18px; margin-top: 18px; }
+.comms-draft { min-width: 0; padding: 18px; border: 1px solid var(--ink); background: var(--paper); display: grid; gap: 10px; }
+.comms-draft > p { margin: 0; overflow-wrap: anywhere; }
+.comms-draft__actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.comms-preview { display: grid; gap: 14px; max-width: 520px; }
+.comms-preview__result { padding: 18px; border: 1px solid var(--ink); background: var(--paper); }
+.comms-preview__result h3 { margin: 0 0 8px; font: 1.1rem Georgia, serif; }
+.comms-preview__result p { white-space: pre-wrap; }
+@media (max-width: 900px) {
+  .comms-draft-list { grid-template-columns: 1fr; }
+}

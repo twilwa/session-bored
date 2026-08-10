@@ -13,6 +13,12 @@ export default defineConfig({
         r2Buckets: ["FILES"],
         bindings: {
           TEST_MIGRATIONS: await readD1Migrations(new URL("./migrations", import.meta.url).pathname),
+          // Force email delivery into its unconfigured state regardless of what a
+          // developer's local .dev.vars happens to hold, so these tests never send
+          // real mail. The one real-send test opts in explicitly (see email-live.test.ts).
+          RESEND_API_KEY: "",
+          RESEND_FROM_DOMAIN: "",
+          RESEND_FROM_ADDRESS: "",
         },
       },
     })),

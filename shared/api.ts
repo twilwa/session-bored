@@ -198,6 +198,54 @@ export const routeMap = {
     module: "communications",
     access: "organizer",
   },
+  retryDecisionNotice: {
+    method: "POST",
+    path: "/api/events/:eventId/decision-notices/:submissionId/retry",
+    module: "communications",
+    access: "organizer",
+  },
+  updateEmailDispatch: {
+    method: "PATCH",
+    path: "/api/events/:eventId/email-dispatches/:dispatchId",
+    module: "communications",
+    access: "organizer",
+  },
+  discardEmailDispatch: {
+    method: "DELETE",
+    path: "/api/events/:eventId/email-dispatches/:dispatchId",
+    module: "communications",
+    access: "organizer",
+  },
+  sendEmailDispatch: {
+    method: "POST",
+    path: "/api/events/:eventId/email-dispatches/:dispatchId/send",
+    module: "communications",
+    access: "organizer",
+  },
+  draftReminders: {
+    method: "POST",
+    path: "/api/events/:eventId/email-dispatches/reminders/draft",
+    module: "communications",
+    access: "organizer",
+  },
+  commsTemplates: {
+    method: "GET",
+    path: "/api/events/:eventId/comms/templates",
+    module: "communications",
+    access: "organizer",
+  },
+  previewCommsTemplate: {
+    method: "POST",
+    path: "/api/events/:eventId/comms/templates/:key/preview",
+    module: "communications",
+    access: "organizer",
+  },
+  sendCalendarInvite: {
+    method: "POST",
+    path: "/api/events/:eventId/sessions/:sessionId/calendar-invite",
+    module: "communications",
+    access: "organizer",
+  },
 } as const satisfies Record<string, RouteContract>;
 
 export const rosterRouteMap = {
@@ -603,7 +651,7 @@ export type DecisionStatus = "accepted" | "maybe" | "declined";
 
 export interface DecisionNoticeSummary {
   outcome: DecisionStatus;
-  deliveryStatus: "queued";
+  deliveryStatus: "queued" | "sent" | "failed";
   queuedAt: string;
 }
 
@@ -636,6 +684,31 @@ export interface DecisionBatchPreview {
     subject: string;
     body: string;
   }>;
+}
+
+export type EmailDispatchStatus = "draft" | "queued" | "sent" | "failed";
+
+export interface EmailDispatchRecipient {
+  email: string;
+  name?: string;
+}
+
+export interface EmailDispatchSummary {
+  id: `eml_${string}`;
+  templateKey: string | null;
+  subject: string;
+  body: string;
+  recipients: EmailDispatchRecipient[];
+  status: EmailDispatchStatus;
+  providerMessageIds: string[] | null;
+  failureReason: string | null;
+  sentAt: string | null;
+  createdAt: string;
+}
+
+export interface CommsTemplateDescriptor {
+  key: string;
+  mergeFields: readonly string[];
 }
 
 export const reviewRouteMap = {
