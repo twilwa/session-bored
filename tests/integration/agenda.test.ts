@@ -130,14 +130,14 @@ describe("agenda builder", () => {
       expect.objectContaining({
         id: "ses_docs_retrieval",
         title: "Docs That Answer Back: Retrieval-Grounded Documentation Sites",
-        scheduleStatus: "tbd",
-        scheduledDate: "2027-05-13",
+        scheduleStatus: "unplaced",
+        scheduledDate: null,
         durationMinutes: 10,
         track: expect.objectContaining({ name: "Developer Experience" }),
         speakers: [expect.objectContaining({ name: "Marcus Okafor" })],
       }),
     ]);
-    expect(agenda.metrics).toEqual({ unplaced: 0, conflicts: 0, tbd: 1 });
+    expect(agenda.metrics).toEqual({ unplaced: 1, conflicts: 0, tbd: 0 });
   });
 
   it("persists a placed day, time, and room across a fresh read", async () => {
