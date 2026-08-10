@@ -10,6 +10,7 @@ import { Brand, Link, PublicHeader, getJson, navigate } from "./lib.tsx";
 import { ProgramPage } from "./pages/public/ProgramPage.tsx";
 import { SpeakerDetailPage } from "./pages/public/SpeakerDetailPage.tsx";
 import { SpeakersPage } from "./pages/public/SpeakersPage.tsx";
+import { SubmitterDashboardPage } from "./pages/submitter/SubmitterDashboardPage.tsx";
 
 type Role = "organizer" | "reviewer" | "speaker";
 interface SessionPayload {
@@ -97,7 +98,8 @@ function LoginPage() {
       }
       const session = await getJson<SessionPayload>("/api/session");
       setMessage(`Welcome, ${session.user.name}.`);
-      navigate(`/${session.user.role}`);
+      const returnTo = new URLSearchParams(window.location.search).get("returnTo");
+      navigate(session.user.role === "speaker" && returnTo === "/submitter" ? returnTo : `/${session.user.role}`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Sign in failed.");
     } finally {
@@ -264,5 +266,6 @@ export function App() {
     return <SpeakerDetailPage speakerId={speakerId} />;
   }
   if (path.startsWith("/speaker")) return <SpeakerPage />;
+  if (path.startsWith("/submitter")) return <SubmitterDashboardPage />;
   return <HomePage />;
 }

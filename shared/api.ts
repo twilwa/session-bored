@@ -78,6 +78,12 @@ export const routeMap = {
     module: "submissions",
     access: "speaker",
   },
+  submitterSubmissions: {
+    method: "GET",
+    path: "/api/submitter/submissions",
+    module: "submissions",
+    access: "speaker",
+  },
   sessions: {
     method: "GET",
     path: "/api/events/:eventId/sessions",
@@ -158,6 +164,16 @@ export interface SubmissionSummary {
   track: string | null;
   format: string | null;
   speaker: string;
+}
+
+export interface SubmitterSubmissionSummary {
+  id: `sub_${string}`;
+  formSlug: string;
+  title: string | null;
+  status: SubmissionStatus;
+  isDraft: boolean;
+  submittedAt: string | null;
+  updatedAt: string;
 }
 
 export interface SpeakerSummary {

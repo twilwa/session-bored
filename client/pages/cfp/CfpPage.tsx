@@ -7,6 +7,7 @@ import type {
   CfpSubmissionIntent,
   CfpSubmissionWrite,
 } from "../../../shared/api.ts";
+import { SubmitterAccountPanel, type SubmitterAccountUser } from "../submitter/SubmitterAccountPanel.tsx";
 import "./cfp.css";
 
 interface EventRecord {
@@ -314,12 +315,14 @@ function ProposalField({
 }
 
 function SubmissionReceipt({
+  accountOwned,
   kind,
   message,
   privateUrl,
   submission,
   onContinue,
 }: {
+  accountOwned: boolean;
   kind: "draft" | "submitted";
   message: string;
   privateUrl: string;
@@ -341,13 +344,21 @@ function SubmissionReceipt({
         <div><dt>Status</dt><dd>{submission.status.replace("_", " ")}</dd></div>
       </dl>
       <p className="submission-receipt__warning">
-        Keep this private link. It is the key to return and edit before the deadline.
+        {accountOwned
+          ? "This proposal is on your private dashboard. Sign in to return and edit before the deadline."
+          : "Keep this private link. It is the key to return and edit before the deadline."}
       </p>
       <div className="submission-receipt__actions">
-        <a className="button button--signal" href={privateUrl}>Private return link</a>
-        <button className="button button--quiet" onClick={() => void copyLink()} type="button">
-          {copied ? "Link copied" : "Copy link"}
-        </button>
+        {accountOwned
+          ? <a className="button button--signal" href="/submitter">Open my proposals</a>
+          : (
+            <>
+              <a className="button button--signal" href={privateUrl}>Private return link</a>
+              <button className="button button--quiet" onClick={() => void copyLink()} type="button">
+                {copied ? "Link copied" : "Copy link"}
+              </button>
+            </>
+          )}
         <button className="button button--quiet" onClick={onContinue} type="button">
           {kind === "draft" ? "Continue editing" : "Edit proposal"}
         </button>
@@ -372,17 +383,38 @@ export function CfpPage({ path }: { path: string }) {
   const [receipt, setReceipt] = useState<"draft" | "submitted" | null>(null);
   const [busy, setBusy] = useState(false);
   const [savedReferences, setSavedReferences] = useState<SavedReference[]>([]);
+  const [accountUser, setAccountUser] = useState<SubmitterAccountUser | null>(null);
+
+  function applyAccountUser(user: SubmitterAccountUser): void {
+    setAccountUser(user);
+    setState((current) => ({
+      ...current,
+      speaker: {
+        ...current.speaker,
+        name: current.speaker.name || user.name,
+        email: user.email,
+      },
+    }));
+  }
 
   useEffect(() => {
     setSavedReferences(readSavedReferences());
     const key = new URLSearchParams(window.location.search).get("key");
     setEditKey(key);
     const cfpRequest = readJson<CfpPayload>(`/api/public/cfp/${slug}`);
-    const submissionRequest = submissionId === null || key === null
+    const submissionRequest = submissionId === null
       ? Promise.resolve(null)
       : readJson<SubmissionResponse>(
-        `/api/public/cfp/${slug}/submissions/${submissionId}?key=${encodeURIComponent(key)}`,
+        `/api/public/cfp/${slug}/submissions/${submissionId}${key === null ? "" : `?key=${encodeURIComponent(key)}`}`,
       );
+    fetch("/api/session", { credentials: "same-origin" })
+      .then((response) => response.ok ? response.json<{ user: SubmitterAccountUser }>() : null)
+      .then((session) => {
+        if (session?.user.role === "speaker") {
+          applyAccountUser(session.user);
+        }
+      })
+      .catch(() => undefined);
     Promise.all([cfpRequest, submissionRequest])
       .then(([cfpData, ownSubmission]) => {
         setCfp(cfpData);
@@ -419,7 +451,7 @@ export function CfpPage({ path }: { path: string }) {
     const input: CfpSubmissionWrite = { intent, speaker: state.speaker, proposal: state.proposal };
     const isExisting = submission !== null;
     const requestPath = isExisting
-      ? `/api/public/cfp/${slug}/submissions/${submission.id}?key=${encodeURIComponent(editKey ?? "")}`
+      ? `/api/public/cfp/${slug}/submissions/${submission.id}${editKey === null ? "" : `?key=${encodeURIComponent(editKey)}`}`
       : `/api/public/cfp/${slug}/submissions`;
     try {
       const response = await fetch(requestPath, {
@@ -447,12 +479,14 @@ export function CfpPage({ path }: { path: string }) {
       setEditKey(key);
       setPrivateUrl(absoluteUrl);
       setSaveMessage(body.message);
-      setSavedReferences(rememberSubmission({
-        id: body.submission.id,
-        editUrl: absoluteUrl,
-        status: body.submission.status,
-        title: body.submission.title ?? "Untitled proposal",
-      }));
+      if (accountUser === null) {
+        setSavedReferences(rememberSubmission({
+          id: body.submission.id,
+          editUrl: absoluteUrl,
+          status: body.submission.status,
+          title: body.submission.title ?? "Untitled proposal",
+        }));
+      }
       if (!isExisting) {
         window.history.replaceState({}, "", editUrl);
       }
@@ -514,6 +548,8 @@ export function CfpPage({ path }: { path: string }) {
           </div>
         </section>
 
+        <SubmitterAccountPanel onAuthenticated={applyAccountUser} user={accountUser} />
+
         {savedReferences.length === 0 ? null : (
           <section className="cfp-own-list" aria-label="Your proposals on this device">
             <div><p className="section-label">YOUR PROPOSALS ON THIS DEVICE</p><p>These private links are stored only in this browser.</p></div>
@@ -528,6 +564,7 @@ export function CfpPage({ path }: { path: string }) {
 
         {receipt !== null && submission !== null && privateUrl !== null ? (
           <SubmissionReceipt
+            accountOwned={accountUser !== null && editKey === null}
             kind={receipt}
             message={saveMessage ?? "Your proposal is safely stored."}
             onContinue={() => setReceipt(null)}
@@ -559,8 +596,8 @@ export function CfpPage({ path }: { path: string }) {
                   </label>
                   <label className="proposal-field" htmlFor="cfp-speaker-email">
                     <span className="proposal-field__label">Email <small>Required to save</small></span>
-                    <input aria-invalid={errors.speakerEmail === undefined ? undefined : true} disabled={isExisting || locked || busy} id="cfp-speaker-email" onChange={updateSpeaker("email")} type="email" value={state.speaker.email} />
-                    <span className="proposal-field__hint">Used as your lasting speaker identity. No account required.</span>
+                    <input aria-invalid={errors.speakerEmail === undefined ? undefined : true} disabled={isExisting || accountUser !== null || locked || busy} id="cfp-speaker-email" onChange={updateSpeaker("email")} type="email" value={state.speaker.email} />
+                    <span className="proposal-field__hint">{accountUser === null ? "Used as your lasting speaker identity. No account required." : "Matches your signed-in account and keeps this proposal on your dashboard."}</span>
                     {errors.speakerEmail === undefined ? null : <span className="proposal-field__error" role="alert">{errors.speakerEmail}</span>}
                   </label>
                   <label className="proposal-field" htmlFor="cfp-speaker-title">
