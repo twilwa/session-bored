@@ -2,6 +2,7 @@
 // ABOUTME: Covers role entry points and the public 375-pixel layout without mocked requests.
 import { defineConfig, devices } from "@playwright/test";
 
+declare const process: { env: { PLAYWRIGHT_PORT?: string } };
 const PORT = Number(process.env.PLAYWRIGHT_PORT ?? 8787);
 
 export default defineConfig({
