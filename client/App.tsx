@@ -3,6 +3,7 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Button, DataTable, LoadingState, Modal, StatusChip, TextField, Toast } from "./components/ui.tsx";
 import { CfpPage as CfpSubmissionPage } from "./pages/cfp/CfpPage.tsx";
+import { DispositionPage } from "./pages/disposition/DispositionPage.tsx";
 
 type Role = "organizer" | "reviewer" | "speaker";
 interface SessionPayload {
@@ -297,7 +298,7 @@ function OrganizerPage() {
             <article><span>DEADLINE</span><strong>APR 30</strong><small>2027 · 11:59 PM</small></article>
           </section>
           <section className="workspace-section">
-            <div className="section-heading"><div><p className="section-label">CALL FOR SPEAKERS</p><h2>Submission pulse</h2></div><Link className="text-link" href="/cfp/devflow-conf-2027">Call for speakers →</Link></div>
+            <div className="section-heading"><div><p className="section-label">CALL FOR SPEAKERS</p><h2>Submission pulse</h2></div><Link className="text-link" href="/organizer/disposition">Disposition →</Link></div>
             <DataTable
               caption="Seeded submissions"
               columns={[
@@ -402,6 +403,7 @@ export function App() {
   }, []);
   if (path === "/login") return <LoginPage />;
   if (path.startsWith("/cfp/")) return <CfpSubmissionPage path={path} />;
+  if (path === "/organizer/disposition") return <RoleShell role="organizer"><DispositionPage /></RoleShell>;
   if (path.startsWith("/organizer")) return <OrganizerPage />;
   if (path.startsWith("/reviewer")) return <ReviewerPage />;
   if (path.startsWith("/speaker")) return <SpeakerPage />;
