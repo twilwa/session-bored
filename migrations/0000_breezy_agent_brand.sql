@@ -1,3 +1,5 @@
+-- ABOUTME: Creates Greenroom's complete M0 domain and Better Auth schema in D1.
+-- ABOUTME: Preserves immutable public IDs, workflow statuses, and relational constraints.
 CREATE TABLE `account` (
 	`id` text PRIMARY KEY NOT NULL,
 	`account_id` text NOT NULL,
