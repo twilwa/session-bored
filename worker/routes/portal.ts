@@ -22,6 +22,7 @@ import {
   buildStorageKey,
   getFileObject,
   headshotLimits,
+  imageContentTypeForFilename,
   limitsForTask,
   putFileObject,
   type UploadLimits,
@@ -466,14 +467,14 @@ portalRoutes.get("/portal/files/:fileId", async (context) => {
 portalRoutes.get("/public/portal/speakers/:speakerId/headshot", async (context) => {
   const database = drizzle(context.env.DB);
   const [file] = await database
-    .select({ id: files.id })
+    .select({ id: files.id, displayName: files.displayName })
     .from(files)
     .where(and(eq(files.speakerId, context.req.param("speakerId")), eq(files.kind, "headshot")));
   if (file === undefined) {
     return context.json({ error: "not_found" }, 404);
   }
   const [version] = await database
-    .select({ storageKey: fileVersions.storageKey, mimeType: fileVersions.mimeType })
+    .select({ storageKey: fileVersions.storageKey })
     .from(fileVersions)
     .where(and(eq(fileVersions.fileId, file.id), eq(fileVersions.latest, true)));
   if (version === undefined) {
@@ -484,7 +485,12 @@ portalRoutes.get("/public/portal/speakers/:speakerId/headshot", async (context) 
     return context.json({ error: "not_found" }, 404);
   }
   return new Response(object.body, {
-    headers: { "content-type": version.mimeType, "cache-control": "public, max-age=300" },
+    headers: {
+      // Never trust the stored/caller-supplied mime type for a publicly, unauthenticated,
+      // inline-served response — derive it independently from the validated extension.
+      "content-type": imageContentTypeForFilename(file.displayName),
+      "cache-control": "public, max-age=300",
+    },
   });
 });
 

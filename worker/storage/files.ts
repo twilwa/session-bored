@@ -3,33 +3,43 @@
 
 export interface UploadLimits {
   maxBytes: number;
-  acceptedExtensions: string[];
-  acceptedMimeTypes: string[];
+  mimeTypeByExtension: Record<string, string>;
 }
+
+const headshotMimeTypeByExtension: Record<string, string> = {
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  webp: "image/webp",
+};
+
+const deliverableMimeTypeByExtension: Record<string, string> = {
+  pdf: "application/pdf",
+  ppt: "application/vnd.ms-powerpoint",
+  pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  doc: "application/msword",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  zip: "application/zip",
+  key: "application/x-iwork-keynote-sffkey",
+};
 
 export const headshotLimits: UploadLimits = {
   maxBytes: 5 * 1024 * 1024,
-  acceptedExtensions: ["png", "jpg", "jpeg", "webp"],
-  acceptedMimeTypes: ["image/png", "image/jpeg", "image/webp"],
+  mimeTypeByExtension: headshotMimeTypeByExtension,
 };
 
 export const defaultDeliverableLimits: UploadLimits = {
   maxBytes: 25 * 1024 * 1024,
-  acceptedExtensions: ["pdf", "ppt", "pptx", "doc", "docx", "key", "zip"],
-  acceptedMimeTypes: [
-    "application/pdf",
-    "application/vnd.ms-powerpoint",
-    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-    "application/msword",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    "application/zip",
-    "application/x-iwork-keynote-sffkey",
-  ],
+  mimeTypeByExtension: deliverableMimeTypeByExtension,
 };
 
 export function extensionOf(filename: string): string {
   const dotIndex = filename.lastIndexOf(".");
   return dotIndex === -1 ? "" : filename.slice(dotIndex + 1).toLowerCase();
+}
+
+export function imageContentTypeForFilename(filename: string): string {
+  return headshotMimeTypeByExtension[extensionOf(filename)] ?? "application/octet-stream";
 }
 
 export interface FileValidationError {
@@ -53,14 +63,15 @@ export function validateUpload(
       maxBytes: limits.maxBytes,
     };
   }
-  const extension = extensionOf(file.name);
-  const typeAllowed = limits.acceptedMimeTypes.includes(file.type) ||
-    limits.acceptedExtensions.includes(extension);
-  if (!typeAllowed) {
+  const acceptedExtensions = Object.keys(limits.mimeTypeByExtension);
+  const expectedMimeType = limits.mimeTypeByExtension[extensionOf(file.name)];
+  const matchesExpectedType = expectedMimeType !== undefined &&
+    (file.type.length === 0 || file.type === expectedMimeType);
+  if (!matchesExpectedType) {
     return {
       error: "unsupported_file_type",
-      message: `Accepted file types: ${limits.acceptedExtensions.join(", ")}.`,
-      acceptedExtensions: limits.acceptedExtensions,
+      message: `Accepted file types: ${acceptedExtensions.join(", ")}.`,
+      acceptedExtensions,
     };
   }
   return null;
@@ -69,12 +80,18 @@ export function validateUpload(
 export function limitsForTask(
   task: { acceptedFileTypes: string[] | null; maximumFileBytes: number | null },
 ): UploadLimits {
+  const requestedExtensions = task.acceptedFileTypes !== null && task.acceptedFileTypes.length > 0
+    ? task.acceptedFileTypes.map((type) => type.toLowerCase())
+    : null;
+  const mimeTypeByExtension = requestedExtensions === null
+    ? defaultDeliverableLimits.mimeTypeByExtension
+    : Object.fromEntries(
+      Object.entries(defaultDeliverableLimits.mimeTypeByExtension)
+        .filter(([extension]) => requestedExtensions.includes(extension)),
+    );
   return {
     maxBytes: task.maximumFileBytes ?? defaultDeliverableLimits.maxBytes,
-    acceptedExtensions: task.acceptedFileTypes !== null && task.acceptedFileTypes.length > 0
-      ? task.acceptedFileTypes.map((type) => type.toLowerCase())
-      : defaultDeliverableLimits.acceptedExtensions,
-    acceptedMimeTypes: defaultDeliverableLimits.acceptedMimeTypes,
+    mimeTypeByExtension,
   };
 }
 

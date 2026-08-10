@@ -31,12 +31,29 @@ describe("upload validation", () => {
 
   it("rejects a disallowed file type by extension and mime type", () => {
     const result = validateUpload({ name: "resume.exe", type: "application/x-msdownload", size: 10 }, headshotLimits);
-    expect(result).toMatchObject({ error: "unsupported_file_type", acceptedExtensions: headshotLimits.acceptedExtensions });
+    expect(result).toMatchObject({
+      error: "unsupported_file_type",
+      acceptedExtensions: Object.keys(headshotLimits.mimeTypeByExtension),
+    });
   });
 
-  it("accepts a deliverable by extension even when the browser sends a generic mime type", () => {
+  it("accepts a deliverable by extension even when the browser sends no mime type", () => {
     const result = validateUpload({ name: "slides.pdf", type: "", size: 10 }, defaultDeliverableLimits);
     expect(result).toBeNull();
+  });
+
+  it("rejects HTML bytes disguised with an image extension and a caller-controlled mime type", () => {
+    const result = validateUpload({ name: "payload.png", type: "text/html", size: 42 }, headshotLimits);
+    expect(result).toMatchObject({ error: "unsupported_file_type" });
+  });
+
+  it("rejects a mime type that does not match the extension's expected type, even if it is a mime type this app otherwise accepts", () => {
+    // "notes.docx" carrying the PDF mime type: the extension is known, but the two disagree.
+    const result = validateUpload(
+      { name: "notes.docx", type: "application/pdf", size: 10 },
+      defaultDeliverableLimits,
+    );
+    expect(result).toMatchObject({ error: "unsupported_file_type" });
   });
 });
 
@@ -49,7 +66,18 @@ describe("task upload limits", () => {
   it("honors a task's own accepted types and byte ceiling", () => {
     const limits = limitsForTask({ acceptedFileTypes: ["PDF", "Key"], maximumFileBytes: 2048 });
     expect(limits.maxBytes).toBe(2048);
-    expect(limits.acceptedExtensions).toEqual(["pdf", "key"]);
+    expect(Object.keys(limits.mimeTypeByExtension)).toEqual(["pdf", "key"]);
+  });
+
+  it("narrows the accepted mime types along with the extensions, not just the extension list", () => {
+    const limits = limitsForTask({ acceptedFileTypes: ["pptx"], maximumFileBytes: null });
+    // A .docx file carrying its own standard Word mime type must not slip through
+    // just because that mime type happens to appear in the app's broader default pool.
+    const result = validateUpload(
+      { name: "notes.docx", type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", size: 10 },
+      limits,
+    );
+    expect(result).toMatchObject({ error: "unsupported_file_type" });
   });
 });
 

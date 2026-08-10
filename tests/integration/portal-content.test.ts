@@ -93,6 +93,37 @@ describe("speaker portal content", () => {
     expect(privateDownload.headers.get("content-disposition")).toContain("priya.png");
   });
 
+  it("rejects HTML disguised as a headshot image, and the public endpoint never serves text/html regardless of stored data", async () => {
+    const maliciousUpload = await request("/api/portal/profile/headshot", {
+      method: "POST",
+      headers: { cookie: priyaCookie },
+      body: fileUpload("payload.png", "text/html", Array.from(new TextEncoder().encode("<script>evil()</script>"))),
+    });
+    expect(maliciousUpload.status).toBe(415);
+    await expect(maliciousUpload.json()).resolves.toMatchObject({ error: "unsupported_file_type" });
+
+    // Defense in depth: even if a bad mime type ever ended up stored (through some other path,
+    // now or in the future), the public endpoint must derive Content-Type from the extension
+    // rather than trust the stored value — so simulate that directly, bypassing validation.
+    const anyUser = await env.DB.prepare("select id from user limit 1").first<{ id: string }>();
+    const key = "portal/evt_devflow_conf_2027/spk_marcus_devflow_2027/fil_bogus_headshot/fver_bogus-payload.png";
+    await env.FILES.put(key, new TextEncoder().encode("<script>evil()</script>"), {
+      httpMetadata: { contentType: "text/html" },
+    });
+    const now = Date.now();
+    await env.DB.prepare(
+      "insert into file (id, event_id, speaker_id, kind, display_name, created_at, updated_at) values (?, ?, ?, 'headshot', ?, ?, ?)",
+    ).bind("fil_bogus_headshot", "evt_devflow_conf_2027", "spk_marcus_devflow_2027", "payload.png", now, now).run();
+    await env.DB.prepare(
+      "insert into file_version (id, file_id, version, storage_key, mime_type, size_bytes, latest, uploaded_by_user_id, created_at, updated_at) values (?, ?, 1, ?, 'text/html', ?, 1, ?, ?, ?)",
+    ).bind("fver_bogus_headshot", "fil_bogus_headshot", key, 27, anyUser?.id, now, now).run();
+
+    const publicResponse = await request("/api/public/portal/speakers/spk_marcus_devflow_2027/headshot");
+    expect(publicResponse.status).toBe(200);
+    expect(publicResponse.headers.get("content-type")).not.toBe("text/html");
+    expect(publicResponse.headers.get("content-type")).toBe("image/png");
+  });
+
   it("rejects a missing file, an oversized file, and a disallowed file type, all server-side with a human message", async () => {
     const missing = await request("/api/portal/tasks/tsk_fixture_3/files", {
       method: "POST",
