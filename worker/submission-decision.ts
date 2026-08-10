@@ -213,6 +213,13 @@ async function ensureAcceptedHandoff(
           speakerId: speaker.id,
         })
         .onConflictDoNothing();
+      await database
+        .update(taskAssignees)
+        .set({ deletedAt: null })
+        .where(and(
+          eq(taskAssignees.taskId, task.id),
+          eq(taskAssignees.speakerId, speaker.id),
+        ));
     }
   }
 

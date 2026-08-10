@@ -27,9 +27,10 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   `selected_speakers` scope and must remain limited to their explicit assignees.
 - Organizer task edits update the shared task for current and future assignees.
   Reassignment archives removed assignee links so restored speakers retain
-  completion history. A task with any completed assignment cannot change kind.
-  Removing a task archives it as complete; active work views ignore it while
-  its assignments and uploaded file versions remain available for download.
+  completion history, and a later acceptance restores an archived event-wide
+  assignment. A task with any completed assignment cannot change kind. Removing
+  a task archives it as complete; active work views ignore it while the portal's
+  file history keeps its uploaded file versions discoverable and downloadable.
 - Un-accepting never deletes the created speaker, session, task, or assignment.
   It returns the session content to `draft`, preserves all schedule fields, and
   pauses session-scoped tasks. Re-accepting reuses the same stable IDs. Agenda

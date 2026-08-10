@@ -434,6 +434,16 @@ export interface PortalTaskFile {
   version: number;
 }
 
+export interface PortalFile {
+  taskId: `tsk_${string}`;
+  fileId: `fil_${string}`;
+  taskTitle: string;
+  displayName: string;
+  version: number;
+  archived: boolean;
+  downloadUrl: string;
+}
+
 export type PortalTaskAssigneeStatus = "assigned" | "in_progress" | "completed";
 
 export interface PortalTask {
@@ -459,6 +469,7 @@ export interface SpeakerContentPayload {
   submissions: PortalSubmissionSummary[];
   sessions: PortalSession[];
   tasks: PortalTask[];
+  files: PortalFile[];
 }
 
 export interface FoundationStub<T> {

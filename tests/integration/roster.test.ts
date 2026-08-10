@@ -429,7 +429,37 @@ describe("organizer speaker roster", () => {
     const refreshedPayload = await refreshedTasks.json<{
       items: Array<{ id: string; assignees: Array<{ speakerId: string }> }>;
     }>();
-    expect(refreshedPayload.items.find((task) => task.id === template?.id)?.assignees)
+    const templateAssignees = refreshedPayload.items.find((task) => task.id === template?.id)?.assignees ?? [];
+    expect(templateAssignees).toContainEqual(expect.objectContaining({ speakerId: futureSpeakerId }));
+
+    const unassigned = await request(`/api/events/evt_devflow_conf_2027/tasks/${template?.id}`, {
+      method: "PATCH",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({
+        speakerIds: templateAssignees
+          .map((assignee) => assignee.speakerId)
+          .filter((speakerId) => speakerId !== futureSpeakerId),
+      }),
+    });
+    expect(unassigned.status).toBe(200);
+    expect((await request("/api/events/evt_devflow_conf_2027/disposition", {
+      method: "PATCH",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({ submissionIds: ["sub_template_future"], status: "declined" }),
+    })).status).toBe(200);
+    expect((await request("/api/events/evt_devflow_conf_2027/disposition", {
+      method: "PATCH",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({ submissionIds: ["sub_template_future"], status: "accepted" }),
+    })).status).toBe(200);
+
+    const reassignedTasks = await request("/api/events/evt_devflow_conf_2027/tasks", {
+      headers: { cookie: organizerCookie },
+    });
+    const reassignedPayload = await reassignedTasks.json<{
+      items: Array<{ id: string; assignees: Array<{ speakerId: string }> }>;
+    }>();
+    expect(reassignedPayload.items.find((task) => task.id === template?.id)?.assignees)
       .toContainEqual(expect.objectContaining({ speakerId: futureSpeakerId }));
   });
 
@@ -612,8 +642,24 @@ describe("organizer speaker roster", () => {
     const speakerContent = await request("/api/speaker/content", {
       headers: { cookie: speakerCookie },
     });
-    const speakerPayload = await speakerContent.json<{ tasks: Array<{ id: string }> }>();
+    const speakerPayload = await speakerContent.json<{
+      tasks: Array<{ id: string }>;
+      files: Array<{
+        fileId: string;
+        taskId: string;
+        displayName: string;
+        archived: boolean;
+        downloadUrl: string;
+      }>;
+    }>();
     expect(speakerPayload.tasks).not.toContainEqual(expect.objectContaining({ id: created.id }));
+    expect(speakerPayload.files).toContainEqual(expect.objectContaining({
+      fileId: uploaded.fileId,
+      taskId: created.id,
+      displayName: "removal-safe.pdf",
+      archived: true,
+      downloadUrl: `/api/portal/files/${uploaded.fileId}`,
+    }));
 
     const uploadAfterRemoval = await request(`/api/portal/tasks/${created.id}/files`, {
       method: "POST",

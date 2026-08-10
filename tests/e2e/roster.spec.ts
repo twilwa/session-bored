@@ -10,6 +10,27 @@ async function signInAsOrganizer(page: import("@playwright/test").Page): Promise
   await expect(page).toHaveURL(/\/organizer$/);
 }
 
+async function signInAsSpeaker(page: import("@playwright/test").Page): Promise<void> {
+  await page.goto("/login");
+  await page.getByLabel("Email").fill("sbek-speaker2@example.com");
+  await page.getByLabel("Password").fill("SbekTest!2027-spk2");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page.getByRole("heading", { name: "Marcus Okafor" })).toBeVisible();
+}
+
+async function signOut(page: import("@playwright/test").Page): Promise<void> {
+  const status = await page.evaluate(async () => {
+    const response = await fetch("/api/auth/sign-out", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+    return response.status;
+  });
+  expect(status).toBe(200);
+}
+
 test("organizer sees sessionless onboarding assignments in the chase list", async ({ page }) => {
   await signInAsOrganizer(page);
 
@@ -119,10 +140,33 @@ test("organizer edits, reassigns, and removes a task from the ledger", async ({ 
   await expect(updatedDialog.getByLabel(/Marcus Okafor/)).toBeChecked();
   await updatedDialog.getByRole("button", { name: "Cancel" }).click();
 
+  await signOut(page);
+  await signInAsSpeaker(page);
+  const speakerTask = page.locator("li.task-row", { hasText: updatedTitle });
+  await speakerTask.locator("input[type='file']").setInputFiles("fixtures/slides.pdf");
+  await expect(page.getByText("File uploaded. Task marked complete.")).toBeVisible();
+  const activeFile = page.locator("li", { hasText: updatedTitle }).filter({ hasText: "Version 1" });
+  const activeDownload = activeFile.getByRole("link", { name: "slides.pdf" });
+  await expect(activeDownload).toBeVisible();
+  const downloadUrl = await activeDownload.getAttribute("href");
+
+  await signOut(page);
+  await signInAsOrganizer(page);
+  await page.goto("/organizer/roster/tasks");
   await page.getByRole("button", { name: `Remove ${updatedTitle}` }).click();
   const removeDialog = page.getByRole("dialog", { name: `Remove ${updatedTitle}?` });
   await expect(removeDialog).toContainText("retaining completed work and uploaded files");
   await removeDialog.getByRole("button", { name: "Remove task" }).click();
   await expect(page.getByRole("row", { name: new RegExp(updatedTitle) })).toHaveCount(0);
   await expect(page.getByRole("status")).toContainText("Completed work and uploads were retained");
+
+  await signOut(page);
+  await signInAsSpeaker(page);
+  await expect(page.locator("li.task-row", { hasText: updatedTitle })).toHaveCount(0);
+  const archivedFile = page.locator("li", { hasText: updatedTitle }).filter({ hasText: "Archived task" });
+  const archivedDownload = archivedFile.getByRole("link", { name: "slides.pdf" });
+  await expect(archivedDownload).toHaveAttribute("href", downloadUrl ?? "");
+  expect(downloadUrl).not.toBeNull();
+  const download = await page.request.get(downloadUrl ?? "");
+  expect(download.status()).toBe(200);
 });
