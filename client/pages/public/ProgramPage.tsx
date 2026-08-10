@@ -80,7 +80,11 @@ function SessionCard({ session, index, filteredOut }: { session: PublicSessionCa
         <p className="program-session__meta">
           {[session.track, session.format].filter((value) => value !== null && value !== "").join(" · ") || "Session"}
         </p>
-        <h2>{session.title ?? "Untitled session"}</h2>
+        <h2>
+          <Link className="program-session__title-link" href={`/program/${session.id}`}>
+            {session.title ?? "Untitled session"}
+          </Link>
+        </h2>
         <p className="program-session__abstract">{shownAbstract}</p>
         {canExpand ? (
           <button
@@ -104,7 +108,7 @@ function SessionCard({ session, index, filteredOut }: { session: PublicSessionCa
   );
 }
 
-export function ProgramPage() {
+export function ProgramPage({ sessionId }: { sessionId: string | undefined }) {
   const [filters, setFilters] = useState<ProgramFilters>(() => readFiltersFromUrl(window.location.search));
   const [data, setData] = useState<PublicSessionsResponse | null>(null);
   const [error, setError] = useState(false);
@@ -143,6 +147,7 @@ export function ProgramPage() {
 
   const facets: PublicEventFacets | null = data?.facets ?? null;
   const items = data?.items ?? [];
+  const visibleItems = sessionId === undefined ? items : items.filter((item) => item.id === sessionId);
   const total = data?.total ?? 0;
   const filtered = data?.filtered ?? 0;
   const activeCount = useMemo(() => activeFilterCount(filters), [filters]);
@@ -183,7 +188,7 @@ export function ProgramPage() {
             </label>
           </form>
           <p className="program-count" role="status" aria-live="polite">
-            {loading ? "Loading…" : `${filtered} of ${total} session${total === 1 ? "" : "s"}`}
+            {loading ? "Loading…" : `${sessionId === undefined ? filtered : visibleItems.length} of ${total} session${total === 1 ? "" : "s"}`}
           </p>
         </section>
 
@@ -234,8 +239,13 @@ export function ProgramPage() {
             The program could not be loaded. <Link href="/program">Try again</Link>.
           </p>
         ) : null}
-        {!loading && !error && items.length === 0 ? (
-          total === 0 ? (
+        {!loading && !error && visibleItems.length === 0 ? (
+          sessionId !== undefined ? (
+            <EmptyState
+              description="This session is not part of the published program."
+              title="Session unavailable"
+            />
+          ) : total === 0 ? (
             <EmptyState
               description="Once the committee approves sessions they will appear here."
               title="No sessions published yet"
@@ -253,13 +263,14 @@ export function ProgramPage() {
         ) : null}
         {!loading && !error && items.length > 0 ? (
           <section aria-label="Published sessions" className="program-list">
-            {items.map((session, index) => (
+            {visibleItems.map((session, index) => (
               <SessionCard index={index} key={session.id} session={session} />
             ))}
           </section>
         ) : null}
 
         <footer className="program-foot">
+          {sessionId === undefined ? null : <Link className="text-link" href="/program">Full program →</Link>}
           <Link className="text-link" href="/speakers">Browse speakers →</Link>
           <button
             className="text-link"

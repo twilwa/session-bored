@@ -17,6 +17,10 @@ test("public program shows an approved fixture session", async ({ page }) => {
   await page.goto("/program");
 
   await expect(page.getByRole("heading", { name: "DevFlow Conf 2027", exact: true })).toBeVisible();
+  const sessionLink = page.getByRole("link", { name: "Docs That Answer Back", exact: false });
+  await expect(sessionLink).toHaveAttribute("href", "/program/ses_docs_retrieval");
+  await sessionLink.click();
+  await expect(page).toHaveURL(/\/program\/ses_docs_retrieval$/);
   await expect(page.getByText("Docs That Answer Back", { exact: false })).toBeVisible();
 });
 

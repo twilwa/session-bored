@@ -39,12 +39,19 @@ function SpeakerCard({ speaker }: { speaker: PublicSpeakersResponse["items"][num
 }
 
 export function SpeakersPage() {
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(() => new URLSearchParams(window.location.search).get("q") ?? "");
   const [data, setData] = useState<PublicSpeakersResponse | null>(null);
   const [error, setError] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    const url = new URL(window.location.href);
+    if (query === "") {
+      url.searchParams.delete("q");
+    } else {
+      url.searchParams.set("q", query);
+    }
+    window.history.replaceState({}, "", `${url.pathname}${url.search}`);
     setLoading(true);
     setError(false);
     const params = new URLSearchParams();
@@ -74,6 +81,7 @@ export function SpeakersPage() {
   const facets = data?.facets ?? null;
   const items = data?.items ?? [];
   const total = data?.total ?? 0;
+  const filtered = data?.filtered ?? 0;
 
   return (
     <div className="public-page">
@@ -104,7 +112,7 @@ export function SpeakersPage() {
             </label>
           </form>
           <p className="program-count" role="status" aria-live="polite">
-            {loading ? "Loading…" : `${total} speaker${total === 1 ? "" : "s"}`}
+            {loading ? "Loading…" : `${filtered} of ${total} speaker${total === 1 ? "" : "s"}`}
           </p>
         </section>
 

@@ -143,6 +143,8 @@ a { color: inherit; text-decoration: none; }
 .program-session:last-child { border-bottom: 0; }
 .program-session > span { color: var(--blue); font: 0.75rem monospace; }
 .program-session h2 { max-width: 900px; margin: 5px 0 14px; font: clamp(1.8rem, 4vw, 3.4rem)/1 Georgia, serif; }
+.program-session__title-link { color: inherit; text-decoration: none; }
+.program-session__title-link:hover { text-decoration: underline; text-decoration-color: var(--signal); text-underline-offset: 0.18em; }
 .program-session p { max-width: 800px; margin: 0; }
 .program-session div > p:first-child { font: 0.68rem monospace; letter-spacing: 0.08em; text-transform: uppercase; }
 

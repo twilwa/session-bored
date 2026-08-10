@@ -48,9 +48,10 @@ interface SpeakerItem {
 interface SpeakersPayload {
   items: SpeakerItem[];
   total: number;
+  filtered: number;
 }
 interface SpeakerDetailPayload {
-  speaker: { id: string; name: string; sessions: Array<{ id: string; title: string | null }> };
+  speaker: { id: string; name: string; sessions: Array<{ id: string; title: string | null }> } & Record<string, unknown>;
 }
 
 async function seedLeakFixtures(): Promise<void> {
@@ -123,6 +124,22 @@ async function seedLeakFixtures(): Promise<void> {
     )
     .bind("spk_withdrawn_secret", "psn_withdrawn_secret", EVENT_ID, "withdrawn", Date.now(), Date.now())
     .run();
+  for (const [suffix, status] of [["invited", "invited"], ["pending", "pending_employer_approval"]] as const) {
+    await db
+      .prepare("INSERT INTO person (id, name, email, created_at, updated_at) VALUES (?, ?, ?, ?, ?)")
+      .bind(
+        `psn_${suffix}_secret`,
+        `${suffix} private speaker`,
+        `${suffix}-private@example.test`,
+        Date.now(),
+        Date.now(),
+      )
+      .run();
+    await db
+      .prepare("INSERT INTO speaker (id, person_id, event_id, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)")
+      .bind(`spk_${suffix}_secret`, `psn_${suffix}_secret`, EVENT_ID, status, Date.now(), Date.now())
+      .run();
+  }
   // ABOUTME: A withdrawn speaker linked to an approved session must still be hidden from the directory,
   // and the session itself stays visible but must not list the withdrawn speaker.
   await db
@@ -153,6 +170,7 @@ describe("Public audience surfaces", () => {
     );
     expect(detail.status).toBe(200);
     expect(detail.body.speaker.name).toBe("Marcus Okafor");
+    expect(detail.body.speaker).not.toHaveProperty("email");
     expect(detail.body.speaker.sessions.map((session) => session.title)).toContain(
       "Docs That Answer Back: Retrieval-Grounded Documentation Sites",
     );
@@ -206,6 +224,18 @@ describe("Public audience surfaces", () => {
     expect(surnames).toEqual(sorted);
   });
 
+  it("searches the speaker directory without losing the unfiltered total", async () => {
+    const match = await json<SpeakersPayload>(`/api/public/events/${EVENT_ID}/speakers?q=priya`);
+    expect(match.body.items.map((item) => item.name)).toEqual(["Priya Raman"]);
+    expect(match.body.filtered).toBe(1);
+    expect(match.body.total).toBe(2);
+
+    const miss = await json<SpeakersPayload>(`/api/public/events/${EVENT_ID}/speakers?q=zzznomatch`);
+    expect(miss.body.items).toEqual([]);
+    expect(miss.body.filtered).toBe(0);
+    expect(miss.body.total).toBe(2);
+  });
+
   it("reports each speaker's count of approved sessions", async () => {
     const { body } = await json<SpeakersPayload>(`/api/public/events/${EVENT_ID}/speakers`);
     const marcus = body.items.find((item) => item.name === "Marcus Okafor");
@@ -238,11 +268,19 @@ describe("Public audience surfaces", () => {
     const speakers = await json<SpeakersPayload>(`/api/public/events/${EVENT_ID}/speakers`);
     const speakerNames = speakers.body.items.map((item) => item.name);
     expect(speakerNames).not.toContain("Wendy Withdrawn");
+    expect(speakerNames).not.toContain("invited private speaker");
+    expect(speakerNames).not.toContain("pending private speaker");
 
     const withdrawnDetail = await json<{ error?: string }>(
       `/api/public/events/${EVENT_ID}/speakers/spk_withdrawn_secret`,
     );
     expect(withdrawnDetail.status).toBe(404);
+    for (const speakerId of ["spk_invited_secret", "spk_pending_secret"]) {
+      const privateDetail = await json<{ error?: string }>(
+        `/api/public/events/${EVENT_ID}/speakers/${speakerId}`,
+      );
+      expect(privateDetail.status).toBe(404);
+    }
 
     // ABOUTME: The approved docs session remains visible, but the withdrawn speaker must be absent from its speaker list.
     const docs = sessions.body.items.find((item) => item.id === "ses_docs_retrieval");

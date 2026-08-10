@@ -1,6 +1,6 @@
 // ABOUTME: Centralizes the public read model for published event content with approval gating.
 // ABOUTME: Keeps the unpublished/withdrawn content rule in one narrow module so it cannot drift.
-import { and, desc, eq, inArray, isNull, like, ne, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, like, or, sql } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import {
   events,
@@ -17,10 +17,10 @@ import {
 // The schedule status (unplaced/tbd/placed) is intentionally NOT a gate — TBD sessions stay visible.
 const PUBLIC_SESSION_GATE = and(eq(sessions.contentStatus, "approved"), isNull(sessions.deletedAt));
 
-// ABOUTME: A speaker is public once invited and not withdrawn; onboarding/confirmed speakers appear
-// even with an incomplete profile so the directory can degrade gracefully.
+// ABOUTME: Public speakers have cleared invitation and employer-approval states.
+// Confirmed, onboarding, and ready speakers remain visible even when their profiles are incomplete.
 const PUBLIC_SPEAKER_GATE = and(
-  ne(speakers.status, "withdrawn"),
+  inArray(speakers.status, ["confirmed", "onboarding", "ready"]),
   isNull(speakers.deletedAt),
   isNull(people.deletedAt),
 );
@@ -59,7 +59,6 @@ export interface PublicSpeakerCard {
 }
 
 export interface PublicSpeakerDetail extends PublicSpeakerCard {
-  email: string | null;
   sessions: Array<{
     id: string;
     title: string | null;
@@ -280,6 +279,18 @@ export async function fetchPublicSpeakers(
   return rows.map((row) => ({ ...row, sessionCount: countBySpeaker.get(row.id) ?? 0 }));
 }
 
+export async function countPublicSpeakers(
+  database: DrizzleD1Database,
+  eventId: string,
+): Promise<number> {
+  const [row] = await database
+    .select({ count: sql<number>`count(*)`.as("count") })
+    .from(speakers)
+    .innerJoin(people, eq(speakers.personId, people.id))
+    .where(and(eq(speakers.eventId, eventId), PUBLIC_SPEAKER_GATE));
+  return row?.count ?? 0;
+}
+
 export async function fetchPublicSpeaker(
   database: DrizzleD1Database,
   eventId: string,
@@ -289,7 +300,6 @@ export async function fetchPublicSpeaker(
     .select({
       id: speakers.id,
       name: people.name,
-      email: people.email,
       jobTitle: people.jobTitle,
       organization: people.organization,
       bio: people.bio,
@@ -330,7 +340,6 @@ export async function fetchPublicSpeaker(
 
   return {
     ...row,
-    email: row.email,
     headshotUrl: row.headshotUrl,
     sessionCount: speakerSessions.length,
     sessions: speakerSessions.map((s) => ({

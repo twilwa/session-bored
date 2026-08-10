@@ -111,7 +111,7 @@ export function SpeakerDetailPage({ speakerId }: { speakerId: string }) {
                       <div className="speaker-sessions__main">
                         <p className="speaker-sessions__track">{session.track ?? "Track TBD"}</p>
                         <h3>
-                          <Link href="/program">{session.title ?? "Untitled session"}</Link>
+                          <Link href={`/program/${session.id}`}>{session.title ?? "Untitled session"}</Link>
                         </h3>
                         <p className="speaker-sessions__when">
                           {formatDayLabel(session.scheduledDate ?? "")}

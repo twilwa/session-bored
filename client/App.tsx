@@ -254,7 +254,10 @@ export function App() {
   if (path.startsWith("/organizer/review")) return <RoleShell role="organizer"><OrganizerReviewPage path={path} /></RoleShell>;
   if (path.startsWith("/organizer")) return <OrganizerPage />;
   if (path.startsWith("/reviewer")) return <ReviewerPage path={path} />;
-  if (path === "/program" || path.startsWith("/program/")) return <ProgramPage />;
+  if (path === "/program" || path.startsWith("/program/")) {
+    const sessionId = path.split("/")[2];
+    return <ProgramPage sessionId={sessionId} />;
+  }
   if (path === "/speakers") return <SpeakersPage />;
   if (path.startsWith("/speakers/")) {
     const speakerId = path.split("/")[2] ?? "";

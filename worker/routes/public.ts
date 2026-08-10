@@ -5,6 +5,7 @@ import { drizzle } from "drizzle-orm/d1";
 import { Hono } from "hono";
 import { events, formFields, forms, formats, tracks } from "../../db/schema.ts";
 import {
+  countPublicSpeakers,
   countPublicSessions,
   fetchPublicEventFacets,
   fetchPublicSessions,
@@ -75,12 +76,15 @@ publicRoutes.get("/events/:eventId/sessions", async (context) => {
 publicRoutes.get("/events/:eventId/speakers", async (context) => {
   const eventId = context.req.param("eventId");
   const database = drizzle(context.env.DB);
-  const facets = await fetchPublicEventFacets(database, eventId);
+  const [facets, items, total] = await Promise.all([
+    fetchPublicEventFacets(database, eventId),
+    fetchPublicSpeakers(database, eventId, { q: queryParam(context.req.query("q")) }),
+    countPublicSpeakers(database, eventId),
+  ]);
   if (facets === null) {
     return context.json({ error: "not_found" }, 404);
   }
-  const items = await fetchPublicSpeakers(database, eventId, { q: queryParam(context.req.query("q")) });
-  return context.json({ items, total: items.length, facets });
+  return context.json({ items, total, filtered: items.length, facets });
 });
 
 publicRoutes.get("/events/:eventId/speakers/:speakerId", async (context) => {

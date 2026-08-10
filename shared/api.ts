@@ -471,7 +471,6 @@ export interface PublicSpeakerSession {
 }
 
 export interface PublicSpeakerDetail extends PublicSpeakerCard {
-  email: string | null;
   sessions: PublicSpeakerSession[];
 }
 
@@ -501,6 +500,7 @@ export interface PublicSessionsResponse {
 export interface PublicSpeakersResponse {
   items: PublicSpeakerCard[];
   total: number;
+  filtered: number;
   facets: PublicEventFacets;
 }
 
