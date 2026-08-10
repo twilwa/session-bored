@@ -25,6 +25,20 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   It returns the session content to `draft`, preserves all schedule fields, and
   pauses session-scoped tasks. Re-accepting reuses the same stable IDs. Agenda
   and public lanes must gate on the live decision and content status.
+- `worker/routes/review.ts` owns the F-4 review contract. It reads submissions
+  through `submission`, `submission_track`, and `submission_speaker`; the CFP
+  lane must preserve their stable IDs, event ID, title, abstract, status,
+  submitter, track links, and speaker role labels.
+- A reviewer's readable remit is the union of their event track responsibility
+  and explicit per-submission assignments, limited to their per-round pool.
+  Provisioning defaults to every event track and the first open round.
+- Review scores remain in `review.scores`; `review.aggregate_score` is the
+  weighted mean of numeric criteria, and the organizer worklist averages those
+  review aggregates per submission. Submission comments are one attributed,
+  timestamped thread at the stable submission permalink.
+- `PATCH /api/review/submissions/:submissionId/status` changes only submission
+  status and returns `notificationSent: false`. Disposition and communications
+  code must keep status changes separate from deliberate decision dispatch.
 
 ## CI
 

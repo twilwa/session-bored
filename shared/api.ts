@@ -296,3 +296,133 @@ export interface DecisionBatchPreview {
     body: string;
   }>;
 }
+
+export const reviewRouteMap = {
+  queue: { method: "GET", path: "/api/review/queue", module: "reviews", access: "reviewer" },
+  submission: {
+    method: "GET",
+    path: "/api/review/submissions/:submissionId",
+    module: "reviews",
+    access: "authenticated",
+  },
+  comments: {
+    method: "POST",
+    path: "/api/review/submissions/:submissionId/comments",
+    module: "reviews",
+    access: "authenticated",
+  },
+  score: {
+    method: "POST",
+    path: "/api/review/submissions/:submissionId/reviews",
+    module: "reviews",
+    access: "reviewer",
+  },
+  status: {
+    method: "PATCH",
+    path: "/api/review/submissions/:submissionId/status",
+    module: "reviews",
+    access: "organizer",
+  },
+  worklist: {
+    method: "GET",
+    path: "/api/review/events/:eventId/worklist",
+    module: "reviews",
+    access: "organizer",
+  },
+  config: {
+    method: "GET",
+    path: "/api/review/events/:eventId/config",
+    module: "reviews",
+    access: "organizer",
+  },
+  reviewers: {
+    method: "POST",
+    path: "/api/review/events/:eventId/reviewers",
+    module: "reviews",
+    access: "organizer",
+  },
+  rounds: {
+    method: "POST",
+    path: "/api/review/events/:eventId/rounds",
+    module: "reviews",
+    access: "organizer",
+  },
+  criteria: {
+    method: "POST",
+    path: "/api/review/rounds/:roundId/criteria",
+    module: "reviews",
+    access: "organizer",
+  },
+  assignments: {
+    method: "POST",
+    path: "/api/review/rounds/:roundId/assignments",
+    module: "reviews",
+    access: "organizer",
+  },
+} as const satisfies Record<string, RouteContract>;
+
+export type ReviewSort = "coverage" | "score";
+
+export interface ReviewWorklistItem {
+  submissionId: string;
+  title: string | null;
+  status: SubmissionStatus;
+  submittedAt: string | null;
+  tracks: string[];
+  ratingCount: number;
+  averageScore: number | null;
+}
+
+export interface ReviewProgress {
+  completedReadSlots: number;
+  totalReadSlots: number;
+  targetReviews: number;
+}
+
+export interface ReviewCriterion {
+  id: string;
+  roundId: string;
+  label: string;
+  description: string | null;
+  criterionType: "numeric" | "dropdown" | "free_text";
+  options: string[] | null;
+  weight: number | null;
+  required: boolean;
+}
+
+export interface ReviewComment {
+  id: string;
+  body: string;
+  createdAt: string;
+  author: { id: string; name: string };
+}
+
+export interface ReviewSubmissionDetail {
+  id: string;
+  eventId: string;
+  title: string | null;
+  abstract: string | null;
+  status: SubmissionStatus;
+  audienceLevel: string | null;
+  notesForReviewers: string | null;
+  round: { id: string; name: string; anonymized: boolean } | null;
+  tracks: Array<{ id: string; name: string }>;
+  participants: Array<{
+    id: string;
+    name: string;
+    jobTitle: string | null;
+    organization: string | null;
+    roleLabel: string;
+  }>;
+  criteria: ReviewCriterion[];
+  reviews: Array<{
+    id: string;
+    scores: Record<string, string | number> | null;
+    comment: string | null;
+    aggregateScore: number | null;
+    submittedAt: string | null;
+    author: { id: string; name: string };
+    round: { id: string; name: string };
+  }>;
+  comments: ReviewComment[];
+}
