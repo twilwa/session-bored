@@ -43,10 +43,11 @@ This file is the project's committed home for project-intrinsic agent knowledge:
 ## CI
 
 Every pull request runs typechecking, unit tests, Workers integration tests, and
-the production build in the `CI / Checks` job. Open the failed named step to see
-which command failed. The integration test configuration applies checked-in D1
-migrations to its isolated test database, so CI does not need a separate
-migration step.
+the production build in the `CI / Checks` job. Chromium browser tests run in
+the parallel `CI / Browser tests` job, which uploads Playwright reports and
+traces on failure. Open the failed named step to see which command failed. The
+integration test configuration applies checked-in D1 migrations to its isolated
+test database, so CI does not need a separate migration step.
 
 For same-repository pull requests, the `Preview` workflow updates one PR comment
 with the branch's stable Workers preview URL. Each PR reuses its own

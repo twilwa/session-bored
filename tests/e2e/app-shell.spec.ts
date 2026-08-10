@@ -7,8 +7,8 @@ test("public CFP is populated and mobile readable", async ({ page }) => {
   await page.goto("/cfp/devflow-conf-2027");
 
   await expect(page.getByRole("heading", { name: "DevFlow Conf 2027" })).toBeVisible();
-  await expect(page.getByText("AI Engineering", { exact: true })).toBeVisible();
-  await expect(page.getByText("Workshop (120 min)", { exact: true })).toBeVisible();
+  await expect(page.locator(".cfp-taxonomy").getByText("AI Engineering", { exact: true })).toBeVisible();
+  await expect(page.locator(".cfp-taxonomy").getByText("Workshop (120 min)", { exact: true })).toBeVisible();
   const width = await page.evaluate(() => document.documentElement.scrollWidth);
   expect(width).toBeLessThanOrEqual(375);
 });
