@@ -1,12 +1,14 @@
 // ABOUTME: Serves the public CFP lifecycle from call details through author-owned edits.
 // ABOUTME: Keeps incomplete drafts writable while enforcing form rules and deadlines on the server.
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { Hono } from "hono";
 import {
   createPublicId,
   events,
   formFields,
+  formVersionFields,
+  formVersions,
   formats,
   forms,
   people,
@@ -36,6 +38,9 @@ interface SubmissionField {
   key: string;
   label: string;
   required: boolean;
+  conditionalFieldId?: string | null;
+  conditionalOperator?: "equals" | null;
+  conditionalValue?: string | null;
 }
 
 export interface CfpSubmissionInput {
@@ -61,6 +66,13 @@ export interface CfpSubmissionInput {
 export type CfpValidationErrors = Record<string, string>;
 
 export function getCfpAvailability(form: CfpWindow, now = new Date()): CfpAvailability {
+  if (form.status === "closed") {
+    return {
+      canWrite: false,
+      state: "closed",
+      message: "This call for speakers is closed. New submissions and edits are no longer accepted.",
+    };
+  }
   if (form.status !== "published") {
     return {
       canWrite: false,
@@ -117,6 +129,28 @@ function isBlank(value: unknown): boolean {
     || (Array.isArray(value) && value.length === 0);
 }
 
+function isFieldVisible(
+  fields: readonly SubmissionField[],
+  field: SubmissionField,
+  input: CfpSubmissionInput,
+  visited = new Set<string>(),
+): boolean {
+  if (field.conditionalFieldId === undefined || field.conditionalFieldId === null) {
+    return true;
+  }
+  if (visited.has(field.id)) {
+    return false;
+  }
+  const controllingField = fields.find((candidate) => candidate.id === field.conditionalFieldId);
+  if (controllingField === undefined) {
+    return false;
+  }
+  const nextVisited = new Set(visited).add(field.id);
+  return isFieldVisible(fields, controllingField, input, nextVisited)
+    && field.conditionalOperator === "equals"
+    && fieldValue(controllingField, input) === field.conditionalValue;
+}
+
 export function validateCfpSubmission(
   fields: readonly SubmissionField[],
   input: CfpSubmissionInput,
@@ -133,7 +167,7 @@ export function validateCfpSubmission(
     return errors;
   }
   for (const field of fields) {
-    if (field.required && isBlank(fieldValue(field, input))) {
+    if (isFieldVisible(fields, field, input) && field.required && isBlank(fieldValue(field, input))) {
       errors[field.key] = `${field.label} is required.`;
     }
   }
@@ -144,7 +178,7 @@ type CfpDatabase = ReturnType<typeof drizzle>;
 
 interface CfpRecordSet {
   event: typeof events.$inferSelect;
-  fields: Array<typeof formFields.$inferSelect>;
+  fields: Array<typeof formVersionFields.$inferSelect>;
   form: typeof forms.$inferSelect;
 }
 
@@ -187,16 +221,48 @@ function normalizeInput(value: unknown): CfpSubmissionInput | null {
   };
 }
 
-async function getCfp(database: CfpDatabase, slug: string): Promise<CfpRecordSet | null> {
+async function getCfp(database: CfpDatabase, slug: string, pinnedVersion?: number): Promise<CfpRecordSet | null> {
   const [form] = await database.select().from(forms).where(eq(forms.publicSlug, slug));
   if (form === undefined) {
     return null;
   }
+  const [version] = await database
+    .select()
+    .from(formVersions)
+    .where(and(
+      eq(formVersions.formId, form.id),
+      eq(formVersions.version, pinnedVersion ?? form.version),
+    ));
+  if (version === undefined) {
+    return null;
+  }
   const [event, fields] = await Promise.all([
     database.select().from(events).where(eq(events.id, form.eventId)).then((rows) => rows[0]),
-    database.select().from(formFields).where(eq(formFields.formId, form.id)),
+    database
+      .select()
+      .from(formVersionFields)
+      .where(eq(formVersionFields.formVersionId, version.id))
+      .orderBy(asc(formVersionFields.sortOrder)),
   ]);
-  return event === undefined ? null : { event, fields, form };
+  return event === undefined ? null : {
+    event,
+    fields,
+    form: {
+      ...form,
+      version: version.version,
+      status: form.status === "closed" ? "closed" : version.status,
+      openAt: version.openAt,
+      closeAt: form.closeAt !== null && (version.closeAt === null || form.closeAt < version.closeAt)
+        ? form.closeAt
+        : version.closeAt,
+      welcomeCopy: version.welcomeCopy,
+      confirmationCopy: version.confirmationCopy,
+      confirmationEmailCopy: version.confirmationEmailCopy,
+      minimumSpeakers: version.minimumSpeakers,
+      maximumSpeakers: version.maximumSpeakers,
+      publishedAt: version.publishedAt,
+    },
+  };
 }
 
 function availabilityError(availability: CfpAvailability): {
@@ -335,21 +401,24 @@ async function findOrCreateSpeaker(
 }
 
 function answersForFields(
-  fields: Array<typeof formFields.$inferSelect>,
+  fields: Array<typeof formVersionFields.$inferSelect>,
   input: CfpSubmissionInput,
 ): Array<{ fieldId: string; value: string | number | boolean | string[] | null }> {
   return fields.flatMap((field) => {
+    if (!isFieldVisible(fields, field, input)) {
+      return [];
+    }
     const value = fieldValue(field, input);
     return value === undefined
       ? []
-      : [{ fieldId: field.id, value: value as string | number | boolean | string[] | null }];
+      : [{ fieldId: field.stableFieldId, value: value as string | number | boolean | string[] | null }];
   });
 }
 
 async function replaceProposalRelations(
   database: CfpDatabase,
   submissionId: string,
-  fields: Array<typeof formFields.$inferSelect>,
+  fields: Array<typeof formVersionFields.$inferSelect>,
   input: CfpSubmissionInput,
   trackId: string | null,
 ): Promise<void> {
@@ -383,6 +452,7 @@ async function readSubmission(
   const [item] = await database
     .select({
       id: submissions.id,
+      formVersion: submissions.formVersion,
       status: submissions.status,
       isDraft: submissions.isDraft,
       title: submissions.title,
@@ -424,6 +494,7 @@ async function readSubmission(
   ]);
   return {
     id: item.id,
+    formVersion: item.formVersion,
     status: item.status,
     isDraft: item.isDraft,
     title: item.title,
@@ -559,7 +630,11 @@ cfpRoutes.get("/:slug/submissions/:submissionId", async (context) => {
   if (!await authorizeSubmission(database, submissionId, context.req.query("key"), context.get("authUser")?.id)) {
     return context.json({ error: "not_found", message: "This private proposal link is incomplete or invalid." }, 404);
   }
-  const cfp = await getCfp(database, context.req.param("slug"));
+  const [pinned] = await database
+    .select({ formVersion: submissions.formVersion })
+    .from(submissions)
+    .where(eq(submissions.id, submissionId));
+  const cfp = await getCfp(database, context.req.param("slug"), pinned?.formVersion);
   if (cfp === null) {
     return context.json({ error: "not_found", message: "This call for speakers could not be found." }, 404);
   }
@@ -567,9 +642,17 @@ cfpRoutes.get("/:slug/submissions/:submissionId", async (context) => {
   if (submission === null) {
     return context.json({ error: "not_found", message: "This proposal could not be found." }, 404);
   }
+  const currentCfp = await getCfp(database, context.req.param("slug"));
   return context.json({
     availability: getCfpAvailability(cfp.form),
     ...submissionPaths(context.req.param("slug"), submissionId),
+    form: { ...cfp.form, fields: cfp.fields },
+    newerVersionAvailable: currentCfp !== null && currentCfp.form.version > cfp.form.version
+      ? {
+        version: currentCfp.form.version,
+        startUrl: `/cfp/${context.req.param("slug")}`,
+      }
+      : null,
     submission,
   });
 });
@@ -580,7 +663,11 @@ cfpRoutes.patch("/:slug/submissions/:submissionId", async (context) => {
   if (!await authorizeSubmission(database, submissionId, context.req.query("key"), context.get("authUser")?.id)) {
     return context.json({ error: "not_found", message: "This private proposal link is incomplete or invalid." }, 404);
   }
-  const cfp = await getCfp(database, context.req.param("slug"));
+  const [pinned] = await database
+    .select({ formVersion: submissions.formVersion })
+    .from(submissions)
+    .where(eq(submissions.id, submissionId));
+  const cfp = await getCfp(database, context.req.param("slug"), pinned?.formVersion);
   if (cfp === null) {
     return context.json({ error: "not_found", message: "This call for speakers could not be found." }, 404);
   }
@@ -651,6 +738,25 @@ cfpRoutes.patch("/:slug/submissions/:submissionId", async (context) => {
       ? cfp.form.confirmationCopy ?? "Your proposal was submitted."
       : "Your changes are saved.",
     submission,
+  });
+});
+
+cfpRoutes.get("/:slug", async (context) => {
+  const database = drizzle(context.env.DB);
+  const cfp = await getCfp(database, context.req.param("slug"));
+  if (cfp === null || cfp.form.status === "draft") {
+    return context.json({ error: "not_found" }, 404);
+  }
+  const [eventTracks, eventFormats] = await Promise.all([
+    database.select({ name: tracks.name }).from(tracks).where(eq(tracks.eventId, cfp.event.id)),
+    database.select({ name: formats.name }).from(formats).where(eq(formats.eventId, cfp.event.id)),
+  ]);
+  return context.json({
+    event: cfp.event,
+    form: cfp.form,
+    tracks: eventTracks.map((track) => track.name),
+    formats: eventFormats.map((format) => format.name),
+    fields: cfp.fields,
   });
 });
 

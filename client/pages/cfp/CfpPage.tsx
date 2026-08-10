@@ -27,6 +27,7 @@ interface FormRecord {
   minimumSpeakers: number;
   openAt: string | null;
   status: string;
+  version: number;
   welcomeCopy: string | null;
 }
 
@@ -63,6 +64,8 @@ interface SubmissionResponse {
   editKey?: string;
   editUrl: string;
   message: string;
+  form?: FormRecord & { fields: FormFieldRecord[] };
+  newerVersionAvailable?: { version: number; startUrl: string } | null;
   submission: CfpOwnSubmission;
 }
 
@@ -152,6 +155,13 @@ function localMoment(value: string | null): { label: string; zone: string } | nu
 
 function localAvailability(form: FormRecord): Availability {
   const now = Date.now();
+  if (form.status === "closed") {
+    return {
+      canWrite: false,
+      state: "closed",
+      message: "This call for speakers is closed. New submissions and edits are no longer accepted.",
+    };
+  }
   if (form.status !== "published") {
     return { canWrite: false, state: "unpublished", message: "This call for speakers is not currently published." };
   }
@@ -396,6 +406,10 @@ export function CfpPage({ path }: { path: string }) {
       },
     }));
   }
+  const [newerVersionAvailable, setNewerVersionAvailable] = useState<{
+    version: number;
+    startUrl: string;
+  } | null>(null);
 
   useEffect(() => {
     setSavedReferences(readSavedReferences());
@@ -417,8 +431,11 @@ export function CfpPage({ path }: { path: string }) {
       .catch(() => undefined);
     Promise.all([cfpRequest, submissionRequest])
       .then(([cfpData, ownSubmission]) => {
-        setCfp(cfpData);
+        setCfp(ownSubmission?.form === undefined
+          ? cfpData
+          : { ...cfpData, form: ownSubmission.form, fields: ownSubmission.form.fields });
         setAvailability(ownSubmission?.availability ?? localAvailability(cfpData.form));
+        setNewerVersionAvailable(ownSubmission?.newerVersionAvailable ?? null);
         if (ownSubmission !== null) {
           setSubmission(ownSubmission.submission);
           setState(stateFromSubmission(ownSubmission.submission));
@@ -582,6 +599,23 @@ export function CfpPage({ path }: { path: string }) {
             </header>
 
             {locked ? <div className="cfp-closed" role="status"><strong>Editing is closed.</strong><p>{availability.message}</p></div> : null}
+            {newerVersionAvailable === null || submission === null ? null : (
+              <div className="cfp-save-message" role="status">
+                <strong>A newer form version is available.</strong>
+                <p>
+                  Continue with version {submission.formVersion} to keep every saved answer under its original questions,
+                  or start a new version {newerVersionAvailable.version} proposal. Starting new leaves this draft untouched.
+                </p>
+                <div className="submission-receipt__actions">
+                  <button className="button button--quiet" onClick={() => setNewerVersionAvailable(null)} type="button">
+                    Continue with version {submission.formVersion}
+                  </button>
+                  <a className="button button--signal" href={newerVersionAvailable.startUrl}>
+                    Start a new version {newerVersionAvailable.version} proposal
+                  </a>
+                </div>
+              </div>
+            )}
             {pageError === null ? null : <div className="cfp-form-error" role="alert">{pageError}</div>}
             {saveMessage === null || receipt !== null ? null : <div className="cfp-save-message" role="status">{saveMessage}</div>}
 

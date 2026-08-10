@@ -3,6 +3,7 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Button, DataTable, LoadingState, Modal, StatusChip, TextField, Toast } from "./components/ui.tsx";
 import { CfpPage as CfpSubmissionPage } from "./pages/cfp/CfpPage.tsx";
+import { CfpBuilderPage } from "./pages/cfp-builder/CfpBuilderPage.tsx";
 import { DispositionPage } from "./pages/disposition/DispositionPage.tsx";
 import { OrganizerReviewPage } from "./pages/review/OrganizerReviewPage.tsx";
 import { ReviewerReviewPage } from "./pages/review/ReviewerReviewPage.tsx";
@@ -141,7 +142,7 @@ function LoginPage() {
 function RoleShell({ role, children }: { role: Role; children: ReactNode }) {
   const nav: Array<[string, string]> = role === "organizer"
     ? [
-      ["Overview", "/organizer"], ["Call for speakers", "/organizer"],
+      ["Overview", "/organizer"], ["Call for speakers", "/organizer/cfp"],
       ["Submissions", "/organizer"], ["Review", "/organizer/review"],
       ["Speakers", "/organizer"], ["Sessions", "/organizer"],
       ["Agenda", "/organizer"], ["Files", "/organizer"],
@@ -252,6 +253,7 @@ export function App() {
   }, []);
   if (path === "/login") return <LoginPage />;
   if (path.startsWith("/cfp/")) return <CfpSubmissionPage path={path} />;
+  if (path.startsWith("/organizer/cfp")) return <RoleShell role="organizer"><CfpBuilderPage /></RoleShell>;
   if (path === "/organizer/disposition") return <RoleShell role="organizer"><DispositionPage /></RoleShell>;
   if (path.startsWith("/organizer/review")) return <RoleShell role="organizer"><OrganizerReviewPage path={path} /></RoleShell>;
   if (path.startsWith("/organizer")) return <OrganizerPage />;

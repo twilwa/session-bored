@@ -252,6 +252,7 @@ export interface CfpSubmissionWrite {
 
 export interface CfpOwnSubmission {
   id: `sub_${string}`;
+  formVersion: number;
   status: SubmissionStatus;
   isDraft: boolean;
   title: string | null;
@@ -272,6 +273,113 @@ export interface CfpOwnSubmission {
     organization: string | null;
     bio: string | null;
   };
+}
+
+export const cfpBuilderRouteMap = {
+  listForms: {
+    method: "GET",
+    path: "/api/cfp-builder/events/:eventId/forms",
+    module: "forms",
+    access: "organizer",
+  },
+  createForm: {
+    method: "POST",
+    path: "/api/cfp-builder/events/:eventId/forms",
+    module: "forms",
+    access: "organizer",
+  },
+  readForm: {
+    method: "GET",
+    path: "/api/cfp-builder/forms/:formId",
+    module: "forms",
+    access: "organizer",
+  },
+  saveForm: {
+    method: "PUT",
+    path: "/api/cfp-builder/forms/:formId",
+    module: "forms",
+    access: "organizer",
+  },
+  publishForm: {
+    method: "POST",
+    path: "/api/cfp-builder/forms/:formId/publish",
+    module: "forms",
+    access: "organizer",
+  },
+  closeForm: {
+    method: "POST",
+    path: "/api/cfp-builder/forms/:formId/close",
+    module: "forms",
+    access: "organizer",
+  },
+  readSubmissionForm: {
+    method: "GET",
+    path: "/api/cfp-builder/submissions/:submissionId",
+    module: "submissions",
+    access: "organizer",
+  },
+} as const satisfies Record<string, RouteContract>;
+
+export type CfpBuilderFieldType = "dropdown" | "long_text" | "short_text";
+export type CfpBuilderVersionStatus = "closed" | "draft" | "published";
+
+export interface CfpBuilderField {
+  id?: string;
+  key: string;
+  label: string;
+  description: string | null;
+  fieldType: CfpBuilderFieldType;
+  required: boolean;
+  sortOrder: number;
+  options: string[] | null;
+  conditional: {
+    fieldKey: string;
+    operator: "equals";
+    value: string;
+  } | null;
+}
+
+export interface CfpBuilderVersion {
+  id: string;
+  formId: string;
+  version: number;
+  status: CfpBuilderVersionStatus;
+  openAt: string | null;
+  closeAt: string | null;
+  welcomeCopy: string | null;
+  confirmationCopy: string | null;
+  confirmationEmailCopy: string | null;
+  minimumSpeakers: number;
+  maximumSpeakers: number | null;
+  publishedAt: string | null;
+}
+
+export interface CfpBuilderFormSummary {
+  id: string;
+  eventId: string;
+  name: string;
+  publicSlug: string;
+  version: number;
+  status: CfpBuilderVersionStatus;
+}
+
+export interface CfpBuilderFormDetail {
+  form: CfpBuilderFormSummary;
+  selectedVersion: CfpBuilderVersion;
+  versions: CfpBuilderVersion[];
+  fields: CfpBuilderField[];
+  publicUrl: string;
+}
+
+export interface CfpBuilderVersionInput {
+  welcomeCopy: string | null;
+  confirmationCopy: string | null;
+  confirmationEmailCopy: string | null;
+  openAt: string | null;
+  closeAt: string | null;
+  minimumSpeakers: number;
+  maximumSpeakers: number | null;
+  fields: CfpBuilderField[];
 }
 
 export type DecisionStatus = "accepted" | "maybe" | "declined";
