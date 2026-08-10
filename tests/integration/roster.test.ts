@@ -1,5 +1,5 @@
 // ABOUTME: Verifies organizer roster and onboarding behavior through authenticated Worker requests.
-// ABOUTME: Covers roster access, identity adoption, silent status changes, bulk tasks, and missing work.
+// ABOUTME: Covers roster access, identity adoption, silent edits, task management, and missing work.
 import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
 import worker from "../../worker/index.ts";
@@ -16,6 +16,46 @@ async function signIn(email: string, password: string): Promise<string> {
   });
   expect(response.status).toBe(200);
   return response.headers.get("set-cookie")?.split(";")[0] ?? "";
+}
+
+function pdfUpload(name: string): FormData {
+  const formData = new FormData();
+  formData.append("file", new File([new Uint8Array([1, 2, 3, 4])], name, { type: "application/pdf" }));
+  return formData;
+}
+
+async function createSubmittedSpeaker(suffix: string, name: string, email: string): Promise<string> {
+  const form = await env.DB.prepare(
+    "select id from form where event_id = ? limit 1",
+  ).bind("evt_devflow_conf_2027").first<{ id: string }>();
+  expect(form).not.toBeNull();
+  const personId = `psn_${suffix}`;
+  const submissionId = `sub_${suffix}`;
+  const now = Date.now();
+  await env.DB.batch([
+    env.DB.prepare(
+      "insert into person (id, name, email, created_at, updated_at) values (?, ?, ?, ?, ?)",
+    ).bind(personId, name, email, now, now),
+    env.DB.prepare(
+      "insert into submission (id, event_id, form_id, form_version, submitter_person_id, status, is_draft, title, abstract, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    ).bind(
+      submissionId,
+      "evt_devflow_conf_2027",
+      form?.id,
+      1,
+      personId,
+      "submitted",
+      0,
+      `Proposal by ${name}`,
+      "A complete proposal for testing organizer onboarding behavior.",
+      now,
+      now,
+    ),
+    env.DB.prepare(
+      "insert into submission_speaker (id, submission_id, person_id, role_label, sort_order, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?)",
+    ).bind(`sspk_${suffix}`, submissionId, personId, "speaker", 0, now, now),
+  ]);
+  return submissionId;
 }
 
 describe("organizer speaker roster", () => {
@@ -259,6 +299,389 @@ describe("organizer speaker roster", () => {
     });
   });
 
+  it("edits an onboarding task through the organizer ledger", async () => {
+    const createdResponse = await request("/api/events/evt_devflow_conf_2027/tasks", {
+      method: "POST",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({
+        taskType: "general",
+        title: "Review speaker checklist",
+        instructions: "Check the event details.",
+        speakerIds: ["spk_priya_devflow_2027"],
+      }),
+    });
+    const created = await createdResponse.json<{ id: string }>();
+
+    const response = await request(`/api/events/evt_devflow_conf_2027/tasks/${created.id}`, {
+      method: "PATCH",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({
+        taskType: "file_request",
+        title: "Upload reviewed speaker checklist",
+        instructions: "Upload the completed checklist as a PDF.",
+        dueAt: "2027-04-30T23:59:59.000Z",
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      id: created.id,
+      taskType: "file_request",
+      title: "Upload reviewed speaker checklist",
+      instructions: "Upload the completed checklist as a PDF.",
+      dueAt: "2027-04-30T23:59:59.000Z",
+    });
+
+    const taskList = await request("/api/events/evt_devflow_conf_2027/tasks", {
+      headers: { cookie: organizerCookie },
+    });
+    const payload = await taskList.json<{ items: Array<{ id: string; title: string }> }>();
+    expect(payload.items).toContainEqual(expect.objectContaining({
+      id: created.id,
+      title: "Upload reviewed speaker checklist",
+    }));
+  });
+
+  it("applies event-wide template edits to current and future assignees", async () => {
+    const tasksResponse = await request("/api/events/evt_devflow_conf_2027/tasks", {
+      headers: { cookie: organizerCookie },
+    });
+    const tasksPayload = await tasksResponse.json<{
+      items: Array<{ id: string; title: string }>;
+    }>();
+    const template = tasksPayload.items.find((task) => task.title === "Confirm participation");
+    expect(template).toBeDefined();
+
+    const updated = await request(`/api/events/evt_devflow_conf_2027/tasks/${template?.id}`, {
+      method: "PATCH",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({
+        title: "Confirm travel and participation",
+        instructions: "Confirm attendance and share arrival details.",
+        dueAt: "2027-03-01T23:59:59.000Z",
+      }),
+    });
+    expect(updated.status).toBe(200);
+
+    const speakerCookie = await signIn("sbek-speaker@example.com", "SbekTest!2027-spk");
+    const currentContent = await request("/api/speaker/content", {
+      headers: { cookie: speakerCookie },
+    });
+    const currentPayload = await currentContent.json<{
+      tasks: Array<{ id: string; title: string; instructions: string | null }>;
+    }>();
+    expect(currentPayload.tasks.find((task) => task.id === template?.id)).toMatchObject({
+      title: "Confirm travel and participation",
+      instructions: "Confirm attendance and share arrival details.",
+    });
+
+    const form = await env.DB.prepare(
+      "select id from form where event_id = ? limit 1",
+    ).bind("evt_devflow_conf_2027").first<{ id: string }>();
+    expect(form).not.toBeNull();
+    const now = Date.now();
+    await env.DB.batch([
+      env.DB.prepare(
+        "insert into person (id, name, email, created_at, updated_at) values (?, ?, ?, ?, ?)",
+      ).bind("psn_template_future", "Jordan Lee", "jordan.template@example.test", now, now),
+      env.DB.prepare(
+        "insert into submission (id, event_id, form_id, form_version, submitter_person_id, status, is_draft, title, abstract, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      ).bind(
+        "sub_template_future",
+        "evt_devflow_conf_2027",
+        form?.id,
+        1,
+        "psn_template_future",
+        "submitted",
+        0,
+        "Reliable event templates",
+        "Managing onboarding requirements without duplicate work.",
+        now,
+        now,
+      ),
+      env.DB.prepare(
+        "insert into submission_speaker (id, submission_id, person_id, role_label, sort_order, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?)",
+      ).bind(
+        "sspk_template_future",
+        "sub_template_future",
+        "psn_template_future",
+        "speaker",
+        0,
+        now,
+        now,
+      ),
+    ]);
+    const accepted = await request("/api/events/evt_devflow_conf_2027/disposition", {
+      method: "PATCH",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({ submissionIds: ["sub_template_future"], status: "accepted" }),
+    });
+    expect(accepted.status).toBe(200);
+    const acceptedPayload = await accepted.json<{
+      handoffs: Array<{ speakers: Array<{ id: string }> }>;
+    }>();
+    const futureSpeakerId = acceptedPayload.handoffs[0]?.speakers[0]?.id;
+    expect(futureSpeakerId).toBeDefined();
+
+    const refreshedTasks = await request("/api/events/evt_devflow_conf_2027/tasks", {
+      headers: { cookie: organizerCookie },
+    });
+    const refreshedPayload = await refreshedTasks.json<{
+      items: Array<{ id: string; assignees: Array<{ speakerId: string }> }>;
+    }>();
+    const templateAssignees = refreshedPayload.items.find((task) => task.id === template?.id)?.assignees ?? [];
+    expect(templateAssignees).toContainEqual(expect.objectContaining({ speakerId: futureSpeakerId }));
+
+    const unassigned = await request(`/api/events/evt_devflow_conf_2027/tasks/${template?.id}`, {
+      method: "PATCH",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({
+        speakerIds: templateAssignees
+          .map((assignee) => assignee.speakerId)
+          .filter((speakerId) => speakerId !== futureSpeakerId),
+      }),
+    });
+    expect(unassigned.status).toBe(200);
+    expect((await request("/api/events/evt_devflow_conf_2027/disposition", {
+      method: "PATCH",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({ submissionIds: ["sub_template_future"], status: "declined" }),
+    })).status).toBe(200);
+    expect((await request("/api/events/evt_devflow_conf_2027/disposition", {
+      method: "PATCH",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({ submissionIds: ["sub_template_future"], status: "accepted" }),
+    })).status).toBe(200);
+
+    const reassignedTasks = await request("/api/events/evt_devflow_conf_2027/tasks", {
+      headers: { cookie: organizerCookie },
+    });
+    const reassignedPayload = await reassignedTasks.json<{
+      items: Array<{ id: string; assignees: Array<{ speakerId: string }> }>;
+    }>();
+    expect(reassignedPayload.items.find((task) => task.id === template?.id)?.assignees)
+      .toContainEqual(expect.objectContaining({ speakerId: futureSpeakerId }));
+  });
+
+  it("allows an event to remove every onboarding template without recreating defaults", async () => {
+    const eventWideTasks = await env.DB.prepare(
+      "select t.id, t.status from task t left join task_scope ts on ts.task_id = t.id where t.event_id = ? and t.session_id is null and ts.task_id is null and t.deleted_at is null",
+    ).bind("evt_devflow_conf_2027").all<{ id: string; status: string }>();
+    expect(eventWideTasks.results.length).toBeGreaterThan(0);
+    try {
+      for (const task of eventWideTasks.results) {
+        const removed = await request(`/api/events/evt_devflow_conf_2027/tasks/${task.id}`, {
+          method: "DELETE",
+          headers: { cookie: organizerCookie },
+        });
+        expect(removed.status).toBe(200);
+      }
+
+      const submissionId = await createSubmittedSpeaker(
+        "no_onboarding_templates",
+        "Taylor Brooks",
+        "taylor.no-templates@example.test",
+      );
+      const accepted = await request("/api/events/evt_devflow_conf_2027/disposition", {
+        method: "PATCH",
+        headers: { cookie: organizerCookie, "content-type": "application/json" },
+        body: JSON.stringify({ submissionIds: [submissionId], status: "accepted" }),
+      });
+      expect(accepted.status).toBe(200);
+      const payload = await accepted.json<{
+        handoffs: Array<{ tasks: Array<{ id: string; title: string }> }>;
+      }>();
+      expect(payload.handoffs[0]?.tasks).toEqual([]);
+    } finally {
+      await env.DB.batch(eventWideTasks.results.map((task) => env.DB.prepare(
+        "update task set status = ?, deleted_at = null where id = ?",
+      ).bind(task.status, task.id)));
+    }
+  });
+
+  it("keeps a completed task's kind stable", async () => {
+    const createdResponse = await request("/api/events/evt_devflow_conf_2027/tasks", {
+      method: "POST",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({
+        taskType: "general",
+        title: "Confirm travel details",
+        speakerIds: ["spk_priya_devflow_2027"],
+      }),
+    });
+    const created = await createdResponse.json<{ id: string }>();
+    const speakerCookie = await signIn("sbek-speaker@example.com", "SbekTest!2027-spk");
+    const completed = await request(`/api/portal/tasks/${created.id}`, {
+      method: "PATCH",
+      headers: { cookie: speakerCookie, "content-type": "application/json" },
+      body: JSON.stringify({ status: "completed" }),
+    });
+    expect(completed.status).toBe(200);
+    expect((await request(`/api/events/evt_devflow_conf_2027/tasks/${created.id}`, {
+      method: "PATCH",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({ speakerIds: [] }),
+    })).status).toBe(200);
+
+    const response = await request(`/api/events/evt_devflow_conf_2027/tasks/${created.id}`, {
+      method: "PATCH",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({ taskType: "file_request" }),
+    });
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({ error: "task_kind_locked" });
+  });
+
+  it("changes assignees without discarding completed work", async () => {
+    const createdResponse = await request("/api/events/evt_devflow_conf_2027/tasks", {
+      method: "POST",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({
+        taskType: "general",
+        title: "Confirm arrival window",
+        speakerIds: ["spk_priya_devflow_2027", "spk_marcus_devflow_2027"],
+      }),
+    });
+    const created = await createdResponse.json<{ id: string }>();
+    const speakerCookie = await signIn("sbek-speaker@example.com", "SbekTest!2027-spk");
+    expect((await request(`/api/portal/tasks/${created.id}`, {
+      method: "PATCH",
+      headers: { cookie: speakerCookie, "content-type": "application/json" },
+      body: JSON.stringify({ status: "completed" }),
+    })).status).toBe(200);
+
+    const reassigned = await request(`/api/events/evt_devflow_conf_2027/tasks/${created.id}`, {
+      method: "PATCH",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({ speakerIds: ["spk_marcus_devflow_2027"] }),
+    });
+    expect(reassigned.status).toBe(200);
+    await expect(reassigned.json()).resolves.toMatchObject({
+      assignees: [{ speakerId: "spk_marcus_devflow_2027", status: "assigned" }],
+    });
+
+    const restored = await request(`/api/events/evt_devflow_conf_2027/tasks/${created.id}`, {
+      method: "PATCH",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({
+        speakerIds: ["spk_priya_devflow_2027", "spk_marcus_devflow_2027"],
+      }),
+    });
+    expect(restored.status).toBe(200);
+    await expect(restored.json()).resolves.toMatchObject({
+      assignees: expect.arrayContaining([
+        expect.objectContaining({ speakerId: "spk_priya_devflow_2027", status: "completed" }),
+        expect.objectContaining({ speakerId: "spk_marcus_devflow_2027", status: "assigned" }),
+      ]),
+    });
+  });
+
+  it("archives a task without losing completed uploads or leaving open work", async () => {
+    const rosterBeforeResponse = await request("/api/events/evt_devflow_conf_2027/roster", {
+      headers: { cookie: organizerCookie },
+    });
+    const rosterBefore = await rosterBeforeResponse.json<{
+      items: Array<{ id: string; taskSummary: { total: number; incomplete: number } }>;
+    }>();
+    const marcusBefore = rosterBefore.items.find((speaker) => speaker.id === "spk_marcus_devflow_2027");
+
+    const createdResponse = await request("/api/events/evt_devflow_conf_2027/tasks", {
+      method: "POST",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({
+        taskType: "file_request",
+        title: "Upload removal-safe slides",
+        speakerIds: ["spk_priya_devflow_2027", "spk_marcus_devflow_2027"],
+      }),
+    });
+    const created = await createdResponse.json<{ id: string }>();
+    const speakerCookie = await signIn("sbek-speaker@example.com", "SbekTest!2027-spk");
+    const upload = await request(`/api/portal/tasks/${created.id}/files`, {
+      method: "POST",
+      headers: { cookie: speakerCookie },
+      body: pdfUpload("removal-safe.pdf"),
+    });
+    expect(upload.status).toBe(201);
+    const uploaded = await upload.json<{ fileId: string }>();
+
+    const removed = await request(`/api/events/evt_devflow_conf_2027/tasks/${created.id}`, {
+      method: "DELETE",
+      headers: { cookie: organizerCookie },
+    });
+    expect(removed.status).toBe(200);
+    await expect(removed.json()).resolves.toMatchObject({ id: created.id, archived: true });
+
+    const taskList = await request("/api/events/evt_devflow_conf_2027/tasks", {
+      headers: { cookie: organizerCookie },
+    });
+    const taskPayload = await taskList.json<{ items: Array<{ id: string }> }>();
+    expect(taskPayload.items).not.toContainEqual(expect.objectContaining({ id: created.id }));
+
+    const rosterAfterResponse = await request("/api/events/evt_devflow_conf_2027/roster", {
+      headers: { cookie: organizerCookie },
+    });
+    const rosterAfter = await rosterAfterResponse.json<{
+      items: Array<{ id: string; taskSummary: { total: number; incomplete: number } }>;
+    }>();
+    expect(rosterAfter.items.find((speaker) => speaker.id === "spk_marcus_devflow_2027")?.taskSummary)
+      .toEqual({
+        total: (marcusBefore?.taskSummary.total ?? 0),
+        incomplete: (marcusBefore?.taskSummary.incomplete ?? 0),
+      });
+
+    const missing = await request("/api/events/evt_devflow_conf_2027/missing-information", {
+      headers: { cookie: organizerCookie },
+    });
+    const missingPayload = await missing.json<{
+      items: Array<{ missing: Array<{ taskId: string | null }> }>;
+    }>();
+    expect(missingPayload.items.flatMap((speaker) => speaker.missing))
+      .not.toContainEqual(expect.objectContaining({ taskId: created.id }));
+
+    const speakerContent = await request("/api/speaker/content", {
+      headers: { cookie: speakerCookie },
+    });
+    const speakerPayload = await speakerContent.json<{
+      tasks: Array<{ id: string }>;
+      files: Array<{
+        fileId: string;
+        taskId: string;
+        displayName: string;
+        archived: boolean;
+        downloadUrl: string;
+      }>;
+    }>();
+    expect(speakerPayload.tasks).not.toContainEqual(expect.objectContaining({ id: created.id }));
+    expect(speakerPayload.files).toContainEqual(expect.objectContaining({
+      fileId: uploaded.fileId,
+      taskId: created.id,
+      displayName: "removal-safe.pdf",
+      archived: true,
+      downloadUrl: `/api/portal/files/${uploaded.fileId}`,
+    }));
+
+    const uploadAfterRemoval = await request(`/api/portal/tasks/${created.id}/files`, {
+      method: "POST",
+      headers: { cookie: speakerCookie },
+      body: pdfUpload("should-not-upload.pdf"),
+    });
+    expect(uploadAfterRemoval.status).toBe(403);
+
+    const completionAfterRemoval = await request(`/api/portal/tasks/${created.id}`, {
+      method: "PATCH",
+      headers: { cookie: speakerCookie, "content-type": "application/json" },
+      body: JSON.stringify({ status: "completed" }),
+    });
+    expect(completionAfterRemoval.status).toBe(403);
+
+    const download = await request(`/api/portal/files/${uploaded.fileId}`, {
+      headers: { cookie: speakerCookie },
+    });
+    expect(download.status).toBe(200);
+    expect([...new Uint8Array(await download.arrayBuffer())]).toEqual([1, 2, 3, 4]);
+  });
+
   it("assigns a task above D1's per-statement parameter limit", async () => {
     const now = Date.now();
     const speakerIds = Array.from({ length: 40 }, (_, index) => `spk_bulk_${index}`);
@@ -446,6 +869,14 @@ describe("organizer speaker roster", () => {
       {
         path: "/api/events/evt_devflow_conf_2027/tasks",
         init: { method: "POST", headers: { "content-type": "application/json" }, body: "{}" },
+      },
+      {
+        path: "/api/events/evt_devflow_conf_2027/tasks/tsk_fixture_0",
+        init: { method: "PATCH", headers: { "content-type": "application/json" }, body: "{}" },
+      },
+      {
+        path: "/api/events/evt_devflow_conf_2027/tasks/tsk_fixture_0",
+        init: { method: "DELETE" },
       },
       {
         path: "/api/events/evt_devflow_conf_2027/speakers/spk_priya_devflow_2027/invitation",

@@ -160,7 +160,19 @@ async function ensureAcceptedHandoff(
       ),
     )
     .orderBy(tasks.id);
-  if (onboardingTasks.length === 0) {
+  const configuredTemplates = onboardingTasks.length > 0
+    ? onboardingTasks
+    : await database
+      .select({ id: tasks.id })
+      .from(tasks)
+      .leftJoin(taskScopes, eq(taskScopes.taskId, tasks.id))
+      .where(and(
+        eq(tasks.eventId, eventId),
+        isNull(tasks.sessionId),
+        isNull(taskScopes.taskId),
+      ))
+      .limit(1);
+  if (configuredTemplates.length === 0) {
     onboardingTasks = await database
       .select({ id: tasks.id, title: tasks.title })
       .from(tasks)
@@ -201,6 +213,13 @@ async function ensureAcceptedHandoff(
           speakerId: speaker.id,
         })
         .onConflictDoNothing();
+      await database
+        .update(taskAssignees)
+        .set({ deletedAt: null })
+        .where(and(
+          eq(taskAssignees.taskId, task.id),
+          eq(taskAssignees.speakerId, speaker.id),
+        ));
     }
   }
 

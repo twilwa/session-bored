@@ -1,6 +1,6 @@
 // ABOUTME: Serves Greenroom's same-origin Hono routes, Better Auth, and protected React assets.
 // ABOUTME: Seeds fixture data and enforces role plus ownership scoping before resource access.
-import { and, eq, inArray, ne } from "drizzle-orm";
+import { and, eq, inArray, isNull, ne } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { Hono } from "hono";
 import { createMiddleware } from "hono/factory";
@@ -350,7 +350,7 @@ app.get("/api/speaker/content", requireAccess("speaker"), async (context) => {
     .innerJoin(speakers, eq(speakers.personId, people.id))
     .where(eq(people.userId, user.id));
   if (profile === undefined) {
-    return context.json({ profile: null, submissions: [], sessions: [], tasks: [] });
+    return context.json({ profile: null, submissions: [], sessions: [], tasks: [], files: [] });
   }
   const ownSubmissions = await database
     .select({ id: submissions.id, title: submissions.title, status: submissions.status })
@@ -380,7 +380,11 @@ app.get("/api/speaker/content", requireAccess("speaker"), async (context) => {
     })
     .from(taskAssignees)
     .innerJoin(tasks, eq(taskAssignees.taskId, tasks.id))
-    .where(eq(taskAssignees.speakerId, profile.speakerId));
+    .where(and(
+      eq(taskAssignees.speakerId, profile.speakerId),
+      isNull(taskAssignees.deletedAt),
+      isNull(tasks.deletedAt),
+    ));
   const taskIds = ownTasks.map((task) => task.id);
   const taskFiles = taskIds.length === 0 ? [] : await database
     .select({
@@ -392,6 +396,27 @@ app.get("/api/speaker/content", requireAccess("speaker"), async (context) => {
     .from(files)
     .innerJoin(fileVersions, and(eq(fileVersions.fileId, files.id), eq(fileVersions.latest, true)))
     .where(and(eq(files.speakerId, profile.speakerId), inArray(files.taskId, taskIds)));
+  const ownFiles = await database
+    .select({
+      taskId: files.taskId,
+      fileId: files.id,
+      taskTitle: tasks.title,
+      displayName: files.displayName,
+      version: fileVersions.version,
+      taskDeletedAt: tasks.deletedAt,
+      assignmentDeletedAt: taskAssignees.deletedAt,
+    })
+    .from(files)
+    .innerJoin(tasks, eq(tasks.id, files.taskId))
+    .innerJoin(fileVersions, and(eq(fileVersions.fileId, files.id), eq(fileVersions.latest, true)))
+    .leftJoin(taskAssignees, and(
+      eq(taskAssignees.taskId, tasks.id),
+      eq(taskAssignees.speakerId, profile.speakerId),
+    ))
+    .where(and(
+      eq(files.speakerId, profile.speakerId),
+      eq(files.kind, "deliverable"),
+    ));
   return context.json({
     profile,
     submissions: ownSubmissions,
@@ -402,6 +427,15 @@ app.get("/api/speaker/content", requireAccess("speaker"), async (context) => {
     tasks: ownTasks.map((task) => ({
       ...task,
       file: taskFiles.find((file) => file.taskId === task.id) ?? null,
+    })),
+    files: ownFiles.map((file) => ({
+      taskId: file.taskId,
+      fileId: file.fileId,
+      taskTitle: file.taskTitle,
+      displayName: file.displayName,
+      version: file.version,
+      archived: file.taskDeletedAt !== null || file.assignmentDeletedAt !== null,
+      downloadUrl: `/api/portal/files/${file.fileId}`,
     })),
   });
 });

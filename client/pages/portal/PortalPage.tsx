@@ -70,7 +70,10 @@ function TaskRow({ task, onComplete, onUpload, busy }: {
         )}
       </div>
       {task.file === null ? null : (
-        <p className="task-row__file"><code>{task.file.displayName}</code><span>v{task.file.version}</span></p>
+        <p className="task-row__file">
+          <a href={`/api/portal/files/${task.file.fileId}`}>{task.file.displayName}</a>
+          <span>v{task.file.version}</span>
+        </p>
       )}
     </li>
   );
@@ -313,6 +316,27 @@ export function PortalPage() {
             <ul className="task-list">
               {content.tasks.map((task) => (
                 <TaskRow busy={busy} key={task.id} onComplete={(taskId) => void completeTask(taskId)} onUpload={(taskId, file) => void uploadTaskFile(taskId, file)} task={task} />
+              ))}
+            </ul>
+          )}
+      </section>
+
+      <section className="workspace-section">
+        <div className="section-heading"><div><p className="section-label">UPLOADED FILES</p><h2>File history</h2></div></div>
+        {content.files.length === 0
+          ? <p className="quiet-copy">No task files uploaded yet.</p>
+          : (
+            <ul className="file-history">
+              {content.files.map((file) => (
+                <li key={file.fileId}>
+                  <div>
+                    <strong>{file.taskTitle}</strong>
+                    <a href={file.downloadUrl}>{file.displayName}</a>
+                  </div>
+                  <StatusChip tone={file.archived ? "neutral" : "good"}>
+                    {file.archived ? "Archived task" : `Version ${file.version}`}
+                  </StatusChip>
+                </li>
               ))}
             </ul>
           )}

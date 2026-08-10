@@ -63,6 +63,8 @@ export async function draftOverdueTaskReminders(
         eq(tasks.eventId, eventId),
         eq(tasks.status, "active"),
         ne(taskAssignees.status, "completed"),
+        isNull(tasks.deletedAt),
+        isNull(taskAssignees.deletedAt),
         isNotNull(tasks.dueAt),
         lt(tasks.dueAt, now),
       ),

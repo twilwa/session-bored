@@ -44,6 +44,7 @@ rosterRoutes.use("/api/events/:eventId/roster", requireOrganizer);
 rosterRoutes.use("/api/events/:eventId/speakers", requireOrganizer);
 rosterRoutes.use("/api/events/:eventId/speakers/*", requireOrganizer);
 rosterRoutes.use("/api/events/:eventId/tasks", requireOrganizer);
+rosterRoutes.use("/api/events/:eventId/tasks/*", requireOrganizer);
 rosterRoutes.use("/api/events/:eventId/missing-information", requireOrganizer);
 
 rosterRoutes.get("/api/events/:eventId/roster", async (context) => {
@@ -75,7 +76,11 @@ rosterRoutes.get("/api/events/:eventId/roster", async (context) => {
       })
       .from(taskAssignees)
       .innerJoin(tasks, eq(taskAssignees.taskId, tasks.id))
-      .where(inArray(taskAssignees.speakerId, items.map((item) => item.id)));
+      .where(and(
+        inArray(taskAssignees.speakerId, items.map((item) => item.id)),
+        sql`${tasks.deletedAt} is null`,
+        sql`${taskAssignees.deletedAt} is null`,
+      ));
 
   return context.json({
     items: items.map((item) => {
@@ -356,12 +361,191 @@ rosterRoutes.post("/api/events/:eventId/tasks", async (context) => {
   return context.json({ ...task, assignmentCount: assignees.length, assignees }, 201);
 });
 
+rosterRoutes.patch("/api/events/:eventId/tasks/:taskId", async (context) => {
+  const payload = await context.req.json<{
+    taskType?: unknown;
+    title?: unknown;
+    instructions?: unknown;
+    dueAt?: unknown;
+    speakerIds?: unknown;
+  }>().catch(() => null);
+  if (
+    payload === null ||
+    (payload.taskType !== undefined && payload.taskType !== "general" && payload.taskType !== "file_request") ||
+    (payload.title !== undefined && (typeof payload.title !== "string" || payload.title.trim().length === 0)) ||
+    (payload.instructions !== undefined && payload.instructions !== null && typeof payload.instructions !== "string") ||
+    (payload.dueAt !== undefined && payload.dueAt !== null && typeof payload.dueAt !== "string") ||
+    (payload.speakerIds !== undefined && (
+      !Array.isArray(payload.speakerIds) ||
+      !payload.speakerIds.every((speakerId) => typeof speakerId === "string" && speakerId.startsWith("spk_"))
+    )) ||
+    Object.keys(payload).length === 0
+  ) {
+    return context.json({ error: "invalid_task" }, 400);
+  }
+  const dueAt = payload.dueAt === undefined || payload.dueAt === null
+    ? null
+    : new Date(payload.dueAt);
+  if (dueAt !== null && Number.isNaN(dueAt.getTime())) {
+    return context.json({ error: "invalid_task" }, 400);
+  }
+
+  const database = drizzle(context.env.DB);
+  const [current] = await database
+    .select()
+    .from(tasks)
+    .where(and(
+      eq(tasks.id, context.req.param("taskId")),
+      eq(tasks.eventId, context.req.param("eventId")),
+      sql`${tasks.deletedAt} is null`,
+    ));
+  if (current === undefined) {
+    return context.json({ error: "task_not_found" }, 404);
+  }
+  const requestedSpeakerIds = payload.speakerIds === undefined
+    ? null
+    : [...new Set(payload.speakerIds as string[])];
+  if (requestedSpeakerIds !== null && requestedSpeakerIds.length > 0) {
+    const selectedSpeakers = await database
+      .select({ id: speakers.id })
+      .from(speakers)
+      .where(and(
+        eq(speakers.eventId, context.req.param("eventId")),
+        inArray(speakers.id, requestedSpeakerIds),
+      ));
+    if (selectedSpeakers.length !== requestedSpeakerIds.length) {
+      return context.json({ error: "speaker_not_found" }, 404);
+    }
+  }
+  if (payload.taskType !== undefined && payload.taskType !== current.taskType) {
+    const [completedAssignment] = await database
+      .select({ id: taskAssignees.id })
+      .from(taskAssignees)
+      .where(and(
+        eq(taskAssignees.taskId, current.id),
+        eq(taskAssignees.status, "completed"),
+      ));
+    if (completedAssignment !== undefined) {
+      return context.json({ error: "task_kind_locked" }, 409);
+    }
+  }
+
+  const update: {
+    taskType?: "general" | "file_request";
+    title?: string;
+    instructions?: string | null;
+    dueAt?: Date | null;
+    acceptedFileTypes?: string[] | null;
+    maximumFileBytes?: number | null;
+  } = {};
+  if (payload.taskType !== undefined) {
+    update.taskType = payload.taskType;
+    if (payload.taskType === "general") {
+      update.acceptedFileTypes = null;
+      update.maximumFileBytes = null;
+    }
+  }
+  if (payload.title !== undefined) update.title = payload.title.trim();
+  if (payload.instructions !== undefined) {
+    update.instructions = payload.instructions === null ? null : payload.instructions.trim() || null;
+  }
+  if (payload.dueAt !== undefined) update.dueAt = dueAt;
+
+  let updated = current;
+  if (Object.keys(update).length > 0) {
+    const [saved] = await database
+      .update(tasks)
+      .set(update)
+      .where(eq(tasks.id, current.id))
+      .returning();
+    if (saved === undefined) {
+      throw new Error(`Task ${current.id} disappeared after update`);
+    }
+    updated = saved;
+  }
+
+  if (requestedSpeakerIds !== null) {
+    const existingAssignments = await database
+      .select({
+        id: taskAssignees.id,
+        speakerId: taskAssignees.speakerId,
+        deletedAt: taskAssignees.deletedAt,
+      })
+      .from(taskAssignees)
+      .where(eq(taskAssignees.taskId, current.id));
+    const requested = new Set(requestedSpeakerIds);
+    const existingBySpeaker = new Map(existingAssignments.map((assignment) => [assignment.speakerId, assignment]));
+    const changedAt = Date.now();
+    const statements = [
+      ...existingAssignments
+        .filter((assignment) => !requested.has(assignment.speakerId) && assignment.deletedAt === null)
+        .map((assignment) => context.env.DB.prepare(
+          "update task_assignee set deleted_at = ?, updated_at = ? where id = ?",
+        ).bind(changedAt, changedAt, assignment.id)),
+      ...existingAssignments
+        .filter((assignment) => requested.has(assignment.speakerId) && assignment.deletedAt !== null)
+        .map((assignment) => context.env.DB.prepare(
+          "update task_assignee set deleted_at = null, updated_at = ? where id = ?",
+        ).bind(changedAt, assignment.id)),
+      ...requestedSpeakerIds
+        .filter((speakerId) => !existingBySpeaker.has(speakerId))
+        .map((speakerId) => context.env.DB.prepare(
+          "insert into task_assignee (id, task_id, speaker_id, status, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
+        ).bind(createPublicId("tassn"), current.id, speakerId, "assigned", changedAt, changedAt)),
+    ];
+    if (statements.length > 0) {
+      await context.env.DB.batch(statements);
+    }
+  }
+
+  const assignees = await database
+    .select({
+      id: taskAssignees.id,
+      speakerId: taskAssignees.speakerId,
+      speakerName: people.name,
+      status: taskAssignees.status,
+    })
+    .from(taskAssignees)
+    .innerJoin(speakers, eq(taskAssignees.speakerId, speakers.id))
+    .innerJoin(people, eq(speakers.personId, people.id))
+    .where(and(
+      eq(taskAssignees.taskId, current.id),
+      sql`${taskAssignees.deletedAt} is null`,
+    ));
+  return context.json({ ...updated, assignees });
+});
+
+rosterRoutes.delete("/api/events/:eventId/tasks/:taskId", async (context) => {
+  const database = drizzle(context.env.DB);
+  const [task] = await database
+    .select({ id: tasks.id })
+    .from(tasks)
+    .where(and(
+      eq(tasks.id, context.req.param("taskId")),
+      eq(tasks.eventId, context.req.param("eventId")),
+      sql`${tasks.deletedAt} is null`,
+    ));
+  if (task === undefined) {
+    return context.json({ error: "task_not_found" }, 404);
+  }
+
+  const archivedAt = new Date();
+  await database
+    .update(tasks)
+    .set({ status: "complete", deletedAt: archivedAt })
+    .where(eq(tasks.id, task.id));
+  return context.json({ id: task.id, archived: true, archivedAt });
+});
+
 rosterRoutes.get("/api/events/:eventId/tasks", async (context) => {
   const database = drizzle(context.env.DB);
   const taskRows = await database
     .select()
     .from(tasks)
-    .where(eq(tasks.eventId, context.req.param("eventId")))
+    .where(and(
+      eq(tasks.eventId, context.req.param("eventId")),
+      sql`${tasks.deletedAt} is null`,
+    ))
     .orderBy(tasks.dueAt, tasks.title);
   const assignmentRows = taskRows.length === 0
     ? []
@@ -376,7 +560,10 @@ rosterRoutes.get("/api/events/:eventId/tasks", async (context) => {
       .from(taskAssignees)
       .innerJoin(speakers, eq(taskAssignees.speakerId, speakers.id))
       .innerJoin(people, eq(speakers.personId, people.id))
-      .where(inArray(taskAssignees.taskId, taskRows.map((task) => task.id)));
+      .where(and(
+        inArray(taskAssignees.taskId, taskRows.map((task) => task.id)),
+        sql`${taskAssignees.deletedAt} is null`,
+      ));
   return context.json({
     items: taskRows.map((task) => ({
       ...task,
@@ -445,6 +632,8 @@ rosterRoutes.get("/api/events/:eventId/missing-information", async (context) => 
     .where(and(
       eq(tasks.eventId, context.req.param("eventId")),
       eq(speakers.eventId, context.req.param("eventId")),
+      sql`${tasks.deletedAt} is null`,
+      sql`${taskAssignees.deletedAt} is null`,
     ));
   const acceptedSpeakerIds = new Set(acceptedSpeakerRows.map((speaker) => speaker.speakerId));
   const activeAssignments = assignments.filter((assignment) =>

@@ -64,6 +64,10 @@ function formatStatus(status: string): string {
   return status.replaceAll("_", " ");
 }
 
+function formatDateInput(value: string | null): string {
+  return value === null ? "" : value.slice(0, 10);
+}
+
 function RosterList() {
   const [speakers, setSpeakers] = useState<RosterSpeakerSummary[] | null>(null);
   const [search, setSearch] = useState("");
@@ -245,6 +249,8 @@ function TasksView() {
   const [speakers, setSpeakers] = useState<RosterSpeakerSummary[] | null>(null);
   const [tasks, setTasks] = useState<RosterTaskSummary[] | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
+  const [editing, setEditing] = useState<RosterTaskSummary | null>(null);
+  const [removing, setRemoving] = useState<RosterTaskSummary | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -261,6 +267,7 @@ function TasksView() {
 
   async function createTask(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
+    const form = event.currentTarget;
     if (selected.length === 0) {
       setMessage("Choose at least one speaker.");
       return;
@@ -281,7 +288,7 @@ function TasksView() {
       });
       setMessage(`${result.title} assigned to ${result.assignmentCount} speakers.`);
       setSelected([]);
-      event.currentTarget.reset();
+      form.reset();
       await load();
     } finally {
       setBusy(false);
@@ -317,13 +324,131 @@ function TasksView() {
               { key: "type", label: "Type", render: (task) => <StatusChip tone={task.taskType === "file_request" ? "signal" : "neutral"}>{formatStatus(task.taskType)}</StatusChip> },
               { key: "due", label: "Due", render: (task) => task.dueAt === null ? "No date" : new Date(task.dueAt).toLocaleDateString() },
               { key: "assigned", label: "Assigned", render: (task) => <strong>{task.assignees.length}</strong> },
+              {
+                key: "actions",
+                label: "Actions",
+                render: (task) => (
+                  <div className="row-actions">
+                    <Button aria-label={`Edit ${task.title}`} onClick={() => setEditing(task)} tone="quiet">Edit</Button>
+                    <Button aria-label={`Remove ${task.title}`} className="button--danger" onClick={() => setRemoving(task)} tone="quiet">Remove</Button>
+                  </div>
+                ),
+              },
             ]}
             rows={tasks}
           />
         </section>
       </section>
+      {editing === null ? null : (
+        <TaskFormModal
+          key={editing.id}
+          onClose={() => setEditing(null)}
+          onSaved={async () => {
+            setEditing(null);
+            setMessage(`${editing.title} was updated for current and future assignees.`);
+            await load();
+          }}
+          speakers={speakers}
+          task={editing}
+        />
+      )}
+      {removing === null ? null : (
+        <Modal onClose={() => setRemoving(null)} open title={`Remove ${removing.title}?`}>
+          <p>Greenroom will remove this task from active onboarding while retaining completed work and uploaded files.</p>
+          <div className="modal-actions">
+            <Button onClick={() => setRemoving(null)} tone="quiet" type="button">Cancel</Button>
+            <Button
+              className="button--danger"
+              onClick={() => {
+                setBusy(true);
+                void requestJson(`/api/events/${eventId}/tasks/${removing.id}`, { method: "DELETE" })
+                  .then(async () => {
+                    const removedTitle = removing.title;
+                    setRemoving(null);
+                    setMessage(`${removedTitle} was removed. Completed work and uploads were retained.`);
+                    await load();
+                  })
+                  .catch((error: unknown) => setMessage(error instanceof Error ? error.message : "Task could not be removed."))
+                  .finally(() => setBusy(false));
+              }}
+              disabled={busy}
+              type="button"
+            >{busy ? "Removing…" : "Remove task"}</Button>
+          </div>
+        </Modal>
+      )}
       <Toast message={message} />
     </>
+  );
+}
+
+function TaskFormModal({
+  task,
+  speakers,
+  onClose,
+  onSaved,
+}: {
+  task: RosterTaskSummary;
+  speakers: RosterSpeakerSummary[];
+  onClose: () => void;
+  onSaved: () => Promise<void>;
+}) {
+  const [selected, setSelected] = useState(task.assignees.map((assignee) => assignee.speakerId));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    setBusy(true);
+    setError(null);
+    const data = new FormData(event.currentTarget);
+    const dueDate = String(data.get("dueAt") ?? "");
+    try {
+      await requestJson(`/api/events/${eventId}/tasks/${task.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          taskType: data.get("taskType"),
+          title: data.get("title"),
+          instructions: data.get("instructions"),
+          dueAt: dueDate.length === 0 ? null : `${dueDate}T23:59:59.000Z`,
+          speakerIds: selected,
+        }),
+      });
+      await onSaved();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Task could not be updated.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal onClose={onClose} open title={`Edit ${task.title}`}>
+      <form className="roster-form" onSubmit={(event) => void submit(event)}>
+        <SelectField defaultValue={task.taskType} id={`edit-${task.id}-type`} label="Task kind" name="taskType">
+          <option value="general">General task</option>
+          <option value="file_request">File request</option>
+        </SelectField>
+        <TextField defaultValue={task.title} id={`edit-${task.id}-title`} label="Task title" name="title" required />
+        <label className="field" htmlFor={`edit-${task.id}-instructions`}>
+          <span className="field__label">Instructions</span>
+          <textarea className="field__control roster-textarea" defaultValue={task.instructions ?? ""} id={`edit-${task.id}-instructions`} name="instructions" />
+        </label>
+        <TextField defaultValue={formatDateInput(task.dueAt)} id={`edit-${task.id}-due`} label="Due date" name="dueAt" type="date" />
+        <fieldset className="speaker-picker task-editor-speakers">
+          <legend>Assign speakers</legend>
+          <label className="select-all"><input checked={selected.length === speakers.length && speakers.length > 0} onChange={(event) => setSelected(event.target.checked ? speakers.map((speaker) => speaker.id) : [])} type="checkbox" /> Select all {speakers.length}</label>
+          {speakers.map((speaker) => (
+            <label key={speaker.id}><input checked={selected.includes(speaker.id)} onChange={(event) => setSelected((current) => event.target.checked ? [...current, speaker.id] : current.filter((id) => id !== speaker.id))} type="checkbox" /><span><strong>{speaker.name}</strong><small>{speaker.email}</small></span></label>
+          ))}
+        </fieldset>
+        {error === null ? null : <p className="form-error" role="alert">{error}</p>}
+        <div className="modal-actions">
+          <Button onClick={onClose} tone="quiet" type="button">Cancel</Button>
+          <Button disabled={busy} type="submit">{busy ? "Saving…" : "Save task"}</Button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 

@@ -1,6 +1,6 @@
 // ABOUTME: Serves the signed-in speaker's own profile, session, task, and file self-service surface.
 // ABOUTME: Scopes every read and write to the caller's own speaker record; headshots serve publicly.
-import { and, eq, inArray, ne } from "drizzle-orm";
+import { and, eq, inArray, isNull, ne } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { Hono } from "hono";
 import { createMiddleware } from "hono/factory";
@@ -78,7 +78,12 @@ async function completeMatchingTasks(
     .select({ taskId: tasks.id, title: tasks.title })
     .from(taskAssignees)
     .innerJoin(tasks, eq(taskAssignees.taskId, tasks.id))
-    .where(and(eq(taskAssignees.speakerId, speakerId), ne(taskAssignees.status, "completed")));
+    .where(and(
+      eq(taskAssignees.speakerId, speakerId),
+      ne(taskAssignees.status, "completed"),
+      isNull(taskAssignees.deletedAt),
+      isNull(tasks.deletedAt),
+    ));
   const matchingTaskIds = assigned.filter((task) => titlePattern.test(task.title)).map((task) => task.taskId);
   if (matchingTaskIds.length === 0) {
     return;
@@ -336,7 +341,13 @@ portalRoutes.patch("/portal/tasks/:taskId", requireSpeaker, async (context) => {
   const [assignment] = await database
     .select({ id: taskAssignees.id })
     .from(taskAssignees)
-    .where(and(eq(taskAssignees.taskId, taskId), eq(taskAssignees.speakerId, profile.speakerId)));
+    .innerJoin(tasks, eq(taskAssignees.taskId, tasks.id))
+    .where(and(
+      eq(taskAssignees.taskId, taskId),
+      eq(taskAssignees.speakerId, profile.speakerId),
+      isNull(taskAssignees.deletedAt),
+      isNull(tasks.deletedAt),
+    ));
   if (assignment === undefined) {
     return context.json({ error: "forbidden" }, 403);
   }
@@ -381,7 +392,12 @@ portalRoutes.post("/portal/tasks/:taskId/files", requireSpeaker, async (context)
     })
     .from(taskAssignees)
     .innerJoin(tasks, eq(taskAssignees.taskId, tasks.id))
-    .where(and(eq(taskAssignees.taskId, taskId), eq(taskAssignees.speakerId, profile.speakerId)));
+    .where(and(
+      eq(taskAssignees.taskId, taskId),
+      eq(taskAssignees.speakerId, profile.speakerId),
+      isNull(taskAssignees.deletedAt),
+      isNull(tasks.deletedAt),
+    ));
   if (assignment === undefined) {
     return context.json({ error: "forbidden" }, 403);
   }
