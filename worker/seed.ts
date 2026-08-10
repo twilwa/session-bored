@@ -351,6 +351,7 @@ export async function ensureSeeded(env: CloudflareBindings): Promise<void> {
     ])
     .onConflictDoNothing();
 
+  const seededSubmissionStatuses = ["under_review", "submitted", "accepted"] as const;
   for (const [index, submission] of fixture.submissions.entries()) {
     const submissionId = fixtureIds.submissions[index];
     if (submissionId === undefined) {
@@ -376,7 +377,7 @@ export async function ensureSeeded(env: CloudflareBindings): Promise<void> {
         formVersion: 1,
         submitterPersonId: speakerPersonId,
         formatId: format.id,
-        status: index === 0 ? "under_review" : "submitted",
+        status: seededSubmissionStatuses[index] ?? "submitted",
         isDraft: false,
         title: submission.title,
         abstract: submission.abstract,
@@ -477,6 +478,7 @@ export async function ensureSeeded(env: CloudflareBindings): Promise<void> {
       scheduleStatus: "tbd",
       scheduledDate: "2027-05-13",
       icsUid: "ses_docs_retrieval@session-bored",
+      publishedAt: new Date("2027-04-01T12:00:00Z"),
     })
     .onConflictDoNothing();
   await database

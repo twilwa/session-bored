@@ -39,7 +39,7 @@ describe("Worker foundation", () => {
     const sessionsResponse = await request("/api/public/events/evt_devflow_conf_2027/sessions");
     expect(sessionsResponse.status).toBe(200);
     const sessions = await sessionsResponse.json<{ items: Array<{ title: string }> }>();
-    expect(sessions.items.map((item) => item.title)).not.toContain(
+    expect(sessions.items.map((item) => item.title)).toContain(
       "Docs That Answer Back: Retrieval-Grounded Documentation Sites",
     );
 
