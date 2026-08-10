@@ -19,6 +19,7 @@ import { SpeakersPage } from "./pages/public/SpeakersPage.tsx";
 import { SubmitterDashboardPage } from "./pages/submitter/SubmitterDashboardPage.tsx";
 import { RosterPage } from "./pages/roster/RosterPage.tsx";
 import { PortalPage } from "./pages/portal/PortalPage.tsx";
+import { formatFullDateTime } from "./pages/public/shared.ts";
 
 type Role = "organizer" | "reviewer" | "speaker";
 interface SessionPayload {
@@ -174,6 +175,7 @@ function OrganizerPage() {
     tracks: NamedRecord[];
     formats: NamedRecord[];
     submissions: SubmissionRecord[];
+    cfp: CfpPayload;
   } | null>(null);
   useEffect(() => {
     Promise.all([
@@ -181,11 +183,17 @@ function OrganizerPage() {
       getJson<{ items: NamedRecord[] }>("/api/events/evt_devflow_conf_2027/tracks"),
       getJson<{ items: NamedRecord[] }>("/api/events/evt_devflow_conf_2027/formats"),
       getJson<{ items: SubmissionRecord[] }>("/api/events/evt_devflow_conf_2027/submissions"),
-    ]).then(([eventData, trackData, formatData, submissionData]) => {
+      getJson<CfpPayload>("/api/public/cfp/devflow-conf-2027"),
+    ]).then(([eventData, trackData, formatData, submissionData, cfp]) => {
       const event = eventData.items[0];
-      if (event !== undefined) setData({ event, tracks: trackData.items, formats: formatData.items, submissions: submissionData.items });
+      if (event !== undefined) {
+        setData({ event, tracks: trackData.items, formats: formatData.items, submissions: submissionData.items, cfp });
+      }
     }).catch(() => undefined);
   }, []);
+  const deadline = data?.cfp.form.closeAt === null || data?.cfp.form.closeAt === undefined
+    ? "No deadline set"
+    : formatFullDateTime(new Date(data.cfp.form.closeAt).getTime(), data.cfp.event.timezone);
   return (
     <RoleShell role="organizer">
       {data === null ? <LoadingState label="Loading organizer workspace" /> : (
@@ -195,7 +203,7 @@ function OrganizerPage() {
             <article><span>SUBMISSIONS</span><strong>{data.submissions.length}</strong><small>fixture proposals</small></article>
             <article><span>TRACKS</span><strong>{data.tracks.length}</strong><small>{data.tracks.map((item) => item.name).join(" · ")}</small></article>
             <article><span>FORMATS</span><strong>{data.formats.length}</strong><small>10–120 minutes</small></article>
-            <article><span>DEADLINE</span><strong>APR 30</strong><small>2027 · 11:59 PM</small></article>
+            <article aria-label="CFP deadline"><span>DEADLINE</span><strong>{deadline}</strong><small>Event time · {data.cfp.event.timezone}</small></article>
           </section>
           <section className="workspace-section">
             <div className="section-heading"><div><p className="section-label">CALL FOR SPEAKERS</p><h2>Submission pulse</h2></div><Link className="text-link" href="/organizer/disposition">Disposition →</Link></div>

@@ -1,11 +1,10 @@
 // ABOUTME: Manages the organizer speaker roster, onboarding assignments, and missing-information worklist.
-// ABOUTME: Derives workflow visibility from event-scoped speakers, accepted sessions, tasks, and files.
+// ABOUTME: Derives workflow visibility from event-scoped speakers, accepted sessions, and task assignments.
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { Hono } from "hono";
 import { createMiddleware } from "hono/factory";
 import {
-  files as uploadedFiles,
   people,
   createPublicId,
   sessionSpeakers,
@@ -406,8 +405,8 @@ rosterRoutes.post("/api/events/:eventId/speakers/:speakerId/invitation", async (
 
 rosterRoutes.get("/api/events/:eventId/missing-information", async (context) => {
   const database = drizzle(context.env.DB);
-  const acceptedSpeakers = await database
-    .selectDistinct({
+  const rosterSpeakers = await database
+    .select({
       speakerId: speakers.id,
       name: people.name,
       email: people.email,
@@ -417,6 +416,12 @@ rosterRoutes.get("/api/events/:eventId/missing-information", async (context) => 
     })
     .from(speakers)
     .innerJoin(people, eq(speakers.personId, people.id))
+    .where(eq(speakers.eventId, context.req.param("eventId")));
+  const acceptedSpeakerRows = await database
+    .selectDistinct({
+      speakerId: speakers.id,
+    })
+    .from(speakers)
     .innerJoin(sessionSpeakers, eq(sessionSpeakers.speakerId, speakers.id))
     .innerJoin(sessions, eq(sessionSpeakers.sessionId, sessions.id))
     .innerJoin(submissions, eq(sessions.submissionId, submissions.id))
@@ -424,39 +429,35 @@ rosterRoutes.get("/api/events/:eventId/missing-information", async (context) => 
       eq(speakers.eventId, context.req.param("eventId")),
       eq(submissions.status, "accepted"),
     ));
-
-  const speakerIds = acceptedSpeakers.map((speaker) => speaker.speakerId);
-  const [assignments, files] = speakerIds.length === 0
-    ? [[], []] as const
-    : await Promise.all([
-      database
-        .select({
-          speakerId: taskAssignees.speakerId,
-          assignmentStatus: taskAssignees.status,
-          taskId: tasks.id,
-          taskType: tasks.taskType,
-          title: tasks.title,
-          dueAt: tasks.dueAt,
-          taskStatus: tasks.status,
-        })
-        .from(taskAssignees)
-        .innerJoin(tasks, eq(taskAssignees.taskId, tasks.id))
-        .where(and(
-          eq(tasks.eventId, context.req.param("eventId")),
-          inArray(taskAssignees.speakerId, speakerIds),
-        )),
-      database
-        .select({ speakerId: uploadedFiles.speakerId, taskId: uploadedFiles.taskId })
-        .from(uploadedFiles)
-        .where(and(
-          eq(uploadedFiles.eventId, context.req.param("eventId")),
-          inArray(uploadedFiles.speakerId, speakerIds),
-        )),
-    ]);
+  const assignments = await database
+    .select({
+      speakerId: taskAssignees.speakerId,
+      assignmentStatus: taskAssignees.status,
+      taskId: tasks.id,
+      taskType: tasks.taskType,
+      title: tasks.title,
+      dueAt: tasks.dueAt,
+      taskStatus: tasks.status,
+    })
+    .from(taskAssignees)
+    .innerJoin(tasks, eq(taskAssignees.taskId, tasks.id))
+    .innerJoin(speakers, eq(taskAssignees.speakerId, speakers.id))
+    .where(and(
+      eq(tasks.eventId, context.req.param("eventId")),
+      eq(speakers.eventId, context.req.param("eventId")),
+    ));
+  const acceptedSpeakerIds = new Set(acceptedSpeakerRows.map((speaker) => speaker.speakerId));
+  const activeAssignments = assignments.filter((assignment) =>
+    assignment.assignmentStatus !== "completed" && assignment.taskStatus === "active"
+  );
+  const worklistSpeakers = rosterSpeakers.filter((speaker) =>
+    acceptedSpeakerIds.has(speaker.speakerId) ||
+    activeAssignments.some((assignment) => assignment.speakerId === speaker.speakerId)
+  );
 
   const now = Date.now();
   const millisecondsPerDay = 86_400_000;
-  const items = acceptedSpeakers.flatMap((speaker) => {
+  const items = worklistSpeakers.flatMap((speaker) => {
     const missing: Array<{
       kind: "bio" | "file" | "form" | "headshot" | "task";
       label: string;
@@ -464,30 +465,23 @@ rosterRoutes.get("/api/events/:eventId/missing-information", async (context) => 
       dueAt: Date | null;
       overdueDays: number;
     }> = [];
-    if (speaker.bio === null || speaker.bio.trim().length === 0) {
+    if (
+      acceptedSpeakerIds.has(speaker.speakerId) &&
+      (speaker.bio === null || speaker.bio.trim().length === 0)
+    ) {
       missing.push({ kind: "bio", label: "Speaker bio", taskId: null, dueAt: null, overdueDays: 0 });
     }
-    if (speaker.headshotUrl === null || speaker.headshotUrl.trim().length === 0) {
+    if (
+      acceptedSpeakerIds.has(speaker.speakerId) &&
+      (speaker.headshotUrl === null || speaker.headshotUrl.trim().length === 0)
+    ) {
       missing.push({ kind: "headshot", label: "Headshot", taskId: null, dueAt: null, overdueDays: 0 });
     }
-    for (const assignment of assignments) {
-      if (
-        assignment.speakerId !== speaker.speakerId ||
-        assignment.assignmentStatus === "completed" ||
-        assignment.taskStatus !== "active"
-      ) {
+    for (const assignment of activeAssignments) {
+      if (assignment.speakerId !== speaker.speakerId) {
         continue;
       }
       const normalizedTitle = assignment.title.toLowerCase();
-      if (normalizedTitle.includes("headshot") || normalizedTitle.includes("bio")) {
-        continue;
-      }
-      if (
-        assignment.taskType === "file_request" &&
-        files.some((file) => file.speakerId === speaker.speakerId && file.taskId === assignment.taskId)
-      ) {
-        continue;
-      }
       const overdueDays = assignment.dueAt !== null && assignment.dueAt.getTime() < now
         ? Math.ceil((now - assignment.dueAt.getTime()) / millisecondsPerDay)
         : 0;
@@ -523,7 +517,7 @@ rosterRoutes.get("/api/events/:eventId/missing-information", async (context) => 
 
   return context.json({
     generatedAt: new Date(now),
-    acceptedSpeakerCount: acceptedSpeakers.length,
+    worklistSpeakerCount: worklistSpeakers.length,
     incompleteSpeakerCount: items.length,
     items,
   });

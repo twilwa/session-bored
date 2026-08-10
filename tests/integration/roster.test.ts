@@ -80,45 +80,81 @@ describe("organizer speaker roster", () => {
     });
   });
 
-  it("reports five active roster tasks when no accepted speakers are in the missing-information scope", async () => {
-    const submissionStatuses = await env.DB.prepare(
-      "select id, status from submission where event_id = ?",
-    ).bind("evt_devflow_conf_2027").all<{ id: string; status: string }>();
-    try {
-      await env.DB.prepare("update submission set status = 'declined' where event_id = ?")
-        .bind("evt_devflow_conf_2027")
-        .run();
+  it("keeps the worklist aligned with sessionless roster onboarding assignments", async () => {
+    const acceptedSpeakerRows = await env.DB.prepare(
+      "select distinct ss.speaker_id as speakerId from session_speaker ss inner join program_session ps on ps.id = ss.session_id inner join submission s on s.id = ps.submission_id where ps.event_id = ? and s.status = 'accepted' order by ss.speaker_id",
+    ).bind("evt_devflow_conf_2027").all<{ speakerId: string }>();
+    expect(acceptedSpeakerRows.results).toEqual([
+      { speakerId: "spk_marcus_devflow_2027" },
+    ]);
 
-      const roster = await request("/api/events/evt_devflow_conf_2027/roster", {
-        headers: { cookie: organizerCookie },
-      });
-      const rosterPayload = await roster.json<{
-        items: Array<{
-          id: string;
-          status: string;
-          taskSummary: { total: number; incomplete: number };
-        }>;
-      }>();
-      expect(rosterPayload.items.find((speaker) => speaker.id === "spk_priya_devflow_2027")).toMatchObject({
-        status: "onboarding",
-        taskSummary: { total: 5, incomplete: 5 },
-      });
+    const rosterResponse = await request("/api/events/evt_devflow_conf_2027/roster", {
+      headers: { cookie: organizerCookie },
+    });
+    const rosterPayload = await rosterResponse.json<{
+      items: Array<{
+        id: string;
+        status: string;
+        profile: { bioComplete: boolean; headshotComplete: boolean };
+        taskSummary: { total: number; incomplete: number };
+      }>;
+    }>();
+    const priyaRoster = rosterPayload.items.find((speaker) => speaker.id === "spk_priya_devflow_2027");
+    expect(priyaRoster).toMatchObject({
+      status: "onboarding",
+      profile: { bioComplete: true, headshotComplete: true },
+      taskSummary: { total: 5, incomplete: 5 },
+    });
 
-      const missingInformation = await request(
-        "/api/events/evt_devflow_conf_2027/missing-information",
-        { headers: { cookie: organizerCookie } },
-      );
-      await expect(missingInformation.json()).resolves.toMatchObject({
-        acceptedSpeakerCount: 0,
-        incompleteSpeakerCount: 0,
-        items: [],
-      });
-    } finally {
-      await env.DB.batch(submissionStatuses.results.map((submission) =>
-        env.DB.prepare("update submission set status = ? where id = ?")
-          .bind(submission.status, submission.id)
-      ));
-    }
+    const tasksResponse = await request("/api/events/evt_devflow_conf_2027/tasks", {
+      headers: { cookie: organizerCookie },
+    });
+    const tasksPayload = await tasksResponse.json<{
+      items: Array<{
+        id: string;
+        sessionId: string | null;
+        status: string;
+        title: string;
+        assignees: Array<{ speakerId: string; status: string }>;
+      }>;
+    }>();
+    const priyaTasks = tasksPayload.items.filter((task) =>
+      task.status === "active" &&
+      task.assignees.some((assignee) =>
+        assignee.speakerId === "spk_priya_devflow_2027" && assignee.status !== "completed"
+      )
+    );
+    expect(priyaTasks).toHaveLength(5);
+    expect(priyaTasks.every((task) => task.sessionId === null)).toBe(true);
+
+    const missingInformation = await request(
+      "/api/events/evt_devflow_conf_2027/missing-information",
+      { headers: { cookie: organizerCookie } },
+    );
+    const missingPayload = await missingInformation.json<{
+      worklistSpeakerCount: number;
+      incompleteSpeakerCount: number;
+      items: Array<{
+        speakerId: string;
+        missingCount: number;
+        missing: Array<{ taskId: string | null; label: string }>;
+      }>;
+    }>();
+    expect(missingPayload.worklistSpeakerCount).toBe(2);
+    expect(missingPayload.incompleteSpeakerCount).toBe(2);
+    expect(missingPayload.items.find((speaker) => speaker.speakerId === "spk_marcus_devflow_2027")?.missing)
+      .toEqual([expect.objectContaining({ taskId: null, label: "Headshot" })]);
+
+    const priyaMissing = missingPayload.items.find(
+      (speaker) => speaker.speakerId === "spk_priya_devflow_2027",
+    );
+    expect(priyaMissing?.missingCount).toBe(priyaRoster?.taskSummary.incomplete);
+    expect(priyaMissing?.missing.map((item) => item.taskId).sort()).toEqual(
+      priyaTasks.map((task) => task.id).sort(),
+    );
+    expect(priyaMissing?.missing.map((item) => item.label).sort()).toEqual(
+      priyaTasks.map((task) => task.title).sort(),
+    );
   });
 
   it("adopts an existing person without duplicating the event speaker", async () => {
@@ -363,7 +399,7 @@ describe("organizer speaker roster", () => {
     );
     expect(response.status).toBe(200);
     const payload = await response.json<{
-      acceptedSpeakerCount: number;
+      worklistSpeakerCount: number;
       incompleteSpeakerCount: number;
       items: Array<{
         speakerId: string;
@@ -372,9 +408,8 @@ describe("organizer speaker roster", () => {
         missing: Array<{ kind: string; label: string; overdueDays: number }>;
       }>;
     }>();
-    expect(payload.acceptedSpeakerCount).toBe(2);
-    expect(payload.incompleteSpeakerCount).toBe(2);
-    expect(payload.items).toHaveLength(2);
+    expect(payload.worklistSpeakerCount).toBeGreaterThanOrEqual(payload.incompleteSpeakerCount);
+    expect(payload.incompleteSpeakerCount).toBe(payload.items.length);
     const priya = payload.items.find((item) => item.speakerId === "spk_priya_devflow_2027");
     expect(priya).toMatchObject({
       speakerId: "spk_priya_devflow_2027",

@@ -7,12 +7,10 @@ test("speaker saves a draft, submits, and edits through a durable private link",
   await page.goto("/cfp/devflow-conf-2027");
 
   await expect(page.getByRole("heading", { name: "DevFlow Conf 2027" })).toBeVisible();
-  // The seeded deadline is 2027-04-30T23:59:59Z. The event's own timezone (America/Los_Angeles,
-  // PDT in April) must render it as April 30, 4:59 PM PDT — not the viewer's zone, and not the
-  // raw UTC instant (11:59 PM), regardless of what timezone this browser happens to run in.
+  // The seeded deadline is the instant corresponding to April 30 at 11:59 PM in the event zone.
   await expect(page.getByTestId("deadline-local")).toContainText("America/Los_Angeles");
   await expect(page.getByLabel("Submission deadline")).toContainText("April 30, 2027");
-  await expect(page.getByLabel("Submission deadline")).toContainText("4:59 PM");
+  await expect(page.getByLabel("Submission deadline")).toContainText("11:59 PM");
   await expect(page.getByLabel("Submission deadline")).toContainText("PDT");
   await expect(page.getByRole("link", { name: "Sign in" })).toBeVisible();
 

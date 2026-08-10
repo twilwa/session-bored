@@ -23,6 +23,16 @@ const draft = {
 };
 
 describe("public CFP submissions", () => {
+  it("stores the deadline as the event-local end-of-day instant", async () => {
+    await request("/api/health");
+    const response = await request("/api/public/cfp/devflow-conf-2027");
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      event: { timezone: "America/Los_Angeles" },
+      form: { closeAt: "2027-05-01T06:59:59.000Z" },
+    });
+  });
+
   it("round-trips a draft, final submission, and author edit without an account", async () => {
     await request("/api/health");
     const createResponse = await request("/api/public/cfp/devflow-conf-2027/submissions", {
@@ -151,7 +161,7 @@ describe("public CFP submissions", () => {
       expect(body.message).toContain("edits are no longer accepted");
     } finally {
       await env.DB.prepare("update form set close_at = ? where public_slug = ?")
-        .bind(new Date("2027-04-30T23:59:59.000Z").getTime(), "devflow-conf-2027")
+        .bind(new Date("2027-05-01T06:59:59.000Z").getTime(), "devflow-conf-2027")
         .run();
     }
   });
