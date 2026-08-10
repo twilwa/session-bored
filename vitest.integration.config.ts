@@ -20,5 +20,7 @@ export default defineConfig({
   test: {
     include: ["tests/integration/**/*.test.ts"],
     setupFiles: ["./tests/integration/setup.ts"],
+    // Isolated Worker/D1 setup and real password hashing can exceed Vitest's unit-test default on shared CI runners.
+    testTimeout: 10_000,
   },
 });
