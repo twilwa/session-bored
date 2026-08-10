@@ -1,0 +1,38 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "session-bored",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-08-08",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": [
+      "/api/*",
+      "/organizer",
+      "/organizer/*",
+      "/reviewer",
+      "/reviewer/*",
+      "/speaker",
+      "/speaker/*"
+    ]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "session-bored",
+      "database_id": "fc1ef508-94f6-4374-9310-7eb80f36c5b4",
+      "migrations_dir": "migrations"
+    }
+  ],
+  // TODO: Re-add the FILES R2 binding when wave-2 file uploads land.
+  "vars": {
+    "APP_ORIGIN": "https://session-bored.techwilliams-warren.workers.dev"
+  },
+  "observability": {
+    "enabled": true,
+    "logs": { "head_sampling_rate": 1 },
+    "traces": { "enabled": true, "head_sampling_rate": 0.01 }
+  }
+}
