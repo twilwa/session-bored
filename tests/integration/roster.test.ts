@@ -331,10 +331,11 @@ describe("organizer speaker roster", () => {
         missing: Array<{ kind: string; label: string; overdueDays: number }>;
       }>;
     }>();
-    expect(payload.acceptedSpeakerCount).toBe(1);
-    expect(payload.incompleteSpeakerCount).toBe(1);
-    expect(payload.items).toHaveLength(1);
-    expect(payload.items[0]).toMatchObject({
+    expect(payload.acceptedSpeakerCount).toBe(2);
+    expect(payload.incompleteSpeakerCount).toBe(2);
+    expect(payload.items).toHaveLength(2);
+    const priya = payload.items.find((item) => item.speakerId === "spk_priya_devflow_2027");
+    expect(priya).toMatchObject({
       speakerId: "spk_priya_devflow_2027",
       name: "Priya Raman",
       missing: expect.arrayContaining([
@@ -344,9 +345,12 @@ describe("organizer speaker roster", () => {
         expect.objectContaining({ kind: "form", label: "Sign speaker release form" }),
       ]),
     });
-    expect(payload.items[0]?.mostOverdueDays).toBeGreaterThan(0);
+    expect(payload.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({ speakerId: "spk_marcus_devflow_2027", name: "Marcus Okafor" }),
+    ]));
+    expect(priya?.mostOverdueDays).toBeGreaterThan(0);
     expect(
-      payload.items[0]?.missing.find((item) => item.label === "Upload final accessibility checklist")?.overdueDays,
+      priya?.missing.find((item) => item.label === "Upload final accessibility checklist")?.overdueDays,
     ).toBeGreaterThan(0);
   });
 

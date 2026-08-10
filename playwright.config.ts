@@ -8,6 +8,7 @@ const PORT = Number(process.env.PLAYWRIGHT_PORT ?? 8787);
 export default defineConfig({
   testDir: "tests/e2e",
   fullyParallel: false,
+  workers: 1,
   use: {
     baseURL: `http://127.0.0.1:${PORT}`,
     trace: "retain-on-failure",

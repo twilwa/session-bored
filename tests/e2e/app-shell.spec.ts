@@ -13,7 +13,7 @@ test("public CFP is populated and mobile readable", async ({ page }) => {
   expect(width).toBeLessThanOrEqual(375);
 });
 
-test("public program shows an approved fixture session", async ({ page }) => {
+test("public program shows a published fixture session", async ({ page }) => {
   await page.goto("/program");
 
   await expect(page.getByRole("heading", { name: "DevFlow Conf 2027", exact: true })).toBeVisible();
