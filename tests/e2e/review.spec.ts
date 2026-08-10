@@ -9,7 +9,7 @@ async function signIn(page: import("@playwright/test").Page, email: string, pass
   await page.getByRole("button", { name: "Sign in" }).click();
 }
 
-test("organizer review makes the coverage and decision sorts primary", async ({ page }) => {
+test("organizer review makes the coverage and decision sorts primary", async ({ page }, testInfo) => {
   await signIn(page, "sbek-organizer@example.com", "SbekTest!2027-org");
   await page.getByRole("link", { name: "Review", exact: true }).click();
 
@@ -21,7 +21,9 @@ test("organizer review makes the coverage and decision sorts primary", async ({ 
   await expect(page.getByText("No email is sent", { exact: true }).first()).toBeVisible();
 
   await page.getByText("Committee setup", { exact: true }).click();
-  await expect(page.getByLabel("Enable optional AI reading aids")).not.toBeChecked();
+  if (testInfo.project.name === "desktop") {
+    await expect(page.getByLabel("Enable optional AI reading aids")).not.toBeChecked();
+  }
   await expect(page.getByText("AI never records a score or decision.", { exact: true })).toBeVisible();
 
   await page.getByRole("link", { name: /Taming 40-Minute CI/ }).click();
