@@ -19,6 +19,7 @@ import type { AuthSession } from "../auth.ts";
 import {
   buildReviewAssistanceInput,
   createAnthropicReviewAssistant,
+  fingerprintReviewProposal,
   protectGeneratedText,
   selectEditableSuggestions,
   type ParticipantIdentity,
@@ -187,6 +188,19 @@ export function createAIReviewRoutes(
           .where(eq(submissionSpeakers.submissionId, submissionId)),
       ]);
       const visibility = scopedSubmission.anonymized ? "blind" : "identified";
+      const assistanceInput = buildReviewAssistanceInput({
+        anonymized: scopedSubmission.anonymized,
+        existingSummary: null,
+        proposal: {
+          title: submission.title,
+          abstract: submission.abstract,
+          audienceLevel: submission.audienceLevel,
+          notesForReviewers: submission.notesForReviewers,
+        },
+        participants,
+        criteria,
+      });
+      const contentFingerprint = await fingerprintReviewProposal(assistanceInput.proposal);
       const criteriaFingerprint = JSON.stringify(criteria.map((criterion) => ({
         id: criterion.id,
         label: criterion.label,
@@ -203,6 +217,7 @@ export function createAIReviewRoutes(
           .where(and(
             eq(aiSubmissionSummaries.submissionId, submissionId),
             eq(aiSubmissionSummaries.formVersion, submission.formVersion),
+            eq(aiSubmissionSummaries.contentFingerprint, contentFingerprint),
             eq(aiSubmissionSummaries.visibility, visibility),
           ))
           .then((rows) => rows[0]),
@@ -212,6 +227,7 @@ export function createAIReviewRoutes(
           .where(and(
             eq(aiScoreSuggestions.submissionId, submissionId),
             eq(aiScoreSuggestions.formVersion, submission.formVersion),
+            eq(aiScoreSuggestions.contentFingerprint, contentFingerprint),
             eq(aiScoreSuggestions.roundId, payload.roundId),
             eq(aiScoreSuggestions.visibility, visibility),
             eq(aiScoreSuggestions.criteriaFingerprint, criteriaFingerprint),
@@ -221,6 +237,7 @@ export function createAIReviewRoutes(
       if (cachedSummary !== undefined && cachedScores !== undefined) {
         return context.json({
           status: "ready",
+          suggestionId: cachedScores.id,
           attribution: "AI-generated reading aid — review and edit before saving",
           summary: cachedSummary.summary,
           suggestedScores: cachedScores.scores,
@@ -230,18 +247,10 @@ export function createAIReviewRoutes(
       }
 
       try {
-        const generated = await assistant.generate(buildReviewAssistanceInput({
-          anonymized: scopedSubmission.anonymized,
+        const generated = await assistant.generate({
+          ...assistanceInput,
           existingSummary: cachedSummary?.summary ?? null,
-          proposal: {
-            title: submission.title,
-            abstract: submission.abstract,
-            audienceLevel: submission.audienceLevel,
-            notesForReviewers: submission.notesForReviewers,
-          },
-          participants,
-          criteria,
-        }));
+        });
         const summary = protectGeneratedText(
           cachedSummary?.summary ?? generated.summary,
           scopedSubmission.anonymized,
@@ -265,6 +274,7 @@ export function createAIReviewRoutes(
           await database.insert(aiSubmissionSummaries).values({
             submissionId,
             formVersion: submission.formVersion,
+            contentFingerprint,
             visibility,
             summary,
             model: generated.model,
@@ -273,6 +283,7 @@ export function createAIReviewRoutes(
         await database.insert(aiScoreSuggestions).values({
           submissionId,
           formVersion: submission.formVersion,
+          contentFingerprint,
           roundId: payload.roundId,
           visibility,
           criteriaFingerprint,
@@ -280,8 +291,23 @@ export function createAIReviewRoutes(
           reasoning,
           model: generated.model,
         }).onConflictDoNothing();
+        const [storedScores] = await database
+          .select({ id: aiScoreSuggestions.id })
+          .from(aiScoreSuggestions)
+          .where(and(
+            eq(aiScoreSuggestions.submissionId, submissionId),
+            eq(aiScoreSuggestions.formVersion, submission.formVersion),
+            eq(aiScoreSuggestions.contentFingerprint, contentFingerprint),
+            eq(aiScoreSuggestions.roundId, payload.roundId),
+            eq(aiScoreSuggestions.visibility, visibility),
+            eq(aiScoreSuggestions.criteriaFingerprint, criteriaFingerprint),
+          ));
+        if (storedScores === undefined) {
+          return context.json({ status: "unavailable" });
+        }
         return context.json({
           status: "ready",
+          suggestionId: storedScores.id,
           attribution: "AI-generated reading aid — review and edit before saving",
           summary,
           suggestedScores,
@@ -291,6 +317,36 @@ export function createAIReviewRoutes(
       } catch {
         return context.json({ status: "unavailable" });
       }
+    },
+  );
+
+  routes.get(
+    "/review/submissions/:submissionId/ai-assistance",
+    requireRole("reviewer"),
+    async (context) => {
+      const user = context.get("authUser");
+      if (user === null) {
+        return context.json({ error: "authentication_required" }, 401);
+      }
+      const roundId = context.req.query("roundId");
+      if (roundId === undefined) {
+        return context.json({ error: "round_required" }, 400);
+      }
+      const database = drizzle(context.env.DB);
+      const scopedSubmission = await reviewerSubmission(
+        database,
+        user.id,
+        context.req.param("submissionId"),
+        roundId,
+      );
+      if (scopedSubmission === undefined) {
+        return context.json({ error: "forbidden" }, 403);
+      }
+      return context.json({
+        status: await aiAssistanceEnabled(database, scopedSubmission.eventId)
+          ? "available"
+          : "disabled",
+      });
     },
   );
 

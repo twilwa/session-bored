@@ -23,10 +23,12 @@ request, so the app opens with DevFlow Conf 2027 rather than an empty state.
 
 AI-assisted review is off by default for every event. When an organizer enables
 it in committee setup, reviewers can request an AI-generated proposal summary
-and suggestions against that round's existing scorecard. The reviewer must
-choose **Use as a starting point**, edit the human scorecard, and submit it.
-Generated output never changes a review, submission status, comment, email, or
-notification.
+and suggestions against that round's existing scorecard. Opening a proposal
+doesn't generate assistance or send proposal content to the provider. The
+reviewer must choose **Generate AI reading aid**, choose **Use as a starting
+point**, change at least one suggested value, and submit the human scorecard.
+The review route rejects an unchanged AI starting point. Generated output never
+changes a review, submission status, comment, email, or notification.
 
 To make the optional feature available locally, set `ANTHROPIC_API_KEY` in
 `.dev.vars`. To make it available in a deployed Worker, add the same binding as
@@ -39,7 +41,8 @@ npx wrangler secret put ANTHROPIC_API_KEY
 If the secret is absent, rate-limited, or rejected by the provider, the review
 engine remains usable and shows a quiet unavailable state after event opt-in.
 Greenroom uses `claude-haiku-4-5-20251001` and caches summaries per submission,
-form version, and blind-review visibility.
+form version, content fingerprint, and blind-review visibility. Suggested scores
+are also scoped to the round's current criteria.
 
 ## Seeded credentials
 

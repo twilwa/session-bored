@@ -634,9 +634,11 @@ export interface ReviewCriterion {
 
 export type AIReviewAssistance =
   | { status: "disabled" }
+  | { status: "available" }
   | { status: "unavailable" }
   | {
     status: "ready";
+    suggestionId: string;
     attribution: string;
     summary: string;
     suggestedScores: Record<string, string | number>;

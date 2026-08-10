@@ -8,6 +8,7 @@ import type { ReviewAssistant, ReviewAssistanceInput } from "../../worker/ai/rev
 import type { AuthSession } from "../../worker/auth.ts";
 import worker from "../../worker/index.ts";
 import { createAIReviewRoutes } from "../../worker/routes/ai-review.ts";
+import reviewRoutes from "../../worker/routes/review.ts";
 
 async function request(path: string, init?: RequestInit): Promise<Response> {
   return worker.request(`http://example.test${path}`, init, env);
@@ -51,6 +52,7 @@ function createInjectedApp(
     await next();
   });
   app.route("/api", createAIReviewRoutes(() => assistant));
+  app.route("/api", reviewRoutes);
   return app;
 }
 
@@ -170,6 +172,197 @@ describe("AI-assisted review", () => {
     );
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ status: "unavailable" });
+  });
+
+  it("regenerates summaries and score suggestions after an author edits proposal content", async () => {
+    await request("/api/health");
+    const organizerCookie = await signIn("sbek-organizer@example.com", "SbekTest!2027-org");
+    await request("/api/review/events/evt_devflow_conf_2027/ai-assistance", {
+      method: "PATCH",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({ enabled: true }),
+    });
+    const proposal = {
+      intent: "submit",
+      speaker: {
+        name: "Cache Revision Speaker",
+        email: "cache-revision@example.com",
+        jobTitle: "Staff Engineer",
+        organization: "Revision Systems",
+      },
+      proposal: {
+        title: "Caching the proposal reviewers actually read",
+        abstract: "The original proposal explains why review caches need precise keys.",
+        track: "Developer Experience",
+        format: "Talk (30 min)",
+        audienceLevel: "Intermediate",
+        notesForReviewers: "Focus on the cache contract.",
+        answers: { key_takeaway: "Cache identity must follow content identity." },
+      },
+    };
+    const createResponse = await request("/api/public/cfp/devflow-conf-2027/submissions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(proposal),
+    });
+    expect(createResponse.status).toBe(201);
+    const created = await createResponse.json<{
+      accessPath: string;
+      editKey: string;
+      submission: { id: string };
+    }>();
+    const provisionResponse = await request(
+      "/api/review/events/evt_devflow_conf_2027/reviewers",
+      {
+        method: "POST",
+        headers: { cookie: organizerCookie, "content-type": "application/json" },
+        body: JSON.stringify({
+          name: "Cache Revision Reviewer",
+          email: "cache-revision-reviewer@example.com",
+          password: "CacheReview!2027",
+        }),
+      },
+    );
+    expect(provisionResponse.status).toBe(201);
+    const provisioned = await provisionResponse.json<{
+      reviewer: { id: string; name: string; email: string };
+    }>();
+    const generatedAbstracts: Array<string | null> = [];
+    const assistant: ReviewAssistant = {
+      async generate(input) {
+        generatedAbstracts.push(input.proposal.abstract);
+        return {
+          summary: input.proposal.abstract ?? "No abstract supplied.",
+          suggestedScores: { crt_overall_rating: generatedAbstracts.length === 1 ? 4 : 3 },
+          reasoning: { crt_overall_rating: "The proposal states a concrete cache contract." },
+          model: "deterministic-test-model",
+        };
+      },
+    };
+    const injectedApp = createInjectedApp(provisioned.reviewer, assistant);
+    const assistanceUrl = `http://example.test/api/review/submissions/${created.submission.id}/ai-assistance`;
+    const assistanceInit = {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ roundId: "rnd_initial_review" }),
+    };
+
+    const first = await injectedApp.request(assistanceUrl, assistanceInit, env);
+    await expect(first.json()).resolves.toEqual(expect.objectContaining({
+      status: "ready",
+      summary: proposal.proposal.abstract,
+      suggestedScores: { crt_overall_rating: 4 },
+      cached: false,
+    }));
+    const cached = await injectedApp.request(assistanceUrl, assistanceInit, env);
+    await expect(cached.json()).resolves.toEqual(expect.objectContaining({ cached: true }));
+    expect(generatedAbstracts).toEqual([proposal.proposal.abstract]);
+
+    const revisedAbstract = `${proposal.proposal.abstract} The revision adds author-edit coverage.`;
+    const editResponse = await request(
+      `${created.accessPath}?key=${encodeURIComponent(created.editKey)}`,
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          ...proposal,
+          intent: "save",
+          proposal: { ...proposal.proposal, abstract: revisedAbstract },
+        }),
+      },
+    );
+    expect(editResponse.status).toBe(200);
+
+    const revised = await injectedApp.request(assistanceUrl, assistanceInit, env);
+    await expect(revised.json()).resolves.toEqual(expect.objectContaining({
+      status: "ready",
+      summary: revisedAbstract,
+      suggestedScores: { crt_overall_rating: 3 },
+      cached: false,
+    }));
+    expect(generatedAbstracts).toEqual([proposal.proposal.abstract, revisedAbstract]);
+  });
+
+  it("requires a reviewer to change an AI starting point before saving it", async () => {
+    await request("/api/health");
+    const organizerCookie = await signIn("sbek-organizer@example.com", "SbekTest!2027-org");
+    await request("/api/review/events/evt_devflow_conf_2027/ai-assistance", {
+      method: "PATCH",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({ enabled: true }),
+    });
+    const reviewer = await env.DB.prepare(
+      "select id, name, email from user where email = ?",
+    ).bind("sbek-reviewer@example.com").first<{ id: string; name: string; email: string }>();
+    expect(reviewer).not.toBeNull();
+    const assistant: ReviewAssistant = {
+      async generate() {
+        return {
+          summary: "A concise summary for a human reviewer.",
+          suggestedScores: {
+            crt_overall_rating: 4,
+            crt_recommendation: "Accept",
+            crt_notes: "The proposal supplies concrete evidence.",
+          },
+          reasoning: {},
+          model: "deterministic-test-model",
+        };
+      },
+    };
+    const injectedApp = createInjectedApp(reviewer!, assistant);
+    const assistanceResponse = await injectedApp.request(
+      "http://example.test/api/review/submissions/sub_ci_monorepo/ai-assistance",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ roundId: "rnd_initial_review" }),
+      },
+      env,
+    );
+    const assistance = await assistanceResponse.json<{
+      status: string;
+      suggestionId: string;
+      suggestedScores: Record<string, string | number>;
+    }>();
+    expect(assistance.status).toBe("ready");
+    expect(assistance.suggestionId).toMatch(/^aig_/);
+    const reviewUrl = "http://example.test/api/review/submissions/sub_ci_monorepo/reviews";
+    const unchangedResponse = await injectedApp.request(
+      reviewUrl,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          roundId: "rnd_initial_review",
+          scores: assistance.suggestedScores,
+          aiSuggestionId: assistance.suggestionId,
+        }),
+      },
+      env,
+    );
+    expect(unchangedResponse.status).toBe(422);
+    await expect(unchangedResponse.json()).resolves.toEqual({
+      error: "human_score_choice_required",
+    });
+
+    const editedScores = { ...assistance.suggestedScores, crt_overall_rating: 3 };
+    const editedResponse = await injectedApp.request(
+      reviewUrl,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          roundId: "rnd_initial_review",
+          scores: editedScores,
+          aiSuggestionId: assistance.suggestionId,
+        }),
+      },
+      env,
+    );
+    expect(editedResponse.status).toBe(200);
+    await expect(editedResponse.json()).resolves.toEqual(expect.objectContaining({
+      scores: editedScores,
+    }));
   });
 
   it("returns cached blind-safe suggestions without recording a human decision", async () => {

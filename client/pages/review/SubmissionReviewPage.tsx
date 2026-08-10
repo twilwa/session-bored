@@ -74,8 +74,10 @@ export function SubmissionReviewPage({
 }) {
   const [detail, setDetail] = useState<ReviewSubmissionDetail | null>(null);
   const [assistance, setAssistance] = useState<AIReviewAssistance | null>(null);
+  const [assistanceLoading, setAssistanceLoading] = useState(false);
   const [comment, setComment] = useState("");
   const [scores, setScores] = useState<Record<string, string | number>>({});
+  const [aiStartingPointId, setAIStartingPointId] = useState<string | null>(null);
   const [reviewComment, setReviewComment] = useState("");
   const [message, setMessage] = useState<string | null>(null);
 
@@ -88,13 +90,14 @@ export function SubmissionReviewPage({
       setDetail(loadedDetail);
       if (role === "reviewer" && loadedDetail.round !== null) {
         try {
-          setAssistance(await reviewRequest<AIReviewAssistance>(
-            `/api/review/submissions/${submissionId}/ai-assistance`,
-            {
-              method: "POST",
-              body: JSON.stringify({ roundId: loadedDetail.round.id }),
-            },
-          ));
+          const availability = await reviewRequest<AIReviewAssistance>(
+            `/api/review/submissions/${submissionId}/ai-assistance?roundId=${encodeURIComponent(loadedDetail.round.id)}`,
+          );
+          setAssistance((current) =>
+            current?.status === "ready" && availability.status === "available"
+              ? current
+              : availability
+          );
         } catch {
           setAssistance({ status: "unavailable" });
         }
@@ -107,6 +110,24 @@ export function SubmissionReviewPage({
   }
 
   useEffect(() => { void load(); }, [submissionId, roundId]);
+
+  async function requestAssistance(): Promise<void> {
+    if (detail?.round === null || detail?.round === undefined) return;
+    setAssistanceLoading(true);
+    try {
+      setAssistance(await reviewRequest<AIReviewAssistance>(
+        `/api/review/submissions/${submissionId}/ai-assistance`,
+        {
+          method: "POST",
+          body: JSON.stringify({ roundId: detail.round.id }),
+        },
+      ));
+    } catch {
+      setAssistance({ status: "unavailable" });
+    } finally {
+      setAssistanceLoading(false);
+    }
+  }
 
   async function addComment(event: FormEvent): Promise<void> {
     event.preventDefault();
@@ -129,8 +150,14 @@ export function SubmissionReviewPage({
     try {
       await reviewRequest(`/api/review/submissions/${submissionId}/reviews`, {
         method: "POST",
-        body: JSON.stringify({ roundId: detail.round.id, scores, comment: reviewComment }),
+        body: JSON.stringify({
+          roundId: detail.round.id,
+          scores,
+          comment: reviewComment,
+          aiSuggestionId: aiStartingPointId,
+        }),
       });
+      setAIStartingPointId(null);
       setMessage("Scorecard saved. Your discussion stays separate and editable.");
       await load();
     } catch (error) {
@@ -160,6 +187,21 @@ export function SubmissionReviewPage({
 
       <div className="review-detail__grid">
         <div>
+          {role === "reviewer" && assistance?.status === "available" ? (
+            <section className="ai-review-assistance" aria-labelledby="ai-assistance-heading">
+              <p className="section-label">OPTIONAL AI READING AID</p>
+              <h2 id="ai-assistance-heading">Ask for a faster first read.</h2>
+              <p>Generate a short summary and suggestions against this round’s criteria when you want them.</p>
+              <Button
+                disabled={assistanceLoading}
+                onClick={() => void requestAssistance()}
+                type="button"
+              >
+                {assistanceLoading ? "Generating reading aid…" : "Generate AI reading aid"}
+              </Button>
+              <small>No proposal content is sent until you choose to generate.</small>
+            </section>
+          ) : null}
           {role === "reviewer" && assistance?.status === "ready" ? (
             <section className="ai-review-assistance" aria-labelledby="ai-assistance-heading">
               <div className="ai-review-assistance__heading">
@@ -186,12 +228,15 @@ export function SubmissionReviewPage({
               </div>
               <Button
                 disabled={Object.keys(assistance.suggestedScores).length === 0}
-                onClick={() => setScores({ ...assistance.suggestedScores })}
+                onClick={() => {
+                  setScores({ ...assistance.suggestedScores });
+                  setAIStartingPointId(assistance.suggestionId);
+                }}
                 type="button"
               >
                 Use as a starting point
               </Button>
-              <small>{assistance.attribution}. Nothing is saved until you submit the scorecard.</small>
+              <small>{assistance.attribution}. Change at least one suggested value before submitting.</small>
             </section>
           ) : null}
           {role === "reviewer" && assistance?.status === "unavailable" ? (

@@ -32,6 +32,7 @@ export const aiSubmissionSummaries = sqliteTable(
     id: generatedId("ais"),
     submissionId: text("submission_id").notNull(),
     formVersion: integer("form_version").notNull(),
+    contentFingerprint: text("content_fingerprint").notNull().default(""),
     visibility: text("visibility", { enum: ["identified", "blind"] }).notNull(),
     summary: text("summary").notNull(),
     model: text("model").notNull(),
@@ -41,6 +42,7 @@ export const aiSubmissionSummaries = sqliteTable(
     uniqueIndex("ai_summary_submission_version_visibility_unique").on(
       table.submissionId,
       table.formVersion,
+      table.contentFingerprint,
       table.visibility,
     ),
     index("ai_summary_submission_idx").on(table.submissionId),
@@ -53,6 +55,7 @@ export const aiScoreSuggestions = sqliteTable(
     id: generatedId("aig"),
     submissionId: text("submission_id").notNull(),
     formVersion: integer("form_version").notNull(),
+    contentFingerprint: text("content_fingerprint").notNull().default(""),
     roundId: text("round_id").notNull(),
     visibility: text("visibility", { enum: ["identified", "blind"] }).notNull(),
     criteriaFingerprint: text("criteria_fingerprint").notNull(),
@@ -65,6 +68,7 @@ export const aiScoreSuggestions = sqliteTable(
     uniqueIndex("ai_score_submission_round_criteria_unique").on(
       table.submissionId,
       table.formVersion,
+      table.contentFingerprint,
       table.roundId,
       table.visibility,
       table.criteriaFingerprint,

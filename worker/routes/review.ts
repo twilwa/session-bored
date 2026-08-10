@@ -5,6 +5,7 @@ import { drizzle } from "drizzle-orm/d1";
 import { Hono } from "hono";
 import { createMiddleware } from "hono/factory";
 import {
+  aiScoreSuggestions,
   comments,
   createPublicId,
   events,
@@ -48,6 +49,14 @@ function requireRole(requiredRole: "organizer" | "reviewer") {
     }
     await next();
   });
+}
+
+function scoresMatch(
+  left: Record<string, string | number>,
+  right: Record<string, string | number>,
+): boolean {
+  const keys = new Set([...Object.keys(left), ...Object.keys(right)]);
+  return [...keys].every((key) => left[key] === right[key]);
 }
 
 interface ReviewQueueItem {
@@ -756,6 +765,7 @@ reviewRoutes.post(
       roundId?: unknown;
       scores?: unknown;
       comment?: unknown;
+      aiSuggestionId?: unknown;
     }>();
     if (
       typeof payload.roundId !== "string" ||
@@ -789,6 +799,22 @@ reviewRoutes.post(
         return context.json({ error: "invalid_score", criterionId: criterion.id }, 400);
       }
       scores[criterion.id] = value;
+    }
+    if (typeof payload.aiSuggestionId === "string") {
+      const [startingPoint] = await database
+        .select({ scores: aiScoreSuggestions.scores })
+        .from(aiScoreSuggestions)
+        .where(and(
+          eq(aiScoreSuggestions.id, payload.aiSuggestionId),
+          eq(aiScoreSuggestions.submissionId, submissionId),
+          eq(aiScoreSuggestions.roundId, payload.roundId),
+        ));
+      if (startingPoint === undefined) {
+        return context.json({ error: "invalid_ai_starting_point" }, 400);
+      }
+      if (scoresMatch(scores, startingPoint.scores)) {
+        return context.json({ error: "human_score_choice_required" }, 422);
+      }
     }
     const aggregateScore = computeAggregateScore(scores, criteria);
 

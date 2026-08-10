@@ -81,6 +81,12 @@ export function protectGeneratedText(
   return hideIdentity(value, participantIdentityValues(participants)) ?? value;
 }
 
+export async function fingerprintReviewProposal(proposal: ReviewProposal): Promise<string> {
+  const bytes = new TextEncoder().encode(JSON.stringify(proposal));
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, "0")).join("");
+}
+
 export function buildReviewAssistanceInput({
   anonymized,
   existingSummary,
