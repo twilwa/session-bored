@@ -130,6 +130,19 @@ lifecycle and relationships are fixed as follows:
   unlinked and cannot be claimed by email; their proposals stay accessible only
   through the private author key.
 
+- The agenda (`/agenda`), itinerary (`/schedule`), and speaker gallery (`/gallery`)
+  pages read through the same public sessions/speakers endpoints as `/program` and
+  `/speakers` — no dedicated worker routes exist for them. `client/pages/public/shared.ts`
+  is the single source for session/day/time formatting and for the agenda's
+  time-row x room-column layout (`buildAgendaGrid`); extend it rather than
+  formatting a session independently in a new component, or cross-surface
+  consistency (title/time/room/track reading identically everywhere) breaks.
+  `client/pages/public/ScheduleShared.tsx` holds the day-tab control and the
+  session detail overlay shared by the agenda and itinerary.
+- The shared `Modal` in `client/components/ui.tsx` caps height at `min(85vh, 680px)`
+  with internal scroll; any modal with content that can grow long needs this, since
+  the backdrop does not scroll on its own.
+
 ## Maintaining this file
 
 Keep this file for knowledge useful to almost every future agent session in this project.
