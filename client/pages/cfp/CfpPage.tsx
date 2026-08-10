@@ -8,6 +8,7 @@ import type {
   CfpSubmissionWrite,
 } from "../../../shared/api.ts";
 import { SubmitterAccountPanel, type SubmitterAccountUser } from "../submitter/SubmitterAccountPanel.tsx";
+import { formatFullDateTime } from "../public/shared.ts";
 import "./cfp.css";
 
 interface EventRecord {
@@ -135,22 +136,13 @@ async function readJson<T>(path: string): Promise<T> {
   return response.json<T>();
 }
 
-function localMoment(value: string | null): { label: string; zone: string } | null {
+// ABOUTME: The deadline reads in the event's own timezone, not the viewer's — a submitter in any
+// timezone must see the exact same instant the CFP actually closes, matching every other public surface.
+function eventMoment(value: string | null, timeZone: string): { label: string; zone: string } | null {
   if (value === null) {
     return null;
   }
-  const date = new Date(value);
-  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const label = new Intl.DateTimeFormat(undefined, {
-    weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    timeZoneName: "short",
-  }).format(date);
-  return { label, zone };
+  return { label: formatFullDateTime(new Date(value).getTime(), timeZone), zone: timeZone };
 }
 
 function localAvailability(form: FormRecord): Availability {
@@ -462,7 +454,10 @@ export function CfpPage({ path }: { path: string }) {
       .catch((error: unknown) => setPageError(error instanceof Error ? error.message : "The CFP could not be loaded."));
   }, [slug, submissionId]);
 
-  const deadline = useMemo(() => localMoment(cfp?.form.closeAt ?? null), [cfp?.form.closeAt]);
+  const deadline = useMemo(
+    () => eventMoment(cfp?.form.closeAt ?? null, cfp?.event.timezone ?? "UTC"),
+    [cfp?.form.closeAt, cfp?.event.timezone],
+  );
   const orderedFields = useMemo(
     () => [...(cfp?.fields ?? [])].sort((left, right) => left.sortOrder - right.sortOrder),
     [cfp?.fields],
@@ -556,8 +551,7 @@ export function CfpPage({ path }: { path: string }) {
           <aside className="cfp-deadline" aria-label="Submission deadline">
             <span>Submission deadline</span>
             <strong>{deadline?.label ?? "No deadline set"}</strong>
-            <small data-testid="deadline-local">Local time · {deadline?.zone ?? "zone unavailable"}</small>
-            <small>Event zone · {cfp.event.timezone}</small>
+            <small data-testid="deadline-local">Event time · {deadline?.zone ?? "zone unavailable"}</small>
           </aside>
         </section>
 
