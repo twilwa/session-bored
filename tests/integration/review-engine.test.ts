@@ -445,4 +445,269 @@ describe("review engine", () => {
       .first<{ count: number }>();
     expect(after?.count).toBe(before?.count);
   });
+
+  it("reserves review decisions for organizers", async () => {
+    await request("/api/health");
+    const endpoint = "/api/review/submissions/sub_ci_monorepo/status";
+    const decision = (cookie?: string) => request(endpoint, {
+      method: "PATCH",
+      headers: {
+        ...(cookie === undefined ? {} : { cookie }),
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ status: "accepted" }),
+    });
+
+    expect((await decision()).status).toBe(401);
+    const reviewerCookie = await signIn("sbek-reviewer@example.com", "SbekTest!2027-rev");
+    expect((await decision(reviewerCookie)).status).toBe(403);
+    const speakerCookie = await signIn("sbek-speaker@example.com", "SbekTest!2027-spk");
+    expect((await decision(speakerCookie)).status).toBe(403);
+    const organizerCookie = await signIn("sbek-organizer@example.com", "SbekTest!2027-org");
+    expect((await decision(organizerCookie)).status).toBe(200);
+  });
+
+  it("applies every committee decision silently from both review surfaces", async () => {
+    await request("/api/health");
+    const organizerCookie = await signIn("sbek-organizer@example.com", "SbekTest!2027-org");
+    const emailDispatchesBefore = await env.DB.prepare(
+      "select count(*) as count from email_dispatch",
+    ).first<{ count: number }>();
+    const decisionNoticesBefore = await env.DB.prepare(
+      "select count(*) as count from decision_notice",
+    ).first<{ count: number }>();
+
+    for (const status of ["accepted", "maybe", "declined"] as const) {
+      const reviewResponse = await request(
+        "/api/review/submissions/sub_ci_monorepo/status",
+        {
+          method: "PATCH",
+          headers: { cookie: organizerCookie, "content-type": "application/json" },
+          body: JSON.stringify({ status }),
+        },
+      );
+      expect(reviewResponse.status).toBe(200);
+      expect(await reviewResponse.json()).toEqual(
+        expect.objectContaining({
+          id: "sub_ci_monorepo",
+          status,
+          notificationSent: false,
+        }),
+      );
+
+      const dispositionResponse = await request(
+        "/api/events/evt_devflow_conf_2027/disposition",
+        {
+          method: "PATCH",
+          headers: { cookie: organizerCookie, "content-type": "application/json" },
+          body: JSON.stringify({ submissionIds: ["sub_ci_monorepo"], status }),
+        },
+      );
+      expect(dispositionResponse.status).toBe(200);
+      expect(await dispositionResponse.json()).toEqual(
+        expect.objectContaining({
+          notificationMode: "silent",
+          updated: [{ id: "sub_ci_monorepo", status }],
+        }),
+      );
+    }
+
+    const emailDispatchesAfter = await env.DB.prepare(
+      "select count(*) as count from email_dispatch",
+    ).first<{ count: number }>();
+    const decisionNoticesAfter = await env.DB.prepare(
+      "select count(*) as count from decision_notice",
+    ).first<{ count: number }>();
+    expect(emailDispatchesAfter?.count).toBe(emailDispatchesBefore?.count);
+    expect(decisionNoticesAfter?.count).toBe(decisionNoticesBefore?.count);
+  });
+
+  it("keeps one handoff when review acceptance is repeated from disposition", async () => {
+    await request("/api/health");
+    const organizerCookie = await signIn("sbek-organizer@example.com", "SbekTest!2027-org");
+    const reviewResponse = await request(
+      "/api/review/submissions/sub_ci_monorepo/status",
+      {
+        method: "PATCH",
+        headers: { cookie: organizerCookie, "content-type": "application/json" },
+        body: JSON.stringify({ status: "accepted" }),
+      },
+    );
+    expect(reviewResponse.status).toBe(200);
+    const firstSession = await env.DB.prepare(
+      "select id from program_session where submission_id = ?",
+    ).bind("sub_ci_monorepo").first<{ id: string }>();
+    expect(firstSession?.id).toMatch(/^ses_/);
+
+    const dispositionResponse = await request(
+      "/api/events/evt_devflow_conf_2027/disposition",
+      {
+        method: "PATCH",
+        headers: { cookie: organizerCookie, "content-type": "application/json" },
+        body: JSON.stringify({ submissionIds: ["sub_ci_monorepo"], status: "accepted" }),
+      },
+    );
+    expect(dispositionResponse.status).toBe(200);
+    const disposition = await dispositionResponse.json<{
+      handoffs: Array<{ session: { id: string }; speakers: Array<{ id: string }> }>;
+    }>();
+    expect(disposition.handoffs[0]?.session.id).toBe(firstSession?.id);
+    expect(disposition.handoffs[0]?.speakers.map((speaker) => speaker.id)).toEqual([
+      "spk_priya_devflow_2027",
+    ]);
+
+    const sessions = await env.DB.prepare(
+      "select count(*) as count from program_session where submission_id = ?",
+    ).bind("sub_ci_monorepo").first<{ count: number }>();
+    const sessionSpeakers = await env.DB.prepare(
+      "select count(*) as count from session_speaker where session_id = ?",
+    ).bind(firstSession?.id).first<{ count: number }>();
+    const taskAssignments = await env.DB.prepare(
+      "select count(*) as count from task_assignee where speaker_id = ?",
+    ).bind("spk_priya_devflow_2027").first<{ count: number }>();
+    expect(sessions?.count).toBe(1);
+    expect(sessionSpeakers?.count).toBe(1);
+    expect(taskAssignments?.count).toBe(5);
+  });
+
+  it("un-accepts from review without destroying or orphaning handoff records", async () => {
+    await request("/api/health");
+    const organizerCookie = await signIn("sbek-organizer@example.com", "SbekTest!2027-org");
+    const acceptResponse = await request(
+      "/api/events/evt_devflow_conf_2027/disposition",
+      {
+        method: "PATCH",
+        headers: { cookie: organizerCookie, "content-type": "application/json" },
+        body: JSON.stringify({ submissionIds: ["sub_ci_monorepo"], status: "accepted" }),
+      },
+    );
+    const accepted = await acceptResponse.json<{
+      handoffs: Array<{ session: { id: string }; speakers: Array<{ id: string }> }>;
+    }>();
+    const sessionId = accepted.handoffs[0]?.session.id;
+    const speakerIds = accepted.handoffs[0]?.speakers.map((speaker) => speaker.id) ?? [];
+    expect(sessionId).toMatch(/^ses_/);
+    await env.DB.prepare(
+      "update program_session set schedule_status = ?, scheduled_date = ?, starts_at = ?, ends_at = ? where id = ?",
+    ).bind(
+      "placed",
+      "2027-05-13",
+      new Date("2027-05-13T17:00:00Z").getTime(),
+      new Date("2027-05-13T17:30:00Z").getTime(),
+      sessionId,
+    ).run();
+
+    const reverseResponse = await request(
+      "/api/review/submissions/sub_ci_monorepo/status",
+      {
+        method: "PATCH",
+        headers: { cookie: organizerCookie, "content-type": "application/json" },
+        body: JSON.stringify({ status: "maybe" }),
+      },
+    );
+    expect(reverseResponse.status).toBe(200);
+    expect(await reverseResponse.json()).toEqual(
+      expect.objectContaining({
+        id: "sub_ci_monorepo",
+        status: "maybe",
+        notificationSent: false,
+      }),
+    );
+
+    const retainedSession = await env.DB.prepare(
+      "select id, content_status as contentStatus, schedule_status as scheduleStatus, scheduled_date as scheduledDate, starts_at as startsAt, ends_at as endsAt from program_session where submission_id = ?",
+    ).bind("sub_ci_monorepo").first<{
+      id: string;
+      contentStatus: string;
+      scheduleStatus: string;
+      scheduledDate: string;
+      startsAt: number;
+      endsAt: number;
+    }>();
+    expect(retainedSession).toEqual({
+      id: sessionId,
+      contentStatus: "draft",
+      scheduleStatus: "placed",
+      scheduledDate: "2027-05-13",
+      startsAt: new Date("2027-05-13T17:00:00Z").getTime(),
+      endsAt: new Date("2027-05-13T17:30:00Z").getTime(),
+    });
+    const retainedSpeakers = await env.DB.prepare(
+      "select speaker_id as speakerId from session_speaker where session_id = ? order by speaker_id",
+    ).bind(sessionId).all<{ speakerId: string }>();
+    expect(retainedSpeakers.results.map((speaker) => speaker.speakerId)).toEqual(speakerIds);
+    const retainedTaskAssignments = await env.DB.prepare(
+      "select count(*) as count from task_assignee where speaker_id = ?",
+    ).bind(speakerIds[0]).first<{ count: number }>();
+    expect(retainedTaskAssignments?.count).toBe(5);
+  });
+
+  it("hands an accepted review submission to the program and onboarding flows", async () => {
+    await request("/api/health");
+    const createResponse = await request("/api/public/cfp/devflow-conf-2027/submissions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        intent: "submit",
+        speaker: {
+          name: "Review Handoff Speaker",
+          email: "review-handoff@example.com",
+          jobTitle: "Staff Engineer",
+          organization: "Program Systems",
+        },
+        proposal: {
+          title: "The review handoff contract",
+          abstract: "How one decision path keeps program and onboarding records consistent.",
+          track: "Developer Experience",
+          format: "Talk (30 min)",
+          audienceLevel: "Intermediate",
+          answers: { key_takeaway: "A decision is not complete until its handoff succeeds." },
+        },
+      }),
+    });
+    expect(createResponse.status).toBe(201);
+    const created = await createResponse.json<{
+      submission: { id: string; speaker: { speakerId: string } };
+    }>();
+
+    const organizerCookie = await signIn("sbek-organizer@example.com", "SbekTest!2027-org");
+    const response = await request(
+      `/api/review/submissions/${created.submission.id}/status`,
+      {
+        method: "PATCH",
+        headers: { cookie: organizerCookie, "content-type": "application/json" },
+        body: JSON.stringify({ status: "accepted" }),
+      },
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual(
+      expect.objectContaining({
+        id: created.submission.id,
+        status: "accepted",
+        notificationSent: false,
+      }),
+    );
+
+    const session = await env.DB.prepare(
+      "select id, submission_id as submissionId from program_session where submission_id = ?",
+    ).bind(created.submission.id).first<{ id: string; submissionId: string }>();
+    expect(session).toEqual({
+      id: expect.stringMatching(/^ses_/),
+      submissionId: created.submission.id,
+    });
+    const adoptedSpeaker = await env.DB.prepare(
+      "select speaker_id as speakerId from session_speaker where session_id = ?",
+    ).bind(session?.id).first<{ speakerId: string }>();
+    expect(adoptedSpeaker?.speakerId).toBe(created.submission.speaker.speakerId);
+    const assignedTasks = await env.DB.prepare(
+      "select task.title from task_assignee join task on task.id = task_assignee.task_id where task_assignee.speaker_id = ? order by task.id",
+    ).bind(created.submission.speaker.speakerId).all<{ title: string }>();
+    expect(assignedTasks.results.map((task) => task.title)).toEqual([
+      "Confirm participation",
+      "Upload headshot",
+      "Complete bio and profile",
+      "Upload final slides by 2027-05-01",
+      "Sign speaker release form",
+    ]);
+  });
 });
