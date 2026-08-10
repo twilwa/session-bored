@@ -13,6 +13,18 @@ test("public CFP is populated and mobile readable", async ({ page }) => {
   expect(width).toBeLessThanOrEqual(375);
 });
 
+test("every public surface is reachable from the nav at a 375-pixel phone width", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto("/");
+
+  const nav = page.getByRole("navigation", { name: "Public navigation" });
+  for (const label of ["Call for speakers", "Program", "Agenda", "Itinerary", "Speakers", "Gallery", "Sign in"]) {
+    await expect(nav.getByRole("link", { name: label, exact: true })).toBeVisible();
+  }
+  const width = await page.evaluate(() => document.documentElement.scrollWidth);
+  expect(width).toBeLessThanOrEqual(375);
+});
+
 test("public program shows a published fixture session", async ({ page }) => {
   await page.goto("/program");
 
