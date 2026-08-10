@@ -12,6 +12,7 @@ import { ProgramPage } from "./pages/public/ProgramPage.tsx";
 import { SpeakerDetailPage } from "./pages/public/SpeakerDetailPage.tsx";
 import { SpeakersPage } from "./pages/public/SpeakersPage.tsx";
 import { SubmitterDashboardPage } from "./pages/submitter/SubmitterDashboardPage.tsx";
+import { RosterPage } from "./pages/roster/RosterPage.tsx";
 
 type Role = "organizer" | "reviewer" | "speaker";
 interface SessionPayload {
@@ -144,7 +145,7 @@ function RoleShell({ role, children }: { role: Role; children: ReactNode }) {
     ? [
       ["Overview", "/organizer"], ["Call for speakers", "/organizer/cfp"],
       ["Submissions", "/organizer"], ["Review", "/organizer/review"],
-      ["Speakers", "/organizer"], ["Sessions", "/organizer"],
+      ["Speakers", "/organizer/roster"], ["Missing info", "/organizer/roster/missing"], ["Sessions", "/organizer"],
       ["Agenda", "/organizer"], ["Files", "/organizer"],
     ]
     : role === "reviewer"
@@ -256,6 +257,7 @@ export function App() {
   if (path.startsWith("/organizer/cfp")) return <RoleShell role="organizer"><CfpBuilderPage /></RoleShell>;
   if (path === "/organizer/disposition") return <RoleShell role="organizer"><DispositionPage /></RoleShell>;
   if (path.startsWith("/organizer/review")) return <RoleShell role="organizer"><OrganizerReviewPage path={path} /></RoleShell>;
+  if (path.startsWith("/organizer/roster")) return <RoleShell role="organizer"><RosterPage path={path} /></RoleShell>;
   if (path.startsWith("/organizer")) return <OrganizerPage />;
   if (path.startsWith("/reviewer")) return <ReviewerPage path={path} />;
   if (path === "/program" || path.startsWith("/program/")) {

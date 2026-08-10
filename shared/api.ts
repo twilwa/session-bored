@@ -146,6 +146,65 @@ export const routeMap = {
   },
 } as const satisfies Record<string, RouteContract>;
 
+export const rosterRouteMap = {
+  roster: { method: "GET", path: "/api/events/:eventId/roster", module: "speakers", access: "organizer" },
+  addSpeaker: { method: "POST", path: "/api/events/:eventId/speakers", module: "speakers", access: "organizer" },
+  updateSpeaker: { method: "PATCH", path: "/api/events/:eventId/speakers/:speakerId", module: "speakers", access: "organizer" },
+  tasks: { method: "GET", path: "/api/events/:eventId/tasks", module: "tasks", access: "organizer" },
+  createTask: { method: "POST", path: "/api/events/:eventId/tasks", module: "tasks", access: "organizer" },
+  missingInformation: {
+    method: "GET",
+    path: "/api/events/:eventId/missing-information",
+    module: "speakers",
+    access: "organizer",
+  },
+  inviteSpeaker: {
+    method: "POST",
+    path: "/api/events/:eventId/speakers/:speakerId/invitation",
+    module: "communications",
+    access: "organizer",
+  },
+} as const satisfies Record<string, RouteContract>;
+
+export interface RosterSpeakerSummary extends SpeakerSummary {
+  personId: `psn_${string}`;
+  bio: string | null;
+  headshotUrl: string | null;
+  profile: { bioComplete: boolean; headshotComplete: boolean };
+  taskSummary: { total: number; incomplete: number };
+}
+
+export interface RosterTaskSummary {
+  id: `tsk_${string}`;
+  taskType: "general" | "file_request";
+  title: string;
+  instructions: string | null;
+  dueAt: string | null;
+  status: "draft" | "active" | "complete";
+  assignees: Array<{
+    id: `tassn_${string}`;
+    speakerId: `spk_${string}`;
+    speakerName: string;
+    status: "assigned" | "in_progress" | "completed";
+  }>;
+}
+
+export interface MissingInformationItem {
+  speakerId: `spk_${string}`;
+  name: string;
+  email: string;
+  status: SpeakerStatus;
+  missingCount: number;
+  mostOverdueDays: number;
+  missing: Array<{
+    kind: "bio" | "file" | "form" | "headshot" | "task";
+    label: string;
+    taskId: `tsk_${string}` | null;
+    dueAt: string | null;
+    overdueDays: number;
+  }>;
+}
+
 export interface EventSummary {
   id: `evt_${string}`;
   slug: string;
