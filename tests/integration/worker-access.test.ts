@@ -76,4 +76,19 @@ describe("Worker foundation", () => {
     const cookie = await signIn("sbek-organizer@example.com", "SbekTest!2027-org");
     expect((await request("/api/events", { headers: { cookie } })).status).toBe(200);
   });
+
+  it("invalidates the current session on sign-out", async () => {
+    await request("/api/health");
+    const cookie = await signIn("sbek-organizer@example.com", "SbekTest!2027-org");
+    expect((await request("/api/session", { headers: { cookie } })).status).toBe(200);
+
+    const response = await request("/api/auth/sign-out", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie, origin: "http://example.test" },
+      body: JSON.stringify({}),
+    });
+
+    expect(response.status).toBe(200);
+    expect((await request("/api/session", { headers: { cookie } })).status).toBe(401);
+  });
 });

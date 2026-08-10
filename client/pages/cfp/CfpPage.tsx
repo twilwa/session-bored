@@ -7,6 +7,7 @@ import type {
   CfpSubmissionIntent,
   CfpSubmissionWrite,
 } from "../../../shared/api.ts";
+import { observePublicSession, PublicHeader, updatePublicSession } from "../../lib.tsx";
 import { SubmitterAccountPanel, type SubmitterAccountUser } from "../submitter/SubmitterAccountPanel.tsx";
 import { formatFullDateTime } from "../public/shared.ts";
 import "./cfp.css";
@@ -227,22 +228,6 @@ function updateField(field: FormFieldRecord, value: string, state: FormState): F
   }
 }
 
-function PublicHeader() {
-  return (
-    <header className="public-header">
-      <a className="brand" href="/">
-        <span aria-hidden="true" className="brand__light">●</span>
-        <span>Greenroom</span>
-      </a>
-      <nav aria-label="Public navigation">
-        <a href="/cfp/devflow-conf-2027">Call for speakers</a>
-        <a href="/program">Program</a>
-        <a className="nav-signin" href="/login">Sign in</a>
-      </nav>
-    </header>
-  );
-}
-
 export function isProposalFieldVisible(
   fields: FormFieldRecord[],
   field: FormFieldRecord,
@@ -415,12 +400,24 @@ export function CfpPage({ path }: { path: string }) {
       },
     }));
   }
+
+  function authenticateAccountUser(user: SubmitterAccountUser): void {
+    applyAccountUser(user);
+    updatePublicSession(user);
+  }
   const [newerVersionAvailable, setNewerVersionAvailable] = useState<{
     version: number;
     startUrl: string;
   } | null>(null);
 
   useEffect(() => {
+    const stopObservingSession = observePublicSession((user) => {
+      if (user === null) {
+        setAccountUser(null);
+      } else {
+        applyAccountUser(user);
+      }
+    });
     setSavedReferences(readSavedReferences());
     const key = new URLSearchParams(window.location.search).get("key");
     setEditKey(key);
@@ -452,6 +449,7 @@ export function CfpPage({ path }: { path: string }) {
         }
       })
       .catch((error: unknown) => setPageError(error instanceof Error ? error.message : "The CFP could not be loaded."));
+    return stopObservingSession;
   }, [slug, submissionId]);
 
   const deadline = useMemo(
@@ -576,7 +574,7 @@ export function CfpPage({ path }: { path: string }) {
           </div>
         </section>
 
-        <SubmitterAccountPanel onAuthenticated={applyAccountUser} user={accountUser} />
+        <SubmitterAccountPanel onAuthenticated={authenticateAccountUser} user={accountUser} />
 
         {savedReferences.length === 0 ? null : (
           <section className="cfp-own-list" aria-label="Your proposals on this device">

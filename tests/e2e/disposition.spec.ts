@@ -7,7 +7,7 @@ test("organizer decides silently and reviews a queue-only batch", async ({ page 
   await page.getByLabel("Email").fill("sbek-organizer@example.com");
   await page.getByLabel("Password").fill("SbekTest!2027-org");
   await page.getByRole("button", { name: "Sign in" }).click();
-  await page.getByRole("link", { name: "Disposition" }).click();
+  await page.getByRole("link", { name: "Disposition", exact: true }).click();
 
   await expect(page.getByRole("heading", { name: /Decide quietly/ })).toBeVisible();
   await expect(page.getByText("Status changes never notify speakers.")).toBeVisible();
