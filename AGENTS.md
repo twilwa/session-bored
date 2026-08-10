@@ -94,6 +94,13 @@ lifecycle and relationships are fixed as follows:
 - `submissionAuthorAccess` stores one hashed private author key per submission.
   Public edits require that key and remain writable only while the form window is
   open; reads remain available after close in a locked state.
+- Submitter accounts use Better Auth's `speaker` role. A submission created while
+  signed in belongs to the account through `submission.submitterPersonId` and
+  `person.userId`, receives no anonymous author key, and appears on the submitter
+  dashboard with its live status. Dashboard access follows this person-to-user
+  ownership link rather than the account's role. Existing anonymous people remain
+  unlinked and cannot be claimed by email; their proposals stay accessible only
+  through the private author key.
 
 ## Maintaining this file
 

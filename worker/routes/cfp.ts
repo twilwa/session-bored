@@ -229,27 +229,35 @@ async function authorizeSubmission(
   database: CfpDatabase,
   submissionId: string,
   key: string | undefined,
+  userId?: string,
 ): Promise<boolean> {
-  if (key === undefined || key === "") {
+  if (key !== undefined && key !== "") {
+    const [access] = await database
+      .select({ submissionId: submissionAuthorAccess.submissionId })
+      .from(submissionAuthorAccess)
+      .where(
+        and(
+          eq(submissionAuthorAccess.submissionId, submissionId),
+          eq(submissionAuthorAccess.authorKeyHash, await hashAuthorKey(key)),
+        ),
+      );
+    if (access !== undefined) {
+      await database
+        .update(submissionAuthorAccess)
+        .set({ lastUsedAt: new Date() })
+        .where(eq(submissionAuthorAccess.submissionId, submissionId));
+      return true;
+    }
+  }
+  if (userId === undefined) {
     return false;
   }
-  const [access] = await database
-    .select({ submissionId: submissionAuthorAccess.submissionId })
-    .from(submissionAuthorAccess)
-    .where(
-      and(
-        eq(submissionAuthorAccess.submissionId, submissionId),
-        eq(submissionAuthorAccess.authorKeyHash, await hashAuthorKey(key)),
-      ),
-    );
-  if (access === undefined) {
-    return false;
-  }
-  await database
-    .update(submissionAuthorAccess)
-    .set({ lastUsedAt: new Date() })
-    .where(eq(submissionAuthorAccess.submissionId, submissionId));
-  return true;
+  const [owned] = await database
+    .select({ id: submissions.id })
+    .from(submissions)
+    .innerJoin(people, eq(submissions.submitterPersonId, people.id))
+    .where(and(eq(submissions.id, submissionId), eq(people.userId, userId)));
+  return owned !== undefined;
 }
 
 async function resolveTaxonomy(
@@ -291,6 +299,7 @@ async function findOrCreateSpeaker(
   database: CfpDatabase,
   eventId: string,
   input: CfpSubmissionInput,
+  userId?: string,
 ): Promise<{ personId: string; speakerId: string }> {
   const email = input.speaker.email?.trim().toLowerCase() ?? "";
   let [person] = await database.select().from(people).where(eq(people.email, email));
@@ -298,6 +307,7 @@ async function findOrCreateSpeaker(
     const personId = createPublicId("psn");
     await database.insert(people).values({
       id: personId,
+      userId,
       name: input.speaker.name?.trim() ?? "",
       email,
       jobTitle: input.speaker.jobTitle?.trim() || null,
@@ -447,7 +457,10 @@ function submissionPaths(slug: string, submissionId: string, key?: string) {
   };
 }
 
-const cfpRoutes = new Hono<{ Bindings: CloudflareBindings }>();
+const cfpRoutes = new Hono<{
+  Bindings: CloudflareBindings;
+  Variables: { authUser: { id: string; email: string } | null };
+}>();
 
 cfpRoutes.post("/:slug/submissions", async (context) => {
   const database = drizzle(context.env.DB);
@@ -471,9 +484,34 @@ cfpRoutes.post("/:slug/submissions", async (context) => {
       422,
     );
   }
-  const author = await findOrCreateSpeaker(database, cfp.event.id, input);
+  const authUser = context.get("authUser");
+  const normalizedEmail = input.speaker.email?.trim().toLowerCase() ?? "";
+  if (authUser !== null && authUser.email.toLowerCase() !== normalizedEmail) {
+    return context.json({
+      error: "account_email_mismatch",
+      message: "Use the email address on your signed-in account for an account-owned proposal.",
+      fields: { speakerEmail: "This email must match your signed-in account." },
+    }, 422);
+  }
+  const [personWithEmail] = await database
+    .select({ userId: people.userId })
+    .from(people)
+    .where(eq(people.email, normalizedEmail));
+  if (authUser !== null && personWithEmail !== undefined && personWithEmail.userId !== authUser.id) {
+    return context.json({
+      error: "anonymous_identity_exists",
+      message: "This email already has anonymous proposals. Keep using their private links; signing in does not claim them.",
+    }, 409);
+  }
+  if (authUser === null && personWithEmail?.userId !== null && personWithEmail?.userId !== undefined) {
+    return context.json({
+      error: "account_sign_in_required",
+      message: "This email belongs to an account. Sign in to add a proposal to its dashboard.",
+    }, 409);
+  }
+  const author = await findOrCreateSpeaker(database, cfp.event.id, input, authUser?.id);
   const submissionId = createPublicId("sub");
-  const access = await createAuthorKey();
+  const access = authUser === null ? await createAuthorKey() : null;
   await database.insert(submissions).values({
     id: submissionId,
     eventId: cfp.event.id,
@@ -491,7 +529,9 @@ cfpRoutes.post("/:slug/submissions", async (context) => {
     notesForReviewers: input.proposal.notesForReviewers?.trim() || null,
     submittedAt: input.intent === "submit" ? new Date() : null,
   });
-  await database.insert(submissionAuthorAccess).values({ submissionId, authorKeyHash: access.hash });
+  if (access !== null) {
+    await database.insert(submissionAuthorAccess).values({ submissionId, authorKeyHash: access.hash });
+  }
   await database.insert(submissionSpeakers).values({
     id: createPublicId("sspk"),
     submissionId,
@@ -502,8 +542,8 @@ cfpRoutes.post("/:slug/submissions", async (context) => {
   const submission = await readSubmission(database, cfp, submissionId);
   return context.json(
     {
-      ...submissionPaths(context.req.param("slug"), submissionId, access.key),
-      editKey: access.key,
+      ...submissionPaths(context.req.param("slug"), submissionId, access?.key),
+      editKey: access?.key,
       message: input.intent === "submit"
         ? cfp.form.confirmationCopy ?? "Your proposal was submitted."
         : "Draft saved. Keep the private return link to continue later.",
@@ -516,7 +556,7 @@ cfpRoutes.post("/:slug/submissions", async (context) => {
 cfpRoutes.get("/:slug/submissions/:submissionId", async (context) => {
   const database = drizzle(context.env.DB);
   const submissionId = context.req.param("submissionId");
-  if (!await authorizeSubmission(database, submissionId, context.req.query("key"))) {
+  if (!await authorizeSubmission(database, submissionId, context.req.query("key"), context.get("authUser")?.id)) {
     return context.json({ error: "not_found", message: "This private proposal link is incomplete or invalid." }, 404);
   }
   const cfp = await getCfp(database, context.req.param("slug"));
@@ -537,7 +577,7 @@ cfpRoutes.get("/:slug/submissions/:submissionId", async (context) => {
 cfpRoutes.patch("/:slug/submissions/:submissionId", async (context) => {
   const database = drizzle(context.env.DB);
   const submissionId = context.req.param("submissionId");
-  if (!await authorizeSubmission(database, submissionId, context.req.query("key"))) {
+  if (!await authorizeSubmission(database, submissionId, context.req.query("key"), context.get("authUser")?.id)) {
     return context.json({ error: "not_found", message: "This private proposal link is incomplete or invalid." }, 404);
   }
   const cfp = await getCfp(database, context.req.param("slug"));
@@ -575,7 +615,7 @@ cfpRoutes.patch("/:slug/submissions/:submissionId", async (context) => {
     .select({ userId: people.userId })
     .from(people)
     .where(eq(people.id, existing.speaker.id));
-  if (author?.userId === null) {
+  if (author?.userId === null || author?.userId === context.get("authUser")?.id) {
     await database
       .update(people)
       .set({

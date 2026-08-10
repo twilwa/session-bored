@@ -30,6 +30,7 @@ import { createAuth, type AuthSession } from "./auth.ts";
 import cfpRoutes from "./routes/cfp.ts";
 import reviewRoutes from "./routes/review.ts";
 import { publicRoutes } from "./routes/public.ts";
+import submitterRoutes from "./routes/submitter.ts";
 import { ensureSeeded, fixtureIds } from "./seed.ts";
 import dispositionRoutes from "./routes/disposition.ts";
 
@@ -103,6 +104,7 @@ app.get("/api/session", requireAccess("authenticated"), (context) =>
 
 app.route("/api", reviewRoutes);
 app.route("/api/public", publicRoutes);
+app.route("/api", submitterRoutes);
 
 app.get("/api/public/cfp/:slug", async (context) => {
   const database = drizzle(context.env.DB);
@@ -394,6 +396,8 @@ for (const [prefix, access] of [
   app.get(prefix, prepareRequest, requireAccess(access), (context) => context.env.ASSETS.fetch(context.req.raw));
   app.get(`${prefix}/*`, prepareRequest, requireAccess(access), (context) => context.env.ASSETS.fetch(context.req.raw));
 }
+app.get("/submitter", prepareRequest, requireAccess("authenticated"), (context) => context.env.ASSETS.fetch(context.req.raw));
+app.get("/submitter/*", prepareRequest, requireAccess("authenticated"), (context) => context.env.ASSETS.fetch(context.req.raw));
 
 export type AppType = typeof app;
 export default app;

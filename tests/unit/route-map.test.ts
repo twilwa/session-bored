@@ -29,6 +29,7 @@ describe("typed route map", () => {
     expect(routeMap.publicCfp.access).toBe("public");
     expect(routeMap.reviewerAssignments.access).toBe("reviewer");
     expect(routeMap.speakerContent.access).toBe("speaker");
+    expect(routeMap.submitterSubmissions.access).toBe("authenticated");
     expect(routeMap.events.access).toBe("organizer");
   });
 });
