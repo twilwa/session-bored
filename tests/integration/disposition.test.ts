@@ -8,17 +8,78 @@ async function request(path: string, init?: RequestInit): Promise<Response> {
   return worker.request(`http://example.test${path}`, init, env);
 }
 
-async function organizerCookie(): Promise<string> {
+async function signIn(email: string, password: string): Promise<string> {
   const response = await request("/api/auth/sign-in/email", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
-      email: "sbek-organizer@example.com",
-      password: "SbekTest!2027-org",
+      email,
+      password,
     }),
   });
   expect(response.status).toBe(200);
   return response.headers.get("set-cookie")?.split(";")[0] ?? "";
+}
+
+const protectedDecisionOperations: Array<{
+  name: string;
+  path: string;
+  init: RequestInit;
+}> = [
+  {
+    name: "set a single decision",
+    path: "/api/events/evt_devflow_conf_2027/disposition",
+    init: {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        submissionIds: ["sub_ci_monorepo"],
+        status: "accepted",
+      }),
+    },
+  },
+  {
+    name: "set decisions in bulk",
+    path: "/api/events/evt_devflow_conf_2027/disposition",
+    init: {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        submissionIds: ["sub_ci_monorepo", "sub_ai_verification"],
+        status: "declined",
+      }),
+    },
+  },
+  {
+    name: "preview a decision batch",
+    path: "/api/events/evt_devflow_conf_2027/decision-batches",
+    init: {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ submissionIds: ["sub_ci_monorepo"] }),
+    },
+  },
+  {
+    name: "dispatch a decision batch",
+    path: "/api/events/evt_devflow_conf_2027/decision-batches/eml_missing/dispatch",
+    init: { method: "POST" },
+  },
+];
+
+async function expectDecisionOperationStatus(
+  expectedStatus: number,
+  cookie?: string,
+): Promise<void> {
+  for (const operation of protectedDecisionOperations) {
+    const headers = new Headers(operation.init.headers);
+    if (cookie !== undefined) {
+      headers.set("cookie", cookie);
+    }
+    expect(
+      (await request(operation.path, { ...operation.init, headers })).status,
+      operation.name,
+    ).toBe(expectedStatus);
+  }
 }
 
 describe("submission disposition", () => {
@@ -26,7 +87,73 @@ describe("submission disposition", () => {
 
   beforeEach(async () => {
     await request("/api/health");
-    cookie = await organizerCookie();
+    cookie = await signIn("sbek-organizer@example.com", "SbekTest!2027-org");
+  });
+
+  it("requires authentication for every decision operation", async () => {
+    await expectDecisionOperationStatus(401);
+  });
+
+  it("blocks reviewers from every decision operation", async () => {
+    const reviewerCookie = await signIn(
+      "sbek-reviewer@example.com",
+      "SbekTest!2027-rev",
+    );
+    await expectDecisionOperationStatus(403, reviewerCookie);
+  });
+
+  it("blocks speakers from every decision operation", async () => {
+    const speakerCookie = await signIn(
+      "sbek-speaker@example.com",
+      "SbekTest!2027-spk",
+    );
+    await expectDecisionOperationStatus(403, speakerCookie);
+  });
+
+  it("rejects invalid disposition and decision-batch inputs", async () => {
+    const organizerHeaders = { cookie, "content-type": "application/json" };
+    const invalidDispositionPayloads = [
+      { submissionIds: [], status: "accepted" },
+      { submissionIds: ["sub_ci_monorepo"], status: "rejected" },
+      { submissionIds: ["not-a-submission"], status: "accepted" },
+    ];
+    for (const payload of invalidDispositionPayloads) {
+      const response = await request("/api/events/evt_devflow_conf_2027/disposition", {
+        method: "PATCH",
+        headers: organizerHeaders,
+        body: JSON.stringify(payload),
+      });
+      expect(response.status).toBe(400);
+    }
+    expect((await request("/api/events/evt_devflow_conf_2027/disposition", {
+      method: "PATCH",
+      headers: organizerHeaders,
+      body: "{",
+    })).status).toBe(400);
+
+    for (const submissionIds of [[], ["not-a-submission"]]) {
+      const response = await request(
+        "/api/events/evt_devflow_conf_2027/decision-batches",
+        {
+          method: "POST",
+          headers: organizerHeaders,
+          body: JSON.stringify({ submissionIds }),
+        },
+      );
+      expect(response.status).toBe(400);
+    }
+    expect((await request(
+      "/api/events/evt_devflow_conf_2027/decision-batches",
+      {
+        method: "POST",
+        headers: organizerHeaders,
+        body: "{",
+      },
+    )).status).toBe(400);
+    expect((await request(
+      "/api/events/evt_devflow_conf_2027/decision-batches/eml_missing/dispatch",
+      { method: "POST", headers: { cookie } },
+    )).status).toBe(404);
   });
 
   it("changes individual and bulk decisions without creating notification side effects", async () => {

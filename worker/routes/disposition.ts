@@ -3,6 +3,7 @@
 import { and, eq, inArray, isNull, ne } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { Hono } from "hono";
+import { createMiddleware } from "hono/factory";
 import {
   decisionBatchItems,
   decisionBatches,
@@ -47,19 +48,16 @@ function isSubmissionIdList(value: unknown): value is string[] {
 
 const dispositionRoutes = new Hono<DispositionEnvironment>();
 
-dispositionRoutes.use("/api/events/:eventId/disposition*", async (context, next) => {
+const requireOrganizer = createMiddleware<DispositionEnvironment>(async (context, next) => {
   if (context.get("role") !== "organizer") {
     return context.json({ error: context.get("role") === null ? "authentication_required" : "forbidden" }, context.get("role") === null ? 401 : 403);
   }
   await next();
 });
 
-dispositionRoutes.use("/api/events/:eventId/decision-batches*", async (context, next) => {
-  if (context.get("role") !== "organizer") {
-    return context.json({ error: context.get("role") === null ? "authentication_required" : "forbidden" }, context.get("role") === null ? 401 : 403);
-  }
-  await next();
-});
+dispositionRoutes.use("/api/events/:eventId/disposition", requireOrganizer);
+dispositionRoutes.use("/api/events/:eventId/decision-batches", requireOrganizer);
+dispositionRoutes.use("/api/events/:eventId/decision-batches/*", requireOrganizer);
 
 function renderDecisionLetter(
   outcome: DecisionStatus,
