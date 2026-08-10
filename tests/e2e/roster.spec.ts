@@ -1,5 +1,5 @@
-// ABOUTME: Exercises the organizer roster, bulk assignment, and missing-information worklist in a real browser.
-// ABOUTME: Confirms the seeded event exposes a complete morning chase workflow without mocked requests.
+// ABOUTME: Exercises organizer roster, task management, and missing-information workflows in a real browser.
+// ABOUTME: Confirms the seeded event supports a complete onboarding workflow without mocked requests.
 import { expect, test } from "@playwright/test";
 
 async function signInAsOrganizer(page: import("@playwright/test").Page): Promise<void> {
@@ -86,4 +86,43 @@ test("organizer assigns a file request in bulk and sees who needs chasing", asyn
   await expect(page.getByText("Headshot", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("Upload accessibility-ready slides", { exact: true }).first()).toBeVisible();
   await expect(page.getByText(/days overdue/).first()).toBeVisible();
+});
+
+test("organizer edits, reassigns, and removes a task from the ledger", async ({ page }) => {
+  await signInAsOrganizer(page);
+  await page.goto("/organizer/roster/tasks");
+
+  const suffix = Date.now().toString();
+  const originalTitle = `Confirm ledger workflow ${suffix}`;
+  const updatedTitle = `Upload ledger workflow ${suffix}`;
+  await page.getByLabel("Task title").fill(originalTitle);
+  await page.getByLabel(/Priya Raman/).check();
+  await page.getByRole("button", { name: "Assign to 1 speaker" }).click();
+  await expect(page.getByRole("row", { name: new RegExp(originalTitle) })).toBeVisible();
+
+  await page.getByRole("button", { name: `Edit ${originalTitle}` }).click();
+  const editDialog = page.getByRole("dialog", { name: `Edit ${originalTitle}` });
+  await editDialog.getByLabel("Task kind").selectOption("file_request");
+  await editDialog.getByLabel("Task title").fill(updatedTitle);
+  await editDialog.getByLabel("Instructions").fill("Upload the final event checklist.");
+  await editDialog.getByLabel("Due date").fill("2027-04-30");
+  await editDialog.getByLabel(/Priya Raman/).uncheck();
+  await editDialog.getByLabel(/Marcus Okafor/).check();
+  await editDialog.getByRole("button", { name: "Save task" }).click();
+
+  const updatedRow = page.getByRole("row", { name: new RegExp(updatedTitle) });
+  await expect(updatedRow).toContainText("file request");
+  await expect(updatedRow).toContainText("1");
+  await page.getByRole("button", { name: `Edit ${updatedTitle}` }).click();
+  const updatedDialog = page.getByRole("dialog", { name: `Edit ${updatedTitle}` });
+  await expect(updatedDialog.getByLabel(/Priya Raman/)).not.toBeChecked();
+  await expect(updatedDialog.getByLabel(/Marcus Okafor/)).toBeChecked();
+  await updatedDialog.getByRole("button", { name: "Cancel" }).click();
+
+  await page.getByRole("button", { name: `Remove ${updatedTitle}` }).click();
+  const removeDialog = page.getByRole("dialog", { name: `Remove ${updatedTitle}?` });
+  await expect(removeDialog).toContainText("retaining completed work and uploaded files");
+  await removeDialog.getByRole("button", { name: "Remove task" }).click();
+  await expect(page.getByRole("row", { name: new RegExp(updatedTitle) })).toHaveCount(0);
+  await expect(page.getByRole("status")).toContainText("Completed work and uploads were retained");
 });

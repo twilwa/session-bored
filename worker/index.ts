@@ -1,6 +1,6 @@
 // ABOUTME: Serves Greenroom's same-origin Hono routes, Better Auth, and protected React assets.
 // ABOUTME: Seeds fixture data and enforces role plus ownership scoping before resource access.
-import { and, eq, inArray, ne } from "drizzle-orm";
+import { and, eq, inArray, isNull, ne } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { Hono } from "hono";
 import { createMiddleware } from "hono/factory";
@@ -380,7 +380,11 @@ app.get("/api/speaker/content", requireAccess("speaker"), async (context) => {
     })
     .from(taskAssignees)
     .innerJoin(tasks, eq(taskAssignees.taskId, tasks.id))
-    .where(eq(taskAssignees.speakerId, profile.speakerId));
+    .where(and(
+      eq(taskAssignees.speakerId, profile.speakerId),
+      isNull(taskAssignees.deletedAt),
+      isNull(tasks.deletedAt),
+    ));
   const taskIds = ownTasks.map((task) => task.id);
   const taskFiles = taskIds.length === 0 ? [] : await database
     .select({
