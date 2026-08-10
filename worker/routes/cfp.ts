@@ -20,6 +20,7 @@ import {
   submissionValues,
   tracks,
 } from "../../db/schema.ts";
+import { sendSubmissionConfirmationEmail } from "../email/submission-confirmation.ts";
 
 export interface CfpAvailability {
   canWrite: boolean;
@@ -611,6 +612,27 @@ cfpRoutes.post("/:slug/submissions", async (context) => {
   });
   await replaceProposalRelations(database, submissionId, cfp.fields, input, taxonomy.trackId);
   const submission = await readSubmission(database, cfp, submissionId);
+  if (input.intent === "submit") {
+    await sendSubmissionConfirmationEmail({
+      env: context.env,
+      database,
+      eventId: cfp.event.id as `evt_${string}`,
+      eventName: cfp.event.name,
+      recipientEmail: input.speaker.email,
+      recipientName: input.speaker.name?.trim() || "there",
+      submissionTitle: submission?.title ?? input.proposal.title ?? "your proposal",
+      formConfirmationCopy: cfp.form.confirmationEmailCopy,
+      returnUrl: `${context.env.APP_ORIGIN}${
+        submissionPaths(context.req.param("slug"), submissionId, access?.key).editUrl
+      }`,
+    }).catch((error) =>
+      console.error(JSON.stringify({
+        message: "submission_confirmation_failed",
+        submissionId,
+        error: error instanceof Error ? error.message : String(error),
+      }))
+    );
+  }
   return context.json(
     {
       ...submissionPaths(context.req.param("slug"), submissionId, access?.key),
@@ -731,6 +753,27 @@ cfpRoutes.patch("/:slug/submissions/:submissionId", async (context) => {
     .where(eq(submissions.id, submissionId));
   await replaceProposalRelations(database, submissionId, cfp.fields, input, taxonomy.trackId);
   const submission = await readSubmission(database, cfp, submissionId);
+  if (becomesSubmitted) {
+    await sendSubmissionConfirmationEmail({
+      env: context.env,
+      database,
+      eventId: cfp.event.id as `evt_${string}`,
+      eventName: cfp.event.name,
+      recipientEmail: existing.speaker.email,
+      recipientName: input.speaker.name?.trim() || existing.speaker.name || "there",
+      submissionTitle: submission?.title ?? existing.title ?? "your proposal",
+      formConfirmationCopy: cfp.form.confirmationEmailCopy,
+      returnUrl: `${context.env.APP_ORIGIN}${
+        submissionPaths(context.req.param("slug"), submissionId, context.req.query("key")).editUrl
+      }`,
+    }).catch((error) =>
+      console.error(JSON.stringify({
+        message: "submission_confirmation_failed",
+        submissionId,
+        error: error instanceof Error ? error.message : String(error),
+      }))
+    );
+  }
   return context.json({
     availability,
     ...submissionPaths(context.req.param("slug"), submissionId),

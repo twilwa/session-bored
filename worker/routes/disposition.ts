@@ -17,6 +17,7 @@ import {
   tracks,
   type Role,
 } from "../../db/schema.ts";
+import { dispatchDecisionNoticeEmails } from "../email/decision-notices.ts";
 import { changeSubmissionStatuses } from "../submission-decision.ts";
 
 type DispositionEnvironment = {
@@ -260,7 +261,7 @@ dispositionRoutes.post("/api/events/:eventId/decision-batches/:batchId/dispatch"
         queuedAt,
       })))
       .onConflictDoNothing()
-      .returning({ submissionId: decisionNotices.submissionId });
+      .returning();
   if (inserted.length > 0) {
     const insertedIds = inserted.map((item) => item.submissionId);
     await database
@@ -278,12 +279,23 @@ dispositionRoutes.post("/api/events/:eventId/decision-batches/:batchId/dispatch"
     .set({ status: "queued", dispatchedAt: batch.dispatchedAt ?? queuedAt })
     .where(eq(decisionBatches.id, batch.id));
 
+  const emailResult = await dispatchDecisionNoticeEmails(
+    database,
+    context.env,
+    context.req.param("eventId") as `evt_${string}`,
+    inserted,
+  );
+
   return context.json({
     status: "queued",
     queuedCount: inserted.length,
     skippedCount: items.length - inserted.length,
-    emailDelivery: "not_configured",
-    message: "Decision notices are queued in Greenroom. No email provider is connected in this lane.",
+    emailDelivery: emailResult.configured ? "dispatched" : "not_configured",
+    sent: emailResult.sent,
+    failed: emailResult.failed,
+    message: emailResult.configured
+      ? `Decision notices dispatched: ${emailResult.sent.length} sent, ${emailResult.failed.length} failed.`
+      : "Decision notices are queued in Greenroom. No email provider is connected in this lane.",
   });
 });
 

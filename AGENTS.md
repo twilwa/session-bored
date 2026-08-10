@@ -13,8 +13,9 @@ This file is the project's committed home for project-intrinsic agent knowledge:
 - Disposition uses `submission.status` as the live committee decision. Status
   changes are always silent. `decision_batch` and `decision_batch_item` freeze
   the reviewed preview, while the unique `decision_notice.submission_id` log
-  makes queue dispatch once-only and exposes later status divergence. This lane
-  queues records only; it does not claim email delivery.
+  makes queue dispatch once-only and exposes later status divergence. Real
+  delivery of those letters is filled in by `worker/email/decision-notices.ts`
+  (see Communications below) without restructuring the dispatch route itself.
 - Accepting adopts each `submission_speaker.person_id` into the event-scoped
   `speaker` row, creates one `program_session` per `submission_id`, links the
   same speakers through `session_speaker`, and assigns the event's configured
@@ -175,6 +176,61 @@ enriched `tasks` (`taskType`, `instructions`, `acceptedFileTypes`,
 - Server-side upload limits default to 5MB/image types for headshots and
   25MB/office-doc types for deliverables (`worker/storage/files.ts`), overridden
   per task by `task.maximumFileBytes` / `task.acceptedFileTypes` when set.
+
+## Communications
+
+`worker/email.ts` is the provider-neutral sending boundary (`EmailMessage` in,
+`EmailDeliveryResult` out). `resolveEmailDelivery(env)` picks the real
+Resend-backed sender (`worker/email/resend.ts`) when `RESEND_API_KEY` and
+`RESEND_FROM_ADDRESS` are set, and the visibly-unconfigured `emailDelivery`
+stub otherwise - local dev, CI, and every test run stay in the unconfigured
+state unless a `.dev.vars` opts in, so nothing here ever reaches the network
+by accident. Every real attempt logs a structured line and, once attempted,
+writes one `email_dispatch` row per recipient
+(`worker/email/send.ts#sendTrackedEmail`); a `provider_not_configured` result
+writes nothing, so unconfigured environments stay silent. Every sending
+function in `worker/email/*` takes an optional `delivery` parameter for this
+reason - tests inject a fake one instead of touching the network.
+
+- **Submission confirmation** (F-11.2) fires from `worker/routes/cfp.ts` only
+  at the moment a submission's `submittedAt` is first set, and only when the
+  submitter has an address - it never invents one.
+- **Decision letters** (F-11.3) are sent by
+  `worker/email/decision-notices.ts#dispatchDecisionNoticeEmails`, called from
+  `worker/routes/disposition.ts`'s dispatch route against only the
+  `decision_notice` rows it just newly inserted, so re-dispatching a batch
+  never re-sends. A failed notice is retried per-recipient through
+  `retryDecisionNotice`, exposed at
+  `POST /api/events/:eventId/decision-notices/:submissionId/retry`. Every
+  attempt goes through `sendTrackedEmail`, so a configured send also lands in
+  the shared `email_dispatch` communications log alongside `decision_notice`.
+- **Portal invitation / onboarding email** (F-6.6, F-11.4): call
+  `sendPortalInvitationEmail({ env, eventId, speakerId })` from
+  `worker/email/portal-invitation.ts`. It owns its own lookup and template
+  rendering - the roster lane only needs an event ID and speaker ID, and must
+  trigger it from a deliberate organizer action, never a status-change hook.
+- **Reminders** (F-11.7) are drafted, never sent, by
+  `worker/email/reminders.ts#draftOverdueTaskReminders` into `email_dispatch`
+  rows with `status = 'draft'`. An organizer reviews, optionally edits
+  (`PATCH /api/events/:eventId/email-dispatches/:id`), and only an explicit
+  `POST .../:id/send` (`worker/email/dispatch-queue.ts#sendQueuedDispatch`)
+  ever delivers one. Nothing drafts a second time for a speaker who already
+  has an unsent draft.
+- **Templates** (F-11.6) live in `worker/email/templates.ts` as a small
+  merge-field registry (`listTemplates`, `renderTemplate`), previewable at
+  `POST /api/events/:eventId/comms/templates/:key/preview` without sending.
+  Decision letters are rendered by disposition.ts itself and are not
+  duplicated here.
+- **Calendar invites** (F-11.8/F-11.9): `sessions.icsUid` is fixed at session
+  creation from the session's durable ID and never changes; `sessions.icsSequence`
+  bumps on every regenerate. `worker/email/calendar-invite.ts#sendSessionCalendarInvite`
+  builds the `.ics` (`worker/email/ics.ts`, no video-meeting link, room
+  included when known) and sends it - a deliberate action at
+  `POST /api/events/:eventId/sessions/:sessionId/calendar-invite`, not
+  triggered by scheduling itself.
+- The one real, network-touching test is opt-in:
+  `RUN_REAL_EMAIL_TEST=1 RESEND_API_KEY=... RESEND_FROM_ADDRESS=... npx vitest run tests/unit/email-live.test.ts`,
+  sending to Resend's documented safe address `delivered@resend.dev`.
 
 ## Maintaining this file
 

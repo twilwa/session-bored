@@ -33,6 +33,7 @@ import aiReviewRoutes from "./routes/ai-review.ts";
 import cfpBuilderRoutes from "./routes/cfp-builder.ts";
 import cfpRoutes from "./routes/cfp.ts";
 import portalRoutes from "./routes/portal.ts";
+import commsRoutes from "./routes/comms.ts";
 import { publicRoutes } from "./routes/public.ts";
 import reviewRoutes from "./routes/review.ts";
 import submitterRoutes from "./routes/submitter.ts";
@@ -100,6 +101,7 @@ app.use("/api/*", prepareRequest);
 app.route("/", dispositionRoutes);
 app.route("/", rosterRoutes);
 app.route("/", agendaRoutes);
+app.route("/", commsRoutes);
 app.on(["GET", "POST"], "/api/auth/*", (context) => createAuth(context.env).handler(context.req.raw));
 app.route("/api/public/cfp", cfpRoutes);
 app.route("/api/cfp-builder", cfpBuilderRoutes);
@@ -436,7 +438,6 @@ app.get("/api/events/:eventId/tasks", requireAccess("organizer"), async (context
 
 for (const path of [
   "/api/events/:eventId/files",
-  "/api/events/:eventId/email-dispatches",
   "/api/events/:eventId/embeds",
 ] as const) {
   app.get(path, requireAccess("organizer"), (context) =>
