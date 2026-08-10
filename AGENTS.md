@@ -10,6 +10,21 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   their local D1 database before starting the Worker.
 - OpenSpec and Beads are suspended for this project. Do not create `openspec/`
   or `.beads/`; build directly against the authoritative PRD.
+- Disposition uses `submission.status` as the live committee decision. Status
+  changes are always silent. `decision_batch` and `decision_batch_item` freeze
+  the reviewed preview, while the unique `decision_notice.submission_id` log
+  makes queue dispatch once-only and exposes later status divergence. This lane
+  queues records only; it does not claim email delivery.
+- Accepting adopts each `submission_speaker.person_id` into the event-scoped
+  `speaker` row, creates one `program_session` per `submission_id`, links the
+  same speakers through `session_speaker`, and assigns the event's configured
+  onboarding tasks. Names, emails, bios, job titles, organizations, roles,
+  title, abstract, format, and track come from the submission graph without
+  re-entry. The roster and portal must consume these rows rather than copy them.
+- Un-accepting never deletes the created speaker, session, task, or assignment.
+  It returns the session content to `draft`, preserves all schedule fields, and
+  pauses session-scoped tasks. Re-accepting reuses the same stable IDs. Agenda
+  and public lanes must gate on the live decision and content status.
 
 ## CI
 

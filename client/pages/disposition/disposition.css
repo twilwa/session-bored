@@ -1,0 +1,30 @@
+/* ABOUTME: Styles the organizer disposition table, safety copy, and letter preview. */
+/* ABOUTME: Makes silent decisions, divergence, and queued-only delivery visible at a glance. */
+.disposition-header h1 { max-width: 780px; }
+.disposition-rule { display: grid; grid-template-columns: auto 1fr 1fr; gap: 20px; margin-top: 28px; padding: 18px 22px; border: 1px solid var(--ink); background: var(--signal); }
+.disposition-rule span { padding-left: 20px; border-left: 1px solid var(--ink); }
+.disposition-controls { display: flex; align-items: end; gap: 14px; flex-wrap: wrap; }
+.disposition-controls > div { margin-right: auto; }
+.disposition-select { display: grid; gap: 5px; font: 0.68rem monospace; text-transform: uppercase; }
+.disposition-select select, .disposition-table select { min-height: 42px; border: 1px solid var(--ink); background: var(--white); padding: 8px 12px; text-transform: capitalize; }
+.disposition-table-wrap { padding: 0; }
+.disposition-table td:first-child, .disposition-table th:first-child { width: 68px; text-align: center; }
+.disposition-table td:nth-child(2) { min-width: 300px; }
+.disposition-table td > small { display: block; margin-top: 6px; color: var(--muted); }
+.disposition-row--diverged { background: #fff0d7; box-shadow: inset 6px 0 0 #ed7d31; }
+.notice-state { display: grid; justify-items: start; gap: 6px; }
+.notice-state code { max-width: 180px; overflow: hidden; color: var(--muted); font-size: 0.68rem; text-overflow: ellipsis; }
+.notice-state strong { color: #9b3417; font-size: 0.74rem; }
+.quiet-copy { color: var(--muted); font-size: 0.8rem; }
+.decision-preview__warning { padding: 14px 18px; border-left: 6px solid var(--blue); background: #dce2ff; }
+.decision-letter-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; margin: 24px 0; }
+.decision-letter { min-width: 0; padding: 22px; border: 1px solid var(--ink); background: var(--paper); }
+.decision-letter p { overflow-wrap: anywhere; }
+.decision-letter p:first-child, .decision-letter p:nth-child(2) { display: grid; grid-template-columns: 72px minmax(0, 1fr); margin: 0; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 0.8rem; }
+.decision-letter p span { font: 0.65rem monospace; color: var(--blue); }
+.decision-letter h3 { margin: 20px 0 8px; font: 1.35rem Georgia, serif; }
+@media (max-width: 900px) {
+  .disposition-rule { grid-template-columns: 1fr; }
+  .disposition-rule span { padding: 12px 0 0; border-top: 1px solid var(--ink); border-left: 0; }
+  .decision-letter-grid { grid-template-columns: 1fr; }
+}

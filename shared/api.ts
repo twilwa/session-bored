@@ -114,6 +114,30 @@ export const routeMap = {
     access: "public",
   },
   publicEmbed: { method: "GET", path: "/api/public/embeds/:token", module: "public", access: "public" },
+  disposition: {
+    method: "GET",
+    path: "/api/events/:eventId/disposition",
+    module: "submissions",
+    access: "organizer",
+  },
+  updateDisposition: {
+    method: "PATCH",
+    path: "/api/events/:eventId/disposition",
+    module: "submissions",
+    access: "organizer",
+  },
+  decisionBatches: {
+    method: "POST",
+    path: "/api/events/:eventId/decision-batches",
+    module: "communications",
+    access: "organizer",
+  },
+  dispatchDecisionBatch: {
+    method: "POST",
+    path: "/api/events/:eventId/decision-batches/:batchId/dispatch",
+    module: "communications",
+    access: "organizer",
+  },
 } as const satisfies Record<string, RouteContract>;
 
 export interface EventSummary {
@@ -232,4 +256,43 @@ export interface CfpOwnSubmission {
     organization: string | null;
     bio: string | null;
   };
+}
+
+export type DecisionStatus = "accepted" | "maybe" | "declined";
+
+export interface DecisionNoticeSummary {
+  outcome: DecisionStatus;
+  deliveryStatus: "queued";
+  queuedAt: string;
+}
+
+export interface DispositionSummary {
+  id: `sub_${string}`;
+  title: string | null;
+  status: SubmissionStatus;
+  recipientName: string;
+  recipientEmail: string;
+  track: string | null;
+  format: string | null;
+  handoff: null | {
+    sessionId: `ses_${string}`;
+    active: boolean;
+    retained: boolean;
+  };
+  notice: DecisionNoticeSummary | null;
+  diverged: boolean;
+}
+
+export interface DecisionBatchPreview {
+  id: `eml_${string}`;
+  status: "draft" | "queued";
+  items: Array<{
+    id: `eml_${string}`;
+    submissionId: `sub_${string}`;
+    recipientName: string;
+    recipientEmail: string;
+    outcome: DecisionStatus;
+    subject: string;
+    body: string;
+  }>;
 }

@@ -29,6 +29,7 @@ import { authorizeAccess } from "./access.ts";
 import { createAuth, type AuthSession } from "./auth.ts";
 import cfpRoutes from "./routes/cfp.ts";
 import { ensureSeeded, fixtureIds } from "./seed.ts";
+import dispositionRoutes from "./routes/disposition.ts";
 
 type SessionUser = AuthSession["user"];
 type AppEnvironment = {
@@ -86,6 +87,7 @@ app.onError((error, context) => {
 });
 
 app.use("/api/*", prepareRequest);
+app.route("/", dispositionRoutes);
 app.on(["GET", "POST"], "/api/auth/*", (context) => createAuth(context.env).handler(context.req.raw));
 app.route("/api/public/cfp", cfpRoutes);
 
