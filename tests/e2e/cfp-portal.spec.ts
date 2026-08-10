@@ -1,0 +1,46 @@
+// ABOUTME: Verifies the anonymous CFP journey from landing page through draft, submit, and edit.
+// ABOUTME: Covers local-time deadline rendering, durable references, inline errors, and reload persistence.
+import { expect, test } from "@playwright/test";
+
+test("speaker saves a draft, submits, and edits through a durable private link", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto("/cfp/devflow-conf-2027");
+
+  await expect(page.getByRole("heading", { name: "DevFlow Conf 2027" })).toBeVisible();
+  await expect(page.getByTestId("deadline-local")).toContainText("Local time");
+  await expect(page.getByTestId("deadline-local")).toContainText(/\w+\/\w+|UTC/);
+  await expect(page.getByLabel("Submission deadline")).toContainText(/UTC|GMT|PDT|PST/);
+  await expect(page.getByRole("link", { name: "Sign in" })).toBeVisible();
+
+  await page.getByLabel("Your name").fill("Casey Rivera");
+  await page.getByLabel("Email").fill("casey.cfp.e2e@example.com");
+  await page.getByLabel("Session title").fill("Keeping unfinished work safe");
+  await page.getByRole("button", { name: "Save draft" }).click();
+
+  await expect(page.getByRole("heading", { name: "Draft saved" })).toBeVisible();
+  await expect(page.getByText(/^sub_/)).toBeVisible();
+  await expect(page.getByRole("link", { name: "Private return link" })).toHaveAttribute("href", /key=/);
+  await expect(page.getByText("Keeping unfinished work safe", { exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "Continue editing" }).click();
+  await page.getByRole("button", { name: "Submit proposal" }).click();
+  await expect(page.getByText("Abstract is required.", { exact: true })).toBeVisible();
+  await expect(page.getByText("Key takeaway is required.", { exact: true })).toBeVisible();
+
+  await page.getByLabel("Abstract").fill("A practical account of preserving incomplete work without lowering the final quality bar.");
+  await page.getByLabel("Track").selectOption({ label: "Developer Experience" });
+  await page.getByLabel("Format").selectOption({ label: "Talk (30 min)" });
+  await page.getByLabel("Key takeaway").fill("Saving and validating are separate jobs.");
+  await page.getByRole("button", { name: "Submit proposal" }).click();
+
+  await expect(page.getByRole("heading", { name: "Proposal submitted" })).toBeVisible();
+  await page.getByRole("button", { name: "Edit proposal" }).click();
+  await page.getByLabel("Abstract").fill("A practical account of preserving incomplete work. Updated before the deadline.");
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await expect(page.getByText("Your changes are saved.", { exact: true })).toBeVisible();
+
+  await page.reload();
+  await expect(page.getByLabel("Abstract")).toHaveValue(/Updated before the deadline\./);
+  const width = await page.evaluate(() => document.documentElement.scrollWidth);
+  expect(width).toBeLessThanOrEqual(375);
+});

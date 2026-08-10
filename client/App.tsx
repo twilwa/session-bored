@@ -2,6 +2,7 @@
 // ABOUTME: Uses same-origin password sessions and client navigation without full-page reloads.
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Button, DataTable, LoadingState, Modal, StatusChip, TextField, Toast } from "./components/ui.tsx";
+import { CfpPage as CfpSubmissionPage } from "./pages/cfp/CfpPage.tsx";
 
 type Role = "organizer" | "reviewer" | "speaker";
 interface SessionPayload {
@@ -400,7 +401,7 @@ export function App() {
     return () => window.removeEventListener("popstate", update);
   }, []);
   if (path === "/login") return <LoginPage />;
-  if (path.startsWith("/cfp/")) return <CfpPage />;
+  if (path.startsWith("/cfp/")) return <CfpSubmissionPage path={path} />;
   if (path.startsWith("/organizer")) return <OrganizerPage />;
   if (path.startsWith("/reviewer")) return <ReviewerPage />;
   if (path.startsWith("/speaker")) return <SpeakerPage />;

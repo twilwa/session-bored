@@ -745,3 +745,5 @@ export const domainTables = {
   emailDispatches,
   embeds,
 } as const;
+
+export * from "./schema/cfp.ts";
