@@ -1,0 +1,60 @@
+/* ABOUTME: Styles the organizer CFP builder within Greenroom's editorial backstage shell. */
+/* ABOUTME: Keeps dense field configuration legible, draggable, and responsive without hiding version history. */
+.cfp-builder { min-width: 0; }
+.cfp-builder__header { align-items: end; }
+.cfp-builder__toolbar { display: grid; grid-template-columns: minmax(210px, 1fr) minmax(220px, 1.4fr) auto auto auto; gap: 14px; align-items: end; margin: 28px 0; padding: 18px; border: 1px solid var(--ink); background: var(--white); }
+.cfp-builder__toolbar .field { margin: 0; }
+.cfp-builder__identity { min-width: 0; display: grid; gap: 4px; }
+.cfp-builder__identity span { font: 0.65rem monospace; letter-spacing: 0.08em; text-transform: uppercase; }
+.cfp-builder__identity code { overflow: hidden; color: var(--blue); text-overflow: ellipsis; white-space: nowrap; }
+.cfp-builder__layout { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 24px; align-items: start; }
+.cfp-builder__notice, .cfp-builder__error { margin: 0 0 18px; padding: 14px 18px; border: 1px solid var(--ink); background: #dce2ff; font-weight: 700; }
+.cfp-builder__error { border-color: var(--danger); background: #ffe4e1; color: #7e1815; }
+.cfp-builder__settings { display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; }
+.cfp-builder__settings .section-heading, .cfp-builder__wide { grid-column: 1 / -1; }
+.cfp-builder textarea.field__control { resize: vertical; }
+.cfp-builder__drag-help { color: var(--muted); font-size: 0.82rem; }
+.cfp-builder__fields { display: grid; gap: 14px; }
+.cfp-field-card { min-width: 0; border: 1px solid var(--ink); background: var(--paper); }
+.cfp-field-card[draggable="true"] { cursor: grab; }
+.cfp-field-card__handle { display: grid; grid-template-columns: 24px 34px minmax(0, 1fr); gap: 8px; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--ink); background: var(--ink); color: var(--white); }
+.cfp-field-card__handle span { color: var(--signal); font-size: 1.2rem; }
+.cfp-field-card__handle strong { font: 0.75rem monospace; }
+.cfp-field-card__handle code { min-width: 0; overflow: hidden; color: #b6b4c0; text-overflow: ellipsis; }
+.cfp-field-card__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; padding: 16px; }
+.cfp-field-card__wide { grid-column: 1 / -1; }
+.cfp-field-card__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 12px 16px; border-top: 1px solid var(--line); }
+.cfp-field-card__actions label { margin-right: auto; font-size: 0.8rem; font-weight: 800; }
+.cfp-field-card__actions button { border: 0; background: transparent; color: var(--blue); cursor: pointer; font: 0.72rem monospace; }
+.cfp-field-card__actions button:last-child { color: var(--danger); }
+.cfp-field-card__actions button:disabled { color: var(--muted); cursor: default; opacity: 0.55; }
+.cfp-builder__savebar { position: sticky; bottom: 14px; z-index: 4; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 24px; padding: 16px; border: 1px solid var(--ink); background: var(--signal); box-shadow: 7px 7px 0 var(--ink); }
+.cfp-builder__savebar > div { min-width: 220px; display: grid; flex: 1; }
+.cfp-builder__savebar span { color: #40402d; font-size: 0.78rem; }
+.cfp-builder__versions { position: sticky; top: 24px; margin: 0; }
+.cfp-builder__versions h2 { font: 1.8rem Georgia, serif; }
+.cfp-builder__versions > p:not(.section-label) { color: var(--muted); font-size: 0.82rem; }
+.cfp-builder__versions ol { list-style: none; margin: 22px 0 0; padding: 0; border-top: 1px solid var(--ink); }
+.cfp-builder__versions li { border-bottom: 1px solid var(--line); }
+.cfp-builder__versions li.active { background: var(--signal); }
+.cfp-builder__versions button { width: 100%; display: grid; grid-template-columns: 1fr auto; gap: 3px 10px; padding: 12px; border: 0; background: transparent; text-align: left; cursor: pointer; }
+.cfp-builder__versions button span { font: 0.65rem monospace; text-transform: uppercase; }
+.cfp-builder__versions button small { grid-column: 1 / -1; color: var(--muted); }
+.cfp-builder__create { display: grid; grid-template-columns: 1fr 1fr auto; gap: 16px; align-items: end; }
+.cfp-builder__create .field { margin: 0; }
+
+@media (max-width: 1100px) {
+  .cfp-builder__toolbar { grid-template-columns: 1fr 1fr auto; }
+  .cfp-builder__toolbar .button { min-width: 0; }
+  .cfp-builder__layout { grid-template-columns: 1fr; }
+  .cfp-builder__versions { position: static; grid-row: 1; }
+  .cfp-builder__versions ol { display: flex; overflow-x: auto; }
+  .cfp-builder__versions li { min-width: 150px; border-right: 1px solid var(--line); }
+}
+
+@media (max-width: 680px) {
+  .cfp-builder__toolbar, .cfp-builder__settings, .cfp-field-card__grid, .cfp-builder__create { grid-template-columns: 1fr; }
+  .cfp-builder__settings .section-heading, .cfp-builder__wide, .cfp-field-card__wide { grid-column: 1; }
+  .cfp-builder__toolbar > * { min-width: 0; width: 100%; }
+  .cfp-builder__savebar { bottom: 8px; }
+}

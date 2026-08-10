@@ -86,6 +86,20 @@ lifecycle and relationships are fixed as follows:
   `submissionTracks`, and `submissionValues` carry taxonomy and answers; built-in
   title, abstract, audience, and reviewer-note columns remain the list/detail
   projection.
+- `forms` owns the stable public slug. A version's copy and field contract are
+  immutable once published; editing a published or closed version forks the
+  next draft version, and organizers may browse every version. Public reads
+  resolve the current published version through the stable slug, while
+  submission reads resolve their exact saved version.
+- Draft submissions stay pinned to the version they started on. When a newer
+  version exists, the author explicitly chooses between continuing the pinned
+  draft or starting a separate draft on the current version; neither path
+  migrates or discards saved answers.
+- Submission validation evaluates conditional visibility on the server. Hidden
+  answers are not persisted and hidden required fields do not block submission.
+- The form's `track` field is its category-routing control. Submission writes
+  resolve it to the event taxonomy in `submissionTracks`; review queues route
+  through `reviewerTracks` and must not introduce a parallel routing model.
 - A `draft` may contain incomplete proposal fields. Server validation gates the
   `draft` to `submitted` transition; later review and disposition states use the
   canonical vocabulary in `db/schema.ts`.

@@ -6,6 +6,8 @@ import fixture from "../fixtures/sample-data.json";
 import {
   events,
   formFields,
+  formVersionFields,
+  formVersions,
   formats,
   forms,
   people,
@@ -237,6 +239,56 @@ export async function ensureSeeded(env: CloudflareBindings): Promise<void> {
       },
     ])
     .onConflictDoNothing();
+
+  const seedFormVersionId = `${fixtureIds.form}:v1`;
+  await database
+    .insert(formVersions)
+    .values({
+      id: seedFormVersionId,
+      formId: fixtureIds.form,
+      version: 1,
+      status: "published",
+      openAt: new Date("2026-08-01T00:00:00Z"),
+      closeAt: new Date("2027-04-30T23:59:59Z"),
+      welcomeCopy: "Share practical lessons with the DevFlow community.",
+      confirmationCopy: "Thanks — your proposal is safely in the review queue.",
+      confirmationEmailCopy: "We received {talk_title} for DevFlow Conf 2027.",
+      minimumSpeakers: 1,
+      publishedAt: new Date("2026-08-01T00:00:00Z"),
+    })
+    .onConflictDoNothing();
+  const seedFields = await database.select().from(formFields).where(eq(formFields.formId, fixtureIds.form));
+  for (const field of seedFields) {
+    await database
+      .insert(formVersionFields)
+      .values({
+        id: field.id,
+        formVersionId: seedFormVersionId,
+        stableFieldId: field.id,
+        key: field.key,
+        label: field.label,
+        description: field.description,
+        fieldType: field.fieldType as "short_text" | "long_text" | "dropdown",
+        required: field.required,
+        sortOrder: field.sortOrder,
+        options: field.options,
+        validation: field.validation,
+      })
+      .onConflictDoNothing();
+  }
+  for (const field of seedFields) {
+    if (field.conditionalFieldId === null) {
+      continue;
+    }
+    await database
+      .update(formVersionFields)
+      .set({
+        conditionalFieldId: field.conditionalFieldId,
+        conditionalOperator: field.conditionalOperator,
+        conditionalValue: field.conditionalValue,
+      })
+      .where(eq(formVersionFields.id, field.id));
+  }
 
   await database
     .insert(people)

@@ -27,10 +27,11 @@ import {
 import type { ApiAccess } from "../shared/api.ts";
 import { authorizeAccess } from "./access.ts";
 import { createAuth, type AuthSession } from "./auth.ts";
+import cfpBuilderRoutes from "./routes/cfp-builder.ts";
 import cfpRoutes from "./routes/cfp.ts";
-import reviewRoutes from "./routes/review.ts";
 import { publicRoutes } from "./routes/public.ts";
 import submitterRoutes from "./routes/submitter.ts";
+import reviewRoutes from "./routes/review.ts";
 import { ensureSeeded, fixtureIds } from "./seed.ts";
 import dispositionRoutes from "./routes/disposition.ts";
 
@@ -93,6 +94,7 @@ app.use("/api/*", prepareRequest);
 app.route("/", dispositionRoutes);
 app.on(["GET", "POST"], "/api/auth/*", (context) => createAuth(context.env).handler(context.req.raw));
 app.route("/api/public/cfp", cfpRoutes);
+app.route("/api/cfp-builder", cfpBuilderRoutes);
 
 app.get("/api/health", (context) =>
   context.json({ status: "healthy", service: "greenroom", seededEventId: fixtureIds.event }),

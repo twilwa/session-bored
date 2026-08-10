@@ -748,3 +748,4 @@ export const domainTables = {
 
 export * from "./schema/cfp.ts";
 export * from "./schema/disposition.ts";
+export * from "./schema/cfp-builder.ts";
