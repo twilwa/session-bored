@@ -35,6 +35,7 @@ import reviewRoutes from "./routes/review.ts";
 import { ensureSeeded, fixtureIds } from "./seed.ts";
 import dispositionRoutes from "./routes/disposition.ts";
 import rosterRoutes from "./routes/roster.ts";
+import agendaRoutes from "./routes/agenda.ts";
 
 type SessionUser = AuthSession["user"];
 type AppEnvironment = {
@@ -94,6 +95,7 @@ app.onError((error, context) => {
 app.use("/api/*", prepareRequest);
 app.route("/", dispositionRoutes);
 app.route("/", rosterRoutes);
+app.route("/", agendaRoutes);
 app.on(["GET", "POST"], "/api/auth/*", (context) => createAuth(context.env).handler(context.req.raw));
 app.route("/api/public/cfp", cfpRoutes);
 app.route("/api/cfp-builder", cfpBuilderRoutes);
@@ -384,7 +386,6 @@ app.get("/api/events/:eventId/tasks", requireAccess("organizer"), async (context
 for (const path of [
   "/api/events/:eventId/files",
   "/api/events/:eventId/email-dispatches",
-  "/api/events/:eventId/agenda",
   "/api/events/:eventId/embeds",
 ] as const) {
   app.get(path, requireAccess("organizer"), (context) =>

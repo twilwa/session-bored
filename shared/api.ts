@@ -98,7 +98,19 @@ export const routeMap = {
     module: "communications",
     access: "organizer",
   },
-  agenda: { method: "GET", path: "/api/events/:eventId/agenda", module: "agenda", access: "organizer" },
+    agenda: { method: "GET", path: "/api/events/:eventId/agenda", module: "agenda", access: "organizer" },
+    updateAgendaSession: {
+      method: "PATCH",
+      path: "/api/events/:eventId/agenda/sessions/:sessionId",
+      module: "agenda",
+      access: "organizer",
+    },
+    publishAgenda: {
+      method: "POST",
+      path: "/api/events/:eventId/agenda/publish",
+      module: "agenda",
+      access: "organizer",
+    },
   embeds: { method: "GET", path: "/api/events/:eventId/embeds", module: "embeds", access: "organizer" },
   publicCfp: { method: "GET", path: "/api/public/cfp/:slug", module: "public", access: "public" },
   publicSessions: {
@@ -253,6 +265,53 @@ export interface SessionSummary {
   format: string | null;
   room: string | null;
   speakers: string[];
+}
+
+export type AgendaPlacement =
+  | { scheduleStatus: "unplaced" }
+  | { scheduleStatus: "tbd"; scheduledDate: string }
+  | { scheduleStatus: "placed"; scheduledDate: string; roomId: string; startsAt: number };
+
+export interface AgendaSession {
+  id: `ses_${string}`;
+  title: string;
+  abstract: string | null;
+  contentStatus: SessionContentStatus;
+  scheduleStatus: ScheduleStatus;
+  scheduledDate: string | null;
+  startsAt: number | null;
+  endsAt: number | null;
+  publishedAt: number | null;
+  durationMinutes: number;
+  track: null | { id: string; name: string; color: string | null };
+  room: null | { id: string; name: string };
+  speakers: Array<{ id: string; name: string }>;
+}
+
+export interface AgendaConflict {
+  id: string;
+  kind: "room" | "speaker";
+  name: string;
+  label: string;
+  sessionIds: [string, string];
+  fixSessionId: string;
+  fixLabel: string;
+}
+
+export interface AgendaState {
+  event: {
+    id: string;
+    name: string;
+    startDate: string;
+    endDate: string;
+    timezone: string;
+  };
+  days: string[];
+  rooms: Array<{ id: string; name: string }>;
+  tracks: Array<{ id: string; name: string; color: string | null }>;
+  sessions: AgendaSession[];
+  conflicts: AgendaConflict[];
+  metrics: { unplaced: number; conflicts: number; tbd: number };
 }
 
 export interface FoundationStub<T> {

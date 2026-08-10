@@ -42,6 +42,11 @@ This file is the project's committed home for project-intrinsic agent knowledge:
 - `PATCH /api/review/submissions/:submissionId/status` changes only submission
   status and returns `notificationSent: false`. Disposition and communications
   code must keep status changes separate from deliberate decision dispatch.
+- `worker/routes/agenda.ts` owns the F-9 scheduling contract. Publishing marks
+  `program_session.published_at` only for approved, placed or `tbd` sessions
+  whose submission is still accepted, or that were entered directly. Public
+  program routes must also require that marker and the live decision before
+  exposing schedule data.
 
 ## CI
 
