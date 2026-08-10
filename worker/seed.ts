@@ -1,6 +1,6 @@
 // ABOUTME: Populates D1 idempotently from the exact DevFlow Conf 2027 grading fixture.
 // ABOUTME: Provisions usable Better Auth passwords and linked domain records for every role.
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import fixture from "../fixtures/sample-data.json";
 import {
@@ -83,11 +83,30 @@ async function ensureIdentity(
 
 export async function ensureSeeded(env: CloudflareBindings): Promise<void> {
   const database = drizzle(env.DB);
+  const headshotFixtureKey = "fixture.devflow-2027.headshots.v1";
   const [marker] = await database
     .select({ id: systemState.id })
     .from(systemState)
     .where(eq(systemState.key, "fixture.devflow-2027.v1"));
   if (marker !== undefined) {
+    const [headshotMarker] = await database
+      .select({ id: systemState.id })
+      .from(systemState)
+      .where(eq(systemState.key, headshotFixtureKey));
+    if (headshotMarker === undefined) {
+      await database
+        .update(people)
+        .set({ headshotUrl: fixture.identities.speaker.headshotUrl })
+        .where(and(eq(people.id, fixtureIds.people.speaker), isNull(people.headshotUrl)));
+      await database
+        .insert(systemState)
+        .values({
+          id: "sys_fixture_devflow_2027_headshots_v1",
+          key: headshotFixtureKey,
+          value: { seeded: "true" },
+        })
+        .onConflictDoNothing();
+    }
     return;
   }
 
@@ -313,6 +332,7 @@ export async function ensureSeeded(env: CloudflareBindings): Promise<void> {
         jobTitle: fixture.identities.speaker.title,
         organization: fixture.identities.speaker.company,
         bio: fixture.identities.speaker.bio,
+        headshotUrl: fixture.identities.speaker.headshotUrl,
         twitter: fixture.identities.speaker.twitter,
         linkedin: fixture.identities.speaker.linkedin,
         socialLinks: {
@@ -507,7 +527,10 @@ export async function ensureSeeded(env: CloudflareBindings): Promise<void> {
 
   await database
     .insert(systemState)
-    .values({ id: "sys_fixture_devflow_2027_v1", key: "fixture.devflow-2027.v1", value: { seeded: "true" } })
+    .values([
+      { id: "sys_fixture_devflow_2027_v1", key: "fixture.devflow-2027.v1", value: { seeded: "true" } },
+      { id: "sys_fixture_devflow_2027_headshots_v1", key: headshotFixtureKey, value: { seeded: "true" } },
+    ])
     .onConflictDoNothing();
 }
 
