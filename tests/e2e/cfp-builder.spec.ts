@@ -104,3 +104,62 @@ test("organizer builds and publishes a conditional CFP form", async ({ page, con
   await page.getByLabel("Format").selectOption({ label: "Talk (30 min)" });
   await expect(page.getByLabel("Workshop prerequisites")).toHaveCount(0);
 });
+
+test("organizer repairs a pre-existing invalid contract draft through the builder", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "The contract repair journey runs once in desktop Chrome.");
+  const suffix = Date.now().toString(36);
+  const slug = `repair-cfp-${suffix}`;
+
+  await page.goto("/login");
+  await page.getByLabel("Email").fill("sbek-organizer@example.com");
+  await page.getByLabel("Password").fill("SbekTest!2027-org");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page).toHaveURL(/\/organizer/);
+
+  const createResponse = await page.request.post("/api/cfp-builder/events/evt_devflow_conf_2027/forms", {
+    data: {
+      name: `Repair CFP ${suffix}`,
+      publicSlug: slug,
+      welcomeCopy: "Repair this saved draft without leaving the builder.",
+      confirmationCopy: "The repaired proposal is saved.",
+      confirmationEmailCopy: null,
+      openAt: null,
+      closeAt: null,
+      minimumSpeakers: 1,
+      maximumSpeakers: null,
+      fields: [
+        {
+          key: "session_title",
+          label: "Session title",
+          description: null,
+          fieldType: "short_text",
+          required: false,
+          options: null,
+          conditional: { fieldKey: "format", operator: "equals", value: "Talk (30 min)" },
+        },
+        { key: "abstract", label: "Abstract", description: null, fieldType: "long_text", required: true, options: null, conditional: null },
+        { key: "track", label: "Track", description: null, fieldType: "dropdown", required: true, options: null, conditional: null },
+        { key: "format", label: "Format", description: null, fieldType: "dropdown", required: true, options: null, conditional: null },
+      ],
+    },
+  });
+  expect(createResponse.status()).toBe(201);
+  const created = await createResponse.json() as { form: { id: string } };
+
+  await page.goto("/organizer/cfp");
+  const builder = page.getByTestId("cfp-builder");
+  await expect(builder).toBeVisible();
+  const formLoadResponse = page.waitForResponse((response) => (
+    response.request().method() === "GET"
+    && response.url().endsWith(`/api/cfp-builder/forms/${created.form.id}`)
+  ));
+  await builder.getByTestId("cfp-builder-form-select").selectOption(created.form.id);
+  expect((await formLoadResponse).status()).toBe(200);
+  const sessionTitle = builder.locator('[data-field-key="session_title"]');
+  await expect(sessionTitle.getByLabel("Required to submit")).toBeChecked();
+  await expect(sessionTitle.getByLabel("Show only when")).toHaveValue("");
+
+  await builder.getByRole("button", { name: "Publish version 1" }).click();
+  await expect(builder.getByText("v1 · published", { exact: true })).toBeVisible();
+  expect((await page.request.get(`/api/public/cfp/${slug}`)).status()).toBe(200);
+});

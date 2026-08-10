@@ -69,7 +69,9 @@ function versionInput(detail: CfpBuilderFormDetail): CfpBuilderVersionInput {
     closeAt: detail.selectedVersion.closeAt,
     minimumSpeakers: detail.selectedVersion.minimumSpeakers,
     maximumSpeakers: detail.selectedVersion.maximumSpeakers,
-    fields: detail.fields,
+    fields: detail.fields.map((field) => requiredContractFieldKeys.has(field.key)
+      ? { ...field, required: true, conditional: null }
+      : field),
   };
 }
 
