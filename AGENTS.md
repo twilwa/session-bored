@@ -2,7 +2,14 @@
 
 This file is the project's committed home for project-intrinsic agent knowledge: build, test, release, architecture, and sharp-edge notes that should travel with the code.
 
-- Add durable project-specific notes here as they are discovered through real work.
+- The product name is Greenroom; `session-bored` remains the repository and
+  Cloudflare Worker name.
+- `db/schema.ts` is the cross-lane database contract, and `shared/api.ts` is the
+  cross-lane route contract. Coordinate before changing either contract.
+- Use the commands and seeded credentials in `README.md`; browser tests migrate
+  their local D1 database before starting the Worker.
+- OpenSpec and Beads are suspended for this project. Do not create `openspec/`
+  or `.beads/`; build directly against the authoritative PRD.
 
 ## Maintaining this file
 

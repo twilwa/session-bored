@@ -14,7 +14,7 @@
     "seed:local": "wrangler dev --test-scheduled=false",
     "test": "vitest run --config vitest.config.ts",
     "test:integration": "vitest run --config vitest.integration.config.ts",
-    "test:e2e": "playwright test",
+    "test:e2e": "npm run db:migrate:local && playwright test",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
