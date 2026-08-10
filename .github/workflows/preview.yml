@@ -1,0 +1,141 @@
+# ABOUTME: Deploys each Greenroom pull request to a stable Workers preview alias.
+# ABOUTME: Provisions isolated D1 state and updates one preview link comment per PR.
+name: Preview
+
+on:
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  credentials:
+    name: Check preview credentials
+    runs-on: ubuntu-latest
+    outputs:
+      available: ${{ steps.check.outputs.available }}
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+    steps:
+      - name: Check required secrets
+        id: check
+        shell: bash
+        run: |
+          if [[ -n "$CLOUDFLARE_API_TOKEN" && -n "$CLOUDFLARE_ACCOUNT_ID" ]]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  deploy:
+    name: Deploy preview
+    needs: credentials
+    if: needs.credentials.outputs.available == 'true' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      DATABASE_NAME: session-bored-pr-${{ github.event.pull_request.number }}
+      PREVIEW_ALIAS: pr-${{ github.event.pull_request.number }}
+      PREVIEW_URL: https://pr-${{ github.event.pull_request.number }}-session-bored.techwilliams-warren.workers.dev
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Provision preview database
+        shell: bash
+        run: |
+          database_id="$({ npx wrangler d1 list --json; } | jq -r --arg name "$DATABASE_NAME" '.[] | select(.name == $name) | .uuid')"
+          if [[ -z "$database_id" ]]; then
+            npx wrangler d1 create "$DATABASE_NAME"
+            database_id="$({ npx wrangler d1 list --json; } | jq -r --arg name "$DATABASE_NAME" '.[] | select(.name == $name) | .uuid')"
+          fi
+          if [[ -z "$database_id" ]]; then
+            echo "Wrangler did not return an ID for $DATABASE_NAME" >&2
+            exit 1
+          fi
+          echo "DATABASE_ID=$database_id" >> "$GITHUB_ENV"
+
+      - name: Configure preview bindings
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync, writeFileSync } from "node:fs";
+
+          const source = readFileSync("wrangler.jsonc", "utf8").replace(/^\s*\/\/.*$/gm, "");
+          const config = JSON.parse(source);
+          config.preview_urls = true;
+          config.d1_databases[0].database_name = process.env.DATABASE_NAME;
+          config.d1_databases[0].database_id = process.env.DATABASE_ID;
+          config.vars.APP_ORIGIN = process.env.PREVIEW_URL;
+          writeFileSync(".wrangler-preview.json", JSON.stringify(config, null, 2));
+          NODE
+
+      - name: Migrate preview database
+        run: npx wrangler d1 migrations apply DB --remote --config .wrangler-preview.json
+
+      - name: Upload preview version
+        run: npx wrangler versions upload --preview-alias "$PREVIEW_ALIAS" --config .wrangler-preview.json
+
+      - name: Update preview comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const marker = "<!-- greenroom-preview -->";
+            const body = [
+              marker,
+              "## Greenroom preview",
+              "",
+              `[Open this branch's preview](${process.env.PREVIEW_URL}).`,
+              "",
+              `Database: \`${process.env.DATABASE_NAME}\` (isolated for this pull request).`,
+            ].join("\n");
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              per_page: 100,
+            });
+            const existing = comments.find(
+              (comment) => comment.user?.type === "Bot" && comment.body?.includes(marker),
+            );
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
