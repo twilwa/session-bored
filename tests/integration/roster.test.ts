@@ -60,6 +60,26 @@ describe("organizer speaker roster", () => {
     });
   });
 
+  it("does not count paused onboarding tasks as open work", async () => {
+    await env.DB.prepare(
+      "update task set status = 'draft' where id in (select task_id from task_assignee where speaker_id = ?)",
+    ).bind("spk_priya_devflow_2027").run();
+
+    const response = await request("/api/events/evt_devflow_conf_2027/roster", {
+      headers: { cookie: organizerCookie },
+    });
+    const payload = await response.json<{
+      items: Array<{ id: string; taskSummary: { total: number; incomplete: number } }>;
+    }>();
+    await env.DB.prepare(
+      "update task set status = 'active' where id in (select task_id from task_assignee where speaker_id = ?)",
+    ).bind("spk_priya_devflow_2027").run();
+    expect(payload.items.find((speaker) => speaker.id === "spk_priya_devflow_2027")?.taskSummary).toEqual({
+      total: 5,
+      incomplete: 0,
+    });
+  });
+
   it("adopts an existing person without duplicating the event speaker", async () => {
     const response = await request("/api/events/evt_devflow_conf_2027/speakers", {
       method: "POST",
@@ -160,6 +180,112 @@ describe("organizer speaker roster", () => {
         { speakerId: "spk_marcus_devflow_2027", status: "assigned" },
       ],
     });
+  });
+
+  it("assigns a task above D1's per-statement parameter limit", async () => {
+    const now = Date.now();
+    const speakerIds = Array.from({ length: 40 }, (_, index) => `spk_bulk_${index}`);
+    await env.DB.batch(speakerIds.flatMap((speakerId, index) => {
+      const personId = `psn_bulk_${index}`;
+      return [
+        env.DB.prepare(
+          "insert into person (id, name, email, created_at, updated_at) values (?, ?, ?, ?, ?)",
+        ).bind(personId, `Bulk Speaker ${index}`, `bulk-${index}@example.test`, now, now),
+        env.DB.prepare(
+          "insert into speaker (id, person_id, event_id, status, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
+        ).bind(speakerId, personId, "evt_devflow_conf_2027", "onboarding", now, now),
+      ];
+    }));
+
+    const response = await request("/api/events/evt_devflow_conf_2027/tasks", {
+      method: "POST",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({
+        taskType: "general",
+        title: "Complete high-cardinality onboarding",
+        speakerIds,
+      }),
+    });
+    expect(response.status).toBe(201);
+    const payload = await response.json<{
+      assignmentCount: number;
+      assignees: Array<{ speakerId: string }>;
+    }>();
+    expect(payload.assignmentCount).toBe(40);
+    expect(payload.assignees.map((assignee) => assignee.speakerId).sort()).toEqual([...speakerIds].sort());
+  });
+
+  it("does not turn a selected-speaker task into onboarding for later acceptances", async () => {
+    const form = await env.DB.prepare(
+      "select id from form where event_id = ? limit 1",
+    ).bind("evt_devflow_conf_2027").first<{ id: string }>();
+    expect(form).not.toBeNull();
+    const now = Date.now();
+    await env.DB.batch([
+      env.DB.prepare(
+        "insert into person (id, name, email, created_at, updated_at) values (?, ?, ?, ?, ?)",
+      ).bind("psn_future_roster_speaker", "Avery Chen", "avery.roster@example.test", now, now),
+      env.DB.prepare(
+        "insert into submission (id, event_id, form_id, form_version, submitter_person_id, status, is_draft, title, abstract, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      ).bind(
+        "sub_future_roster_speaker",
+        "evt_devflow_conf_2027",
+        form?.id,
+        1,
+        "psn_future_roster_speaker",
+        "submitted",
+        0,
+        "Durable event workflows",
+        "How to keep handoffs visible and reliable.",
+        now,
+        now,
+      ),
+      env.DB.prepare(
+        "insert into submission_speaker (id, submission_id, person_id, role_label, sort_order, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?)",
+      ).bind(
+        "sspk_future_roster_speaker",
+        "sub_future_roster_speaker",
+        "psn_future_roster_speaker",
+        "speaker",
+        0,
+        now,
+        now,
+      ),
+    ]);
+
+    const taskResponse = await request("/api/events/evt_devflow_conf_2027/tasks", {
+      method: "POST",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({
+        taskType: "general",
+        title: "Confirm private rehearsal slot",
+        speakerIds: ["spk_priya_devflow_2027"],
+      }),
+    });
+    expect(taskResponse.status).toBe(201);
+
+    const accepted = await request("/api/events/evt_devflow_conf_2027/disposition", {
+      method: "PATCH",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({ submissionIds: ["sub_future_roster_speaker"], status: "accepted" }),
+    });
+    expect(accepted.status).toBe(200);
+
+    const tasksResponse = await request("/api/events/evt_devflow_conf_2027/tasks", {
+      headers: { cookie: organizerCookie },
+    });
+    const payload = await tasksResponse.json<{
+      items: Array<{ title: string; assignees: Array<{ speakerId: string }> }>;
+    }>();
+    const declined = await request("/api/events/evt_devflow_conf_2027/disposition", {
+      method: "PATCH",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({ submissionIds: ["sub_future_roster_speaker"], status: "declined" }),
+    });
+    expect(declined.status).toBe(200);
+    expect(payload.items.find((task) => task.title === "Confirm private rehearsal slot")?.assignees).toEqual([
+      expect.objectContaining({ speakerId: "spk_priya_devflow_2027" }),
+    ]);
   });
 
   it("shows every accepted speaker who is missing real onboarding information", async () => {

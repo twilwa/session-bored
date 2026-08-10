@@ -21,6 +21,9 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   onboarding tasks. Names, emails, bios, job titles, organizations, roles,
   title, abstract, format, and track come from the submission graph without
   re-entry. The roster and portal must consume these rows rather than copy them.
+- A sessionless task with no `task_scope` row is an event-wide onboarding
+  template assigned by later acceptances. Roster-created bulk tasks use the
+  `selected_speakers` scope and must remain limited to their explicit assignees.
 - Un-accepting never deletes the created speaker, session, task, or assignment.
   It returns the session content to `draft`, preserves all schedule fields, and
   pauses session-scoped tasks. Re-accepting reuses the same stable IDs. Agenda

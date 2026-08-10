@@ -12,6 +12,7 @@ import {
   submissionSpeakers,
   submissionTracks,
   taskAssignees,
+  taskScopes,
   tasks,
   type SubmissionStatus,
 } from "../db/schema.ts";
@@ -149,10 +150,12 @@ async function ensureAcceptedHandoff(
   let onboardingTasks = await database
     .select({ id: tasks.id, title: tasks.title })
     .from(tasks)
+    .leftJoin(taskScopes, eq(taskScopes.taskId, tasks.id))
     .where(
       and(
         eq(tasks.eventId, eventId),
         isNull(tasks.sessionId),
+        isNull(taskScopes.taskId),
         ne(tasks.status, "complete"),
       ),
     )

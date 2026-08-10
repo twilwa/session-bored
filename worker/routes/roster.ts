@@ -90,7 +90,7 @@ rosterRoutes.get("/api/events/:eventId/roster", async (context) => {
         taskSummary: {
           total: speakerAssignments.length,
           incomplete: speakerAssignments.filter((assignment) =>
-            assignment.assignmentStatus !== "completed" && assignment.taskStatus !== "complete"
+            assignment.assignmentStatus !== "completed" && assignment.taskStatus === "active"
           ).length,
         },
       };
@@ -312,33 +312,47 @@ rosterRoutes.post("/api/events/:eventId/tasks", async (context) => {
     return context.json({ error: "speaker_not_found" }, 404);
   }
 
-  const [task] = await database.insert(tasks).values({
-    id: createPublicId("tsk"),
-    eventId: context.req.param("eventId"),
-    taskType,
-    title: title.trim(),
-    instructions: typeof payload.instructions === "string" ? payload.instructions.trim() || null : null,
-    dueAt,
-    status: "active",
-    acceptedFileTypes: taskType === "file_request" && Array.isArray(payload.acceptedFileTypes)
-      ? payload.acceptedFileTypes
-      : null,
-    maximumFileBytes: taskType === "file_request" && typeof payload.maximumFileBytes === "number"
-      ? payload.maximumFileBytes
-      : null,
-  }).returning();
+  const taskId = createPublicId("tsk");
+  const instructions = typeof payload.instructions === "string" ? payload.instructions.trim() || null : null;
+  const acceptedFileTypes = taskType === "file_request" && Array.isArray(payload.acceptedFileTypes)
+    ? payload.acceptedFileTypes
+    : null;
+  const maximumFileBytes = taskType === "file_request" && typeof payload.maximumFileBytes === "number"
+    ? payload.maximumFileBytes
+    : null;
+  const createdAt = Date.now();
+  const assignees = uniqueSpeakerIds.map((speakerId) => ({
+    id: createPublicId("tassn"),
+    speakerId,
+    status: "assigned" as const,
+  }));
+  await context.env.DB.batch([
+    context.env.DB.prepare(
+      "insert into task (id, event_id, task_type, title, instructions, due_at, status, accepted_file_types, maximum_file_bytes, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    ).bind(
+      taskId,
+      context.req.param("eventId"),
+      taskType,
+      title.trim(),
+      instructions,
+      dueAt?.getTime() ?? null,
+      "active",
+      acceptedFileTypes === null ? null : JSON.stringify(acceptedFileTypes),
+      maximumFileBytes,
+      createdAt,
+      createdAt,
+    ),
+    context.env.DB.prepare(
+      "insert into task_scope (task_id, scope) values (?, ?)",
+    ).bind(taskId, "selected_speakers"),
+    ...assignees.map((assignee) => context.env.DB.prepare(
+      "insert into task_assignee (id, task_id, speaker_id, status, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
+    ).bind(assignee.id, taskId, assignee.speakerId, assignee.status, createdAt, createdAt)),
+  ]);
+  const [task] = await database.select().from(tasks).where(eq(tasks.id, taskId));
   if (task === undefined) {
     throw new Error("Task was not created");
   }
-  const assignees = await database.insert(taskAssignees).values(uniqueSpeakerIds.map((speakerId) => ({
-    id: createPublicId("tassn"),
-    taskId: task.id,
-    speakerId,
-  }))).returning({
-    id: taskAssignees.id,
-    speakerId: taskAssignees.speakerId,
-    status: taskAssignees.status,
-  });
 
   return context.json({ ...task, assignmentCount: assignees.length, assignees }, 201);
 });
