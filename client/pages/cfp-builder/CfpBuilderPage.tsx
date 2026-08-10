@@ -12,6 +12,7 @@ import { Button, LoadingState, StatusChip, Toast } from "../../components/ui.tsx
 import "./cfp-builder.css";
 
 const eventId = "evt_devflow_conf_2027";
+const requiredContractFieldKeys = new Set(["session_title", "abstract", "track"]);
 
 interface NamedRecord {
   id: string;
@@ -69,6 +70,13 @@ function versionInput(detail: CfpBuilderFormDetail): CfpBuilderVersionInput {
     minimumSpeakers: detail.selectedVersion.minimumSpeakers,
     maximumSpeakers: detail.selectedVersion.maximumSpeakers,
     fields: detail.fields,
+  };
+}
+
+function orderedVersionInput(draft: CfpBuilderVersionInput): CfpBuilderVersionInput {
+  return {
+    ...draft,
+    fields: draft.fields.map((field, sortOrder) => ({ ...field, sortOrder })),
   };
 }
 
@@ -175,10 +183,7 @@ export function CfpBuilderPage() {
     setBusy(true);
     setError(null);
     try {
-      await writeJson(`/api/cfp-builder/forms/${detail.form.id}`, "PUT", {
-        ...draft,
-        fields: draft.fields.map((field, sortOrder) => ({ ...field, sortOrder })),
-      });
+      await writeJson(`/api/cfp-builder/forms/${detail.form.id}`, "PUT", orderedVersionInput(draft));
       await loadForm(detail.form.id);
       setToast(detail.selectedVersion.status === "draft" ? "Draft changes saved." : "Versioned draft created. Published submissions remain on their original form.");
     } catch (reason) {
@@ -189,12 +194,13 @@ export function CfpBuilderPage() {
   }
 
   async function publish(): Promise<void> {
-    if (detail === null || detail.selectedVersion.status !== "draft") {
+    if (detail === null || draft === null || detail.selectedVersion.status !== "draft") {
       return;
     }
     setBusy(true);
     setError(null);
     try {
+      await writeJson(`/api/cfp-builder/forms/${detail.form.id}`, "PUT", orderedVersionInput(draft));
       await writeJson(`/api/cfp-builder/forms/${detail.form.id}/publish`, "POST");
       await loadForms(detail.form.id);
       setToast(`Version ${detail.selectedVersion.version} published at the stable public URL.`);
@@ -346,9 +352,11 @@ export function CfpBuilderPage() {
                 <div className="cfp-builder__fields">
                   {draft.fields.map((field, index) => {
                     const controllingOptions = field.conditional === null ? [] : conditionOptions.get(field.conditional.fieldKey) ?? [];
+                    const requiredContractField = requiredContractFieldKeys.has(field.key);
                     return (
                       <article
                         className="cfp-field-card"
+                        data-field-key={field.key}
                         draggable={!readOnly}
                         key={`${field.key}-${index}`}
                         onDragOver={(event) => event.preventDefault()}
@@ -361,14 +369,14 @@ export function CfpBuilderPage() {
                           <label className="field"><span className="field__label">Field type</span><select className="field__control" disabled={readOnly || field.key === "track" || field.key === "format"} onChange={(event) => replaceField(index, { fieldType: event.target.value as CfpBuilderFieldType, options: event.target.value === "dropdown" ? [] : null })} value={field.fieldType}><option value="short_text">Short text</option><option value="long_text">Long text</option><option value="dropdown">Dropdown</option></select></label>
                           <label className="field cfp-field-card__wide"><span className="field__label">Help text</span><input className="field__control" disabled={readOnly} onChange={(event) => replaceField(index, { description: event.target.value || null })} value={field.description ?? ""} /></label>
                           {field.fieldType !== "dropdown" || field.key === "track" || field.key === "format" ? null : <label className="field cfp-field-card__wide"><span className="field__label">Dropdown options, one per line</span><textarea className="field__control" disabled={readOnly} onChange={(event) => replaceField(index, { options: event.target.value.split("\n").map((option) => option.trim()).filter(Boolean) })} rows={3} value={(field.options ?? []).join("\n")} /></label>}
-                          <label className="field"><span className="field__label">Show only when</span><select className="field__control" disabled={readOnly} onChange={(event) => replaceField(index, { conditional: event.target.value === "" ? null : { fieldKey: event.target.value, operator: "equals", value: "" } })} value={field.conditional?.fieldKey ?? ""}><option value="">Always visible</option>{draft.fields.filter((candidate) => candidate.key !== field.key && candidate.fieldType === "dropdown").map((candidate) => <option key={candidate.key} value={candidate.key}>{candidate.label}</option>)}</select></label>
+                          <label className="field"><span className="field__label">Show only when</span><select className="field__control" disabled={readOnly || requiredContractField} onChange={(event) => replaceField(index, { conditional: event.target.value === "" ? null : { fieldKey: event.target.value, operator: "equals", value: "" } })} value={field.conditional?.fieldKey ?? ""}><option value="">Always visible</option>{draft.fields.filter((candidate) => candidate.key !== field.key && candidate.fieldType === "dropdown").map((candidate) => <option key={candidate.key} value={candidate.key}>{candidate.label}</option>)}</select></label>
                           {field.conditional === null ? null : <label className="field"><span className="field__label">Equals</span><select className="field__control" disabled={readOnly} onChange={(event) => replaceField(index, { conditional: { ...field.conditional!, value: event.target.value } })} value={field.conditional.value}><option value="">Choose value</option>{controllingOptions.map((option) => <option key={option} value={option}>{option}</option>)}</select></label>}
                         </div>
                         <div className="cfp-field-card__actions">
-                          <label><input checked={field.required} disabled={readOnly} onChange={(event) => replaceField(index, { required: event.target.checked })} type="checkbox" /> Required to submit</label>
+                          <label><input checked={field.required} disabled={readOnly || requiredContractField} onChange={(event) => replaceField(index, { required: event.target.checked })} type="checkbox" /> Required to submit</label>
                           <button disabled={readOnly || index === 0} onClick={() => moveField(index, index - 1)} type="button">↑ Move up</button>
                           <button disabled={readOnly || index === draft.fields.length - 1} onClick={() => moveField(index, index + 1)} type="button">↓ Move down</button>
-                          <button disabled={readOnly} onClick={() => setDraft({ ...draft, fields: draft.fields.filter((_, fieldIndex) => fieldIndex !== index) })} type="button">Remove</button>
+                          <button disabled={readOnly || requiredContractField} onClick={() => setDraft({ ...draft, fields: draft.fields.filter((_, fieldIndex) => fieldIndex !== index) })} type="button">Remove</button>
                         </div>
                       </article>
                     );

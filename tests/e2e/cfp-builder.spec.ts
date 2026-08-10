@@ -14,6 +14,7 @@ test("organizer builds and publishes a conditional CFP form", async ({ page, con
   await expect(page).toHaveURL(/\/organizer/);
   await page.getByRole("link", { name: "Call for speakers", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Shape the call." })).toBeVisible();
+  const builder = page.getByTestId("cfp-builder");
 
   await page.getByRole("button", { name: "+ New form" }).click();
   await page.getByLabel("Form name").fill(`Browser CFP ${suffix}`);
@@ -48,6 +49,7 @@ test("organizer builds and publishes a conditional CFP form", async ({ page, con
   await page.getByLabel("Confirmation page copy").fill("The browser-built proposal is safely saved.");
   await page.getByRole("button", { name: "Save changes" }).click();
   await expect(page.getByText("Draft changes saved.", { exact: true })).toBeVisible();
+  await expect(builder.locator('[data-field-key="session_title"]').getByRole("button", { name: "Remove" })).toBeDisabled();
   await page.getByRole("button", { name: "Publish version 1" }).click();
   await expect(page.getByText("v1 · published", { exact: true })).toBeVisible();
 
@@ -73,7 +75,6 @@ test("organizer builds and publishes a conditional CFP form", async ({ page, con
 
   await page.goto("/organizer/cfp");
   await expect(page.getByRole("heading", { name: "Shape the call." })).toBeVisible();
-  const builder = page.getByTestId("cfp-builder");
   const formLoadResponse = page.waitForResponse((response) => (
     response.request().method() === "GET"
     && response.url().endsWith(`/api/cfp-builder/forms/${createdForm.form.id}`)
@@ -85,6 +86,7 @@ test("organizer builds and publishes a conditional CFP form", async ({ page, con
   await page.getByLabel("Welcome copy").fill("Version two keeps the public call clear without changing version one answers.");
   await page.getByRole("button", { name: "Save changes" }).click();
   await expect(page.getByText("v2 · draft", { exact: true })).toBeVisible();
+  await page.getByLabel("Welcome copy").fill("Unsaved draft edits are included when version two is published.");
   await page.getByRole("button", { name: "Publish version 2" }).click();
   await expect(page.getByText("v2 · published", { exact: true })).toBeVisible();
   const versionTwoRender = await page.request.get(`/api/cfp-builder/submissions/${submission.submission.id}`);
@@ -93,7 +95,7 @@ test("organizer builds and publishes a conditional CFP form", async ({ page, con
 
   await context.clearCookies();
   await page.goto(`/cfp/${slug}`);
-  await expect(page.getByText("Version two keeps the public call clear without changing version one answers.", { exact: true })).toBeVisible();
+  await expect(page.getByText("Unsaved draft edits are included when version two is published.", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Key takeaway")).toBeVisible();
   await expect(page.getByLabel("Audience level")).toHaveCount(1);
   await expect(page.getByLabel("Workshop prerequisites")).toHaveCount(0);

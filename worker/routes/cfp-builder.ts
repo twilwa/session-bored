@@ -54,6 +54,18 @@ interface BuilderVersionInput {
   fields: BuilderFieldInput[];
 }
 
+const requiredContractFieldKeys = ["session_title", "abstract", "track"] as const;
+
+function hasPublishableContract(fields: Array<typeof formVersionFields.$inferSelect>): boolean {
+  return requiredContractFieldKeys.every((key) => {
+    const field = fields.find((candidate) => candidate.key === key);
+    return field !== undefined
+      && field.required
+      && field.conditionalFieldId === null
+      && (key !== "track" || field.fieldType === "dropdown");
+  });
+}
+
 function textOrNull(value: unknown): string | null {
   return typeof value === "string" && value.trim() !== "" ? value.trim() : null;
 }
@@ -566,6 +578,16 @@ cfpBuilderRoutes.post("/forms/:formId/publish", async (context) => {
     .limit(1);
   if (draft === undefined) {
     return context.json({ error: "no_draft", message: "Save form changes before publishing." }, 409);
+  }
+  const draftFields = await database
+    .select()
+    .from(formVersionFields)
+    .where(eq(formVersionFields.formVersionId, draft.id));
+  if (!hasPublishableContract(draftFields)) {
+    return context.json({
+      error: "invalid_form_contract",
+      message: "Session title, abstract, and track must remain always-visible required fields before publishing.",
+    }, 422);
   }
   const publishedAt = new Date();
   await database
