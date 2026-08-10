@@ -81,40 +81,44 @@ describe("organizer speaker roster", () => {
   });
 
   it("reports five active roster tasks when no accepted speakers are in the missing-information scope", async () => {
-    await env.DB.batch([
-      env.DB.prepare("update submission set status = 'declined' where event_id = ?")
-        .bind("evt_devflow_conf_2027"),
-      env.DB.prepare("update task set status = 'active' where event_id = ?")
-        .bind("evt_devflow_conf_2027"),
-      env.DB.prepare(
-        "update task_assignee set status = 'assigned' where speaker_id = ?",
-      ).bind("spk_priya_devflow_2027"),
-    ]);
+    const submissionStatuses = await env.DB.prepare(
+      "select id, status from submission where event_id = ?",
+    ).bind("evt_devflow_conf_2027").all<{ id: string; status: string }>();
+    try {
+      await env.DB.prepare("update submission set status = 'declined' where event_id = ?")
+        .bind("evt_devflow_conf_2027")
+        .run();
 
-    const roster = await request("/api/events/evt_devflow_conf_2027/roster", {
-      headers: { cookie: organizerCookie },
-    });
-    const rosterPayload = await roster.json<{
-      items: Array<{
-        id: string;
-        status: string;
-        taskSummary: { total: number; incomplete: number };
-      }>;
-    }>();
-    expect(rosterPayload.items.find((speaker) => speaker.id === "spk_priya_devflow_2027")).toMatchObject({
-      status: "onboarding",
-      taskSummary: { total: 5, incomplete: 5 },
-    });
+      const roster = await request("/api/events/evt_devflow_conf_2027/roster", {
+        headers: { cookie: organizerCookie },
+      });
+      const rosterPayload = await roster.json<{
+        items: Array<{
+          id: string;
+          status: string;
+          taskSummary: { total: number; incomplete: number };
+        }>;
+      }>();
+      expect(rosterPayload.items.find((speaker) => speaker.id === "spk_priya_devflow_2027")).toMatchObject({
+        status: "onboarding",
+        taskSummary: { total: 5, incomplete: 5 },
+      });
 
-    const missingInformation = await request(
-      "/api/events/evt_devflow_conf_2027/missing-information",
-      { headers: { cookie: organizerCookie } },
-    );
-    await expect(missingInformation.json()).resolves.toMatchObject({
-      acceptedSpeakerCount: 0,
-      incompleteSpeakerCount: 0,
-      items: [],
-    });
+      const missingInformation = await request(
+        "/api/events/evt_devflow_conf_2027/missing-information",
+        { headers: { cookie: organizerCookie } },
+      );
+      await expect(missingInformation.json()).resolves.toMatchObject({
+        acceptedSpeakerCount: 0,
+        incompleteSpeakerCount: 0,
+        items: [],
+      });
+    } finally {
+      await env.DB.batch(submissionStatuses.results.map((submission) =>
+        env.DB.prepare("update submission set status = ? where id = ?")
+          .bind(submission.status, submission.id)
+      ));
+    }
   });
 
   it("adopts an existing person without duplicating the event speaker", async () => {
