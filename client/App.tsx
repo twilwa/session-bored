@@ -6,6 +6,10 @@ import { CfpPage as CfpSubmissionPage } from "./pages/cfp/CfpPage.tsx";
 import { DispositionPage } from "./pages/disposition/DispositionPage.tsx";
 import { OrganizerReviewPage } from "./pages/review/OrganizerReviewPage.tsx";
 import { ReviewerReviewPage } from "./pages/review/ReviewerReviewPage.tsx";
+import { Brand, Link, PublicHeader, getJson, navigate } from "./lib.tsx";
+import { ProgramPage } from "./pages/public/ProgramPage.tsx";
+import { SpeakerDetailPage } from "./pages/public/SpeakerDetailPage.tsx";
+import { SpeakersPage } from "./pages/public/SpeakersPage.tsx";
 
 type Role = "organizer" | "reviewer" | "speaker";
 interface SessionPayload {
@@ -22,15 +26,6 @@ interface EventRecord {
 }
 interface NamedRecord { id: string; name: string }
 interface SubmissionRecord { id: string; title: string | null; status: string; audienceLevel?: string | null }
-interface PublicSessionRecord {
-  id: string;
-  title: string;
-  abstract: string | null;
-  scheduledDate: string | null;
-  scheduleStatus: string;
-  track: string | null;
-  format: string | null;
-}
 interface SpeakerContent {
   profile: { name: string; email: string; jobTitle: string | null; organization: string | null; status: string } | null;
   submissions: SubmissionRecord[];
@@ -42,58 +37,6 @@ interface CfpPayload {
   tracks: string[];
   formats: string[];
   fields: Array<{ id: string; label: string; fieldType: string; required: boolean; conditionalValue: string | null }>;
-}
-
-function navigate(path: string): void {
-  window.history.pushState({}, "", path);
-  window.dispatchEvent(new PopStateEvent("popstate"));
-}
-
-function Link({ href, children, className = "" }: { href: string; children: ReactNode; className?: string }) {
-  return (
-    <a
-      className={className}
-      href={href}
-      onClick={(event) => {
-        if (!event.metaKey && !event.ctrlKey && !event.shiftKey) {
-          event.preventDefault();
-          navigate(href);
-        }
-      }}
-    >
-      {children}
-    </a>
-  );
-}
-
-async function getJson<T>(path: string): Promise<T> {
-  const response = await fetch(path, { credentials: "same-origin" });
-  if (!response.ok) {
-    throw new Error(`${response.status}`);
-  }
-  return response.json<T>();
-}
-
-function Brand() {
-  return (
-    <Link className="brand" href="/">
-      <span aria-hidden="true" className="brand__light">●</span>
-      <span>Greenroom</span>
-    </Link>
-  );
-}
-
-function PublicHeader() {
-  return (
-    <header className="public-header">
-      <Brand />
-      <nav aria-label="Public navigation">
-        <Link href="/cfp/devflow-conf-2027">Call for speakers</Link>
-        <Link href="/program">Program</Link>
-        <Link className="nav-signin" href="/login">Sign in</Link>
-      </nav>
-    </header>
-  );
 }
 
 function HomePage() {
@@ -127,63 +70,6 @@ function HomePage() {
         </aside>
       </main>
       <footer className="public-footer">Greenroom / event operations at speaking speed</footer>
-    </div>
-  );
-}
-
-function CfpPage() {
-  const [data, setData] = useState<CfpPayload | null>(null);
-  const [error, setError] = useState(false);
-  useEffect(() => {
-    getJson<CfpPayload>("/api/public/cfp/devflow-conf-2027").then(setData).catch(() => setError(true));
-  }, []);
-  return (
-    <div className="public-page public-page--cfp">
-      <PublicHeader />
-      <main className="cfp-page">
-        {data === null && !error ? <LoadingState label="Loading call for speakers" /> : null}
-        {error ? <p role="alert">The call for speakers could not be loaded.</p> : null}
-        {data === null ? null : (
-          <>
-            <section className="cfp-hero">
-              <div>
-                <p className="eyebrow">CALL FOR SPEAKERS · OPEN</p>
-                <h1>{data.event.name}</h1>
-                <p className="cfp-hero__tagline">{data.event.tagline}</p>
-                <p>{data.event.description}</p>
-              </div>
-              <dl className="deadline-card">
-                <div><dt>Closes</dt><dd>April 30, 2027</dd></div>
-                <div><dt>Event</dt><dd>May 12–14, 2027</dd></div>
-                <div><dt>Place</dt><dd>{data.event.venue}</dd></div>
-              </dl>
-            </section>
-            <section className="taxonomy-grid">
-              <div><p className="section-label">Tracks / 03</p><div className="tag-list">{data.tracks.map((item) => <span key={item}>{item}</span>)}</div></div>
-              <div><p className="section-label">Formats / 05</p><div className="tag-list">{data.formats.map((item) => <span key={item}>{item}</span>)}</div></div>
-            </section>
-            <section className="form-preview">
-              <div>
-                <p className="section-label">Published form / v1</p>
-                <h2>Bring us the useful part.</h2>
-                <p>{data.form.welcomeCopy}</p>
-              </div>
-              <ol className="field-list">
-                {data.fields.map((field, index) => (
-                  <li key={field.id}>
-                    <span>{String(index + 1).padStart(2, "0")}</span>
-                    <strong>{field.label}</strong>
-                    <small>{field.fieldType.replace("_", " ")}{field.required ? " · required" : " · optional"}</small>
-                    {field.conditionalValue === null ? null : <StatusChip tone="signal">when {field.conditionalValue}</StatusChip>}
-                  </li>
-                ))}
-              </ol>
-              <Link className="button button--signal" href="/login">Sign in to submit →</Link>
-              <p className="save-note">Drafts save even when incomplete. Validation happens only when you submit.</p>
-            </section>
-          </>
-        )}
-      </main>
     </div>
   );
 }
@@ -355,42 +241,6 @@ function SpeakerPage() {
   );
 }
 
-function ProgramPage() {
-  const [sessions, setSessions] = useState<PublicSessionRecord[] | null>(null);
-  useEffect(() => {
-    getJson<{ items: PublicSessionRecord[] }>("/api/public/events/evt_devflow_conf_2027/sessions")
-      .then((data) => setSessions(data.items))
-      .catch(() => setSessions([]));
-  }, []);
-  return (
-    <div className="public-page">
-      <PublicHeader />
-      <main className="program-page">
-        <header className="program-intro">
-          <p className="eyebrow">PUBLIC PROGRAM / PREVIEW</p>
-          <h1>DevFlow Conf 2027 program</h1>
-          <p>Approved sessions publish from the same source of truth. Exact times may remain TBD while the run of show takes shape.</p>
-        </header>
-        {sessions === null ? <LoadingState label="Loading program" /> : (
-          <section className="program-list" aria-label="Published sessions">
-            {sessions.map((session, index) => (
-              <article className="program-session" key={session.id}>
-                <span>{String(index + 1).padStart(2, "0")}</span>
-                <div>
-                  <p>{session.track ?? "Track TBD"} · {session.format ?? "Format TBD"}</p>
-                  <h2>{session.title}</h2>
-                  <p>{session.abstract}</p>
-                </div>
-                <StatusChip tone="signal">{session.scheduledDate ?? "TBD"}</StatusChip>
-              </article>
-            ))}
-          </section>
-        )}
-      </main>
-    </div>
-  );
-}
-
 export function App() {
   const [path, setPath] = useState(window.location.pathname);
   useEffect(() => {
@@ -404,7 +254,12 @@ export function App() {
   if (path.startsWith("/organizer/review")) return <RoleShell role="organizer"><OrganizerReviewPage path={path} /></RoleShell>;
   if (path.startsWith("/organizer")) return <OrganizerPage />;
   if (path.startsWith("/reviewer")) return <ReviewerPage path={path} />;
+  if (path === "/program" || path.startsWith("/program/")) return <ProgramPage />;
+  if (path === "/speakers") return <SpeakersPage />;
+  if (path.startsWith("/speakers/")) {
+    const speakerId = path.split("/")[2] ?? "";
+    return <SpeakerDetailPage speakerId={speakerId} />;
+  }
   if (path.startsWith("/speaker")) return <SpeakerPage />;
-  if (path.startsWith("/program")) return <ProgramPage />;
   return <HomePage />;
 }

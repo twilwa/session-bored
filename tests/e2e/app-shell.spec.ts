@@ -16,7 +16,7 @@ test("public CFP is populated and mobile readable", async ({ page }) => {
 test("public program shows an approved fixture session", async ({ page }) => {
   await page.goto("/program");
 
-  await expect(page.getByRole("heading", { name: "DevFlow Conf 2027 program" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "DevFlow Conf 2027", exact: true })).toBeVisible();
   await expect(page.getByText("Docs That Answer Back", { exact: false })).toBeVisible();
 });
 

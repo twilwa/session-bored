@@ -426,3 +426,85 @@ export interface ReviewSubmissionDetail {
   }>;
   comments: ReviewComment[];
 }
+
+export interface PublicSpeakerRef {
+  id: string;
+  name: string;
+  jobTitle: string | null;
+  organization: string | null;
+}
+
+export interface PublicSessionCard {
+  id: string;
+  title: string | null;
+  abstract: string | null;
+  track: string | null;
+  format: string | null;
+  room: string | null;
+  scheduledDate: string | null;
+  startsAt: number | null;
+  endsAt: number | null;
+  scheduleStatus: string;
+  speakers: PublicSpeakerRef[];
+}
+
+export interface PublicSpeakerCard {
+  id: string;
+  name: string;
+  jobTitle: string | null;
+  organization: string | null;
+  bio: string | null;
+  headshotUrl: string | null;
+  twitter: string | null;
+  linkedin: string | null;
+  sessionCount: number;
+}
+
+export interface PublicSpeakerSession {
+  id: string;
+  title: string | null;
+  scheduledDate: string | null;
+  startsAt: number | null;
+  endsAt: number | null;
+  room: string | null;
+  track: string | null;
+}
+
+export interface PublicSpeakerDetail extends PublicSpeakerCard {
+  email: string | null;
+  sessions: PublicSpeakerSession[];
+}
+
+export interface PublicEventFacets {
+  event: {
+    id: string;
+    name: string;
+    tagline: string | null;
+    startDate: string | null;
+    endDate: string | null;
+    venue: string | null;
+    timezone: string;
+  };
+  tracks: string[];
+  formats: string[];
+  rooms: string[];
+  days: string[];
+}
+
+export interface PublicSessionsResponse {
+  items: PublicSessionCard[];
+  total: number;
+  filtered: number;
+  facets: PublicEventFacets;
+}
+
+export interface PublicSpeakersResponse {
+  items: PublicSpeakerCard[];
+  total: number;
+  facets: PublicEventFacets;
+}
+
+export interface PublicSpeakerDetailResponse {
+  speaker: PublicSpeakerDetail;
+  facets: PublicEventFacets;
+}
