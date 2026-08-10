@@ -1,11 +1,13 @@
 // ABOUTME: Serves Greenroom's same-origin Hono routes, Better Auth, and protected React assets.
 // ABOUTME: Seeds fixture data and enforces role plus ownership scoping before resource access.
-import { and, eq, ne } from "drizzle-orm";
+import { and, eq, inArray, ne } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { Hono } from "hono";
 import { createMiddleware } from "hono/factory";
 import {
   events,
+  fileVersions,
+  files,
   formFields,
   formats,
   forms,
@@ -30,6 +32,7 @@ import { createAuth, type AuthSession } from "./auth.ts";
 import aiReviewRoutes from "./routes/ai-review.ts";
 import cfpBuilderRoutes from "./routes/cfp-builder.ts";
 import cfpRoutes from "./routes/cfp.ts";
+import portalRoutes from "./routes/portal.ts";
 import { publicRoutes } from "./routes/public.ts";
 import reviewRoutes from "./routes/review.ts";
 import submitterRoutes from "./routes/submitter.ts";
@@ -111,6 +114,7 @@ app.get("/api/session", requireAccess("authenticated"), (context) =>
 
 app.route("/api", reviewRoutes);
 app.route("/api", aiReviewRoutes);
+app.route("/api", portalRoutes);
 app.route("/api/public", publicRoutes);
 app.route("/api", submitterRoutes);
 
@@ -334,25 +338,70 @@ app.get("/api/speaker/content", requireAccess("speaker"), async (context) => {
       jobTitle: people.jobTitle,
       organization: people.organization,
       bio: people.bio,
+      headshotUrl: people.headshotUrl,
+      twitter: people.twitter,
+      linkedin: people.linkedin,
+      socialLinks: people.socialLinks,
       status: speakers.status,
     })
     .from(people)
     .innerJoin(speakers, eq(speakers.personId, people.id))
     .where(eq(people.userId, user.id));
   if (profile === undefined) {
-    return context.json({ profile: null, submissions: [], tasks: [] });
+    return context.json({ profile: null, submissions: [], sessions: [], tasks: [] });
   }
   const ownSubmissions = await database
     .select({ id: submissions.id, title: submissions.title, status: submissions.status })
     .from(submissions)
     .innerJoin(submissionSpeakers, eq(submissionSpeakers.submissionId, submissions.id))
     .where(eq(submissionSpeakers.personId, profile.personId));
+  const ownSessions = await database
+    .select({
+      id: sessions.id,
+      title: sessions.title,
+      abstract: sessions.abstract,
+      contentStatus: sessions.contentStatus,
+    })
+    .from(sessions)
+    .innerJoin(sessionSpeakers, eq(sessionSpeakers.sessionId, sessions.id))
+    .where(eq(sessionSpeakers.speakerId, profile.speakerId));
   const ownTasks = await database
-    .select({ id: tasks.id, title: tasks.title, dueAt: tasks.dueAt, status: taskAssignees.status })
+    .select({
+      id: tasks.id,
+      title: tasks.title,
+      instructions: tasks.instructions,
+      taskType: tasks.taskType,
+      dueAt: tasks.dueAt,
+      status: taskAssignees.status,
+      acceptedFileTypes: tasks.acceptedFileTypes,
+      maximumFileBytes: tasks.maximumFileBytes,
+    })
     .from(taskAssignees)
     .innerJoin(tasks, eq(taskAssignees.taskId, tasks.id))
     .where(eq(taskAssignees.speakerId, profile.speakerId));
-  return context.json({ profile, submissions: ownSubmissions, tasks: ownTasks });
+  const taskIds = ownTasks.map((task) => task.id);
+  const taskFiles = taskIds.length === 0 ? [] : await database
+    .select({
+      taskId: files.taskId,
+      fileId: files.id,
+      displayName: files.displayName,
+      version: fileVersions.version,
+    })
+    .from(files)
+    .innerJoin(fileVersions, and(eq(fileVersions.fileId, files.id), eq(fileVersions.latest, true)))
+    .where(and(eq(files.speakerId, profile.speakerId), inArray(files.taskId, taskIds)));
+  return context.json({
+    profile,
+    submissions: ownSubmissions,
+    sessions: ownSessions.map((session) => ({
+      ...session,
+      editable: session.contentStatus !== "approved",
+    })),
+    tasks: ownTasks.map((task) => ({
+      ...task,
+      file: taskFiles.find((file) => file.taskId === task.id) ?? null,
+    })),
+  });
 });
 
 app.get("/api/events/:eventId/reviews", requireAccess("organizer"), (context) =>

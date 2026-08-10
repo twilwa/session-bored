@@ -1,0 +1,491 @@
+// ABOUTME: Serves the signed-in speaker's own profile, session, task, and file self-service surface.
+// ABOUTME: Scopes every read and write to the caller's own speaker record; headshots serve publicly.
+import { and, eq, inArray, ne } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/d1";
+import { Hono } from "hono";
+import { createMiddleware } from "hono/factory";
+import {
+  createPublicId,
+  type FileKind,
+  files,
+  fileVersions,
+  people,
+  sessions,
+  sessionSpeakers,
+  speakers,
+  taskAssignees,
+  tasks,
+  type Role,
+} from "../../db/schema.ts";
+import type { AuthSession } from "../auth.ts";
+import {
+  buildStorageKey,
+  getFileObject,
+  headshotLimits,
+  limitsForTask,
+  putFileObject,
+  type UploadLimits,
+  validateUpload,
+} from "../storage/files.ts";
+
+type PortalEnvironment = {
+  Bindings: CloudflareBindings;
+  Variables: {
+    authSession: AuthSession["session"] | null;
+    authUser: AuthSession["user"] | null;
+    role: Role | null;
+  };
+};
+
+const portalRoutes = new Hono<PortalEnvironment>();
+
+const requireSpeaker = createMiddleware<PortalEnvironment>(async (context, next) => {
+  const role = context.get("role");
+  if (role === null) {
+    return context.json({ error: "authentication_required" }, 401);
+  }
+  if (role !== "speaker") {
+    return context.json({ error: "forbidden" }, 403);
+  }
+  await next();
+});
+
+interface SpeakerProfile {
+  speakerId: string;
+  personId: string;
+  eventId: string;
+}
+
+async function loadOwnSpeaker(
+  database: ReturnType<typeof drizzle>,
+  userId: string,
+): Promise<SpeakerProfile | undefined> {
+  const [profile] = await database
+    .select({ speakerId: speakers.id, personId: people.id, eventId: speakers.eventId })
+    .from(people)
+    .innerJoin(speakers, eq(speakers.personId, people.id))
+    .where(eq(people.userId, userId));
+  return profile;
+}
+
+async function completeMatchingTasks(
+  database: ReturnType<typeof drizzle>,
+  speakerId: string,
+  titlePattern: RegExp,
+): Promise<void> {
+  const assigned = await database
+    .select({ taskId: tasks.id, title: tasks.title })
+    .from(taskAssignees)
+    .innerJoin(tasks, eq(taskAssignees.taskId, tasks.id))
+    .where(and(eq(taskAssignees.speakerId, speakerId), ne(taskAssignees.status, "completed")));
+  const matchingTaskIds = assigned.filter((task) => titlePattern.test(task.title)).map((task) => task.taskId);
+  if (matchingTaskIds.length === 0) {
+    return;
+  }
+  await database
+    .update(taskAssignees)
+    .set({ status: "completed", completedAt: new Date() })
+    .where(and(eq(taskAssignees.speakerId, speakerId), inArray(taskAssignees.taskId, matchingTaskIds)));
+}
+
+async function recordFileVersion(
+  env: CloudflareBindings,
+  database: ReturnType<typeof drizzle>,
+  params: {
+    existingFileId: string | null;
+    eventId: string;
+    speakerId: string;
+    taskId: string | null;
+    kind: FileKind;
+    file: File;
+    uploadedByUserId: string;
+  },
+): Promise<{ fileId: string; version: number }> {
+  const fileId = params.existingFileId ?? createPublicId("fil");
+  if (params.existingFileId === null) {
+    await database.insert(files).values({
+      id: fileId,
+      eventId: params.eventId,
+      taskId: params.taskId,
+      speakerId: params.speakerId,
+      kind: params.kind,
+      displayName: params.file.name,
+    });
+  } else {
+    await database.update(files).set({ displayName: params.file.name }).where(eq(files.id, fileId));
+  }
+
+  const priorVersions = await database
+    .select({ version: fileVersions.version })
+    .from(fileVersions)
+    .where(eq(fileVersions.fileId, fileId));
+  const version = priorVersions.length === 0
+    ? 1
+    : Math.max(...priorVersions.map((row) => row.version)) + 1;
+
+  const fileVersionId = createPublicId("fver");
+  const storageKey = buildStorageKey({
+    eventId: params.eventId,
+    speakerId: params.speakerId,
+    fileId,
+    fileVersionId,
+    filename: params.file.name,
+  });
+  const contentType = params.file.type.length > 0 ? params.file.type : "application/octet-stream";
+  await putFileObject(env.FILES, storageKey, await params.file.arrayBuffer(), contentType);
+
+  if (priorVersions.length > 0) {
+    await database.update(fileVersions).set({ latest: false }).where(eq(fileVersions.fileId, fileId));
+  }
+  await database.insert(fileVersions).values({
+    id: fileVersionId,
+    fileId,
+    version,
+    storageKey,
+    mimeType: contentType,
+    sizeBytes: params.file.size,
+    latest: true,
+    uploadedByUserId: params.uploadedByUserId,
+  });
+
+  return { fileId, version };
+}
+
+function readUploadedFile(formData: FormData | null): File | null {
+  const value = formData?.get("file");
+  return value instanceof File ? value : null;
+}
+
+function validationErrorStatus(error: "file_required" | "file_too_large" | "unsupported_file_type"): 400 | 413 | 415 {
+  if (error === "file_too_large") return 413;
+  if (error === "unsupported_file_type") return 415;
+  return 400;
+}
+
+portalRoutes.patch("/portal/profile", requireSpeaker, async (context) => {
+  const user = context.get("authUser");
+  if (user === null) {
+    return context.json({ error: "authentication_required" }, 401);
+  }
+  const database = drizzle(context.env.DB);
+  const profile = await loadOwnSpeaker(database, user.id);
+  if (profile === undefined) {
+    return context.json({ error: "forbidden" }, 403);
+  }
+  const payload = await context.req.json<{
+    bio?: unknown;
+    twitter?: unknown;
+    linkedin?: unknown;
+    socialLinks?: unknown;
+  }>().catch(() => null);
+  if (payload === null) {
+    return context.json({ error: "invalid_profile_update" }, 400);
+  }
+  const update: { bio?: string | null; twitter?: string | null; linkedin?: string | null; socialLinks?: Record<string, string> | null } = {};
+  for (const key of ["bio", "twitter", "linkedin"] as const) {
+    const value = payload[key];
+    if (value === undefined) continue;
+    if (value !== null && typeof value !== "string") {
+      return context.json({ error: "invalid_profile_update" }, 400);
+    }
+    update[key] = value === null ? null : value.trim();
+  }
+  if (payload.socialLinks !== undefined) {
+    const rawSocialLinks = payload.socialLinks;
+    if (rawSocialLinks !== null && (typeof rawSocialLinks !== "object" || Array.isArray(rawSocialLinks))) {
+      return context.json({ error: "invalid_profile_update" }, 400);
+    }
+    if (rawSocialLinks !== null) {
+      const invalid = Object.values(rawSocialLinks as Record<string, unknown>).some(
+        (value) => typeof value !== "string",
+      );
+      if (invalid) {
+        return context.json({ error: "invalid_profile_update" }, 400);
+      }
+    }
+    update.socialLinks = rawSocialLinks as Record<string, string> | null;
+  }
+  if (Object.keys(update).length === 0) {
+    return context.json({ error: "invalid_profile_update" }, 400);
+  }
+  await database.update(people).set(update).where(eq(people.id, profile.personId));
+  if (typeof update.bio === "string" && update.bio.length > 0) {
+    await completeMatchingTasks(database, profile.speakerId, /bio|profile/i);
+  }
+  const [updated] = await database
+    .select({
+      personId: people.id,
+      bio: people.bio,
+      twitter: people.twitter,
+      linkedin: people.linkedin,
+      socialLinks: people.socialLinks,
+      headshotUrl: people.headshotUrl,
+    })
+    .from(people)
+    .where(eq(people.id, profile.personId));
+  return context.json(updated);
+});
+
+portalRoutes.post("/portal/profile/headshot", requireSpeaker, async (context) => {
+  const user = context.get("authUser");
+  if (user === null) {
+    return context.json({ error: "authentication_required" }, 401);
+  }
+  const database = drizzle(context.env.DB);
+  const profile = await loadOwnSpeaker(database, user.id);
+  if (profile === undefined) {
+    return context.json({ error: "forbidden" }, 403);
+  }
+  const file = readUploadedFile(await context.req.formData().catch(() => null));
+  if (file === null) {
+    return context.json({ error: "file_required", message: "Choose a file to upload." }, 400);
+  }
+  const validationError = validateUpload(file, headshotLimits);
+  if (validationError !== null) {
+    return context.json(validationError, validationErrorStatus(validationError.error));
+  }
+  const [existing] = await database
+    .select({ id: files.id })
+    .from(files)
+    .where(and(eq(files.speakerId, profile.speakerId), eq(files.kind, "headshot")));
+  const { fileId, version } = await recordFileVersion(context.env, database, {
+    existingFileId: existing?.id ?? null,
+    eventId: profile.eventId,
+    speakerId: profile.speakerId,
+    taskId: null,
+    kind: "headshot",
+    file,
+    uploadedByUserId: user.id,
+  });
+  const headshotUrl = `/api/public/portal/speakers/${profile.speakerId}/headshot`;
+  await database.update(people).set({ headshotUrl }).where(eq(people.id, profile.personId));
+  await completeMatchingTasks(database, profile.speakerId, /headshot/i);
+  return context.json({ fileId, version, headshotUrl }, 201);
+});
+
+portalRoutes.patch("/portal/sessions/:sessionId", requireSpeaker, async (context) => {
+  const user = context.get("authUser");
+  if (user === null) {
+    return context.json({ error: "authentication_required" }, 401);
+  }
+  const database = drizzle(context.env.DB);
+  const profile = await loadOwnSpeaker(database, user.id);
+  if (profile === undefined) {
+    return context.json({ error: "forbidden" }, 403);
+  }
+  const sessionId = context.req.param("sessionId");
+  const [owned] = await database
+    .select({ id: sessions.id, contentStatus: sessions.contentStatus })
+    .from(sessions)
+    .innerJoin(sessionSpeakers, eq(sessionSpeakers.sessionId, sessions.id))
+    .where(and(eq(sessions.id, sessionId), eq(sessionSpeakers.speakerId, profile.speakerId)));
+  if (owned === undefined) {
+    return context.json({ error: "forbidden" }, 403);
+  }
+  if (owned.contentStatus === "approved") {
+    return context.json({ error: "session_locked" }, 409);
+  }
+  const payload = await context.req.json<{ title?: unknown; abstract?: unknown }>().catch(() => null);
+  if (payload === null) {
+    return context.json({ error: "invalid_session_update" }, 400);
+  }
+  const update: { title?: string; abstract?: string; contentStatus?: "in_review" } = {};
+  if (payload.title !== undefined) {
+    if (typeof payload.title !== "string" || payload.title.trim().length === 0) {
+      return context.json({ error: "invalid_session_update" }, 400);
+    }
+    update.title = payload.title.trim();
+  }
+  if (payload.abstract !== undefined) {
+    if (typeof payload.abstract !== "string" || payload.abstract.trim().length === 0) {
+      return context.json({ error: "invalid_session_update" }, 400);
+    }
+    update.abstract = payload.abstract.trim();
+  }
+  if (Object.keys(update).length === 0) {
+    return context.json({ error: "invalid_session_update" }, 400);
+  }
+  if (owned.contentStatus === "draft") {
+    update.contentStatus = "in_review";
+  }
+  await database.update(sessions).set(update).where(eq(sessions.id, sessionId));
+  const [updated] = await database
+    .select({
+      id: sessions.id,
+      title: sessions.title,
+      abstract: sessions.abstract,
+      contentStatus: sessions.contentStatus,
+    })
+    .from(sessions)
+    .where(eq(sessions.id, sessionId));
+  return context.json(updated);
+});
+
+portalRoutes.patch("/portal/tasks/:taskId", requireSpeaker, async (context) => {
+  const user = context.get("authUser");
+  if (user === null) {
+    return context.json({ error: "authentication_required" }, 401);
+  }
+  const database = drizzle(context.env.DB);
+  const profile = await loadOwnSpeaker(database, user.id);
+  if (profile === undefined) {
+    return context.json({ error: "forbidden" }, 403);
+  }
+  const taskId = context.req.param("taskId");
+  const [assignment] = await database
+    .select({ id: taskAssignees.id })
+    .from(taskAssignees)
+    .where(and(eq(taskAssignees.taskId, taskId), eq(taskAssignees.speakerId, profile.speakerId)));
+  if (assignment === undefined) {
+    return context.json({ error: "forbidden" }, 403);
+  }
+  const payload = await context.req.json<{ status?: unknown }>().catch(() => null);
+  const statuses = ["assigned", "in_progress", "completed"] as const;
+  const status = statuses.find((item) => item === payload?.status);
+  if (status === undefined) {
+    return context.json({ error: "invalid_task_status" }, 400);
+  }
+  await database
+    .update(taskAssignees)
+    .set({ status, completedAt: status === "completed" ? new Date() : null })
+    .where(eq(taskAssignees.id, assignment.id));
+  const [updated] = await database
+    .select({
+      id: taskAssignees.id,
+      taskId: taskAssignees.taskId,
+      status: taskAssignees.status,
+      completedAt: taskAssignees.completedAt,
+    })
+    .from(taskAssignees)
+    .where(eq(taskAssignees.id, assignment.id));
+  return context.json(updated);
+});
+
+portalRoutes.post("/portal/tasks/:taskId/files", requireSpeaker, async (context) => {
+  const user = context.get("authUser");
+  if (user === null) {
+    return context.json({ error: "authentication_required" }, 401);
+  }
+  const database = drizzle(context.env.DB);
+  const profile = await loadOwnSpeaker(database, user.id);
+  if (profile === undefined) {
+    return context.json({ error: "forbidden" }, 403);
+  }
+  const taskId = context.req.param("taskId");
+  const [assignment] = await database
+    .select({
+      taskType: tasks.taskType,
+      acceptedFileTypes: tasks.acceptedFileTypes,
+      maximumFileBytes: tasks.maximumFileBytes,
+    })
+    .from(taskAssignees)
+    .innerJoin(tasks, eq(taskAssignees.taskId, tasks.id))
+    .where(and(eq(taskAssignees.taskId, taskId), eq(taskAssignees.speakerId, profile.speakerId)));
+  if (assignment === undefined) {
+    return context.json({ error: "forbidden" }, 403);
+  }
+  if (assignment.taskType !== "file_request") {
+    return context.json({ error: "task_not_file_request" }, 400);
+  }
+  const file = readUploadedFile(await context.req.formData().catch(() => null));
+  if (file === null) {
+    return context.json({ error: "file_required", message: "Choose a file to upload." }, 400);
+  }
+  const limits: UploadLimits = limitsForTask(assignment);
+  const validationError = validateUpload(file, limits);
+  if (validationError !== null) {
+    return context.json(validationError, validationErrorStatus(validationError.error));
+  }
+  const [existing] = await database
+    .select({ id: files.id })
+    .from(files)
+    .where(and(eq(files.taskId, taskId), eq(files.speakerId, profile.speakerId)));
+  const { fileId, version } = await recordFileVersion(context.env, database, {
+    existingFileId: existing?.id ?? null,
+    eventId: profile.eventId,
+    speakerId: profile.speakerId,
+    taskId,
+    kind: "deliverable",
+    file,
+    uploadedByUserId: user.id,
+  });
+  await database
+    .update(taskAssignees)
+    .set({ status: "completed", completedAt: new Date() })
+    .where(and(eq(taskAssignees.taskId, taskId), eq(taskAssignees.speakerId, profile.speakerId)));
+  return context.json({ fileId, version, taskId, status: "completed" }, 201);
+});
+
+portalRoutes.get("/portal/files/:fileId", async (context) => {
+  const user = context.get("authUser");
+  const role = context.get("role");
+  if (user === null) {
+    return context.json({ error: "authentication_required" }, 401);
+  }
+  if (role !== "speaker" && role !== "organizer") {
+    return context.json({ error: "forbidden" }, 403);
+  }
+  const database = drizzle(context.env.DB);
+  const [file] = await database
+    .select()
+    .from(files)
+    .where(eq(files.id, context.req.param("fileId")));
+  if (file === undefined) {
+    return context.json({ error: "not_found" }, 404);
+  }
+  if (role === "speaker") {
+    const profile = await loadOwnSpeaker(database, user.id);
+    if (profile === undefined || profile.speakerId !== file.speakerId) {
+      return context.json({ error: "forbidden" }, 403);
+    }
+  }
+  const requestedVersion = context.req.query("version");
+  const versionFilter = requestedVersion === undefined
+    ? eq(fileVersions.latest, true)
+    : eq(fileVersions.version, Number(requestedVersion));
+  const [version] = await database
+    .select()
+    .from(fileVersions)
+    .where(and(eq(fileVersions.fileId, file.id), versionFilter));
+  if (version === undefined) {
+    return context.json({ error: "not_found" }, 404);
+  }
+  const object = await getFileObject(context.env.FILES, version.storageKey);
+  if (object === null) {
+    return context.json({ error: "file_object_missing" }, 404);
+  }
+  return new Response(object.body, {
+    headers: {
+      "content-type": version.mimeType,
+      "content-disposition": `attachment; filename="${file.displayName.replaceAll('"', "")}"`,
+      "content-length": String(version.sizeBytes),
+    },
+  });
+});
+
+portalRoutes.get("/public/portal/speakers/:speakerId/headshot", async (context) => {
+  const database = drizzle(context.env.DB);
+  const [file] = await database
+    .select({ id: files.id })
+    .from(files)
+    .where(and(eq(files.speakerId, context.req.param("speakerId")), eq(files.kind, "headshot")));
+  if (file === undefined) {
+    return context.json({ error: "not_found" }, 404);
+  }
+  const [version] = await database
+    .select({ storageKey: fileVersions.storageKey, mimeType: fileVersions.mimeType })
+    .from(fileVersions)
+    .where(and(eq(fileVersions.fileId, file.id), eq(fileVersions.latest, true)));
+  if (version === undefined) {
+    return context.json({ error: "not_found" }, 404);
+  }
+  const object = await getFileObject(context.env.FILES, version.storageKey);
+  if (object === null) {
+    return context.json({ error: "not_found" }, 404);
+  }
+  return new Response(object.body, {
+    headers: { "content-type": version.mimeType, "cache-control": "public, max-age=300" },
+  });
+});
+
+export default portalRoutes;

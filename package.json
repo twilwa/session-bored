@@ -40,5 +40,13 @@
   },
   "engines": {
     "node": ">=22"
+  },
+  "allowScripts": {
+    "esbuild@0.18.20": true,
+    "esbuild@0.25.12": true,
+    "esbuild@0.28.1": true,
+    "fsevents@2.3.2": true,
+    "fsevents@2.3.3": true,
+    "workerd@1.20260801.1": true
   }
 }
