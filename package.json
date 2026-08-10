@@ -1,0 +1,44 @@
+{
+  "name": "session-bored",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc --noEmit && vite build",
+    "cf-typegen": "wrangler types --env-interface CloudflareBindings",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate:local": "wrangler d1 migrations apply session-bored --local",
+    "db:migrate:remote": "wrangler d1 migrations apply session-bored --remote",
+    "dev": "npm run build && wrangler dev",
+    "deploy": "npm run build && wrangler deploy",
+    "seed:local": "wrangler dev --test-scheduled=false",
+    "test": "vitest run --config vitest.config.ts",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:e2e": "npm run db:migrate:local && playwright test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@better-auth/drizzle-adapter": "1.6.26",
+    "better-auth": "1.6.26",
+    "drizzle-orm": "0.45.2",
+    "hono": "4.13.1",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "0.20.3",
+    "@cloudflare/workers-types": "5.20260809.1",
+    "@playwright/test": "1.62.1",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.4",
+    "@vitejs/plugin-react": "6.0.5",
+    "drizzle-kit": "0.31.10",
+    "typescript": "7.0.2",
+    "vite": "8.2.1",
+    "vitest": "4.1.10",
+    "wrangler": "4.120.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
