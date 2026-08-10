@@ -4,8 +4,15 @@ import { type FormEvent, type ReactNode, useEffect, useState } from "react";
 
 type Role = "organizer" | "reviewer" | "speaker";
 
+export interface SessionUser {
+  id: string;
+  name: string;
+  email: string;
+  role: Role;
+}
+
 interface SessionPayload {
-  user: { id: string; name: string; email: string; role: Role };
+  user: SessionUser;
 }
 
 interface AccountArea {
@@ -18,6 +25,18 @@ const roleAreas: Record<Role, AccountArea> = {
   reviewer: { href: "/reviewer", label: "Reviewer area" },
   speaker: { href: "/speaker", label: "Speaker area" },
 };
+
+const publicSessionEvent = "greenroom:public-session";
+
+export function updatePublicSession(user: SessionUser | null): void {
+  window.dispatchEvent(new CustomEvent<SessionUser | null>(publicSessionEvent, { detail: user }));
+}
+
+export function observePublicSession(listener: (user: SessionUser | null) => void): () => void {
+  const handleSession = (event: Event) => listener((event as CustomEvent<SessionUser | null>).detail);
+  window.addEventListener(publicSessionEvent, handleSession);
+  return () => window.removeEventListener(publicSessionEvent, handleSession);
+}
 
 export function accountAreaFor(role: Role, hasPortalWork: boolean, hasProposals: boolean): AccountArea {
   if (role === "speaker" && !hasPortalWork && hasProposals) {
@@ -95,18 +114,28 @@ export function PublicHeader() {
 
   useEffect(() => {
     let active = true;
+    let resolution = 0;
+    async function resolveAccount(user: SessionUser | null): Promise<void> {
+      const currentResolution = ++resolution;
+      if (user === null) {
+        setAccount(null);
+        return;
+      }
+      const session = { user };
+      const area = await loadAccountArea(session);
+      if (active && resolution === currentResolution) setAccount({ session, area });
+    }
+    const stopObservingSession = observePublicSession((user) => void resolveAccount(user));
     fetch("/api/session", { credentials: "same-origin" })
       .then(async (response) => {
         if (!response.ok) return null;
-        const session = await response.json<SessionPayload>();
-        return { session, area: await loadAccountArea(session) };
+        return (await response.json<SessionPayload>()).user;
       })
-      .then((resolvedAccount) => {
-        if (active) setAccount(resolvedAccount);
-      })
+      .then((user) => resolveAccount(user))
       .catch(() => undefined);
     return () => {
       active = false;
+      stopObservingSession();
     };
   }, []);
 
@@ -117,7 +146,7 @@ export function PublicHeader() {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({}),
     });
-    if (response.ok) setAccount(null);
+    if (response.ok) updatePublicSession(null);
   }
 
   return (

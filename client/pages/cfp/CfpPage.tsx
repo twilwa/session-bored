@@ -7,7 +7,7 @@ import type {
   CfpSubmissionIntent,
   CfpSubmissionWrite,
 } from "../../../shared/api.ts";
-import { PublicHeader } from "../../lib.tsx";
+import { observePublicSession, PublicHeader, updatePublicSession } from "../../lib.tsx";
 import { SubmitterAccountPanel, type SubmitterAccountUser } from "../submitter/SubmitterAccountPanel.tsx";
 import { formatFullDateTime } from "../public/shared.ts";
 import "./cfp.css";
@@ -400,12 +400,24 @@ export function CfpPage({ path }: { path: string }) {
       },
     }));
   }
+
+  function authenticateAccountUser(user: SubmitterAccountUser): void {
+    applyAccountUser(user);
+    updatePublicSession(user);
+  }
   const [newerVersionAvailable, setNewerVersionAvailable] = useState<{
     version: number;
     startUrl: string;
   } | null>(null);
 
   useEffect(() => {
+    const stopObservingSession = observePublicSession((user) => {
+      if (user === null) {
+        setAccountUser(null);
+      } else {
+        applyAccountUser(user);
+      }
+    });
     setSavedReferences(readSavedReferences());
     const key = new URLSearchParams(window.location.search).get("key");
     setEditKey(key);
@@ -437,6 +449,7 @@ export function CfpPage({ path }: { path: string }) {
         }
       })
       .catch((error: unknown) => setPageError(error instanceof Error ? error.message : "The CFP could not be loaded."));
+    return stopObservingSession;
   }, [slug, submissionId]);
 
   const deadline = useMemo(
@@ -561,7 +574,7 @@ export function CfpPage({ path }: { path: string }) {
           </div>
         </section>
 
-        <SubmitterAccountPanel onAuthenticated={applyAccountUser} user={accountUser} />
+        <SubmitterAccountPanel onAuthenticated={authenticateAccountUser} user={accountUser} />
 
         {savedReferences.length === 0 ? null : (
           <section className="cfp-own-list" aria-label="Your proposals on this device">

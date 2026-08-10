@@ -69,18 +69,18 @@ test("organizer password opens the populated operations shell", async ({ page })
   const nav = page.getByRole("navigation", { name: "Public navigation" });
   await expect(nav.getByText("Jordan Alvarez", { exact: true })).toBeVisible();
   await expect(nav.getByRole("link", { name: "Organizer area" })).toHaveAttribute("href", "/organizer");
-  await page.goto("/cfp/devflow-conf-2027");
-  await expect(page.getByRole("navigation", { name: "Public navigation" }).getByRole("link", { name: "Organizer area" }))
-    .toHaveAttribute("href", "/organizer");
-  await page.goto("/program");
   await nav.getByRole("link", { name: "Organizer area" }).click();
   await expect(page).toHaveURL(/\/organizer$/);
 
-  await page.goto("/program");
+  await page.goto("/cfp/devflow-conf-2027");
+  const cfpNav = page.getByRole("navigation", { name: "Public navigation" });
+  await expect(cfpNav.getByRole("link", { name: "Organizer area" })).toHaveAttribute("href", "/organizer");
   const signOutResponse = page.waitForResponse("**/api/auth/sign-out");
-  await nav.getByRole("button", { name: "Sign out" }).click();
+  await cfpNav.getByRole("button", { name: "Sign out" }).click();
   expect((await signOutResponse).status()).toBe(200);
-  await expect(nav.getByRole("link", { name: "Sign in", exact: true })).toBeVisible();
+  await expect(cfpNav.getByRole("link", { name: "Sign in", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Signed in as Jordan Alvarez" })).toHaveCount(0);
+  await expect(page.locator("#cfp-speaker-email")).toBeEnabled();
   expect((await page.request.get("/api/session")).status()).toBe(401);
 });
 
