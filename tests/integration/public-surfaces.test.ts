@@ -288,4 +288,69 @@ describe("Public audience surfaces", () => {
     expect(docs?.speakers.map((speaker) => speaker.name)).not.toContain("Wendy Withdrawn");
     expect(docs?.speakers.map((speaker) => speaker.name)).toContain("Marcus Okafor");
   });
+
+  it("stays populated when a session is approved and published but its submission's decision was never synced (the production defect)", async () => {
+    await request("/api/health");
+    const db = env.DB;
+    const backfillAcceptedDecision = () =>
+      db
+        .prepare(
+          `UPDATE submission SET status = 'accepted' WHERE status != 'accepted' AND id IN (
+             SELECT submission_id FROM program_session
+             WHERE submission_id IS NOT NULL AND content_status = 'approved'
+               AND published_at IS NOT NULL AND deleted_at IS NULL
+           )`,
+        )
+        .run();
+
+    // This exact shape — an approved, published session whose own submission's status never
+    // caught up — is what production had: content_status/published_at came from seeding or a
+    // migration backfill, while submission.status was left behind by an idempotent seed that
+    // only runs once. Reproduce it directly rather than relying on any particular seed path.
+    await db
+      .prepare(
+        "INSERT INTO submission (id, event_id, form_id, form_version, submitter_person_id, status, is_draft, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      )
+      .bind("sub_stale_decision", EVENT_ID, "frm_devflow_cfp_2027", 1, "psn_priya_raman", "submitted", 0, "Stale decision talk", Date.now(), Date.now())
+      .run();
+    await db
+      .prepare(
+        "INSERT INTO program_session (id, event_id, submission_id, title, content_status, schedule_status, published_at, ics_uid, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      )
+      .bind("ses_stale_decision", EVENT_ID, "sub_stale_decision", "Stale decision talk", "approved", "tbd", Date.now(), "ses_stale_decision@session-bored", Date.now(), Date.now())
+      .run();
+
+    const before = await json<SessionsPayload>(`/api/public/events/${EVENT_ID}/sessions`);
+    expect(before.body.items.map((item) => item.id)).not.toContain("ses_stale_decision");
+
+    await backfillAcceptedDecision();
+
+    const after = await json<SessionsPayload>(`/api/public/events/${EVENT_ID}/sessions`);
+    expect(after.body.items.map((item) => item.id)).toContain("ses_stale_decision");
+
+    // Negative control: an approved-but-never-published session's submission must not be swept
+    // up by the same backfill — only a genuinely published session implies the decision.
+    await db
+      .prepare(
+        "INSERT INTO submission (id, event_id, form_id, form_version, submitter_person_id, status, is_draft, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      )
+      .bind("sub_unpublished", EVENT_ID, "frm_devflow_cfp_2027", 1, "psn_priya_raman", "submitted", 0, "Unpublished talk", Date.now(), Date.now())
+      .run();
+    await db
+      .prepare(
+        "INSERT INTO program_session (id, event_id, submission_id, title, content_status, schedule_status, ics_uid, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      )
+      .bind("ses_unpublished", EVENT_ID, "sub_unpublished", "Unpublished talk", "approved", "tbd", "ses_unpublished@session-bored", Date.now(), Date.now())
+      .run();
+
+    await backfillAcceptedDecision();
+
+    const unpublishedSubmission = await db
+      .prepare("SELECT status FROM submission WHERE id = ?")
+      .bind("sub_unpublished")
+      .first<{ status: string }>();
+    expect(unpublishedSubmission?.status).toBe("submitted");
+    const stillHidden = await json<SessionsPayload>(`/api/public/events/${EVENT_ID}/sessions`);
+    expect(stillHidden.body.items.map((item) => item.id)).not.toContain("ses_unpublished");
+  });
 });
