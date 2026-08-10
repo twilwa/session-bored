@@ -4,6 +4,8 @@ import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Button, DataTable, LoadingState, Modal, StatusChip, TextField, Toast } from "./components/ui.tsx";
 import { CfpPage as CfpSubmissionPage } from "./pages/cfp/CfpPage.tsx";
 import { DispositionPage } from "./pages/disposition/DispositionPage.tsx";
+import { OrganizerReviewPage } from "./pages/review/OrganizerReviewPage.tsx";
+import { ReviewerReviewPage } from "./pages/review/ReviewerReviewPage.tsx";
 
 type Role = "organizer" | "reviewer" | "speaker";
 interface SessionPayload {
@@ -20,7 +22,6 @@ interface EventRecord {
 }
 interface NamedRecord { id: string; name: string }
 interface SubmissionRecord { id: string; title: string | null; status: string; audienceLevel?: string | null }
-interface AssignmentRecord { id: string; submissionId: string; status: string; title: string | null }
 interface PublicSessionRecord {
   id: string;
   title: string;
@@ -250,16 +251,23 @@ function LoginPage() {
 }
 
 function RoleShell({ role, children }: { role: Role; children: ReactNode }) {
-  const nav = role === "organizer"
-    ? ["Overview", "Call for speakers", "Submissions", "Review", "Speakers", "Sessions", "Agenda", "Files"]
-    : role === "reviewer" ? ["Assignments", "Completed"] : ["My proposals", "Profile", "Tasks", "Files"];
+  const nav: Array<[string, string]> = role === "organizer"
+    ? [
+      ["Overview", "/organizer"], ["Call for speakers", "/organizer"],
+      ["Submissions", "/organizer"], ["Review", "/organizer/review"],
+      ["Speakers", "/organizer"], ["Sessions", "/organizer"],
+      ["Agenda", "/organizer"], ["Files", "/organizer"],
+    ]
+    : role === "reviewer"
+      ? [["Assignments", "/reviewer"], ["Completed", "/reviewer"]]
+      : [["My proposals", "/speaker"], ["Profile", "/speaker"], ["Tasks", "/speaker"], ["Files", "/speaker"]];
   return (
     <div className="app-shell">
       <aside className="side-nav">
         <Brand />
         <div className="event-switcher"><small>ACTIVE EVENT</small><strong>DevFlow Conf 2027</strong><span>May 12–14 · SFO</span></div>
         <nav aria-label={`${role} navigation`}>
-          {nav.map((item, index) => <Link className={index === 0 ? "active" : ""} href={`/${role}`} key={item}>{item}</Link>)}
+          {nav.map(([label, href]) => <Link className={window.location.pathname === href || (href.endsWith("/review") && window.location.pathname.startsWith(href)) ? "active" : ""} href={href} key={label}>{label}</Link>)}
         </nav>
         <Link className="side-nav__public" href="/cfp/devflow-conf-2027">View public portal ↗</Link>
       </aside>
@@ -315,21 +323,10 @@ function OrganizerPage() {
   );
 }
 
-function ReviewerPage() {
-  const [items, setItems] = useState<AssignmentRecord[] | null>(null);
-  useEffect(() => { getJson<{ items: AssignmentRecord[] }>("/api/reviewer/assignments").then((data) => setItems(data.items)).catch(() => setItems([])); }, []);
+function ReviewerPage({ path }: { path: string }) {
   return (
     <RoleShell role="reviewer">
-      <header className="workspace-header"><div><p className="eyebrow">REVIEW DESK / SAM WHITFIELD</p><h1>Your review queue</h1><p>Only explicitly assigned proposals appear here.</p></div>{items === null ? null : <StatusChip tone="signal">{items.length} assigned proposal</StatusChip>}</header>
-      {items === null ? <LoadingState /> : (
-        <section className="workspace-section">
-          <DataTable caption="Review assignments" columns={[
-            { key: "title", label: "Proposal", render: (row) => <strong>{row.title}</strong> },
-            { key: "round", label: "Round", render: () => "Initial review" },
-            { key: "status", label: "Status", render: (row) => <StatusChip>{row.status}</StatusChip> },
-          ]} rows={items} />
-        </section>
-      )}
+      <ReviewerReviewPage path={path} />
     </RoleShell>
   );
 }
@@ -404,8 +401,9 @@ export function App() {
   if (path === "/login") return <LoginPage />;
   if (path.startsWith("/cfp/")) return <CfpSubmissionPage path={path} />;
   if (path === "/organizer/disposition") return <RoleShell role="organizer"><DispositionPage /></RoleShell>;
+  if (path.startsWith("/organizer/review")) return <RoleShell role="organizer"><OrganizerReviewPage path={path} /></RoleShell>;
   if (path.startsWith("/organizer")) return <OrganizerPage />;
-  if (path.startsWith("/reviewer")) return <ReviewerPage />;
+  if (path.startsWith("/reviewer")) return <ReviewerPage path={path} />;
   if (path.startsWith("/speaker")) return <SpeakerPage />;
   if (path.startsWith("/program")) return <ProgramPage />;
   return <HomePage />;

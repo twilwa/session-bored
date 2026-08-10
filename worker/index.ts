@@ -28,6 +28,7 @@ import type { ApiAccess } from "../shared/api.ts";
 import { authorizeAccess } from "./access.ts";
 import { createAuth, type AuthSession } from "./auth.ts";
 import cfpRoutes from "./routes/cfp.ts";
+import reviewRoutes from "./routes/review.ts";
 import { ensureSeeded, fixtureIds } from "./seed.ts";
 import dispositionRoutes from "./routes/disposition.ts";
 
@@ -98,6 +99,8 @@ app.get("/api/health", (context) =>
 app.get("/api/session", requireAccess("authenticated"), (context) =>
   context.json({ user: context.get("authUser"), session: context.get("authSession") }),
 );
+
+app.route("/api", reviewRoutes);
 
 app.get("/api/public/cfp/:slug", async (context) => {
   const database = drizzle(context.env.DB);
