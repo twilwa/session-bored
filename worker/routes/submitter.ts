@@ -20,9 +20,6 @@ submitterRoutes.get("/submitter/submissions", async (context) => {
   if (user === null) {
     return context.json({ error: "authentication_required" }, 401);
   }
-  if (user.role !== "speaker") {
-    return context.json({ error: "forbidden" }, 403);
-  }
   const items = await drizzle(context.env.DB)
     .select({
       id: submissions.id,

@@ -7,7 +7,7 @@ export interface SubmitterAccountUser {
   id: string;
   name: string;
   email: string;
-  role: "speaker";
+  role: "organizer" | "reviewer" | "speaker";
 }
 
 interface SessionPayload {

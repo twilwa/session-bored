@@ -82,7 +82,7 @@ export const routeMap = {
     method: "GET",
     path: "/api/submitter/submissions",
     module: "submissions",
-    access: "speaker",
+    access: "authenticated",
   },
   sessions: {
     method: "GET",

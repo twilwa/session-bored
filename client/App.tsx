@@ -99,7 +99,7 @@ function LoginPage() {
       const session = await getJson<SessionPayload>("/api/session");
       setMessage(`Welcome, ${session.user.name}.`);
       const returnTo = new URLSearchParams(window.location.search).get("returnTo");
-      navigate(session.user.role === "speaker" && returnTo === "/submitter" ? returnTo : `/${session.user.role}`);
+      navigate(returnTo === "/submitter" ? returnTo : `/${session.user.role}`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Sign in failed.");
     } finally {

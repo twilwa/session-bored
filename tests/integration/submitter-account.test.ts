@@ -159,6 +159,50 @@ describe("submitter account ownership", () => {
     });
   });
 
+  it("lets a non-speaker submitter list and open only their own proposal", async () => {
+    await request("/api/health");
+    const otherDraft = anonymousDraft("non-speaker-other@example.com", "Another user's proposal");
+    const otherCookie = await createAccount("Other Account", otherDraft.speaker.email);
+    const otherCreateResponse = await request("/api/public/cfp/devflow-conf-2027/submissions", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: otherCookie },
+      body: JSON.stringify(otherDraft),
+    });
+    expect(otherCreateResponse.status).toBe(201);
+    const otherCreated = await otherCreateResponse.json<{ accessPath: string }>();
+
+    const organizerCookie = await signIn("sbek-organizer@example.com", "SbekTest!2027-org");
+    const organizerDraft = anonymousDraft("sbek-organizer@example.com", "Organizer-owned proposal");
+    const organizerCreateResponse = await request("/api/public/cfp/devflow-conf-2027/submissions", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: organizerCookie },
+      body: JSON.stringify(organizerDraft),
+    });
+    expect(organizerCreateResponse.status).toBe(201);
+    const organizerCreated = await organizerCreateResponse.json<{
+      accessPath: string;
+      submission: { id: string };
+    }>();
+
+    const listResponse = await request("/api/submitter/submissions", {
+      headers: { cookie: organizerCookie },
+    });
+    expect(listResponse.status).toBe(200);
+    expect(await listResponse.json()).toMatchObject({
+      items: [{ id: organizerCreated.submission.id, title: "Organizer-owned proposal" }],
+    });
+
+    const ownResponse = await request(organizerCreated.accessPath, {
+      headers: { cookie: organizerCookie },
+    });
+    expect(ownResponse.status).toBe(200);
+
+    const otherResponse = await request(otherCreated.accessPath, {
+      headers: { cookie: organizerCookie },
+    });
+    expect(otherResponse.status).toBe(404);
+  });
+
   it("does not issue an anonymous author key for an account-owned proposal", async () => {
     await request("/api/health");
     const draft = anonymousDraft("account-keyless@example.com");

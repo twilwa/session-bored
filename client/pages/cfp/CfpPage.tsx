@@ -410,7 +410,7 @@ export function CfpPage({ path }: { path: string }) {
     fetch("/api/session", { credentials: "same-origin" })
       .then((response) => response.ok ? response.json<{ user: SubmitterAccountUser }>() : null)
       .then((session) => {
-        if (session?.user.role === "speaker") {
+        if (session !== null) {
           applyAccountUser(session.user);
         }
       })

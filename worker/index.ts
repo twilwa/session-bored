@@ -392,11 +392,12 @@ for (const [prefix, access] of [
   ["/organizer", "organizer"],
   ["/reviewer", "reviewer"],
   ["/speaker", "speaker"],
-  ["/submitter", "speaker"],
 ] as const) {
   app.get(prefix, prepareRequest, requireAccess(access), (context) => context.env.ASSETS.fetch(context.req.raw));
   app.get(`${prefix}/*`, prepareRequest, requireAccess(access), (context) => context.env.ASSETS.fetch(context.req.raw));
 }
+app.get("/submitter", prepareRequest, requireAccess("authenticated"), (context) => context.env.ASSETS.fetch(context.req.raw));
+app.get("/submitter/*", prepareRequest, requireAccess("authenticated"), (context) => context.env.ASSETS.fetch(context.req.raw));
 
 export type AppType = typeof app;
 export default app;
