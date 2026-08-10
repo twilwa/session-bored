@@ -90,4 +90,8 @@ test("organizer drags a session, resolves a clash, changes views, and publishes"
 
   await page.getByRole("button", { name: "Publish agenda" }).click();
   await expect(page.getByText("1 approved agenda session published.")).toBeVisible();
+
+  await page.goto("/program");
+  await expect(page.getByRole("link", { name: "Docs That Answer Back", exact: false }))
+    .toHaveAttribute("href", "/program/ses_docs_retrieval");
 });

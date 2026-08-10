@@ -1,7 +1,7 @@
 // ABOUTME: Verifies the public audience surfaces enforce the approval gate with no authentication.
 // ABOUTME: The unpublished-leak rule is the highest-priority correctness check in this lane.
 import { env } from "cloudflare:workers";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import worker from "../../worker/index.ts";
 
 const EVENT_ID = "evt_devflow_conf_2027";
@@ -151,8 +151,17 @@ async function seedLeakFixtures(): Promise<void> {
 }
 
 describe("Public audience surfaces", () => {
-  it("serves sessions, speakers, and detail with no authentication", async () => {
+  beforeEach(async () => {
     await request("/api/health");
+    await env.DB.batch([
+      env.DB.prepare("UPDATE submission SET status = 'accepted' WHERE id = ?")
+        .bind("sub_docs_retrieval"),
+      env.DB.prepare("UPDATE program_session SET published_at = ? WHERE id = ?")
+        .bind(Date.parse("2027-04-01T12:00:00Z"), "ses_docs_retrieval"),
+    ]);
+  });
+
+  it("serves sessions, speakers, and detail with no authentication", async () => {
     const sessions = await json<SessionsPayload>(
       `/api/public/events/${EVENT_ID}/sessions`,
     );
@@ -256,7 +265,6 @@ describe("Public audience surfaces", () => {
   });
 
   it("never exposes draft, in-review, soft-deleted, or withdrawn content", async () => {
-    await request("/api/health");
     await seedLeakFixtures();
 
     const sessions = await json<SessionsPayload>(`/api/public/events/${EVENT_ID}/sessions`);

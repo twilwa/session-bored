@@ -1,6 +1,6 @@
 // ABOUTME: Centralizes the public read model for published event content with approval gating.
 // ABOUTME: Keeps the unpublished/withdrawn content rule in one narrow module so it cannot drift.
-import { and, desc, eq, inArray, isNull, like, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, isNull, like, or, sql } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import {
   events,
@@ -10,12 +10,25 @@ import {
   sessionSpeakers,
   sessions,
   speakers,
+  submissions,
   tracks,
 } from "../db/schema.ts";
 
-// ABOUTME: A session is public only when its content has been approved and it is not soft-deleted.
-// The schedule status (unplaced/tbd/placed) is intentionally NOT a gate — TBD sessions stay visible.
-const PUBLIC_SESSION_GATE = and(eq(sessions.contentStatus, "approved"), isNull(sessions.deletedAt));
+// ABOUTME: A session is public only after explicit publication, while its content and source decision remain live.
+// Schedule status is intentionally not a gate because published TBD sessions remain visible.
+const PUBLIC_SESSION_GATE = and(
+  eq(sessions.contentStatus, "approved"),
+  isNotNull(sessions.publishedAt),
+  isNull(sessions.deletedAt),
+  or(
+    eq(sessions.directEntry, true),
+    sql`EXISTS (
+      SELECT 1 FROM ${submissions}
+      WHERE ${submissions.id} = ${sessions.submissionId}
+        AND ${submissions.status} = 'accepted'
+    )`,
+  ),
+);
 
 // ABOUTME: Public speakers have cleared invitation and employer-approval states.
 // Confirmed, onboarding, and ready speakers remain visible even when their profiles are incomplete.

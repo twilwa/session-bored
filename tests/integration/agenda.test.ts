@@ -50,6 +50,13 @@ async function place(
   return response.json<AgendaState>();
 }
 
+async function publicSessionIds(): Promise<string[]> {
+  const response = await request(`/api/public/events/${eventId}/sessions`);
+  expect(response.status).toBe(200);
+  const payload = await response.json<{ items: Array<{ id: string }> }>();
+  return payload.items.map((session) => session.id);
+}
+
 describe("agenda builder", () => {
   let organizerCookie: string;
 
@@ -239,6 +246,63 @@ describe("agenda builder", () => {
       endsAt: null,
     });
     expect(tbd.metrics).toMatchObject({ conflicts: 0, tbd: 1 });
+  });
+
+  it("keeps an approved placed session private until the organizer publishes", async () => {
+    await accept(["sub_docs_retrieval"], organizerCookie);
+    await place("ses_docs_retrieval", organizerCookie, {
+      scheduleStatus: "placed",
+      scheduledDate: "2027-05-13",
+      roomId: "rm_room_2a",
+      startsAt: Date.parse("2027-05-13T17:00:00Z"),
+    });
+
+    expect(await publicSessionIds()).not.toContain("ses_docs_retrieval");
+  });
+
+  it("removes a published session from public reads when its placement changes", async () => {
+    await accept(["sub_docs_retrieval"], organizerCookie);
+    await place("ses_docs_retrieval", organizerCookie, {
+      scheduleStatus: "placed",
+      scheduledDate: "2027-05-13",
+      roomId: "rm_room_2a",
+      startsAt: Date.parse("2027-05-13T17:00:00Z"),
+    });
+    const publishResponse = await request(`/api/events/${eventId}/agenda/publish`, {
+      method: "POST",
+      headers: { cookie: organizerCookie },
+    });
+    expect(publishResponse.status).toBe(200);
+    expect(await publicSessionIds()).toContain("ses_docs_retrieval");
+
+    await place("ses_docs_retrieval", organizerCookie, {
+      scheduleStatus: "placed",
+      scheduledDate: "2027-05-14",
+      roomId: "rm_room_2b",
+      startsAt: Date.parse("2027-05-14T18:00:00Z"),
+    });
+
+    expect(await publicSessionIds()).not.toContain("ses_docs_retrieval");
+  });
+
+  it("requires a live accepted decision for a published submission session", async () => {
+    await accept(["sub_docs_retrieval"], organizerCookie);
+    await place("ses_docs_retrieval", organizerCookie, {
+      scheduleStatus: "tbd",
+      scheduledDate: "2027-05-13",
+    });
+    const publishResponse = await request(`/api/events/${eventId}/agenda/publish`, {
+      method: "POST",
+      headers: { cookie: organizerCookie },
+    });
+    expect(publishResponse.status).toBe(200);
+    expect(await publicSessionIds()).toContain("ses_docs_retrieval");
+
+    await env.DB.prepare("UPDATE submission SET status = 'withdrawn' WHERE id = ?")
+      .bind("sub_docs_retrieval")
+      .run();
+
+    expect(await publicSessionIds()).not.toContain("ses_docs_retrieval");
   });
 
   it("publishes approved scheduled data from the agenda source of truth", async () => {

@@ -13,15 +13,11 @@ test("public CFP is populated and mobile readable", async ({ page }) => {
   expect(width).toBeLessThanOrEqual(375);
 });
 
-test("public program shows an approved fixture session", async ({ page }) => {
+test("public program loads without authentication", async ({ page }) => {
   await page.goto("/program");
 
   await expect(page.getByRole("heading", { name: "DevFlow Conf 2027", exact: true })).toBeVisible();
-  const sessionLink = page.getByRole("link", { name: "Docs That Answer Back", exact: false });
-  await expect(sessionLink).toHaveAttribute("href", "/program/ses_docs_retrieval");
-  await sessionLink.click();
-  await expect(page).toHaveURL(/\/program\/ses_docs_retrieval$/);
-  await expect(page.getByText("Docs That Answer Back", { exact: false })).toBeVisible();
+  await expect(page.getByRole("searchbox", { name: "Search sessions and speakers" })).toBeVisible();
 });
 
 test("organizer password opens the populated operations shell", async ({ page }) => {
