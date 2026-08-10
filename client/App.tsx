@@ -144,9 +144,9 @@ function RoleShell({ role, children }: { role: Role; children: ReactNode }) {
   const nav: Array<[string, string]> = role === "organizer"
     ? [
       ["Overview", "/organizer"], ["Call for speakers", "/organizer/cfp"],
-      ["Submissions", "/organizer"], ["Review", "/organizer/review"],
-      ["Speakers", "/organizer/roster"], ["Missing info", "/organizer/roster/missing"], ["Sessions", "/organizer"],
-      ["Agenda", "/organizer/agenda"], ["Files", "/organizer"],
+      ["Review", "/organizer/review"],
+      ["Speakers", "/organizer/roster"], ["Missing info", "/organizer/roster/missing"],
+      ["Agenda", "/organizer/agenda"],
     ]
     : role === "reviewer"
       ? [["Assignments", "/reviewer"], ["Completed", "/reviewer"]]

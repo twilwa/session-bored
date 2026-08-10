@@ -53,6 +53,9 @@ describe("speaker portal content", () => {
   });
 
   it("uploads a headshot, marks the matching onboarding task complete, and serves it publicly and privately", async () => {
+    await env.DB.prepare("update person set headshot_url = null where id = ?")
+      .bind("psn_priya_raman")
+      .run();
     const before = await request("/api/speaker/content", { headers: { cookie: priyaCookie } });
     const beforeBody = await before.json<{
       profile: { headshotUrl: string | null };

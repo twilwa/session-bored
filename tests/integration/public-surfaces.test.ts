@@ -43,6 +43,7 @@ interface SpeakerItem {
   jobTitle: string | null;
   organization: string | null;
   bio: string | null;
+  headshotUrl: string | null;
   sessionCount: number;
 }
 interface SpeakersPayload {
@@ -164,6 +165,10 @@ describe("Public audience surfaces", () => {
     const speakers = await json<SpeakersPayload>(`/api/public/events/${EVENT_ID}/speakers`);
     expect(speakers.status).toBe(200);
     expect(speakers.body.items.map((item) => item.name).sort()).toEqual(["Marcus Okafor", "Priya Raman"]);
+    expect(speakers.body.items.find((item) => item.name === "Priya Raman")?.headshotUrl).toBe(
+      "/headshots/priya-raman.jpg",
+    );
+    expect(speakers.body.items.find((item) => item.name === "Marcus Okafor")?.headshotUrl).toBeNull();
 
     const detail = await json<SpeakerDetailPayload>(
       `/api/public/events/${EVENT_ID}/speakers/spk_marcus_devflow_2027`,
@@ -173,6 +178,20 @@ describe("Public audience surfaces", () => {
     expect(detail.body.speaker).not.toHaveProperty("email");
     expect(detail.body.speaker.sessions.map((session) => session.title)).toContain(
       "Docs That Answer Back: Retrieval-Grounded Documentation Sites",
+    );
+  });
+
+  it("backfills the demo headshot for a database seeded before the gallery fixture", async () => {
+    await request("/api/health");
+    await env.DB.batch([
+      env.DB.prepare("update person set headshot_url = null where id = ?").bind("psn_priya_raman"),
+      env.DB.prepare("delete from system_state where key = ?").bind("fixture.devflow-2027.headshots.v1"),
+    ]);
+
+    await request("/api/health");
+    const speakers = await json<SpeakersPayload>(`/api/public/events/${EVENT_ID}/speakers`);
+    expect(speakers.body.items.find((item) => item.name === "Priya Raman")?.headshotUrl).toBe(
+      "/headshots/priya-raman.jpg",
     );
   });
 

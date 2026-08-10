@@ -46,6 +46,9 @@ test("organizer password opens the populated operations shell", async ({ page })
   await expect(page.getByRole("heading", { name: "DevFlow Conf 2027" })).toBeVisible();
   await expect(page.getByText("Taming 40-Minute CI", { exact: false })).toBeVisible();
   await expect(page.getByRole("link", { name: "Call for speakers", exact: true })).toBeVisible();
+  for (const unavailableDestination of ["Submissions", "Sessions", "Files"]) {
+    await expect(page.getByRole("link", { name: unavailableDestination, exact: true })).toHaveCount(0);
+  }
 });
 
 test("reviewer sees exactly one assignment and no organizer navigation", async ({ page }) => {

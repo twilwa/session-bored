@@ -126,6 +126,9 @@ test("speaker gallery is alphabetized by surname, searches, and opens a speaker 
   // to assert the no-headshot fallback against: it must render initials, not break.
   const marcusCard = page.locator(".gallery-card", { hasText: "Marcus Okafor" });
   await expect(marcusCard.locator(".gallery-card__photo--placeholder")).toHaveText("MO");
+  const priyaHeadshot = page.locator(".gallery-card", { hasText: "Priya Raman" }).locator("img");
+  await expect(priyaHeadshot).toHaveAttribute("src", /.+/);
+  await expect.poll(() => priyaHeadshot.evaluate((image) => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
 
   await page.fill('input[aria-label="Search speakers by name"]', "priya");
   await expect(page.locator(".gallery-card")).toHaveCount(1);

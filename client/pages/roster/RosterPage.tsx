@@ -333,9 +333,36 @@ function MissingInformationView() {
     incompleteSpeakerCount: number;
     generatedAt: string;
     items: MissingInformationItem[];
+    activeTaskCount: number;
+    activeTaskSpeakerCount: number;
   } | null>(null);
   useEffect(() => {
-    requestJson<typeof data>(`/api/events/${eventId}/missing-information`).then(setData).catch(() => setData({ acceptedSpeakerCount: 0, incompleteSpeakerCount: 0, generatedAt: new Date().toISOString(), items: [] }));
+    Promise.all([
+      requestJson<{
+        acceptedSpeakerCount: number;
+        incompleteSpeakerCount: number;
+        generatedAt: string;
+        items: MissingInformationItem[];
+      }>(`/api/events/${eventId}/missing-information`),
+      requestJson<{ items: RosterSpeakerSummary[] }>(`/api/events/${eventId}/roster`),
+    ]).then(([missingInformation, roster]) => {
+      const speakersWithActiveTasks = roster.items.filter((speaker) => speaker.taskSummary.incomplete > 0);
+      setData({
+        ...missingInformation,
+        activeTaskCount: speakersWithActiveTasks.reduce(
+          (total, speaker) => total + speaker.taskSummary.incomplete,
+          0,
+        ),
+        activeTaskSpeakerCount: speakersWithActiveTasks.length,
+      });
+    }).catch(() => setData({
+      acceptedSpeakerCount: 0,
+      incompleteSpeakerCount: 0,
+      generatedAt: new Date().toISOString(),
+      items: [],
+      activeTaskCount: 0,
+      activeTaskSpeakerCount: 0,
+    }));
   }, []);
   if (data === null) return <LoadingState label="Finding missing speaker information" />;
   return (
@@ -345,7 +372,17 @@ function MissingInformationView() {
         <div className="missing-score"><strong>{data.incompleteSpeakerCount}</strong><span>of {data.acceptedSpeakerCount} accepted speakers need follow-up</span></div>
       </header>
       {data.items.length === 0 ? (
-        <EmptyState title="Nothing to chase" description="Every accepted speaker has complete onboarding information." />
+        <div>
+          <EmptyState
+            title="Accepted-session follow-up is clear"
+            description={data.activeTaskCount === 0
+              ? "Every accepted speaker has complete onboarding information."
+              : `${data.activeTaskCount} active onboarding tasks for ${data.activeTaskSpeakerCount} ${data.activeTaskSpeakerCount === 1 ? "speaker" : "speakers"} remain outside this accepted-session view.`}
+          />
+          {data.activeTaskCount > 0 ? (
+            <a className="text-link" href="/organizer/roster/tasks">Review outstanding tasks →</a>
+          ) : null}
+        </div>
       ) : (
         <div className="chase-list">
           {data.items.map((speaker, index) => (
