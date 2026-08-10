@@ -27,6 +27,7 @@ import {
 import type { ApiAccess } from "../shared/api.ts";
 import { authorizeAccess } from "./access.ts";
 import { createAuth, type AuthSession } from "./auth.ts";
+import cfpRoutes from "./routes/cfp.ts";
 import { ensureSeeded, fixtureIds } from "./seed.ts";
 
 type SessionUser = AuthSession["user"];
@@ -86,6 +87,7 @@ app.onError((error, context) => {
 
 app.use("/api/*", prepareRequest);
 app.on(["GET", "POST"], "/api/auth/*", (context) => createAuth(context.env).handler(context.req.raw));
+app.route("/api/public/cfp", cfpRoutes);
 
 app.get("/api/health", (context) =>
   context.json({ status: "healthy", service: "greenroom", seededEventId: fixtureIds.event }),

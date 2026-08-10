@@ -29,6 +29,28 @@ Preview deployment requires the `CLOUDFLARE_API_TOKEN` and
 `CLOUDFLARE_ACCOUNT_ID` GitHub Actions secrets. The token must be able to upload
 Workers versions and create, list, and migrate D1 databases.
 
+## CFP submission contract
+
+`submissions` is the record consumed by review and disposition. Its public CFP
+lifecycle and relationships are fixed as follows:
+
+- The first draft creates or adopts `people` by normalized email, creates the
+  event-scoped `speakers` row, and links the author through both
+  `submitterPersonId` and `submissionSpeakers`. `people.userId` stays nullable so
+  a later account can claim the same identity without changing submission IDs.
+- `formId` and `formVersion` freeze the form contract. `formatId`,
+  `submissionTracks`, and `submissionValues` carry taxonomy and answers; built-in
+  title, abstract, audience, and reviewer-note columns remain the list/detail
+  projection.
+- A `draft` may contain incomplete proposal fields. Server validation gates the
+  `draft` to `submitted` transition; later review and disposition states use the
+  canonical vocabulary in `db/schema.ts`.
+- `titleAtTime` and `orgAtTime` are set on the first successful submission and
+  never change during later edits.
+- `submissionAuthorAccess` stores one hashed private author key per submission.
+  Public edits require that key and remain writable only while the form window is
+  open; reads remain available after close in a locked state.
+
 ## Maintaining this file
 
 Keep this file for knowledge useful to almost every future agent session in this project.

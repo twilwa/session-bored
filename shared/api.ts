@@ -161,3 +161,75 @@ export interface FoundationStub<T> {
   module: ApiModule;
   items: T[];
 }
+
+export const cfpRouteMap = {
+  createSubmission: {
+    method: "POST",
+    path: "/api/public/cfp/:slug/submissions",
+    module: "submissions",
+    access: "public",
+  },
+  readOwnSubmission: {
+    method: "GET",
+    path: "/api/public/cfp/:slug/submissions/:submissionId",
+    module: "submissions",
+    access: "public",
+  },
+  editOwnSubmission: {
+    method: "PATCH",
+    path: "/api/public/cfp/:slug/submissions/:submissionId",
+    module: "submissions",
+    access: "public",
+  },
+} as const satisfies Record<string, RouteContract>;
+
+export type CfpAvailabilityState = "closed" | "open" | "upcoming" | "unpublished";
+export type CfpSubmissionIntent = "draft" | "save" | "submit";
+
+export interface CfpAuthorInput {
+  name?: string;
+  email?: string;
+  jobTitle?: string;
+  organization?: string;
+  bio?: string;
+}
+
+export interface CfpProposalInput {
+  title?: string;
+  abstract?: string;
+  track?: string;
+  format?: string;
+  audienceLevel?: string;
+  notesForReviewers?: string;
+  answers?: Record<string, string | number | boolean | string[] | null>;
+}
+
+export interface CfpSubmissionWrite {
+  intent: CfpSubmissionIntent;
+  speaker: CfpAuthorInput;
+  proposal: CfpProposalInput;
+}
+
+export interface CfpOwnSubmission {
+  id: `sub_${string}`;
+  status: SubmissionStatus;
+  isDraft: boolean;
+  title: string | null;
+  abstract: string | null;
+  track: string | null;
+  format: string | null;
+  audienceLevel: string | null;
+  notesForReviewers: string | null;
+  answers: Record<string, string | number | boolean | string[] | null>;
+  submittedAt: string | null;
+  updatedAt: string;
+  speaker: {
+    id: `psn_${string}`;
+    speakerId: `spk_${string}`;
+    name: string;
+    email: string;
+    jobTitle: string | null;
+    organization: string | null;
+    bio: string | null;
+  };
+}

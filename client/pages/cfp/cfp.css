@@ -1,0 +1,254 @@
+/* ABOUTME: Styles the CFP as a tactile editorial call sheet within Greenroom's visual system. */
+/* ABOUTME: Keeps long forms, private references, and deadline states readable without horizontal overflow. */
+.cfp-portal main {
+  width: min(1320px, 100%);
+  margin: 0 auto;
+  padding: clamp(42px, 7vw, 92px) clamp(18px, 5vw, 72px) 110px;
+}
+
+.cfp-masthead {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(260px, 0.55fr);
+  gap: clamp(34px, 7vw, 100px);
+  align-items: end;
+}
+
+.cfp-masthead h1 {
+  max-width: 900px;
+  margin: 0;
+  font: clamp(3.5rem, 8vw, 8rem) / 0.88 Georgia, "Times New Roman", serif;
+  letter-spacing: -0.065em;
+}
+
+.cfp-masthead__tagline {
+  margin: 24px 0 8px;
+  font: clamp(1.3rem, 2vw, 1.7rem) Georgia, "Times New Roman", serif;
+}
+
+.cfp-masthead__description {
+  max-width: 720px;
+  color: var(--muted);
+  font-size: 1.04rem;
+}
+
+.cfp-deadline {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+  padding: 24px;
+  background: var(--ink);
+  color: var(--white);
+  border-top: 8px solid var(--signal);
+  box-shadow: 10px 10px 0 var(--blue);
+}
+
+.cfp-deadline span,
+.cfp-deadline small {
+  font: 0.68rem "SFMono-Regular", Consolas, monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.cfp-deadline span { color: var(--signal); }
+.cfp-deadline strong { font: 1.35rem Georgia, "Times New Roman", serif; }
+.cfp-deadline small { color: #bbb9c3; overflow-wrap: anywhere; }
+
+.cfp-brief {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  gap: 46px clamp(34px, 6vw, 90px);
+  margin: 76px 0 44px;
+  padding: 42px 0;
+  border-block: 1px solid var(--ink);
+}
+
+.cfp-brief h2,
+.cfp-form-section h2,
+.submission-receipt h2 {
+  max-width: 620px;
+  margin: 0 0 18px;
+  font: clamp(2.2rem, 4.5vw, 4.3rem) / 0.98 Georgia, "Times New Roman", serif;
+  letter-spacing: -0.04em;
+}
+
+.cfp-taxonomy {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.cfp-taxonomy article {
+  min-width: 0;
+  display: flex;
+  align-content: start;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cfp-taxonomy span {
+  width: 100%;
+  color: var(--blue);
+  font: 0.68rem "SFMono-Regular", Consolas, monospace;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.cfp-taxonomy strong {
+  min-width: 0;
+  padding: 6px 9px;
+  background: var(--white);
+  border: 1px solid var(--ink);
+  overflow-wrap: anywhere;
+  font-size: 0.76rem;
+}
+
+.cfp-guidelines {
+  grid-column: 2;
+  padding: 24px 28px;
+  background: #e4e9ff;
+  border-left: 8px solid var(--blue);
+}
+
+.cfp-guidelines ul { margin: 0; padding-left: 20px; }
+.cfp-guidelines li + li { margin-top: 8px; }
+
+.cfp-own-list {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(220px, 0.5fr) minmax(0, 1fr);
+  gap: 30px;
+  margin: 0 0 40px;
+  padding: 26px;
+  background: var(--white);
+  border: 1px solid var(--ink);
+}
+
+.cfp-own-list p { margin: 0; color: var(--muted); }
+.cfp-own-list .section-label { color: var(--ink); }
+.cfp-own-list ul { min-width: 0; list-style: none; margin: 0; padding: 0; }
+.cfp-own-list li { min-width: 0; display: grid; gap: 3px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.cfp-own-list li:last-child { border-bottom: 0; }
+.cfp-own-list a { color: var(--blue); font-weight: 800; overflow-wrap: anywhere; }
+.cfp-own-list span { color: var(--muted); font: 0.66rem "SFMono-Regular", Consolas, monospace; overflow-wrap: anywhere; text-transform: uppercase; }
+
+.cfp-form-section {
+  background: var(--white);
+  border: 1px solid var(--ink);
+  box-shadow: 12px 12px 0 var(--ink);
+}
+
+.cfp-form-section > header {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  align-items: start;
+  padding: clamp(26px, 5vw, 58px);
+  border-bottom: 1px solid var(--ink);
+}
+
+.cfp-form-section > header h2 { margin-bottom: 0; }
+.cfp-status { padding: 5px 9px; background: var(--signal); border: 1px solid var(--ink); font: 0.68rem "SFMono-Regular", Consolas, monospace; text-transform: uppercase; }
+
+.cfp-form-section form { min-width: 0; }
+.cfp-form-section fieldset { min-width: 0; margin: 0; padding: clamp(26px, 5vw, 58px); border: 0; border-bottom: 1px solid var(--ink); }
+.cfp-form-section fieldset:disabled { opacity: 0.72; }
+.cfp-form-section legend { padding: 0 0 24px; color: var(--blue); font: 0.72rem "SFMono-Regular", Consolas, monospace; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; }
+
+.cfp-identity-grid,
+.cfp-proposal-fields {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px 28px;
+}
+
+.cfp-proposal-fields .proposal-field:has(textarea),
+.cfp-proposal-fields .proposal-field:first-child,
+.cfp-proposal-fields .proposal-field:last-child {
+  grid-column: 1 / -1;
+}
+
+.proposal-field { min-width: 0; display: grid; align-content: start; gap: 8px; }
+.proposal-field__label { display: flex; justify-content: space-between; gap: 12px; font-weight: 800; }
+.proposal-field__label small { color: var(--muted); font: 0.62rem "SFMono-Regular", Consolas, monospace; letter-spacing: 0.06em; text-align: right; text-transform: uppercase; }
+.proposal-field__hint { color: var(--muted); font-size: 0.78rem; }
+.proposal-field input,
+.proposal-field select,
+.proposal-field textarea {
+  width: 100%;
+  min-width: 0;
+  min-height: 48px;
+  padding: 11px 12px;
+  color: var(--ink);
+  background: #fffefb;
+  border: 1px solid var(--ink);
+  border-radius: 0;
+  resize: vertical;
+}
+
+.proposal-field [aria-invalid="true"] { border: 2px solid var(--danger); }
+.proposal-field__error { color: var(--danger); font-size: 0.82rem; font-weight: 800; }
+
+.cfp-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  padding: 28px clamp(26px, 5vw, 58px);
+  background: #eeebe2;
+}
+
+.cfp-form-actions p { flex: 1 1 320px; margin: 0; color: var(--muted); font-size: 0.78rem; }
+.cfp-form-error,
+.cfp-save-message,
+.cfp-closed { margin: 24px clamp(26px, 5vw, 58px) 0; padding: 14px 18px; }
+.cfp-form-error { color: #7c1512; background: #ffe0db; border-left: 6px solid var(--danger); }
+.cfp-save-message { background: #e7f7bc; border-left: 6px solid #5e7f00; }
+.cfp-closed { background: #ffe0db; border-left: 6px solid var(--danger); }
+.cfp-closed p { margin-bottom: 0; }
+
+.submission-receipt {
+  max-width: 900px;
+  margin: 60px auto 0;
+  padding: clamp(30px, 6vw, 72px);
+  background: var(--ink);
+  color: var(--white);
+  border-top: 10px solid var(--signal);
+  box-shadow: 14px 14px 0 var(--blue);
+}
+
+.submission-receipt dl { margin: 34px 0; border-block: 1px solid #545465; }
+.submission-receipt dl div { min-width: 0; display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 14px; padding: 14px 0; border-bottom: 1px solid #545465; }
+.submission-receipt dl div:last-child { border-bottom: 0; }
+.submission-receipt dt { color: var(--signal); font: 0.66rem "SFMono-Regular", Consolas, monospace; letter-spacing: 0.1em; text-transform: uppercase; }
+.submission-receipt dd { min-width: 0; margin: 0; overflow-wrap: anywhere; font-family: "SFMono-Regular", Consolas, monospace; }
+.submission-receipt__warning { padding: 14px; color: var(--ink); background: var(--signal); font-weight: 800; }
+.submission-receipt__actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 26px; }
+.submission-receipt .button--quiet { color: var(--white); border-color: var(--white); }
+.cfp-loading { min-height: 70vh; display: grid; place-items: center; padding: 30px; }
+
+@media (max-width: 760px) {
+  .cfp-portal main { padding-top: 42px; padding-bottom: 80px; }
+  .cfp-masthead,
+  .cfp-brief,
+  .cfp-own-list,
+  .cfp-identity-grid,
+  .cfp-proposal-fields { grid-template-columns: minmax(0, 1fr); }
+  .cfp-masthead h1 { font-size: clamp(3.5rem, 17vw, 5rem); }
+  .cfp-deadline { box-shadow: 7px 7px 0 var(--blue); }
+  .cfp-brief { margin-top: 54px; }
+  .cfp-guidelines { grid-column: 1; }
+  .cfp-taxonomy { grid-template-columns: minmax(0, 1fr); }
+  .cfp-proposal-fields .proposal-field:has(textarea),
+  .cfp-proposal-fields .proposal-field:first-child,
+  .cfp-proposal-fields .proposal-field:last-child { grid-column: 1; }
+  .cfp-form-section { box-shadow: 7px 7px 0 var(--ink); }
+  .cfp-form-section > header { display: grid; }
+  .cfp-status { justify-self: start; }
+  .proposal-field__label { align-items: start; }
+  .cfp-form-actions .button { width: 100%; }
+  .submission-receipt { margin-top: 34px; box-shadow: 7px 7px 0 var(--blue); }
+  .submission-receipt dl div { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .submission-receipt__actions .button { width: 100%; }
+}
