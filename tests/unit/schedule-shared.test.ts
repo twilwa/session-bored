@@ -5,6 +5,7 @@ import type { PublicSessionCard } from "../../shared/api.ts";
 import {
   agendaCellKey,
   buildAgendaGrid,
+  formatFullDateTime,
   formatTimeRange,
   groupSessionsByDay,
   sortSessionsChronologically,
@@ -45,6 +46,21 @@ describe("formatTimeRange", () => {
     // ABOUTME: T1 (14:00Z) is 7:00 AM in Los Angeles during daylight time (UTC-7) — the itinerary
     // card must show the local start time an attendee would actually see, not the UTC instant.
     expect(formatTimeRange(T1, T1_END, "America/Los_Angeles")).toMatch(/7:00 AM–7:30 AM/i);
+  });
+});
+
+describe("formatFullDateTime", () => {
+  const CLOSE_AT = new Date("2027-04-30T23:59:59Z").getTime();
+
+  it("renders the full instant in UTC", () => {
+    expect(formatFullDateTime(CLOSE_AT, "UTC")).toMatch(/April 30, 2027.*11:59 PM.*UTC/);
+  });
+
+  it("renders a non-UTC event's deadline in its own timezone, not UTC — a 7-hour shift for PDT", () => {
+    // ABOUTME: 23:59:59Z on April 30 is 4:59 PM the same day in Los Angeles during daylight time
+    // (UTC-7). Rendering this in UTC instead of the event's zone is exactly the deadline defect:
+    // it reads 11:59 PM, seven hours later than the instant a Pacific-time submitter actually sees.
+    expect(formatFullDateTime(CLOSE_AT, "America/Los_Angeles")).toMatch(/April 30, 2027.*4:59 PM.*PDT/);
   });
 });
 

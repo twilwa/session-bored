@@ -57,6 +57,13 @@
       "when": 1786379828446,
       "tag": "0007_add-file-kind",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1786382429154,
+      "tag": "0008_backfill-accepted-decision-for-approved-sessions",
+      "breakpoints": true
     }
   ]
 }

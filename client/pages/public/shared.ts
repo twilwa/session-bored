@@ -53,6 +53,21 @@ export function formatTimeRange(startsAt: number | null, endsAt: number | null, 
   return `${formatTime(startsAt, timeZone)}–${formatTime(endsAt, timeZone)}`;
 }
 
+// ABOUTME: Renders a full weekday/date/time in the event's own timezone, not the viewer's or UTC —
+// a submission deadline must read identically for every submitter regardless of where they browse from.
+export function formatFullDateTime(epochMs: number, timeZone: string): string {
+  return new Intl.DateTimeFormat("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZoneName: "short",
+    timeZone,
+  }).format(new Date(epochMs));
+}
+
 export function truncate(text: string, max: number): string {
   if (text.length <= max) {
     return text;
