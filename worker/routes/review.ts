@@ -24,6 +24,7 @@ import {
 } from "../../db/schema.ts";
 import type { AuthSession } from "../auth.ts";
 import { createAuth } from "../auth.ts";
+import { changeSubmissionStatuses } from "../submission-decision.ts";
 
 type ReviewEnvironment = {
   Bindings: CloudflareBindings;
@@ -868,18 +869,14 @@ reviewRoutes.patch(
     if (status === undefined) {
       return context.json({ error: "invalid_review_status" }, 400);
     }
-    const database = drizzle(context.env.DB);
     const submissionId = context.req.param("submissionId");
-    await database
-      .update(submissions)
-      .set({ status })
-      .where(eq(submissions.id, submissionId));
-    const [submission] = await database
-      .select({ id: submissions.id, status: submissions.status })
-      .from(submissions)
-      .where(eq(submissions.id, submissionId));
-    if (submission === undefined) {
+    const result = await changeSubmissionStatuses(context.env.DB, [submissionId], status);
+    if (result === null) {
       return context.json({ error: "not_found" }, 404);
+    }
+    const [submission] = result.updated;
+    if (submission === undefined) {
+      throw new Error(`Submission ${submissionId} status was not updated`);
     }
     return context.json({ ...submission, notificationSent: false });
   },
