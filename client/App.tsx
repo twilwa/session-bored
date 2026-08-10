@@ -147,6 +147,7 @@ function RoleShell({ role, children }: { role: Role; children: ReactNode }) {
     ? [
       ["Overview", "/organizer"], ["Call for speakers", "/organizer/cfp"],
       ["Review", "/organizer/review"],
+      ["Disposition", "/organizer/disposition"],
       ["Speakers", "/organizer/roster"], ["Missing info", "/organizer/roster/missing"],
       ["Agenda", "/organizer/agenda"],
       ["Communications", "/organizer/comms"],

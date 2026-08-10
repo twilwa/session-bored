@@ -7,6 +7,7 @@ import type {
   CfpSubmissionIntent,
   CfpSubmissionWrite,
 } from "../../../shared/api.ts";
+import { PublicHeader } from "../../lib.tsx";
 import { SubmitterAccountPanel, type SubmitterAccountUser } from "../submitter/SubmitterAccountPanel.tsx";
 import { formatFullDateTime } from "../public/shared.ts";
 import "./cfp.css";
@@ -225,22 +226,6 @@ function updateField(field: FormFieldRecord, value: string, state: FormState): F
         },
       };
   }
-}
-
-function PublicHeader() {
-  return (
-    <header className="public-header">
-      <a className="brand" href="/">
-        <span aria-hidden="true" className="brand__light">●</span>
-        <span>Greenroom</span>
-      </a>
-      <nav aria-label="Public navigation">
-        <a href="/cfp/devflow-conf-2027">Call for speakers</a>
-        <a href="/program">Program</a>
-        <a className="nav-signin" href="/login">Sign in</a>
-      </nav>
-    </header>
-  );
 }
 
 export function isProposalFieldVisible(
