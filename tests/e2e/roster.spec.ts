@@ -41,7 +41,7 @@ test("organizer assigns a file request in bulk and sees who needs chasing", asyn
   await expect(page.getByRole("heading", { name: "Morning check." })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Who still owes us something?" })).toBeVisible();
   await expect(page.getByText("Priya Raman", { exact: true })).toBeVisible();
-  await expect(page.getByText("Headshot", { exact: true })).toBeVisible();
+  await expect(page.getByText("Headshot", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("Upload accessibility-ready slides", { exact: true }).first()).toBeVisible();
   await expect(page.getByText(/days overdue/).first()).toBeVisible();
 });
