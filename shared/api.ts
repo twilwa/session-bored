@@ -778,6 +778,18 @@ export const reviewRouteMap = {
     module: "reviews",
     access: "organizer",
   },
+  criterionUpdate: {
+    method: "PATCH",
+    path: "/api/review/criteria/:criterionId",
+    module: "reviews",
+    access: "organizer",
+  },
+  criterionRemove: {
+    method: "DELETE",
+    path: "/api/review/criteria/:criterionId",
+    module: "reviews",
+    access: "organizer",
+  },
   assignments: {
     method: "POST",
     path: "/api/review/rounds/:roundId/assignments",
@@ -844,8 +856,14 @@ export interface ReviewSubmissionDetail {
   status: SubmissionStatus;
   audienceLevel: string | null;
   notesForReviewers: string | null;
+  format: { id: string; name: string | null } | null;
   round: { id: string; name: string; anonymized: boolean } | null;
   tracks: Array<{ id: string; name: string }>;
+  answers: Array<{
+    key: string;
+    label: string;
+    value: string | number | boolean | string[] | null;
+  }>;
   participants: Array<{
     id: string;
     name: string;

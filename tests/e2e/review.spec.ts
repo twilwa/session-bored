@@ -35,7 +35,9 @@ test("organizer review makes the coverage and decision sorts primary", async ({ 
 test("reviewer opens only their remit and posts to its durable thread", async ({ page }) => {
   await signIn(page, "sbek-reviewer@example.com", "SbekTest!2027-rev");
 
-  await expect(page.getByText("1 assigned proposal", { exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Assignments", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Completed", exact: true })).toHaveCount(0);
+  await expect(page.getByText(/assigned proposal|proposals in remit/)).toBeVisible();
   await expect(page.getByText("Your AI Pair Programmer", { exact: false })).toHaveCount(0);
   await page.getByRole("link", { name: /Taming 40-Minute CI/ }).click();
   await expect(page).toHaveURL(/\/reviewer\/submissions\/sub_ci_monorepo/);
@@ -46,6 +48,57 @@ test("reviewer opens only their remit and posts to its durable thread", async ({
   await expect(page.getByText(comment, { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Initial review" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "AI-generated reading aid" })).toHaveCount(0);
+});
+
+test("returning reviewer sees their saved scorecard", async ({ page }) => {
+  await signIn(page, "sbek-reviewer@example.com", "SbekTest!2027-rev");
+  await page.getByRole("link", { name: /Taming 40-Minute CI/ }).click();
+
+  await page.getByLabel(/Overall rating/).fill("4");
+  await page.getByLabel(/Recommendation/).selectOption("Accept");
+  await page.getByLabel(/Reviewer notes/).fill("The evidence is concrete and useful.");
+  await page.getByLabel("Scorecard note").fill("Bring this to the accept discussion.");
+  await page.getByRole("button", { name: /(?:Save|Update) scorecard/ }).click();
+  await expect(page.getByText("Scorecard saved.", { exact: false })).toBeVisible();
+
+  await page.getByRole("link", { name: "Back to review" }).click();
+  await page.getByRole("link", { name: /Taming 40-Minute CI/ }).click();
+
+  await expect(page.getByText("Editing saved scorecard", { exact: true })).toBeVisible();
+  await expect(page.getByLabel(/Overall rating/)).toHaveValue("4");
+  await expect(page.getByLabel(/Recommendation/)).toHaveValue("Accept");
+  await expect(page.getByLabel(/Reviewer notes/)).toHaveValue("The evidence is concrete and useful.");
+  await expect(page.getByLabel("Scorecard note")).toHaveValue("Bring this to the accept discussion.");
+});
+
+test("reviewer sees the complete submitted proposal", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "mobile", "The mobile project runs after seed-count coverage.");
+  const unique = Date.now();
+  const createResponse = await page.request.post("/api/public/cfp/devflow-conf-2027/submissions", {
+    data: {
+      intent: "submit",
+      speaker: { name: "Complete Proposal Speaker", email: `complete-proposal-${unique}@example.com` },
+      proposal: {
+        title: `Complete proposal ${unique}`,
+        abstract: "Every scoring input belongs on the proposal permalink.",
+        track: "Platform & Infra",
+        format: "Talk (30 min)",
+        audienceLevel: "Advanced",
+        answers: { key_takeaway: "Pinned custom answers keep the committee informed." },
+      },
+    },
+  });
+  expect(createResponse.ok()).toBe(true);
+
+  await signIn(page, "sbek-reviewer@example.com", "SbekTest!2027-rev");
+  await page.getByRole("link", { name: `Complete proposal ${unique}` }).click();
+
+  await expect(page.getByText("Talk (30 min)", { exact: true })).toBeVisible();
+  await expect(page.getByText("Advanced", { exact: true })).toBeVisible();
+  await expect(page.getByText("Platform & Infra", { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Submitted answers" })).toBeVisible();
+  await expect(page.getByText("Key takeaway", { exact: true })).toBeVisible();
+  await expect(page.getByText("Pinned custom answers keep the committee informed.", { exact: true })).toBeVisible();
 });
 
 test("reviewer explicitly requests enabled AI assistance", async ({ page }, testInfo) => {
@@ -100,4 +153,32 @@ test("reviewer explicitly requests enabled AI assistance", async ({ page }, test
     await expect(restoreToggle).not.toBeChecked();
     await expect(page.getByText("AI reading aids turned off", { exact: false })).toBeVisible();
   }
+});
+
+test("organizer edits and removes a scorecard criterion", async ({ page }) => {
+  const unique = Date.now();
+  const originalLabel = `Temporary criterion ${unique}`;
+  const updatedLabel = `Renamed criterion ${unique}`;
+  await signIn(page, "sbek-organizer@example.com", "SbekTest!2027-org");
+  await page.getByRole("link", { name: "Review", exact: true }).click();
+  await page.getByText("Committee setup", { exact: true }).click();
+
+  const createForm = page.getByRole("heading", { name: "Add one useful signal." }).locator("..");
+  await createForm.getByLabel("Criterion").fill(originalLabel);
+  await createForm.getByLabel("Type").selectOption("numeric");
+  await createForm.getByLabel("Weight").fill("1");
+  await createForm.getByRole("button", { name: "Add criterion" }).click();
+  await expect(page.getByText(originalLabel, { exact: true })).toBeVisible();
+
+  const criterionRow = page.getByRole("listitem").filter({ hasText: originalLabel });
+  await criterionRow.getByText("Edit", { exact: true }).click();
+  await criterionRow.getByLabel("Criterion label").fill(updatedLabel);
+  await criterionRow.getByLabel("Weight").fill("2");
+  await criterionRow.getByRole("button", { name: "Save changes" }).click();
+  await expect(page.getByText(updatedLabel, { exact: true })).toBeVisible();
+
+  page.once("dialog", (dialog) => dialog.accept());
+  const updatedRow = page.getByRole("listitem").filter({ hasText: updatedLabel });
+  await updatedRow.getByRole("button", { name: "Remove criterion" }).click();
+  await expect(page.getByText(updatedLabel, { exact: true })).toHaveCount(0);
 });

@@ -88,6 +88,59 @@ describe("review engine", () => {
     ).toBe(403);
   });
 
+  it("shows the complete proposal with labels from its pinned form version", async () => {
+    await request("/api/health");
+    const submissionId = "sub_ci_monorepo";
+    await env.DB.prepare(
+      "insert into submission_value (id, submission_id, field_id, value, created_at, updated_at) values (?, ?, ?, ?, ?, ?) on conflict(submission_id, field_id) do update set value = excluded.value",
+    ).bind(
+      "val_pinned_label",
+      submissionId,
+      "fld_key_takeaway",
+      JSON.stringify("Historical questions keep their original meaning."),
+      Date.now(),
+      Date.now(),
+    ).run();
+    await env.DB.prepare("update form_field set label = ? where id = ?")
+      .bind("Current draft takeaway prompt", "fld_key_takeaway")
+      .run();
+    await env.DB.prepare(
+      "insert into submission_track (id, submission_id, track_id, created_at, updated_at) values (?, ?, ?, ?, ?)",
+    ).bind(
+      "strk_second_review_track",
+      submissionId,
+      "trk_developer_experience",
+      Date.now(),
+      Date.now(),
+    ).run();
+
+    const reviewerCookie = await signIn("sbek-reviewer@example.com", "SbekTest!2027-rev");
+    const detailResponse = await request(
+      `/api/review/submissions/${submissionId}?roundId=rnd_initial_review`,
+      { headers: { cookie: reviewerCookie } },
+    );
+    expect(detailResponse.status).toBe(200);
+    const detail = await detailResponse.json<{
+      audienceLevel: string | null;
+      format: { id: string; name: string } | null;
+      tracks: Array<{ name: string }>;
+      answers: Array<{ key: string; label: string; value: unknown }>;
+    }>();
+    expect(detail.audienceLevel).toBe("Intermediate");
+    expect(detail.format).toEqual(expect.objectContaining({ name: "Talk (30 min)" }));
+    expect(detail.tracks.map((track) => track.name)).toEqual([
+      "Platform & Infra",
+      "Developer Experience",
+    ]);
+    expect(detail.answers).toEqual([
+      {
+        key: "key_takeaway",
+        label: "Key takeaway",
+        value: "Historical questions keep their original meaning.",
+      },
+    ]);
+  });
+
   it("stores a weighted scorecard and exposes its aggregate to the organizer", async () => {
     await request("/api/health");
     const organizerCookie = await signIn("sbek-organizer@example.com", "SbekTest!2027-org");
@@ -105,6 +158,7 @@ describe("review engine", () => {
       },
     );
     expect(criterionResponse.status).toBe(201);
+
     const criterion = await criterionResponse.json<{ id: string }>();
 
     const reviewerCookie = await signIn("sbek-reviewer@example.com", "SbekTest!2027-rev");
@@ -164,6 +218,130 @@ describe("review engine", () => {
     expect(worklist.items.find((item) => item.submissionId === "sub_ci_monorepo")).toEqual(
       expect.objectContaining({ ratingCount: 1, averageScore: expect.closeTo(8 / 3, 5) }),
     );
+  });
+
+  it("lets organizers maintain criteria without rewriting historical scores", async () => {
+    await request("/api/health");
+    const organizerCookie = await signIn("sbek-organizer@example.com", "SbekTest!2027-org");
+    const criterionResponse = await request(
+      "/api/review/rounds/rnd_initial_review/criteria",
+      {
+        method: "POST",
+        headers: { cookie: organizerCookie, "content-type": "application/json" },
+        body: JSON.stringify({
+          label: "Technical depth",
+          criterionType: "numeric",
+          weight: 1,
+          required: true,
+        }),
+      },
+    );
+    expect(criterionResponse.status).toBe(201);
+    const criterion = await criterionResponse.json<{ id: string }>();
+    const criterionPath = `/api/review/criteria/${criterion.id}`;
+
+    const reviewerCookie = await signIn("sbek-reviewer@example.com", "SbekTest!2027-rev");
+    expect((await request(criterionPath, {
+      method: "PATCH",
+      headers: { cookie: reviewerCookie, "content-type": "application/json" },
+      body: JSON.stringify({ label: "Reviewer cannot rename this" }),
+    })).status).toBe(403);
+    expect((await request(criterionPath, { method: "DELETE" })).status).toBe(401);
+
+    const detailResponse = await request("/api/review/submissions/sub_ci_monorepo", {
+      headers: { cookie: reviewerCookie },
+    });
+    const detail = await detailResponse.json<{
+      criteria: Array<{
+        id: string;
+        criterionType: "numeric" | "dropdown" | "free_text";
+        options: string[] | null;
+        weight: number | null;
+        required: boolean;
+      }>;
+    }>();
+    const scores: Record<string, string | number> = {};
+    for (const item of detail.criteria) {
+      if (item.id === criterion.id) scores[item.id] = 2;
+      else if (item.criterionType === "numeric") scores[item.id] = 4;
+      else if (item.criterionType === "dropdown") scores[item.id] = item.options?.[0] ?? "Accept";
+      else if (item.required) scores[item.id] = "Reviewed by a human.";
+    }
+    const otherNumericWeight = detail.criteria
+      .filter((item) => item.id !== criterion.id && item.criterionType === "numeric")
+      .reduce((total, item) => total + (item.weight ?? 1), 0);
+    const initialAggregate = (4 * otherNumericWeight + 2) / (otherNumericWeight + 1);
+    const updatedAggregate = (4 * otherNumericWeight + 6) / (otherNumericWeight + 3);
+    const reviewResponse = await request(
+      "/api/review/submissions/sub_ci_monorepo/reviews",
+      {
+        method: "POST",
+        headers: { cookie: reviewerCookie, "content-type": "application/json" },
+        body: JSON.stringify({ roundId: "rnd_initial_review", scores }),
+      },
+    );
+    expect(reviewResponse.status).toBe(200);
+    const savedReview = await reviewResponse.json<{
+      scores: Record<string, string | number>;
+      aggregateScore: number;
+    }>();
+    expect(savedReview.scores).toEqual(scores);
+    expect(savedReview.aggregateScore).toBeCloseTo(initialAggregate, 5);
+
+    const updateResponse = await request(criterionPath, {
+      method: "PATCH",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({ label: "Technical evidence", weight: 3 }),
+    });
+    expect(updateResponse.status).toBe(200);
+    await expect(updateResponse.json()).resolves.toEqual(expect.objectContaining({
+      criterion: expect.objectContaining({
+        id: criterion.id,
+        label: "Technical evidence",
+        weight: 3,
+      }),
+      recomputedReviews: 1,
+    }));
+
+    const typeChangeResponse = await request(criterionPath, {
+      method: "PATCH",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({ criterionType: "free_text" }),
+    });
+    expect(typeChangeResponse.status).toBe(409);
+    await expect(typeChangeResponse.json()).resolves.toEqual({ error: "criterion_type_locked" });
+
+    const updatedDetailResponse = await request(
+      "/api/review/submissions/sub_ci_monorepo?roundId=rnd_initial_review",
+      { headers: { cookie: reviewerCookie } },
+    );
+    const updatedDetail = await updatedDetailResponse.json<{
+      reviews: Array<{ scores: Record<string, string | number>; aggregateScore: number }>;
+    }>();
+    expect(updatedDetail.reviews[0]?.scores).toEqual(scores);
+    expect(updatedDetail.reviews[0]?.aggregateScore).toBeCloseTo(updatedAggregate, 5);
+
+    const deleteResponse = await request(criterionPath, {
+      method: "DELETE",
+      headers: { cookie: organizerCookie },
+    });
+    expect(deleteResponse.status).toBe(200);
+    await expect(deleteResponse.json()).resolves.toEqual({
+      removedCriterionId: criterion.id,
+      recomputedReviews: 1,
+    });
+
+    const removedDetailResponse = await request(
+      "/api/review/submissions/sub_ci_monorepo?roundId=rnd_initial_review",
+      { headers: { cookie: reviewerCookie } },
+    );
+    const removedDetail = await removedDetailResponse.json<{
+      criteria: Array<{ id: string }>;
+      reviews: Array<{ scores: Record<string, string | number>; aggregateScore: number }>;
+    }>();
+    expect(removedDetail.criteria.map((item) => item.id)).not.toContain(criterion.id);
+    expect(removedDetail.reviews[0]?.scores).toEqual(scores);
+    expect(removedDetail.reviews[0]?.aggregateScore).toBe(4);
   });
 
   it("provisions usable reviewer credentials with all submissions as the default remit", async () => {
@@ -363,6 +541,17 @@ describe("review engine", () => {
     });
     expect(criterionResponse.status).toBe(201);
 
+    await env.DB.prepare(
+      "insert into submission_value (id, submission_id, field_id, value, created_at, updated_at) values (?, ?, ?, ?, ?, ?) on conflict(submission_id, field_id) do update set value = excluded.value",
+    ).bind(
+      "val_blind_identity",
+      "sub_ci_monorepo",
+      "fld_key_takeaway",
+      JSON.stringify("Contact Priya Raman at sbek-speaker@example.com"),
+      Date.now(),
+      Date.now(),
+    ).run();
+
     const provisionResponse = await request(
       "/api/review/events/evt_devflow_conf_2027/reviewers",
       {
@@ -386,9 +575,11 @@ describe("review engine", () => {
     const blindDetail = await blindResponse.json<{
       round: { id: string; anonymized: boolean };
       participants: unknown[];
+      answers: unknown[];
     }>();
     expect(blindDetail.round).toEqual({ id: round.id, name: "Final Review", anonymized: true });
     expect(blindDetail.participants).toEqual([]);
+    expect(blindDetail.answers).toEqual([]);
 
     const organizerDetailResponse = await request(
       `/api/review/submissions/sub_ci_monorepo?roundId=${round.id}`,
@@ -396,8 +587,14 @@ describe("review engine", () => {
     );
     const organizerDetail = await organizerDetailResponse.json<{
       participants: Array<{ name: string }>;
+      answers: Array<{ label: string; value: string }>;
     }>();
     expect(organizerDetail.participants.map((participant) => participant.name)).toContain("Priya Raman");
+    expect(organizerDetail.answers).toContainEqual({
+      label: "Key takeaway",
+      key: "key_takeaway",
+      value: "Contact Priya Raman at sbek-speaker@example.com",
+    });
 
     const configResponse = await request(
       "/api/review/events/evt_devflow_conf_2027/config",

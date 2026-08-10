@@ -153,7 +153,7 @@ function RoleShell({ role, children }: { role: Role; children: ReactNode }) {
       ["Communications", "/organizer/comms"],
     ]
     : role === "reviewer"
-      ? [["Assignments", "/reviewer"], ["Completed", "/reviewer"]]
+      ? [["Assignments", "/reviewer"]]
       : [["My proposals", "/speaker"], ["Profile", "/speaker"], ["Tasks", "/speaker"], ["Files", "/speaker"]];
   return (
     <div className="app-shell">
