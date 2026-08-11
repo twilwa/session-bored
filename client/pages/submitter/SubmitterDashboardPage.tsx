@@ -8,6 +8,11 @@ interface SubmitterListPayload {
   items: SubmitterSubmissionSummary[];
 }
 
+interface SignedInAccount {
+  name: string;
+  email: string;
+}
+
 function statusLabel(status: SubmitterSubmissionSummary["status"]): string {
   return status.replace("_", " ");
 }
@@ -15,6 +20,26 @@ function statusLabel(status: SubmitterSubmissionSummary["status"]): string {
 export function SubmitterDashboardPage() {
   const [items, setItems] = useState<SubmitterSubmissionSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [account, setAccount] = useState<SignedInAccount | null>(null);
+
+  useEffect(() => {
+    fetch("/api/session", { credentials: "same-origin" })
+      .then(async (response) => (response.ok ? (await response.json<{ user: SignedInAccount }>()).user : null))
+      .then((user) => setAccount(user))
+      .catch(() => setAccount(null));
+  }, []);
+
+  async function signOut(): Promise<void> {
+    const response = await fetch("/api/auth/sign-out", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    if (response.ok) {
+      window.location.assign("/");
+    }
+  }
 
   useEffect(() => {
     fetch("/api/submitter/submissions", { credentials: "same-origin" })
@@ -36,7 +61,13 @@ export function SubmitterDashboardPage() {
         <a className="brand" href="/"><span aria-hidden="true" className="brand__light">●</span><span>Greenroom</span></a>
         <nav aria-label="Submitter navigation">
           <a href="/cfp/devflow-conf-2027">New proposal</a>
-          <a href="/login?returnTo=/submitter">Switch account</a>
+          {account === null ? <a href="/login?returnTo=/submitter">Sign in</a> : (
+            <>
+              <span className="submitter-dashboard__identity" title={account.email}>{account.name}</span>
+              <a href="/login?returnTo=/submitter">Switch account</a>
+              <button onClick={() => void signOut()} type="button">Sign out</button>
+            </>
+          )}
         </nav>
       </header>
       <main>

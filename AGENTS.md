@@ -35,6 +35,13 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   It returns the session content to `draft`, preserves all schedule fields, and
   pauses session-scoped tasks. Re-accepting reuses the same stable IDs. Agenda
   and public lanes must gate on the live decision and content status.
+- The workspace page routes in `worker/index.ts` (`/organizer`, `/reviewer`,
+  `/speaker`, `/submitter`) answer a refused caller in its own language through
+  `requirePageAccess`: a document navigation (`Sec-Fetch-Dest`, else `Accept`)
+  gets the branded page in `worker/access-page.ts`, everything else keeps the
+  JSON error. Both carry the same 401 or 403, so never assert a page route's
+  refusal by content type alone. `/login?returnTo=` is honoured only for
+  same-origin paths inside the signer-in's own role area or `/submitter`.
 - `worker/routes/review.ts` owns the F-4 review contract. It reads submissions
   through `submission`, `submission_track`, and `submission_speaker`; the CFP
   lane must preserve their stable IDs, event ID, title, abstract, status,
@@ -170,7 +177,17 @@ enriched `tasks` (`taskType`, `instructions`, `acceptedFileTypes`,
   mirrored onto `people.headshotUrl`) from a task-scoped deliverable
   (`taskId` + `speakerId` locate the row). Re-uploading either kind adds a new
   `file_version` or flips `latest`; prior versions stay downloadable via
-  `GET /api/portal/files/:fileId?version=N`.
+  `GET /api/portal/files/:fileId?version=N`, and each `files[].versions` entry in
+  `GET /api/speaker/content` carries that link. `file.display_name` only tracks the
+  newest upload, so a version's own filename comes from its storage key
+  (`worker/storage/file-versions.ts`) for both the history list and the download's
+  `Content-Disposition`.
+- A speaker never sees `submission.status`. `GET /api/speaker/content` returns
+  `speakerStatus` from `speakerFacingSubmissionStatus` in `shared/api.ts`, which
+  reveals a decision only once it has been communicated - its `decision_notice`
+  was dispatched, or the acceptance already produced the session the speaker is
+  looking at - and reads as `in_review` otherwise. The submitter dashboard is the
+  deliberate exception: it shows the live silent status by design and by test.
 - Uploading to a `file_request` task marks that speaker's `task_assignee`
   row `completed` — this is the same row the organizer/roster side must read,
   so no separate completion signal exists. General tasks complete only through

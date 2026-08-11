@@ -224,6 +224,109 @@ describe("speaker portal content", () => {
     ]);
   });
 
+  it("lists every version of a replaced file with its own name, size, and download link", async () => {
+    await request("/api/portal/tasks/tsk_fixture_3/files", {
+      method: "POST",
+      headers: { cookie: priyaCookie },
+      body: pdfUpload("qa-slides-v1.pdf"),
+    });
+    const replaced = await request("/api/portal/tasks/tsk_fixture_3/files", {
+      method: "POST",
+      headers: { cookie: priyaCookie },
+      body: fileUpload("qa-slides-v2.pdf", "application/pdf", [1, 2, 3, 4, 5, 6]),
+    });
+    const { fileId } = await replaced.json<{ fileId: string }>();
+
+    const content = await request("/api/speaker/content", { headers: { cookie: priyaCookie } });
+    const contentBody = await content.json<{
+      files: Array<{
+        fileId: string;
+        versions: Array<{
+          version: number;
+          displayName: string;
+          sizeBytes: number;
+          uploadedAt: string;
+          current: boolean;
+          downloadUrl: string;
+        }>;
+      }>;
+    }>();
+    const versions = contentBody.files.find((file) => file.fileId === fileId)?.versions ?? [];
+    const numbers = versions.map((version) => version.version);
+    expect(numbers.length).toBeGreaterThanOrEqual(2);
+    expect(numbers).toEqual([...numbers].sort((first, second) => second - first));
+    expect(versions[0]).toMatchObject({
+      displayName: "qa-slides-v2.pdf",
+      sizeBytes: 6,
+      current: true,
+      downloadUrl: `/api/portal/files/${fileId}?version=${numbers[0] ?? 0}`,
+    });
+    expect(versions[1]).toMatchObject({
+      displayName: "qa-slides-v1.pdf",
+      sizeBytes: 4,
+      current: false,
+      downloadUrl: `/api/portal/files/${fileId}?version=${numbers[1] ?? 0}`,
+    });
+    expect(versions.filter((version) => version.current)).toHaveLength(1);
+    expect(Number.isNaN(Date.parse(versions[0]?.uploadedAt ?? ""))).toBe(false);
+
+    // Every link the history offers must actually resolve to that version's own bytes and name.
+    for (const version of versions) {
+      const download = await request(version.downloadUrl, { headers: { cookie: priyaCookie } });
+      expect(download.status).toBe(200);
+      expect(download.headers.get("content-disposition")).toContain(version.displayName);
+      expect((await download.arrayBuffer()).byteLength).toBe(version.sizeBytes);
+    }
+  });
+
+  it("tells the speaker their proposal was accepted and never shows the committee's silent status", async () => {
+    const content = await request("/api/speaker/content", { headers: { cookie: priyaCookie } });
+    const body = await content.json<{
+      submissions: Array<{ id: string; title: string | null; speakerStatus: string; status?: string }>;
+    }>();
+
+    // The accepted proposal stays on the speaker's own list rather than disappearing from it.
+    const accepted = body.submissions.find((submission) => submission.id === "sub_ci_monorepo");
+    expect(accepted?.speakerStatus).toBe("accepted");
+
+    // `maybe` is committee vocabulary and never leaves the server for a speaker.
+    await env.DB.prepare("update submission set status = 'maybe' where id = ?").bind("sub_ai_verification").run();
+    const shortlisted = await request("/api/speaker/content", { headers: { cookie: priyaCookie } });
+    const shortlistedBody = await shortlisted.json<{
+      submissions: Array<{ id: string; speakerStatus: string }>;
+    }>();
+    expect(shortlistedBody.submissions.find((submission) => submission.id === "sub_ai_verification")?.speakerStatus)
+      .toBe("in_review");
+    expect(JSON.stringify(shortlistedBody)).not.toContain("maybe");
+
+    // A decline stays silent until the organizer dispatches its letter.
+    await env.DB.prepare("update submission set status = 'declined' where id = ?").bind("sub_ai_verification").run();
+    const declined = await request("/api/speaker/content", { headers: { cookie: priyaCookie } });
+    const declinedBody = await declined.json<{ submissions: Array<{ id: string; speakerStatus: string }> }>();
+    expect(declinedBody.submissions.find((submission) => submission.id === "sub_ai_verification")?.speakerStatus)
+      .toBe("in_review");
+
+    const now = Date.now();
+    await env.DB.prepare(
+      "insert into decision_notice (id, batch_id, submission_id, outcome, recipient_name, recipient_email, subject, body, delivery_status, queued_at, created_at, updated_at) values (?, ?, ?, 'declined', ?, ?, ?, ?, 'sent', ?, ?, ?)",
+    ).bind(
+      "eml_test_notice",
+      "eml_test_batch",
+      "sub_ai_verification",
+      "Priya Raman",
+      "priya@example.test",
+      "Your DevFlow proposal",
+      "Thank you for submitting.",
+      now,
+      now,
+      now,
+    ).run();
+    const notified = await request("/api/speaker/content", { headers: { cookie: priyaCookie } });
+    const notifiedBody = await notified.json<{ submissions: Array<{ id: string; speakerStatus: string }> }>();
+    expect(notifiedBody.submissions.find((submission) => submission.id === "sub_ai_verification")?.speakerStatus)
+      .toBe("not_selected");
+  });
+
   it("saves the speaker's own bio and social links, and completes the matching profile task", async () => {
     const before = await request("/api/speaker/content", { headers: { cookie: priyaCookie } });
     const beforeBody = await before.json<{ tasks: Array<{ id: string; status: string }> }>();
