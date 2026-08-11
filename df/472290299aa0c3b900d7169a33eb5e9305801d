@@ -1,0 +1,48 @@
+tests/e2e/app-shell.spec.ts
+  s_4eae1d64706857::t_4103b5ca2bf658 167,174
+  s_f240945ed5b979::t_0cddee6b402ce4 3,42-76,122-144
+client/App.tsx
+  s_4eae1d64706857::t_d3a1e896c2024e 181-182,184-186,195,198-209,215-220,255,282-291
+client/lib.tsx
+  s_4eae1d64706857::t_8e2ff050ab2a41 95-120,122-125
+client/pages/disposition/DispositionPage.tsx
+  s_4eae1d64706857::t_7952c09fe19c43 10,17-23,161-165,168-173,176-180
+client/pages/disposition/disposition.css
+  s_4eae1d64706857::t_d2f39a0f56bc3a 8
+client/pages/public/ProgramPage.tsx
+  s_4eae1d64706857::t_b8c6527e4b0247 126,157,251-255
+client/pages/public/SpeakersPage.tsx
+  s_4eae1d64706857::t_92fdaa40f63c7f 46,80,123-127
+tests/e2e/disposition.spec.ts
+  s_4eae1d64706857::t_3f9d54d6e39ed3 16-23,30
+tests/e2e/public-schedule.spec.ts
+  s_4eae1d64706857::t_30750dcbcb5798 181,188-189,203
+tests/unit/client-request.test.ts
+  s_4eae1d64706857::t_788c2fefc0615e 1-30
+vitest.integration.config.ts
+  s_4eae1d64706857::t_8042602e74adbf 15-16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "df472290299aa0c3b900d7169a33eb5e9305801d",
+  "prompts": {},
+  "sessions": {
+    "s_4eae1d64706857": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fee27-1c4e-77b0-87d5-d7ee169d49b3",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    },
+    "s_f240945ed5b979": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fee36-e7b6-7d10-bd87-be1a5fee102d",
+        "model": "unknown"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
