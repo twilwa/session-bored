@@ -80,6 +80,14 @@ describe("agenda builder", () => {
           body: JSON.stringify({ scheduleStatus: "unplaced" }),
         },
       },
+      {
+        path: `/api/events/${eventId}/agenda/sessions/ses_docs_retrieval/content`,
+        init: {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ contentStatus: "approved" }),
+        },
+      },
       { path: `/api/events/${eventId}/agenda/publish`, init: { method: "POST" } },
     ];
     for (const operation of operations) {
@@ -347,5 +355,59 @@ describe("agenda builder", () => {
         }),
       ],
     });
+  });
+
+  it("completes accept, approve, place, publish, edit, and republish through organizer APIs", async () => {
+    await accept(["sub_ci_monorepo"], organizerCookie);
+    const acceptedAgenda = await readAgenda(organizerCookie);
+    const session = acceptedAgenda.sessions.find((item) =>
+      item.title.startsWith("Taming 40-Minute CI")
+    );
+    expect(session).toMatchObject({ contentStatus: "draft", publishedAt: null });
+    if (session === undefined) return;
+
+    const approvalResponse = await request(
+      `/api/events/${eventId}/agenda/sessions/${session.id}/content`,
+      {
+        method: "PATCH",
+        headers: { cookie: organizerCookie, "content-type": "application/json" },
+        body: JSON.stringify({ contentStatus: "approved" }),
+      },
+    );
+    expect(approvalResponse.status).toBe(200);
+    await expect(approvalResponse.json<AgendaState>()).resolves.toMatchObject({
+      sessions: expect.arrayContaining([
+        expect.objectContaining({ id: session.id, contentStatus: "approved", publishedAt: null }),
+      ]),
+    });
+
+    const firstPlacement = {
+      scheduleStatus: "placed",
+      scheduledDate: "2027-05-12",
+      roomId: "rm_room_2a",
+      startsAt: Date.parse("2027-05-12T17:00:00Z"),
+    };
+    await place(session.id, organizerCookie, firstPlacement);
+    const firstPublish = await request(`/api/events/${eventId}/agenda/publish`, {
+      method: "POST",
+      headers: { cookie: organizerCookie },
+    });
+    expect(firstPublish.status).toBe(200);
+    expect(await publicSessionIds()).toContain(session.id);
+
+    const editedAgenda = await place(session.id, organizerCookie, {
+      ...firstPlacement,
+      roomId: "rm_room_2b",
+      startsAt: Date.parse("2027-05-12T18:00:00Z"),
+    });
+    expect(editedAgenda.sessions.find((item) => item.id === session.id)?.publishedAt).toBeNull();
+    expect(await publicSessionIds()).not.toContain(session.id);
+
+    const republish = await request(`/api/events/${eventId}/agenda/publish`, {
+      method: "POST",
+      headers: { cookie: organizerCookie },
+    });
+    expect(republish.status).toBe(200);
+    expect(await publicSessionIds()).toContain(session.id);
   });
 });

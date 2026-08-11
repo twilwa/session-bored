@@ -16,6 +16,7 @@ async function dispatchDrag(page: Page, source: Locator, target: Locator): Promi
 }
 
 test("organizer drags a session, resolves a clash, changes views, and publishes", async ({ page }) => {
+  test.setTimeout(90_000);
   await page.goto("/login");
   await page.getByLabel("Email").fill("sbek-organizer@example.com");
   await page.getByLabel("Password").fill("SbekTest!2027-org");
@@ -23,6 +24,12 @@ test("organizer drags a session, resolves a clash, changes views, and publishes"
   await expect(page).toHaveURL(/\/organizer$/);
 
   const dispositionStatus = await page.evaluate(async ({ currentEventId }) => {
+    const reset = await fetch(`/api/events/${currentEventId}/disposition`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ submissionIds: ["sub_ci_monorepo"], status: "declined" }),
+    });
+    if (!reset.ok) return reset.status;
     const response = await fetch(`/api/events/${currentEventId}/disposition`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
@@ -39,6 +46,11 @@ test("organizer drags a session, resolves a clash, changes views, and publishes"
     if (!response.ok) throw new Error(`Agenda setup failed (${response.status})`);
     return response.json() as Promise<{ sessions: Array<{ id: string; title: string }> }>;
   }, { currentEventId: eventId });
+  const ciSession = agenda.sessions.find((session) => session.title.startsWith("Taming 40-Minute CI"));
+  const aiSession = agenda.sessions.find((session) => session.title.startsWith("Your AI Pair Programmer"));
+  expect(ciSession).toBeDefined();
+  expect(aiSession).toBeDefined();
+  if (ciSession === undefined || aiSession === undefined) return;
   for (const session of agenda.sessions) {
     const resetStatus = await page.evaluate(async ({ currentEventId, sessionId }) => {
       const response = await fetch(`/api/events/${currentEventId}/agenda/sessions/${sessionId}`, {
@@ -56,6 +68,12 @@ test("organizer drags a session, resolves a clash, changes views, and publishes"
   await expect(page.getByLabel("Live slot math")).toContainText("3 unplaced · 0 conflicts · 0 TBD");
   await expect(page.getByRole("region", { name: "Schedule conflicts" })).toHaveCount(0);
 
+  await page.getByLabel("Session").selectOption(ciSession.id);
+  const contentApproval = page.getByRole("region", { name: "Content approval" });
+  await expect(contentApproval).toContainText("Draft");
+  await contentApproval.getByRole("button", { name: "Approve content" }).click();
+  await expect(contentApproval).toContainText("Approved");
+
   const firstSlot = page.getByTestId("agenda-slot-2027-05-12-rm_main_stage-09:00");
   const docsCard = page.getByTestId("session-card-ses_docs_retrieval");
   await dispatchDrag(page, docsCard, firstSlot);
@@ -64,11 +82,6 @@ test("organizer drags a session, resolves a clash, changes views, and publishes"
   await expect(firstSlot.getByTestId("session-card-ses_docs_retrieval")).toBeVisible();
 
   const conflictSlot = page.getByTestId("agenda-slot-2027-05-12-rm_main_stage-10:00");
-  const ciSession = agenda.sessions.find((session) => session.title.startsWith("Taming 40-Minute CI"));
-  const aiSession = agenda.sessions.find((session) => session.title.startsWith("Your AI Pair Programmer"));
-  expect(ciSession).toBeDefined();
-  expect(aiSession).toBeDefined();
-  if (ciSession === undefined || aiSession === undefined) return;
   const ciCard = page.getByTestId(`session-card-${ciSession.id}`);
   const aiCard = page.getByTestId(`session-card-${aiSession.id}`);
   await dispatchDrag(page, ciCard, conflictSlot);
@@ -119,9 +132,37 @@ test("organizer drags a session, resolves a clash, changes views, and publishes"
   }
 
   await page.getByRole("button", { name: "Publish agenda" }).click();
-  await expect(page.getByText("1 approved agenda session published.")).toBeVisible();
+  await expect(page.getByText("2 approved agenda sessions published.")).toBeVisible();
 
   await page.goto("/program");
   await expect(page.getByRole("link", { name: "Docs That Answer Back", exact: false }))
     .toHaveAttribute("href", "/program/ses_docs_retrieval");
+  await expect(page.getByRole("link", { name: "Taming 40-Minute CI", exact: false })).toBeVisible();
+
+  await page.goto("/organizer/agenda");
+  await page.getByTestId(`session-card-${ciSession.id}`)
+    .getByRole("button", { name: /Edit placement/ })
+    .click();
+  await page.getByLabel("Time").selectOption("11:00");
+  await page.getByRole("button", { name: "Place", exact: true }).click();
+  await expect(page.getByText(/Publication cleared.*publish agenda again/i)).toBeVisible();
+  await expect(page.getByText("1/3 current")).toBeVisible();
+
+  await page.goto("/program");
+  await expect(page.getByRole("link", { name: "Taming 40-Minute CI", exact: false })).toHaveCount(0);
+  await page.goto("/organizer/agenda");
+  await page.getByRole("button", { name: "Publish agenda" }).click();
+  await expect(page.getByText("2 approved agenda sessions published.")).toBeVisible();
+  await page.goto("/program");
+  await expect(page.getByRole("link", { name: "Taming 40-Minute CI", exact: false })).toBeVisible();
+
+  const cleanupStatus = await page.evaluate(async () => {
+    const response = await fetch("/api/review/submissions/sub_ci_monorepo/status", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ status: "under_review" }),
+    });
+    return response.status;
+  });
+  expect(cleanupStatus).toBe(200);
 });

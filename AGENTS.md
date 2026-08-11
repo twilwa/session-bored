@@ -53,7 +53,10 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   `program_session.published_at` only for approved, placed or `tbd` sessions
   whose submission is still accepted, or that were entered directly. Public
   program routes must also require that marker and the live decision before
-  exposing schedule data.
+  exposing schedule data. Organizers approve accepted session content from the
+  agenda before publishing; approval locks speaker edits but never publishes by
+  itself. Placement edits clear publication and the agenda tells the organizer
+  to publish again.
 - `worker/routes/ai-review.ts` owns optional, event-scoped AI reading aids. Its
   caches live in `db/schema/ai-review.ts`; generated output never belongs in a
   human review, comment, decision, email, or notification. Blind and identified
