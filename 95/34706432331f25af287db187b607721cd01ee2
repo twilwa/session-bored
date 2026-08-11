@@ -1,0 +1,37 @@
+tests/unit/exports.test.ts
+  s_234a0568bb5271::t_7b14df43a0f411 38
+  s_234a0568bb5271::t_332a0e9c84360b 42
+  s_234a0568bb5271::t_e9018c76c3ea75 24-37,39-41,43-44
+worker/routes/exports.ts
+  s_234a0568bb5271::t_46805e7634302e 21,164-193,212-246,252-286,544,570
+tests/unit/route-map.test.ts
+  s_234a0568bb5271::t_e9018c76c3ea75 16,29-40
+  s_234a0568bb5271::t_c0a139b62805b6 41-42
+shared/api.ts
+  s_234a0568bb5271::t_46805e7634302e 13,280-303
+client/pages/exports/ExportsPage.tsx
+  s_234a0568bb5271::t_fbd17b614a857a 11,21,70
+tests/integration/exports.test.ts
+  s_234a0568bb5271::t_e9018c76c3ea75 47,110-116,140-144,153-154,259-265,267-277
+  s_234a0568bb5271::t_1d8b4504eaa225 48-59,145-151
+  s_234a0568bb5271::t_46805e7634302e 266
+  s_234a0568bb5271::t_dcf34ea885d3b8 152
+worker/exports/serialize.ts
+  s_234a0568bb5271::t_46805e7634302e 7-9,11
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "9534706432331f25af287db187b607721cd01ee2",
+  "prompts": {},
+  "sessions": {
+    "s_234a0568bb5271": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ff303-62a2-7410-b425-24e7a4977386",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
