@@ -1,0 +1,25 @@
+.github/workflows/preview.yml
+  s_e9d9fd58bf5c3d::t_f7c6265c47a7e8 2
+  s_e9d9fd58bf5c3d::t_d0d2d951f3aaa8 8,24,46,75-78,80-100,166-176,178-197,208-216
+  s_e9d9fd58bf5c3d::t_7d29332cb69623 177
+  s_e9d9fd58bf5c3d::t_555492085e4b64 198-207
+.github/workflows/preview-database-cleanup.yml
+  s_e9d9fd58bf5c3d::t_d0d2d951f3aaa8 1-61,63-90,92-95
+  s_e9d9fd58bf5c3d::t_ff055e188e3930 62,91
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "876a4f29c210c1d09eac86bd24f8836038e34fe4",
+  "prompts": {},
+  "sessions": {
+    "s_e9d9fd58bf5c3d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ff2e8-42f8-7a90-9209-a4c76a897e9b",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
