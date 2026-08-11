@@ -1,5 +1,5 @@
-// ABOUTME: Renders the organizer run-of-show with persistent drag-and-drop session placement.
-// ABOUTME: Keeps live slot math, conflicts, fallback controls, five views, and publishing visible.
+// ABOUTME: Renders organizer content approval and persistent drag-and-drop session placement.
+// ABOUTME: Keeps publication state, conflicts, fallback controls, and five views visible.
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent } from "react";
 import type { AgendaPlacement, AgendaSession, AgendaState } from "../../../shared/api.ts";
 import { Button, LoadingState, SelectField, StatusChip, Toast } from "../../components/ui.tsx";
@@ -163,6 +163,7 @@ export function AgendaPage() {
   );
   const unscheduled = agenda?.sessions.filter((session) => session.scheduleStatus !== "placed") ?? [];
   const placed = agenda?.sessions.filter((session) => session.scheduleStatus === "placed") ?? [];
+  const selectedSession = agenda?.sessions.find((session) => session.id === selectedSessionId) ?? null;
 
   function startDrag(event: DragEvent<HTMLElement>, sessionId: string): void {
     draggingSessionIdRef.current = sessionId;
@@ -175,6 +176,8 @@ export function AgendaPage() {
   async function savePlacement(sessionId: string, placement: AgendaPlacement, confirmation: string): Promise<void> {
     setBusy(true);
     setError(null);
+    const currentSession = sessionsById.get(sessionId);
+    const publicationWasCleared = currentSession !== undefined && currentSession.publishedAt !== null;
     try {
       const nextAgenda = await agendaRequest<AgendaState>(
         `/api/events/${eventId}/agenda/sessions/${sessionId}`,
@@ -185,13 +188,37 @@ export function AgendaPage() {
         },
       );
       setAgenda(nextAgenda);
-      setMessage(confirmation);
+      setMessage(publicationWasCleared
+        ? `${confirmation} Publication cleared — publish agenda again to make this change public.`
+        : confirmation);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Placement could not be saved.");
     } finally {
       setBusy(false);
       draggingSessionIdRef.current = null;
       setDraggingSessionId(null);
+    }
+  }
+
+  async function approveContent(): Promise<void> {
+    if (selectedSession === null) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const nextAgenda = await agendaRequest<AgendaState>(
+        `/api/events/${eventId}/agenda/sessions/${selectedSession.id}/content`,
+        {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ contentStatus: "approved" }),
+        },
+      );
+      setAgenda(nextAgenda);
+      setMessage(`${selectedSession.title} content approved. Publish the agenda when its placement is ready.`);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Session content could not be approved.");
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -349,6 +376,24 @@ export function AgendaPage() {
         </section>
       ) : (
         <>
+          <section aria-label="Content approval" className="agenda-content-approval">
+            <div>
+              <p className="section-label">CONTENT APPROVAL</p>
+              <strong>{selectedSession?.title ?? "Choose a session"}</strong>
+              <small>Approval locks speaker edits and makes this session eligible for publication.</small>
+            </div>
+            {selectedSession === null ? null : (
+              <>
+                <StatusChip tone={selectedSession.contentStatus === "approved" ? "good" : selectedSession.contentStatus === "in_review" ? "signal" : "neutral"}>
+                  {selectedSession.contentStatus === "in_review" ? "In review" : selectedSession.contentStatus === "approved" ? "Approved" : "Draft"}
+                </StatusChip>
+                <Button disabled={busy || selectedSession.contentStatus === "approved"} onClick={() => void approveContent()}>
+                  {selectedSession.contentStatus === "approved" ? "Content approved" : "Approve content"}
+                </Button>
+              </>
+            )}
+          </section>
+
           <section aria-label="Placement controls" className="agenda-placement-console">
             <div><p className="section-label">PLACEMENT CONSOLE</p><strong>Keyboard-safe fallback</strong><small>Choose a session, or tap ↗ on any card.</small></div>
             <SelectField label="Session" onChange={(event) => setSelectedSessionId(event.target.value)} value={selectedSessionId}>

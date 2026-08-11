@@ -1,4 +1,4 @@
-// ABOUTME: Reads and places accepted sessions on an event agenda and publishes approved slots.
+// ABOUTME: Reads, approves, places, and publishes accepted sessions on an event agenda.
 // ABOUTME: Recomputes speaker and room conflicts after every non-blocking scheduling change.
 import { and, asc, eq, inArray, isNull, or } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
@@ -294,6 +294,30 @@ agendaRoutes.patch("/api/events/:eventId/agenda/sessions/:sessionId", async (con
       }).where(eq(sessions.id, session.id));
     }
   }
+  const updatedAgenda = await readAgenda(context.env.DB, eventId);
+  if (updatedAgenda === null) throw new Error(`Agenda disappeared for ${eventId}`);
+  return context.json(updatedAgenda);
+});
+
+agendaRoutes.patch("/api/events/:eventId/agenda/sessions/:sessionId/content", async (context) => {
+  const input = await context.req.json<unknown>().catch(() => null);
+  if (
+    typeof input !== "object" || input === null ||
+    !("contentStatus" in input) || input.contentStatus !== "approved"
+  ) {
+    return context.json({ error: "invalid_content_status" }, 400);
+  }
+  const eventId = context.req.param("eventId");
+  const agenda = await readAgenda(context.env.DB, eventId);
+  if (agenda === null) return context.json({ error: "event_not_found" }, 404);
+  const session = agenda.sessions.find((item) => item.id === context.req.param("sessionId"));
+  if (session === undefined) return context.json({ error: "session_not_found" }, 404);
+
+  await drizzle(context.env.DB)
+    .update(sessions)
+    .set({ contentStatus: "approved" })
+    .where(eq(sessions.id, session.id));
+
   const updatedAgenda = await readAgenda(context.env.DB, eventId);
   if (updatedAgenda === null) throw new Error(`Agenda disappeared for ${eventId}`);
   return context.json(updatedAgenda);
