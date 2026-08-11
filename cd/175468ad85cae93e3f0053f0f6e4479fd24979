@@ -1,0 +1,40 @@
+tests/integration/roster.test.ts
+  s_88f0ee98dbc304::t_87ed8d2d327ce5 89
+  s_88f0ee98dbc304::t_d1f77bf81153d2 198-303
+  s_88f0ee98dbc304::t_5e8872a79a986a 975-978,991-994
+client/pages/roster/RosterPage.tsx
+  s_88f0ee98dbc304::t_0d7663608f501c 72-78,85
+  s_88f0ee98dbc304::t_66c54fe46dfca3 208-229
+  s_88f0ee98dbc304::t_d87eaada640767 540-544,549-570,579-580,600-607,616-618
+  s_88f0ee98dbc304::t_a07af22cea76c7 145,166-167,171,188
+  s_88f0ee98dbc304::t_3d5a02097d614b 306-325,386-404
+  s_88f0ee98dbc304::t_f85feded3552c7 3,71
+  s_88f0ee98dbc304::t_af286dbb64b431 116-125
+tests/e2e/roster.spec.ts
+  s_88f0ee98dbc304::t_e6a39667a6e180 46,65-70,103-104,144,154-155,163-164
+  s_88f0ee98dbc304::t_63a877fd66ac67 117-135
+worker/routes/roster.ts
+  s_88f0ee98dbc304::t_8f28ffcdab5031 176,187-193,205,231
+  s_88f0ee98dbc304::t_527224621cd337 20,67-70,73-85,102,106-111,120
+  s_88f0ee98dbc304::t_a01a406a21d428 346,448,548
+  s_88f0ee98dbc304::t_5ff6b32f12148d 575-638
+  s_88f0ee98dbc304::t_7a2b07cab63173 665,676-682,685,701-704,716,736
+worker/email/portal-invitation.ts
+  s_88f0ee98dbc304::t_08a5c296b53d2c 3,46-50
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "cd175468ad85cae93e3f0053f0f6e4479fd24979",
+  "prompts": {},
+  "sessions": {
+    "s_88f0ee98dbc304": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fef99-c9fe-7281-a4e6-4edbedf82749",
+        "model": "gpt-5.6-terra"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
