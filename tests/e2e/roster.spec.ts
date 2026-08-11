@@ -43,7 +43,7 @@ test("organizer sees sessionless onboarding assignments in the chase list", asyn
   expect(priyaRoster).toBeDefined();
   const priyaRosterRow = page.getByRole("row", { name: /Priya Raman/ });
   await expect(priyaRosterRow).toContainText(
-    `${priyaRoster?.taskSummary.incomplete} / ${priyaRoster?.taskSummary.total} tasks`,
+    `${priyaRoster?.taskSummary.incomplete} open item${priyaRoster?.taskSummary.incomplete === 1 ? "" : "s"}`,
   );
 
   await page.getByRole("navigation", { name: "Speaker operations" })
@@ -62,7 +62,12 @@ test("organizer sees sessionless onboarding assignments in the chase list", asyn
       assignee.speakerId === "spk_priya_devflow_2027" && assignee.status !== "completed"
     )
   ).map((task) => task.title);
-  expect(priyaTaskTitles).toHaveLength(priyaRoster?.taskSummary.incomplete ?? 0);
+  const missingResponse = await page.request.get("/api/events/evt_devflow_conf_2027/missing-information");
+  const missing = await missingResponse.json() as {
+    items: Array<{ speakerId: string; missingCount: number }>;
+  };
+  expect(missing.items.find((speaker) => speaker.speakerId === "spk_priya_devflow_2027")?.missingCount)
+    .toBe(priyaRoster?.taskSummary.incomplete);
   const priyaChaseCard = page.locator(".chase-card").filter({ hasText: "Priya Raman" });
   for (const taskTitle of priyaTaskTitles) {
     await expect(priyaChaseCard).toContainText(taskTitle);
@@ -95,8 +100,8 @@ test("organizer assigns a file request in bulk and sees who needs chasing", asyn
   await page.getByLabel("Task kind").selectOption("file_request");
   await page.getByLabel("Task title").fill("Upload accessibility-ready slides");
   await page.getByLabel("Due date").fill("2026-01-15");
-  await page.getByLabel(/Priya Raman/).check();
-  await page.getByLabel(/Marcus Okafor/).check();
+  await page.getByRole("checkbox", { name: /Priya Raman/ }).check();
+  await page.getByRole("checkbox", { name: /Marcus Okafor/ }).check();
   await page.getByRole("button", { name: "Assign to 2 speakers" }).click();
   await expect(page.getByRole("status")).toContainText("assigned to 2 speakers");
 
@@ -109,6 +114,25 @@ test("organizer assigns a file request in bulk and sees who needs chasing", asyn
   await expect(page.getByText(/days overdue/).first()).toBeVisible();
 });
 
+test("organizer completes and reopens one speaker assignment", async ({ page }) => {
+  await signInAsOrganizer(page);
+  await page.goto("/organizer/roster/tasks");
+
+  const title = `Confirm completion workflow ${Date.now()}`;
+  await page.getByLabel("Task title").fill(title);
+  await page.getByRole("checkbox", { name: /Priya Raman/ }).check();
+  await page.getByRole("button", { name: "Assign to 1 speaker" }).click();
+
+  const taskRow = page.getByRole("row", { name: new RegExp(title) });
+  await taskRow.getByRole("button", { name: `Mark complete ${title} for Priya Raman` }).click();
+  await expect(page.getByRole("status")).toContainText(`marked complete for Priya Raman`);
+  await expect(taskRow).toContainText("Complete");
+
+  await taskRow.getByRole("button", { name: `Reopen ${title} for Priya Raman` }).click();
+  await expect(page.getByRole("status")).toContainText(`marked open for Priya Raman`);
+  await expect(taskRow).toContainText("Open");
+});
+
 test("organizer edits, reassigns, and removes a task from the ledger", async ({ page }) => {
   await signInAsOrganizer(page);
   await page.goto("/organizer/roster/tasks");
@@ -117,7 +141,7 @@ test("organizer edits, reassigns, and removes a task from the ledger", async ({ 
   const originalTitle = `Confirm ledger workflow ${suffix}`;
   const updatedTitle = `Upload ledger workflow ${suffix}`;
   await page.getByLabel("Task title").fill(originalTitle);
-  await page.getByLabel(/Priya Raman/).check();
+  await page.getByRole("checkbox", { name: /Priya Raman/ }).check();
   await page.getByRole("button", { name: "Assign to 1 speaker" }).click();
   await expect(page.getByRole("row", { name: new RegExp(originalTitle) })).toBeVisible();
 
@@ -127,8 +151,8 @@ test("organizer edits, reassigns, and removes a task from the ledger", async ({ 
   await editDialog.getByLabel("Task title").fill(updatedTitle);
   await editDialog.getByLabel("Instructions").fill("Upload the final event checklist.");
   await editDialog.getByLabel("Due date").fill("2027-04-30");
-  await editDialog.getByLabel(/Priya Raman/).uncheck();
-  await editDialog.getByLabel(/Marcus Okafor/).check();
+  await editDialog.getByRole("checkbox", { name: /Priya Raman/ }).uncheck();
+  await editDialog.getByRole("checkbox", { name: /Marcus Okafor/ }).check();
   await editDialog.getByRole("button", { name: "Save task" }).click();
 
   const updatedRow = page.getByRole("row", { name: new RegExp(updatedTitle) });
@@ -136,8 +160,8 @@ test("organizer edits, reassigns, and removes a task from the ledger", async ({ 
   await expect(updatedRow).toContainText("1");
   await page.getByRole("button", { name: `Edit ${updatedTitle}` }).click();
   const updatedDialog = page.getByRole("dialog", { name: `Edit ${updatedTitle}` });
-  await expect(updatedDialog.getByLabel(/Priya Raman/)).not.toBeChecked();
-  await expect(updatedDialog.getByLabel(/Marcus Okafor/)).toBeChecked();
+  await expect(updatedDialog.getByRole("checkbox", { name: /Priya Raman/ })).not.toBeChecked();
+  await expect(updatedDialog.getByRole("checkbox", { name: /Marcus Okafor/ })).toBeChecked();
   await updatedDialog.getByRole("button", { name: "Cancel" }).click();
 
   await signOut(page);

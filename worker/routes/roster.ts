@@ -17,6 +17,7 @@ import {
   type Role,
   type SpeakerStatus,
 } from "../../db/schema.ts";
+import { sendPortalInvitationEmail } from "../email/portal-invitation.ts";
 
 type RosterEnvironment = {
   Bindings: CloudflareBindings;
@@ -63,8 +64,24 @@ rosterRoutes.get("/api/events/:eventId/roster", async (context) => {
     })
     .from(speakers)
     .innerJoin(people, eq(speakers.personId, people.id))
-    .where(eq(speakers.eventId, context.req.param("eventId")))
+    .where(and(
+      eq(speakers.eventId, context.req.param("eventId")),
+      sql`${speakers.deletedAt} is null`,
+    ))
     .orderBy(people.name);
+
+  const acceptedSpeakerRows = items.length === 0
+    ? []
+    : await database
+      .selectDistinct({ speakerId: speakers.id })
+      .from(speakers)
+      .innerJoin(sessionSpeakers, eq(sessionSpeakers.speakerId, speakers.id))
+      .innerJoin(sessions, eq(sessionSpeakers.sessionId, sessions.id))
+      .innerJoin(submissions, eq(sessions.submissionId, submissions.id))
+      .where(and(
+        inArray(speakers.id, items.map((item) => item.id)),
+        eq(submissions.status, "accepted"),
+      ));
 
   const assignments = items.length === 0
     ? []
@@ -82,9 +99,16 @@ rosterRoutes.get("/api/events/:eventId/roster", async (context) => {
         sql`${taskAssignees.deletedAt} is null`,
       ));
 
+  const acceptedSpeakerIds = new Set(acceptedSpeakerRows.map((speaker) => speaker.speakerId));
   return context.json({
     items: items.map((item) => {
       const speakerAssignments = assignments.filter((assignment) => assignment.speakerId === item.id);
+      const incompleteTasks = speakerAssignments.filter((assignment) =>
+        assignment.assignmentStatus !== "completed" && assignment.taskStatus === "active"
+      ).length;
+      const incompleteProfileItems = acceptedSpeakerIds.has(item.id)
+        ? Number(item.bio === null || item.bio.trim().length === 0) + Number(item.headshotUrl === null || item.headshotUrl.trim().length === 0)
+        : 0;
       return {
         ...item,
         profile: {
@@ -93,9 +117,7 @@ rosterRoutes.get("/api/events/:eventId/roster", async (context) => {
         },
         taskSummary: {
           total: speakerAssignments.length,
-          incomplete: speakerAssignments.filter((assignment) =>
-            assignment.assignmentStatus !== "completed" && assignment.taskStatus === "active"
-          ).length,
+          incomplete: incompleteTasks + incompleteProfileItems,
         },
       };
     }),
@@ -151,6 +173,7 @@ rosterRoutes.post("/api/events/:eventId/speakers", async (context) => {
     .from(speakers)
     .where(and(eq(speakers.eventId, eventId), eq(speakers.personId, person.id)));
   const createdSpeaker = speaker === undefined;
+  const restoredSpeaker = speaker !== undefined && speaker.deletedAt !== null;
   if (speaker === undefined) {
     const speakerId = createPublicId("spk");
     await database.insert(speakers).values({
@@ -160,6 +183,13 @@ rosterRoutes.post("/api/events/:eventId/speakers", async (context) => {
       status: payload.status,
     });
     [speaker] = await database.select().from(speakers).where(eq(speakers.id, speakerId));
+  }
+  if (speaker !== undefined && restoredSpeaker) {
+    await database
+      .update(speakers)
+      .set({ status: payload.status, deletedAt: null })
+      .where(eq(speakers.id, speaker.id));
+    [speaker] = await database.select().from(speakers).where(eq(speakers.id, speaker.id));
   }
   if (speaker === undefined) {
     throw new Error(`Speaker was not created for ${person.id}`);
@@ -172,6 +202,7 @@ rosterRoutes.post("/api/events/:eventId/speakers", async (context) => {
     email: person.email,
     adoptedExistingPerson,
     createdSpeaker,
+    restoredSpeaker,
   }, createdSpeaker ? 201 : 200);
 });
 
@@ -197,6 +228,7 @@ rosterRoutes.patch("/api/events/:eventId/speakers/:speakerId", async (context) =
     .where(and(
       eq(speakers.id, context.req.param("speakerId")),
       eq(speakers.eventId, context.req.param("eventId")),
+      sql`${speakers.deletedAt} is null`,
     ));
   if (current === undefined) {
     return context.json({ error: "speaker_not_found" }, 404);
@@ -311,6 +343,7 @@ rosterRoutes.post("/api/events/:eventId/tasks", async (context) => {
     .where(and(
       eq(speakers.eventId, context.req.param("eventId")),
       inArray(speakers.id, uniqueSpeakerIds),
+      sql`${speakers.deletedAt} is null`,
     ));
   if (selectedSpeakers.length !== uniqueSpeakerIds.length) {
     return context.json({ error: "speaker_not_found" }, 404);
@@ -412,6 +445,7 @@ rosterRoutes.patch("/api/events/:eventId/tasks/:taskId", async (context) => {
       .where(and(
         eq(speakers.eventId, context.req.param("eventId")),
         inArray(speakers.id, requestedSpeakerIds),
+        sql`${speakers.deletedAt} is null`,
       ));
     if (selectedSpeakers.length !== requestedSpeakerIds.length) {
       return context.json({ error: "speaker_not_found" }, 404);
@@ -511,6 +545,7 @@ rosterRoutes.patch("/api/events/:eventId/tasks/:taskId", async (context) => {
     .where(and(
       eq(taskAssignees.taskId, current.id),
       sql`${taskAssignees.deletedAt} is null`,
+      sql`${speakers.deletedAt} is null`,
     ));
   return context.json({ ...updated, assignees });
 });
@@ -535,6 +570,70 @@ rosterRoutes.delete("/api/events/:eventId/tasks/:taskId", async (context) => {
     .set({ status: "complete", deletedAt: archivedAt })
     .where(eq(tasks.id, task.id));
   return context.json({ id: task.id, archived: true, archivedAt });
+});
+
+rosterRoutes.patch("/api/events/:eventId/tasks/:taskId/assignees/:speakerId", async (context) => {
+  const payload = await context.req.json<{ status?: unknown }>().catch(() => null);
+  const status = payload?.status;
+  if (status !== "assigned" && status !== "completed") {
+    return context.json({ error: "invalid_task_status" }, 400);
+  }
+
+  const database = drizzle(context.env.DB);
+  const [assignment] = await database
+    .select({ id: taskAssignees.id })
+    .from(taskAssignees)
+    .innerJoin(tasks, eq(taskAssignees.taskId, tasks.id))
+    .innerJoin(speakers, eq(taskAssignees.speakerId, speakers.id))
+    .where(and(
+      eq(taskAssignees.taskId, context.req.param("taskId")),
+      eq(taskAssignees.speakerId, context.req.param("speakerId")),
+      eq(tasks.eventId, context.req.param("eventId")),
+      sql`${tasks.deletedAt} is null`,
+      sql`${taskAssignees.deletedAt} is null`,
+      sql`${speakers.deletedAt} is null`,
+    ));
+  if (assignment === undefined) {
+    return context.json({ error: "task_assignment_not_found" }, 404);
+  }
+
+  await database
+    .update(taskAssignees)
+    .set({ status, completedAt: status === "completed" ? new Date() : null })
+    .where(eq(taskAssignees.id, assignment.id));
+  const [updated] = await database
+    .select({
+      id: taskAssignees.id,
+      taskId: taskAssignees.taskId,
+      speakerId: taskAssignees.speakerId,
+      status: taskAssignees.status,
+      completedAt: taskAssignees.completedAt,
+    })
+    .from(taskAssignees)
+    .where(eq(taskAssignees.id, assignment.id));
+  return context.json(updated);
+});
+
+rosterRoutes.delete("/api/events/:eventId/speakers/:speakerId", async (context) => {
+  const database = drizzle(context.env.DB);
+  const [speaker] = await database
+    .select({ id: speakers.id })
+    .from(speakers)
+    .where(and(
+      eq(speakers.id, context.req.param("speakerId")),
+      eq(speakers.eventId, context.req.param("eventId")),
+      sql`${speakers.deletedAt} is null`,
+    ));
+  if (speaker === undefined) {
+    return context.json({ error: "speaker_not_found" }, 404);
+  }
+
+  const archivedAt = new Date();
+  await database
+    .update(speakers)
+    .set({ status: "withdrawn", deletedAt: archivedAt })
+    .where(eq(speakers.id, speaker.id));
+  return context.json({ id: speaker.id, archived: true, archivedAt });
 });
 
 rosterRoutes.get("/api/events/:eventId/tasks", async (context) => {
@@ -563,6 +662,7 @@ rosterRoutes.get("/api/events/:eventId/tasks", async (context) => {
       .where(and(
         inArray(taskAssignees.taskId, taskRows.map((task) => task.id)),
         sql`${taskAssignees.deletedAt} is null`,
+        sql`${speakers.deletedAt} is null`,
       ));
   return context.json({
     items: taskRows.map((task) => ({
@@ -573,21 +673,16 @@ rosterRoutes.get("/api/events/:eventId/tasks", async (context) => {
 });
 
 rosterRoutes.post("/api/events/:eventId/speakers/:speakerId/invitation", async (context) => {
-  const [speaker] = await drizzle(context.env.DB)
-    .select({ id: speakers.id })
-    .from(speakers)
-    .where(and(
-      eq(speakers.id, context.req.param("speakerId")),
-      eq(speakers.eventId, context.req.param("eventId")),
-    ));
-  if (speaker === undefined) {
+  const result = await sendPortalInvitationEmail({
+    env: context.env,
+    eventId: context.req.param("eventId") as `evt_${string}`,
+    speakerId: context.req.param("speakerId") as `spk_${string}`,
+    createdByUserId: context.get("authUser")?.id ?? null,
+  });
+  if (result.status === "speaker_not_found") {
     return context.json({ error: "speaker_not_found" }, 404);
   }
-  return context.json({
-    error: "invitation_sender_unavailable",
-    invitationQueued: false,
-    message: "The communications invitation function is not available in this build.",
-  }, 503);
+  return context.json(result);
 });
 
 rosterRoutes.get("/api/events/:eventId/missing-information", async (context) => {
@@ -603,7 +698,10 @@ rosterRoutes.get("/api/events/:eventId/missing-information", async (context) => 
     })
     .from(speakers)
     .innerJoin(people, eq(speakers.personId, people.id))
-    .where(eq(speakers.eventId, context.req.param("eventId")));
+    .where(and(
+      eq(speakers.eventId, context.req.param("eventId")),
+      sql`${speakers.deletedAt} is null`,
+    ));
   const acceptedSpeakerRows = await database
     .selectDistinct({
       speakerId: speakers.id,
@@ -615,6 +713,7 @@ rosterRoutes.get("/api/events/:eventId/missing-information", async (context) => 
     .where(and(
       eq(speakers.eventId, context.req.param("eventId")),
       eq(submissions.status, "accepted"),
+      sql`${speakers.deletedAt} is null`,
     ));
   const assignments = await database
     .select({
@@ -634,6 +733,7 @@ rosterRoutes.get("/api/events/:eventId/missing-information", async (context) => 
       eq(speakers.eventId, context.req.param("eventId")),
       sql`${tasks.deletedAt} is null`,
       sql`${taskAssignees.deletedAt} is null`,
+      sql`${speakers.deletedAt} is null`,
     ));
   const acceptedSpeakerIds = new Set(acceptedSpeakerRows.map((speaker) => speaker.speakerId));
   const activeAssignments = assignments.filter((assignment) =>
