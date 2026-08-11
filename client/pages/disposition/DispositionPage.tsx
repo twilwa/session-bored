@@ -12,10 +12,11 @@ import "./disposition.css";
 
 const eventId = "evt_devflow_conf_2027";
 const decisionStatuses: DecisionStatus[] = ["accepted", "maybe", "declined"];
+const decisionDispatchTimeoutMs = 5 * 60_000;
 
-async function readJson<T>(path: string, init?: RequestInit): Promise<T> {
+async function readJson<T>(path: string, init?: RequestInit, timeoutMs?: number): Promise<T> {
   try {
-    return await requestJson<T>(path, init);
+    return await requestJson<T>(path, init, timeoutMs);
   } catch (error) {
     if (error instanceof Error && error.message === "Request timed out. Try again.") {
       throw error;
@@ -117,6 +118,7 @@ export function DispositionPage() {
       const result = await readJson<{ queuedCount: number; skippedCount: number }>(
         `/api/events/${eventId}/decision-batches/${preview.id}/dispatch`,
         { method: "POST" },
+        decisionDispatchTimeoutMs,
       );
       setPreview({ ...preview, status: "queued" });
       await load();
