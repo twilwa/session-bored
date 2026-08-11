@@ -15,6 +15,9 @@ test("organizer builds and publishes a conditional CFP form", async ({ page, con
   await page.getByRole("link", { name: "Call for speakers", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Shape the call." })).toBeVisible();
   const builder = page.getByTestId("cfp-builder");
+  await page.setViewportSize({ width: 375, height: 812 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
+  await page.setViewportSize({ width: 1440, height: 1000 });
 
   await page.getByRole("button", { name: "+ New form" }).click();
   await page.getByLabel("Form name").fill(`Browser CFP ${suffix}`);
