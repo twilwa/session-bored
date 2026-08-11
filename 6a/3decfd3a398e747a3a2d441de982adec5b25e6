@@ -1,0 +1,47 @@
+client/pages/portal/PortalPage.tsx
+  s_89fccdb08b03e8::t_1356b9d491e7d9 4-10,43-70,73,94-96,114-129,327,360,364-377,380,387,400,411
+  s_89fccdb08b03e8::t_2ac68cacc73b21 77,81
+  s_89fccdb08b03e8::t_301b3224189381 71-72,74-76,78-80,82-93
+worker/index.ts
+  s_89fccdb08b03e8::t_1356b9d491e7d9 8,30,32,43,92-125,400,458-476,479-487,489-492,507-517,566-567,569-570
+worker/access-page.ts
+  s_89fccdb08b03e8::t_d39db0a1063a75 1-135
+client/pages/submitter/submitter.css
+  s_89fccdb08b03e8::t_1356b9d491e7d9 38-40
+shared/api.ts
+  s_89fccdb08b03e8::t_1356b9d491e7d9 467-475,484,501-549,553
+client/App.tsx
+  s_89fccdb08b03e8::t_1356b9d491e7d9 106
+worker/storage/file-versions.ts
+  s_89fccdb08b03e8::t_514da2e914c202 1-17
+tests/integration/worker-access.test.ts
+  s_89fccdb08b03e8::t_1356b9d491e7d9 80-133
+worker/routes/portal.ts
+  s_89fccdb08b03e8::t_1356b9d491e7d9 21,475,479
+client/pages/portal/portal.css
+  s_89fccdb08b03e8::t_26b1df8aff6956 26-27
+  s_89fccdb08b03e8::t_727e059db440f9 39-42
+  s_89fccdb08b03e8::t_1356b9d491e7d9 30-31,43-47,53-54
+client/pages/submitter/SubmitterDashboardPage.tsx
+  s_89fccdb08b03e8::t_1356b9d491e7d9 11-15,23-42,64-70
+tests/integration/portal-content.test.ts
+  s_89fccdb08b03e8::t_1356b9d491e7d9 227-329
+tests/integration/portal-authorization.test.ts
+  s_89fccdb08b03e8::t_1356b9d491e7d9 173-193
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "6a3decfd3a398e747a3a2d441de982adec5b25e6",
+  "prompts": {},
+  "sessions": {
+    "s_89fccdb08b03e8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "df5ef8a5-e11f-4f59-b6fb-57143e14a291",
+        "model": "claude-opus-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
