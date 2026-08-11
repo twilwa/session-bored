@@ -10,6 +10,7 @@ import {
 } from "../../../shared/api.ts";
 import { Button, DataTable, LoadingState, StatusChip, TextField, Toast } from "../../components/ui.tsx";
 import "./portal.css";
+import { FileComments } from "../content/FileComments.tsx";
 
 async function readJson<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, { credentials: "same-origin", ...init });
@@ -409,6 +410,7 @@ export function PortalPage() {
                     <strong>{file.taskTitle}</strong>
                     <a href={file.downloadUrl}>{file.displayName}</a>
                     <FileVersionList file={file} />
+                    <FileComments fileId={file.fileId} />
                   </div>
                   <StatusChip tone={file.archived ? "neutral" : "good"}>
                     {file.archived ? "Archived task" : `Version ${file.version}`}

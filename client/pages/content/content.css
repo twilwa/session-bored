@@ -1,0 +1,45 @@
+/* ABOUTME: Styles the organizer content board using Greenroom's existing paper, ink, and signal language. */
+/* ABOUTME: Keeps filters, deliverable metadata, and comment threads usable without horizontal overflow. */
+.content-page { min-width: 0; }
+.content-header { gap: 24px; }
+.content-header h1 { max-width: 760px; }
+.content-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 24px 0; }
+.content-metrics article { display: grid; min-width: 0; gap: 8px; padding: 16px; border: 1px solid var(--ink); background: var(--paper); }
+.content-metrics span { color: var(--muted); font: 0.68rem monospace; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; }
+.content-metrics strong { font: 2rem Georgia, serif; }
+.content-approvals ul { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.content-approvals li { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 16px; border: 1px solid var(--line); }
+.content-approvals li > div { display: grid; min-width: 0; gap: 4px; }
+.content-approvals li span:not(.status-chip) { color: var(--muted); font-size: 0.82rem; }
+.content-worklist-heading > span { color: var(--muted); font: 0.72rem monospace; text-transform: uppercase; }
+.content-controls { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 360px); min-width: 0; gap: 20px; align-items: end; margin-bottom: 20px; }
+.content-filters { display: flex; min-width: 0; flex-wrap: wrap; gap: 8px; }
+.content-filters button { min-height: 42px; padding: 8px 12px; border: 1px solid var(--ink); background: var(--white); font-weight: 800; cursor: pointer; }
+.content-filters button.active { background: var(--ink); color: var(--white); }
+.content-filters button span { display: inline-grid; min-width: 21px; min-height: 21px; margin-left: 5px; place-items: center; border-radius: 50%; background: var(--paper); color: var(--ink); font: 0.68rem monospace; }
+.deliverable-list { display: grid; gap: 14px; margin: 0; padding: 0; list-style: none; }
+.deliverable-card { display: grid; min-width: 0; grid-template-columns: minmax(190px, 0.8fr) minmax(240px, 1.2fr) minmax(260px, 1fr); gap: 18px; padding: 18px; border: 1px solid var(--line); background: var(--white); }
+.deliverable-card--overdue { border-left: 6px solid var(--signal); }
+.deliverable-card--delivered { border-left: 6px solid #6f9b28; }
+.deliverable-card__identity { display: flex; min-width: 0; align-items: start; justify-content: space-between; gap: 10px; }
+.deliverable-card__identity > div { display: grid; min-width: 0; gap: 5px; }
+.deliverable-card__identity a, .deliverable-card__file a { min-width: 0; overflow-wrap: anywhere; }
+.deliverable-card__request { display: grid; min-width: 0; grid-template-columns: minmax(0, 1.4fr) minmax(110px, 0.6fr); gap: 12px; }
+.deliverable-card__request > div { display: grid; min-width: 0; align-content: start; gap: 5px; }
+.deliverable-card__request span { color: var(--muted); font: 0.65rem monospace; font-weight: 800; text-transform: uppercase; }
+.deliverable-card__instructions { grid-column: 2; margin: 0; color: var(--muted); font-size: 0.86rem; }
+.deliverable-card__empty { margin: 0; color: var(--muted); }
+.deliverable-card__file { display: grid; min-width: 0; align-content: start; gap: 5px; }
+.deliverable-card__file > span { color: var(--muted); font: 0.68rem monospace; overflow-wrap: anywhere; }
+@media (max-width: 1050px) {
+  .content-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .deliverable-card { grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); }
+  .deliverable-card__file, .deliverable-card__empty { grid-column: 1 / -1; }
+}
+@media (max-width: 720px) {
+  .content-controls, .deliverable-card { grid-template-columns: minmax(0, 1fr); }
+  .content-controls .field { width: 100%; }
+  .deliverable-card__request { grid-template-columns: minmax(0, 1fr); }
+  .deliverable-card__instructions, .deliverable-card__file, .deliverable-card__empty { grid-column: 1; }
+  .content-approvals li { align-items: start; flex-direction: column; }
+}
