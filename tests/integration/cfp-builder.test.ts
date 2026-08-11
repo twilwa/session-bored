@@ -28,7 +28,13 @@ const versionTwoFields = [
   { key: "track", label: "Track", fieldType: "dropdown", required: true },
   { key: "format", label: "Format", fieldType: "dropdown", required: true },
   { key: "speaker_bio", label: "Speaker bio", fieldType: "long_text", required: false },
-  { key: "key_takeaway", label: "One key takeaway", fieldType: "short_text", required: true },
+  {
+    key: "key_takeaway",
+    label: "One key takeaway",
+    fieldType: "short_text",
+    required: true,
+    visibleInBlindReview: true,
+  },
   {
     key: "audience_level",
     label: "Audience level",
@@ -120,7 +126,7 @@ describe.sequential("organizer CFP builder", () => {
       form: { version: number; status: string; welcomeCopy: string | null };
       tracks: string[];
       formats: string[];
-      fields: Array<{ key: string; label: string }>;
+      fields: Array<{ key: string; label: string; visibleInBlindReview: boolean }>;
     }>();
     expect(preview).toMatchObject({
       event: { name: "DevFlow Conf 2027" },
@@ -134,6 +140,10 @@ describe.sequential("organizer CFP builder", () => {
     expect(preview.formats).toContain("Workshop (120 min)");
     expect(preview.fields.find((field) => field.key === "key_takeaway")).toMatchObject({
       label: "One key takeaway",
+      visibleInBlindReview: true,
+    });
+    expect(preview.fields.find((field) => field.key === "speaker_bio")).toMatchObject({
+      visibleInBlindReview: false,
     });
 
     const publicAfter = await request("/api/public/cfp/devflow-conf-2027");

@@ -583,6 +583,48 @@ describe("review engine", () => {
       Date.now(),
       Date.now(),
     ).run();
+    await env.DB.prepare(
+      "insert into submission_value (id, submission_id, field_id, value, created_at, updated_at) values (?, ?, ?, ?, ?, ?) on conflict(submission_id, field_id) do update set value = excluded.value",
+    ).bind(
+      "val_blind_hidden_identity",
+      "sub_ci_monorepo",
+      "fld_workshop_prerequisites",
+      JSON.stringify("Priya Raman leads delivery at Latticework Systems."),
+      Date.now(),
+      Date.now(),
+    ).run();
+    await env.DB.prepare(
+      "update form_version_field set visible_in_blind_review = 1 where form_version_id = ? and stable_field_id = ?",
+    ).bind("frm_devflow_cfp_2027:v1", "fld_key_takeaway").run();
+    await env.DB.prepare(
+      "insert into form_version (id, form_id, version, status, minimum_speakers, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?) on conflict(form_id, version) do update set status = excluded.status",
+    ).bind(
+      "frm_devflow_cfp_2027:blind-draft",
+      "frm_devflow_cfp_2027",
+      2,
+      "draft",
+      1,
+      Date.now(),
+      Date.now(),
+    ).run();
+    await env.DB.prepare(
+      "insert into form_version_field (id, form_version_id, stable_field_id, key, label, field_type, required, visible_in_blind_review, sort_order, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) on conflict(form_version_id, key) do update set visible_in_blind_review = excluded.visible_in_blind_review",
+    ).bind(
+      "fld_blind_draft_takeaway",
+      "frm_devflow_cfp_2027:blind-draft",
+      "fld_key_takeaway",
+      "key_takeaway",
+      "Current draft takeaway prompt",
+      "short_text",
+      0,
+      0,
+      0,
+      Date.now(),
+      Date.now(),
+    ).run();
+    await env.DB.prepare("update form set version = 2 where id = ?")
+      .bind("frm_devflow_cfp_2027")
+      .run();
 
     const provisionResponse = await request(
       "/api/review/events/evt_devflow_conf_2027/reviewers",
@@ -607,11 +649,16 @@ describe("review engine", () => {
     const blindDetail = await blindResponse.json<{
       round: { id: string; anonymized: boolean };
       participants: unknown[];
-      answers: unknown[];
+      answers: Array<{ key: string; label: string; value: string }>;
     }>();
     expect(blindDetail.round).toEqual({ id: round.id, name: "Final Review", anonymized: true });
     expect(blindDetail.participants).toEqual([]);
-    expect(blindDetail.answers).toEqual([]);
+    expect(blindDetail.answers).toEqual([{
+      key: "key_takeaway",
+      label: "Key takeaway",
+      value: "Contact Priya Raman at sbek-speaker@example.com",
+    }]);
+    expect(blindDetail.answers.map((answer) => answer.key)).not.toContain("workshop_prerequisites");
 
     const organizerDetailResponse = await request(
       `/api/review/submissions/sub_ci_monorepo?roundId=${round.id}`,
@@ -626,6 +673,11 @@ describe("review engine", () => {
       label: "Key takeaway",
       key: "key_takeaway",
       value: "Contact Priya Raman at sbek-speaker@example.com",
+    });
+    expect(organizerDetail.answers).toContainEqual({
+      label: "Workshop prerequisites",
+      key: "workshop_prerequisites",
+      value: "Priya Raman leads delivery at Latticework Systems.",
     });
 
     const configResponse = await request(
@@ -650,6 +702,18 @@ describe("review engine", () => {
       config.rounds.find((item) => item.id === "rnd_initial_review")?.reviewerPool
         .map((reviewer) => reviewer.id),
     ).not.toContain(provisioned.reviewer.id);
+    await env.DB.prepare("update form set version = 1 where id = ?")
+      .bind("frm_devflow_cfp_2027")
+      .run();
+    await env.DB.prepare(
+      "update form_version_field set visible_in_blind_review = 0 where form_version_id = ? and stable_field_id = ?",
+    ).bind("frm_devflow_cfp_2027:v1", "fld_key_takeaway").run();
+    await env.DB.prepare("delete from form_version_field where form_version_id = ?")
+      .bind("frm_devflow_cfp_2027:blind-draft")
+      .run();
+    await env.DB.prepare("delete from form_version where id = ?")
+      .bind("frm_devflow_cfp_2027:blind-draft")
+      .run();
   });
 
   it("changes review status without creating any communication dispatch", async () => {

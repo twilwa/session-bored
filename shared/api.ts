@@ -695,6 +695,7 @@ export interface CfpBuilderField {
   description: string | null;
   fieldType: CfpBuilderFieldType;
   required: boolean;
+  visibleInBlindReview: boolean;
   sortOrder: number;
   options: string[] | null;
   conditional: {

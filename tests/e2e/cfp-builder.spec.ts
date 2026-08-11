@@ -40,7 +40,15 @@ test("organizer builds and publishes a conditional CFP form", async ({ page, con
 
   const takeaway = await addField("Key takeaway", "Short text");
   await takeaway.getByLabel("Required to submit").check();
+  const takeawayBlindVisibility = takeaway.getByLabel("Visible in blind review", { exact: true });
+  await expect(takeawayBlindVisibility).not.toBeChecked();
+  await expect(takeaway.getByText(
+    "Reviewers will see this response even when speaker identities are hidden.",
+    { exact: true },
+  )).toBeVisible();
+  await takeawayBlindVisibility.check();
   const audience = await addField("Audience level", "Dropdown");
+  await expect(audience.getByLabel("Visible in blind review", { exact: true })).not.toBeChecked();
   await audience.getByLabel("Dropdown options, one per line").fill("Beginner\nIntermediate\nAdvanced");
   const workshop = await addField("Workshop prerequisites", "Long text");
   await workshop.getByLabel("Required to submit").check();

@@ -1,0 +1,1 @@
+ALTER TABLE `form_version_field` ADD `visible_in_blind_review` integer DEFAULT false NOT NULL;

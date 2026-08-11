@@ -16,6 +16,7 @@ import {
   type Role,
 } from "../../db/schema.ts";
 import type { AuthSession } from "../auth.ts";
+import { reviewProposalAnswers } from "../review-answers.ts";
 import {
   buildReviewAssistanceInput,
   createAnthropicReviewAssistant,
@@ -159,6 +160,7 @@ export function createAIReviewRoutes(
       const [submission] = await database
         .select({
           id: submissions.id,
+          formId: submissions.formId,
           formVersion: submissions.formVersion,
           title: submissions.title,
           abstract: submissions.abstract,
@@ -170,7 +172,7 @@ export function createAIReviewRoutes(
       if (submission === undefined) {
         return context.json({ error: "not_found" }, 404);
       }
-      const [criteria, participants] = await Promise.all([
+      const [criteria, participants, answers] = await Promise.all([
         database
           .select()
           .from(scorecardCriteria)
@@ -186,6 +188,7 @@ export function createAIReviewRoutes(
           .from(submissionSpeakers)
           .innerJoin(people, eq(submissionSpeakers.personId, people.id))
           .where(eq(submissionSpeakers.submissionId, submissionId)),
+        reviewProposalAnswers(database, submission, scopedSubmission.anonymized),
       ]);
       const visibility = scopedSubmission.anonymized ? "blind" : "identified";
       const assistanceInput = buildReviewAssistanceInput({
@@ -196,6 +199,7 @@ export function createAIReviewRoutes(
           abstract: submission.abstract,
           audienceLevel: submission.audienceLevel,
           notesForReviewers: submission.notesForReviewers,
+          answers,
         },
         participants,
         criteria,

@@ -550,6 +550,29 @@ describe("AI-assisted review", () => {
       "Contact sbek-speaker@example.com with questions.",
       "sub_ci_monorepo",
     ).run();
+    await env.DB.prepare(
+      "insert into submission_value (id, submission_id, field_id, value, created_at, updated_at) values (?, ?, ?, ?, ?, ?) on conflict(submission_id, field_id) do update set value = excluded.value",
+    ).bind(
+      "val_blind_ai_visible",
+      "sub_ci_monorepo",
+      "fld_key_takeaway",
+      JSON.stringify("Priya Raman demonstrates a repeatable delivery method."),
+      Date.now(),
+      Date.now(),
+    ).run();
+    await env.DB.prepare(
+      "insert into submission_value (id, submission_id, field_id, value, created_at, updated_at) values (?, ?, ?, ?, ?, ?) on conflict(submission_id, field_id) do update set value = excluded.value",
+    ).bind(
+      "val_blind_ai_hidden",
+      "sub_ci_monorepo",
+      "fld_workshop_prerequisites",
+      JSON.stringify("secret-blind-field from Latticework Systems"),
+      Date.now(),
+      Date.now(),
+    ).run();
+    await env.DB.prepare(
+      "update form_version_field set visible_in_blind_review = 1 where form_version_id = ? and stable_field_id = ?",
+    ).bind("frm_devflow_cfp_2027:v1", "fld_key_takeaway").run();
 
     const generatedInputs: ReviewAssistanceInput[] = [];
     const assistant: ReviewAssistant = {
@@ -605,6 +628,12 @@ describe("AI-assisted review", () => {
     expect(first.summary.toLowerCase()).not.toContain("latticework");
     expect(JSON.stringify(generatedInputs).toLowerCase()).not.toContain("priya");
     expect(JSON.stringify(generatedInputs).toLowerCase()).not.toContain("latticework");
+    expect(JSON.stringify(generatedInputs).toLowerCase()).not.toContain("secret-blind-field");
+    expect(generatedInputs[0]?.proposal.answers).toEqual([{
+      key: "key_takeaway",
+      label: "Key takeaway",
+      value: "[identity hidden] demonstrates a repeatable delivery method.",
+    }]);
 
     const secondResponse = await injectedApp.request(
       `http://example.test${assistancePath}`,

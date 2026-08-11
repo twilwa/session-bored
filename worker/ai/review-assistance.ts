@@ -16,6 +16,11 @@ export interface ReviewProposal {
   abstract: string | null;
   audienceLevel: string | null;
   notesForReviewers: string | null;
+  answers?: Array<{
+    key: string;
+    label: string;
+    value: string | number | boolean | string[] | null;
+  }>;
 }
 
 export interface ParticipantIdentity {
@@ -72,6 +77,19 @@ function participantIdentityValues(participants: ParticipantIdentity[]): string[
     .sort((left, right) => right.length - left.length);
 }
 
+function hideIdentityInAnswer(
+  value: string | number | boolean | string[] | null,
+  identities: string[],
+): string | number | boolean | string[] | null {
+  if (typeof value === "string") {
+    return hideIdentity(value, identities);
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => hideIdentity(item, identities) ?? item);
+  }
+  return value;
+}
+
 export function protectGeneratedText(
   value: string,
   anonymized: boolean,
@@ -112,6 +130,12 @@ export function buildReviewAssistanceInput({
       abstract: hideIdentity(proposal.abstract, identities),
       audienceLevel: hideIdentity(proposal.audienceLevel, identities),
       notesForReviewers: hideIdentity(proposal.notesForReviewers, identities),
+      ...(proposal.answers === undefined ? {} : {
+        answers: proposal.answers.map((answer) => ({
+          ...answer,
+          value: hideIdentityInAnswer(answer.value, identities),
+        })),
+      }),
     },
     criteria,
   };
