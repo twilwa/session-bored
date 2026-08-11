@@ -222,6 +222,26 @@ export function AgendaPage() {
     }
   }
 
+  async function sendCalendarInvite(): Promise<void> {
+    if (selectedSession === null) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await agendaRequest<{ sentCount: number; failedCount: number; sequence: number }>(
+        `/api/events/${eventId}/sessions/${selectedSession.id}/calendar-invite`,
+        { method: "POST" },
+      );
+      setMessage(
+        `Calendar invite sent to ${result.sentCount} speaker${result.sentCount === 1 ? "" : "s"}. ` +
+          `Calendar update ${result.sequence}.`,
+      );
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Calendar invite could not be sent.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function dropIntoSlot(event: DragEvent<HTMLElement>, day: string, roomId: string, time: string): void {
     event.preventDefault();
     if (agenda === null) return;
@@ -389,6 +409,14 @@ export function AgendaPage() {
                 </StatusChip>
                 <Button disabled={busy || selectedSession.contentStatus === "approved"} onClick={() => void approveContent()}>
                   {selectedSession.contentStatus === "approved" ? "Content approved" : "Approve content"}
+                </Button>
+                <Button
+                  disabled={busy || selectedSession.scheduleStatus !== "placed"}
+                  onClick={() => void sendCalendarInvite()}
+                  title={selectedSession.scheduleStatus === "placed" ? undefined : "Place the session before sending its calendar invite."}
+                  tone="quiet"
+                >
+                  Send calendar invite
                 </Button>
               </>
             )}

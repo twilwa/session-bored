@@ -61,6 +61,10 @@ async function placeDocsSession(page: Page, placement: Placement): Promise<void>
   expect(result.publishedStatus, "agenda publish failed").toBe(200);
 }
 
+async function selectPlacedDay(page: Page): Promise<void> {
+  await page.getByRole("button", { name: "Thu, May 13" }).click();
+}
+
 test("agenda grid renders a real placement with the event's own timezone, and opens session detail", async ({ page }) => {
   await placeDocsSession(page, {
     scheduleStatus: "placed",
@@ -72,6 +76,7 @@ test("agenda grid renders a real placement with the event's own timezone, and op
   await page.goto("/agenda");
   await expect(page.getByRole("heading", { name: "Agenda", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Thu, May 13" })).toBeVisible();
+  await selectPlacedDay(page);
   await expect(page.getByText("Main Stage", { exact: true })).toBeVisible();
   await expect(page.getByText("10:00 AM", { exact: true })).toBeVisible();
 
@@ -98,6 +103,7 @@ test("agenda grid renders an honest TBD placement without inventing a room or ti
 
   await page.goto("/agenda");
   await expect(page.getByRole("button", { name: "Thu, May 13" })).toBeVisible();
+  await selectPlacedDay(page);
   await expect(page.getByText("Time TBD")).toBeVisible();
   await expect(page.getByText("Room TBD")).toBeVisible();
   await expect(page.locator(".agenda-grid__session", { hasText: "Docs That Answer Back" })).toBeVisible();
@@ -114,6 +120,7 @@ test("itinerary lists a real placement chronologically with track, title, descri
   await page.goto("/schedule");
   await expect(page.getByRole("heading", { name: "Schedule", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Thu, May 13" })).toBeVisible();
+  await selectPlacedDay(page);
 
   const item = page.locator(".itinerary-item", { hasText: "Docs That Answer Back" });
   await expect(item).toBeVisible();
@@ -167,6 +174,7 @@ test("a placed session reads identically on the program, agenda, itinerary, and 
   await expect(programCard).toContainText("Main Stage");
 
   await page.goto("/agenda");
+  await selectPlacedDay(page);
   await page.locator(".agenda-grid__session", { hasText: "Docs That Answer Back" }).click();
   const modal = page.getByRole("dialog");
   await expect(modal).toContainText("Developer Experience");
@@ -175,6 +183,7 @@ test("a placed session reads identically on the program, agenda, itinerary, and 
   await expect(modal).toContainText("Marcus Okafor");
 
   await page.goto("/schedule");
+  await selectPlacedDay(page);
   const itineraryItem = page.locator(".itinerary-item", { hasText: "Docs That Answer Back" });
   await expect(itineraryItem).toContainText("Developer Experience");
   await expect(itineraryItem).toContainText("10:00 AM–10:10 AM");

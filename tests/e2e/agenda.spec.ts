@@ -78,6 +78,11 @@ test("organizer drags a session, resolves a clash, changes views, and publishes"
   const docsCard = page.getByTestId("session-card-ses_docs_retrieval");
   await dispatchDrag(page, docsCard, firstSlot);
   await expect(firstSlot.getByTestId("session-card-ses_docs_retrieval")).toBeVisible();
+  await page.getByTestId("session-card-ses_docs_retrieval")
+    .getByRole("button", { name: /Edit placement/ })
+    .click();
+  await page.getByRole("button", { name: "Send calendar invite" }).click();
+  await expect(page.getByRole("alert")).toContainText("email not configured");
   await page.reload();
   await expect(firstSlot.getByTestId("session-card-ses_docs_retrieval")).toBeVisible();
 

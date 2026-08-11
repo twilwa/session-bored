@@ -397,15 +397,15 @@ export async function fetchPublicEventFacets(
       .where(and(eq(sessions.eventId, eventId), PUBLIC_SESSION_GATE, sql`${sessions.scheduledDate} IS NOT NULL`)),
   ]);
 
-  // ABOUTME: Days fall back to the event's start..end range when no sessions have been scheduled yet,
-  // so the day facet stays useful while the agenda is still taking shape.
-  let days = dayRows
+  const scheduledDays = dayRows
     .map((row) => row.day)
     .filter((day): day is string => day !== null)
     .sort();
-  if (days.length === 0 && event.startDate !== null && event.endDate !== null) {
-    days = eachDayBetween(event.startDate, event.endDate);
-  }
+  // ABOUTME: Public day tabs cover every advertised event day, including days still awaiting
+  // approved sessions. Invalid or absent event dates retain the scheduled-session fallback.
+  const days = event.startDate !== null && event.endDate !== null
+    ? eachDayBetween(event.startDate, event.endDate)
+    : scheduledDays;
 
   return {
     event,
