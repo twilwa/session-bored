@@ -54,6 +54,7 @@ test("organizer drags a session, resolves a clash, changes views, and publishes"
   await page.goto("/organizer/agenda");
   await expect(page.getByRole("heading", { name: /Build the room/ })).toBeVisible();
   await expect(page.getByLabel("Live slot math")).toContainText("3 unplaced · 0 conflicts · 0 TBD");
+  await expect(page.getByRole("region", { name: "Schedule conflicts" })).toHaveCount(0);
 
   const firstSlot = page.getByTestId("agenda-slot-2027-05-12-rm_main_stage-09:00");
   const docsCard = page.getByTestId("session-card-ses_docs_retrieval");
@@ -71,12 +72,41 @@ test("organizer drags a session, resolves a clash, changes views, and publishes"
   const ciCard = page.getByTestId(`session-card-${ciSession.id}`);
   const aiCard = page.getByTestId(`session-card-${aiSession.id}`);
   await dispatchDrag(page, ciCard, conflictSlot);
+
+  const docsBox = await firstSlot.getByTestId("session-card-ses_docs_retrieval").boundingBox();
+  const docsTitleBox = await firstSlot.getByTestId("session-card-ses_docs_retrieval").locator("h3").boundingBox();
+  const ciBox = await conflictSlot.getByTestId(`session-card-${ciSession.id}`).boundingBox();
+  expect(docsBox).not.toBeNull();
+  expect(docsTitleBox).not.toBeNull();
+  expect(ciBox).not.toBeNull();
+  if (docsBox === null || docsTitleBox === null || ciBox === null) return;
+  expect(docsTitleBox.y).toBeLessThan(docsBox.y + docsBox.height);
+  expect(ciBox.height / docsBox.height).toBeGreaterThan(2.5);
+
   await dispatchDrag(page, aiCard, conflictSlot);
+
+  const placedCiCard = conflictSlot.getByTestId(`session-card-${ciSession.id}`);
+  const placedAiCard = conflictSlot.getByTestId(`session-card-${aiSession.id}`);
+  await expect(placedCiCard).toHaveAttribute("aria-label", /Schedule conflict:/);
+  await expect(placedAiCard).toHaveAttribute("aria-label", /Schedule conflict:/);
+  const placedCiBox = await placedCiCard.boundingBox();
+  const placedAiBox = await placedAiCard.boundingBox();
+  expect(placedCiBox).not.toBeNull();
+  expect(placedAiBox).not.toBeNull();
+  if (placedCiBox === null || placedAiBox === null) return;
+  expect(placedCiBox.x).not.toBe(placedAiBox.x);
 
   const conflicts = page.getByRole("region", { name: "Schedule conflicts" });
   await expect(conflicts).toBeVisible();
+  await expect(conflicts.locator("article")).toHaveCount(2);
   await expect(conflicts).toContainText("Main Stage overlaps");
   await expect(conflicts).toContainText("Priya Raman overlaps");
+  await expect(page.getByLabel("Live slot math")).toContainText("0 unplaced · 2 conflicts · 0 TBD");
+
+  await page.reload();
+  await expect(conflictSlot.getByTestId(`session-card-${ciSession.id}`)).toHaveAttribute("aria-label", /Schedule conflict:/);
+  await expect(conflictSlot.getByTestId(`session-card-${aiSession.id}`)).toHaveAttribute("aria-label", /Schedule conflict:/);
+  await expect(conflicts.locator("article")).toHaveCount(2);
   await expect(page.getByLabel("Live slot math")).toContainText("0 unplaced · 2 conflicts · 0 TBD");
 
   await conflicts.getByRole("button", { name: /Move .* to TBD/ }).first().click();

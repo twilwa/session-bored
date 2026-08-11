@@ -1,6 +1,6 @@
 // ABOUTME: Renders the organizer run-of-show with persistent drag-and-drop session placement.
 // ABOUTME: Keeps live slot math, conflicts, fallback controls, five views, and publishing visible.
-import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent } from "react";
 import type { AgendaPlacement, AgendaSession, AgendaState } from "../../../shared/api.ts";
 import { Button, LoadingState, SelectField, StatusChip, Toast } from "../../components/ui.tsx";
 import "./agenda.css";
@@ -88,6 +88,9 @@ function SessionCard({
   session,
   timezone,
   dragging,
+  conflicting,
+  roomOverlapIndex,
+  roomOverlapCount,
   onDragStart,
   onDragEnd,
   onSelect,
@@ -95,18 +98,28 @@ function SessionCard({
   session: AgendaSession;
   timezone: string;
   dragging: boolean;
+  conflicting: boolean;
+  roomOverlapIndex?: number;
+  roomOverlapCount?: number;
   onDragStart: (event: DragEvent<HTMLElement>, sessionId: string) => void;
   onDragEnd: () => void;
   onSelect: (sessionId: string) => void;
 }) {
+  const roomWidth = roomOverlapCount === undefined ? undefined : 100 / roomOverlapCount;
   return (
     <article
-      className={`agenda-session-card${dragging ? " agenda-session-card--dragging" : ""}`}
+      aria-label={conflicting ? `Schedule conflict: ${session.title}` : undefined}
+      className={`agenda-session-card${session.durationMinutes < 30 ? " agenda-session-card--compact" : ""}${dragging ? " agenda-session-card--dragging" : ""}${conflicting ? " agenda-session-card--conflict" : ""}`}
       data-session-id={session.id}
       data-testid={`session-card-${session.id}`}
       draggable
       onDragEnd={onDragEnd}
       onDragStart={(event) => onDragStart(event, session.id)}
+      style={{
+        "--agenda-session-duration": session.durationMinutes / 30,
+        left: roomWidth === undefined ? undefined : `calc(${roomWidth * (roomOverlapIndex ?? 0)}% + 4px)`,
+        width: roomWidth === undefined ? undefined : `calc(${roomWidth}% - ${8 / (roomOverlapCount ?? 1)}px)`,
+      } as CSSProperties}
     >
       <button aria-label={`Edit placement for ${session.title}`} className="agenda-session-card__edit" onClick={() => onSelect(session.id)} type="button">↗</button>
       <span className="agenda-session-card__track" style={{ borderColor: session.track?.color ?? undefined }}>
@@ -239,8 +252,14 @@ export function AgendaPage() {
     );
   }
 
-  const renderCard = (session: AgendaSession) => (
+  const conflicts = agenda.conflicts;
+  const conflictingSessionIds = new Set(conflicts.flatMap((conflict) => conflict.sessionIds));
+  const renderCard = (
+    session: AgendaSession,
+    roomOverlap?: { index: number; count: number },
+  ) => (
     <SessionCard
+      conflicting={conflictingSessionIds.has(session.id)}
       dragging={draggingSessionId === session.id}
       key={session.id}
       onDragEnd={() => {
@@ -256,6 +275,10 @@ export function AgendaPage() {
         const time = selected === undefined ? null : sessionTimeValue(selected, agenda.event.timezone);
         if (time !== null && timeSlots.includes(time)) setSelectedTime(time);
       }}
+      {...(roomOverlap === undefined ? {} : {
+        roomOverlapCount: roomOverlap.count,
+        roomOverlapIndex: roomOverlap.index,
+      })}
       session={session}
       timezone={agenda.event.timezone}
     />
@@ -279,7 +302,7 @@ export function AgendaPage() {
       <div className="agenda-commandbar">
         <div aria-label="Live slot math" className="agenda-slot-math">
           <strong>{agenda.metrics.unplaced}</strong> unplaced <i>·</i>
-          {" "}<strong>{agenda.metrics.conflicts}</strong> conflicts <i>·</i>
+          {" "}<strong>{conflicts.length}</strong> conflicts <i>·</i>
           {" "}
           <strong>{agenda.metrics.tbd}</strong> TBD
         </div>
@@ -294,11 +317,11 @@ export function AgendaPage() {
 
       {error === null ? null : <p className="agenda-error" role="alert">{error}</p>}
 
-      {agenda.conflicts.length === 0 ? null : (
+      {conflicts.length === 0 ? null : (
         <section aria-label="Schedule conflicts" className="agenda-conflicts">
           <div className="agenda-conflicts__label"><span>!</span><strong>Clashes on the board</strong><small>Warnings only · your move was saved</small></div>
           <div className="agenda-conflicts__list">
-            {agenda.conflicts.map((conflict) => {
+            {conflicts.map((conflict) => {
               const fixSession = sessionsById.get(conflict.fixSessionId);
               return (
                 <article className="agenda-conflict-chip" key={conflict.id}>
@@ -350,7 +373,7 @@ export function AgendaPage() {
           <div className="agenda-workbench">
             <aside className="agenda-tray">
               <div className="agenda-tray__heading"><span>INBOX</span><strong>Drag to place</strong><small>{unscheduled.length} waiting / TBD</small></div>
-              <div className="agenda-tray__cards">{unscheduled.length === 0 ? <p>Everything has a room and time.</p> : unscheduled.map(renderCard)}</div>
+              <div className="agenda-tray__cards">{unscheduled.length === 0 ? <p>Everything has a room and time.</p> : unscheduled.map((session) => renderCard(session))}</div>
             </aside>
 
             <main className="agenda-board">
@@ -373,7 +396,7 @@ export function AgendaPage() {
                             key={`${room.id}-${time}`}
                             onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "move"; }}
                             onDrop={(event) => dropIntoSlot(event, activeDay, room.id, time)}
-                          >{slotSessions.map(renderCard)}</div>
+                          >{slotSessions.map((session, index) => renderCard(session, { index, count: slotSessions.length }))}</div>
                         );
                       }),
                     ])}
@@ -386,7 +409,7 @@ export function AgendaPage() {
                   {agenda.days.map((day) => (
                     <section key={day} onDragOver={(event) => event.preventDefault()} onDrop={(event) => dropIntoDay(event, day)}>
                       <header><span>{day.slice(-2)}</span><div><strong>{dayLabel(day, true)}</strong><small>Drop here for TBD</small></div></header>
-                      {agenda.sessions.filter((session) => session.scheduledDate === day).map(renderCard)}
+                      {agenda.sessions.filter((session) => session.scheduledDate === day).map((session) => renderCard(session))}
                     </section>
                   ))}
                 </div>
@@ -395,7 +418,7 @@ export function AgendaPage() {
               {activeView === "track" ? (
                 <div className="agenda-column-view">
                   {[...agenda.tracks, { id: "none", name: "Track TBD", color: null }].map((track) => (
-                    <section key={track.id}><header><span style={{ background: track.color ?? undefined }} /><div><strong>{track.name}</strong><small>{agenda.sessions.filter((session) => session.track?.id === track.id || (track.id === "none" && session.track === null)).length} sessions</small></div></header>{agenda.sessions.filter((session) => session.track?.id === track.id || (track.id === "none" && session.track === null)).map(renderCard)}</section>
+                    <section key={track.id}><header><span style={{ background: track.color ?? undefined }} /><div><strong>{track.name}</strong><small>{agenda.sessions.filter((session) => session.track?.id === track.id || (track.id === "none" && session.track === null)).length} sessions</small></div></header>{agenda.sessions.filter((session) => session.track?.id === track.id || (track.id === "none" && session.track === null)).map((session) => renderCard(session))}</section>
                   ))}
                 </div>
               ) : null}
@@ -403,7 +426,7 @@ export function AgendaPage() {
               {activeView === "room" ? (
                 <div className="agenda-column-view">
                   {[...agenda.rooms, { id: "none", name: "Room TBD" }].map((room) => (
-                    <section key={room.id}><header><span>⌂</span><div><strong>{room.name}</strong><small>{agenda.sessions.filter((session) => session.room?.id === room.id || (room.id === "none" && session.room === null)).length} sessions</small></div></header>{agenda.sessions.filter((session) => session.room?.id === room.id || (room.id === "none" && session.room === null)).map(renderCard)}</section>
+                    <section key={room.id}><header><span>⌂</span><div><strong>{room.name}</strong><small>{agenda.sessions.filter((session) => session.room?.id === room.id || (room.id === "none" && session.room === null)).length} sessions</small></div></header>{agenda.sessions.filter((session) => session.room?.id === room.id || (room.id === "none" && session.room === null)).map((session) => renderCard(session))}</section>
                   ))}
                 </div>
               ) : null}
