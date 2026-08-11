@@ -1,0 +1,23 @@
+migrations/meta/_journal.json
+  s_f240945ed5b979::t_8ac6668a7781ba 88-94
+migrations/meta/0012_snapshot.json
+  s_f240945ed5b979::t_8ac6668a7781ba 1-4927
+migrations/0012_restore-devflow-programme.sql
+  s_f240945ed5b979::t_5f1f4534a72927 1-47
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "2fc96b2ae6b2fefbdb2a8f9f97b2c5effe3a0966",
+  "prompts": {},
+  "sessions": {
+    "s_f240945ed5b979": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fee36-e7b6-7d10-bd87-be1a5fee102d",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
