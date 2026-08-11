@@ -1,6 +1,6 @@
 // ABOUTME: Sends the F-6.6 / F-11.4 portal invitation for one speaker, on deliberate organizer action.
 // ABOUTME: The single entry point other lanes (roster) should call instead of duplicating sending code.
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { events, people, speakers } from "../../db/schema.ts";
 import { resolveEmailDelivery, type EmailDelivery, type EmailEnvironment } from "../email.ts";
@@ -43,7 +43,11 @@ export async function sendPortalInvitationEmail(input: SendPortalInvitationInput
     .from(speakers)
     .innerJoin(people, eq(speakers.personId, people.id))
     .innerJoin(events, eq(speakers.eventId, events.id))
-    .where(and(eq(speakers.id, input.speakerId), eq(speakers.eventId, input.eventId)));
+    .where(and(
+      eq(speakers.id, input.speakerId),
+      eq(speakers.eventId, input.eventId),
+      sql`${speakers.deletedAt} is null`,
+    ));
   if (row === undefined) {
     return { status: "speaker_not_found" };
   }

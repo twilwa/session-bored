@@ -1,6 +1,6 @@
 // ABOUTME: Presents the organizer speaker roster, bulk onboarding tasks, and missing-information worklist.
 // ABOUTME: Keeps profile edits and workflow changes silent while making daily chase work immediately visible.
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import type {
   MissingInformationItem,
   RosterSpeakerSummary,
@@ -68,12 +68,21 @@ function formatDateInput(value: string | null): string {
   return value === null ? "" : value.slice(0, 10);
 }
 
+function openWorkLabel(speaker: RosterSpeakerSummary): ReactNode {
+  const { incomplete, total } = speaker.taskSummary;
+  if (total === 0 && incomplete === 0) {
+    return <><strong>No open work</strong><small>No onboarding tasks assigned</small></>;
+  }
+  return <><strong>{incomplete} open item{incomplete === 1 ? "" : "s"}</strong><small>{total === 0 ? "No onboarding tasks assigned" : `${total} task${total === 1 ? "" : "s"} assigned`}</small></>;
+}
+
 function RosterList() {
   const [speakers, setSpeakers] = useState<RosterSpeakerSummary[] | null>(null);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("all");
   const [addOpen, setAddOpen] = useState(false);
   const [editing, setEditing] = useState<RosterSpeakerSummary | null>(null);
+  const [removing, setRemoving] = useState<RosterSpeakerSummary | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
   async function loadRoster(): Promise<void> {
@@ -104,8 +113,16 @@ function RosterList() {
 
   async function sendInvitation(speaker: RosterSpeakerSummary): Promise<void> {
     try {
-      await requestJson(`/api/events/${eventId}/speakers/${speaker.id}/invitation`, { method: "POST" });
-      setMessage(`Portal invitation queued for ${speaker.name}.`);
+      const result = await requestJson<{ status: string; error?: string }>(`/api/events/${eventId}/speakers/${speaker.id}/invitation`, { method: "POST" });
+      if (result.status === "sent") {
+        setMessage(`Portal invitation sent to ${speaker.name}.`);
+      } else if (result.status === "provider_not_configured") {
+        setMessage(`No email provider is connected, so no invitation was sent to ${speaker.name}.`);
+      } else if (result.status === "skipped_no_address") {
+        setMessage(`${speaker.name} has no email address, so no invitation was sent.`);
+      } else {
+        setMessage(`Portal invitation for ${speaker.name} was not sent (${result.error ?? result.status}).`);
+      }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Portal invitation could not be queued.");
     }
@@ -125,7 +142,7 @@ function RosterList() {
         <section className="workspace-section roster-table-card">
           <div className="section-heading">
             <div><p className="section-label">EVENT ROSTER / {filtered.length}</p><h2>Everyone taking the stage</h2></div>
-            <span className="quiet-note">Workflow changes are silent.</span>
+            <span className="quiet-note">Open work matches the chase list: profile gaps plus active assignments. Workflow changes are silent.</span>
           </div>
           <DataTable
             caption="Event speakers"
@@ -146,12 +163,12 @@ function RosterList() {
                 label: "Profile",
                 render: (speaker) => (
                   <div className="completeness-pair">
-                    <span className={speaker.profile.bioComplete ? "complete" : "missing"}>Bio</span>
-                    <span className={speaker.profile.headshotComplete ? "complete" : "missing"}>Photo</span>
+                    <span className={speaker.profile.bioComplete ? "complete" : "missing"}>{speaker.profile.bioComplete ? "Bio complete" : "Bio missing"}</span>
+                    <span className={speaker.profile.headshotComplete ? "complete" : "missing"}>{speaker.profile.headshotComplete ? "Photo complete" : "Photo missing"}</span>
                   </div>
                 ),
               },
-              { key: "tasks", label: "Open work", render: (speaker) => <strong>{speaker.taskSummary.incomplete}<small> / {speaker.taskSummary.total} tasks</small></strong> },
+              { key: "tasks", label: "Open work", render: openWorkLabel },
               {
                 key: "status",
                 label: "Workflow",
@@ -168,6 +185,7 @@ function RosterList() {
                   <div className="row-actions">
                     <Button onClick={() => setEditing(speaker)} tone="quiet">Edit</Button>
                     <Button onClick={() => void sendInvitation(speaker)} tone="quiet">Invite</Button>
+                    <Button aria-label={`Remove ${speaker.name}`} className="button--danger" onClick={() => setRemoving(speaker)} tone="quiet">Remove</Button>
                   </div>
                 ),
               },
@@ -187,6 +205,28 @@ function RosterList() {
         open={editing !== null}
         speaker={editing}
       />
+      {removing === null ? null : (
+        <Modal onClose={() => setRemoving(null)} open title={`Remove ${removing.name}?`}>
+          <p>This removes the speaker from active organizer lists. Their portal, assignments, uploads, and event history remain intact.</p>
+          <div className="modal-actions">
+            <Button onClick={() => setRemoving(null)} tone="quiet" type="button">Cancel</Button>
+            <Button
+              className="button--danger"
+              onClick={() => {
+                void requestJson(`/api/events/${eventId}/speakers/${removing.id}`, { method: "DELETE" })
+                  .then(async () => {
+                    const name = removing.name;
+                    setRemoving(null);
+                    setMessage(`${name} was removed from the active roster. Their history remains intact.`);
+                    await loadRoster();
+                  })
+                  .catch((error: unknown) => setMessage(error instanceof Error ? error.message : "Speaker could not be removed."));
+              }}
+              type="button"
+            >Remove speaker</Button>
+          </div>
+        </Modal>
+      )}
       <Toast message={message} />
     </>
   );
@@ -263,6 +303,26 @@ function TasksView() {
     setTasks(taskList.items);
   }
 
+  async function updateAssignment(
+    task: RosterTaskSummary,
+    assignee: RosterTaskSummary["assignees"][number],
+    nextStatus: "assigned" | "completed",
+  ): Promise<void> {
+    setBusy(true);
+    try {
+      await requestJson(`/api/events/${eventId}/tasks/${task.id}/assignees/${assignee.speakerId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: nextStatus }),
+      });
+      setMessage(`${task.title} was marked ${nextStatus === "completed" ? "complete" : "open"} for ${assignee.speakerName}.`);
+      await load();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Task status could not be updated.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   useEffect(() => { void load().catch(() => { setSpeakers([]); setTasks([]); }); }, []);
 
   async function createTask(event: FormEvent<HTMLFormElement>): Promise<void> {
@@ -323,7 +383,25 @@ function TasksView() {
               { key: "title", label: "Task", render: (task) => <><strong>{task.title}</strong><small>{task.instructions}</small></> },
               { key: "type", label: "Type", render: (task) => <StatusChip tone={task.taskType === "file_request" ? "signal" : "neutral"}>{formatStatus(task.taskType)}</StatusChip> },
               { key: "due", label: "Due", render: (task) => task.dueAt === null ? "No date" : new Date(task.dueAt).toLocaleDateString() },
-              { key: "assigned", label: "Assigned", render: (task) => <strong>{task.assignees.length}</strong> },
+              {
+                key: "assigned",
+                label: "Assigned",
+                render: (task) => (
+                  <div className="task-assignee-list">
+                    {task.assignees.map((assignee) => (
+                      <div key={assignee.id}>
+                        <span><strong>{assignee.speakerName}</strong><small>{assignee.status === "completed" ? "Complete" : "Open"}</small></span>
+                        <Button
+                          aria-label={`${assignee.status === "completed" ? "Reopen" : "Mark complete"} ${task.title} for ${assignee.speakerName}`}
+                          disabled={busy}
+                          onClick={() => void updateAssignment(task, assignee, assignee.status === "completed" ? "assigned" : "completed")}
+                          tone="quiet"
+                        >{assignee.status === "completed" ? "Reopen" : "Complete"}</Button>
+                      </div>
+                    ))}
+                  </div>
+                ),
+              },
               {
                 key: "actions",
                 label: "Actions",
@@ -459,13 +537,37 @@ function MissingInformationView() {
     generatedAt: string;
     items: MissingInformationItem[];
   } | null>(null);
-  useEffect(() => {
-    requestJson<{
+  const [message, setMessage] = useState<string | null>(null);
+  const [busyTaskId, setBusyTaskId] = useState<string | null>(null);
+
+  async function load(): Promise<void> {
+    const payload = await requestJson<{
       worklistSpeakerCount: number;
       incompleteSpeakerCount: number;
       generatedAt: string;
       items: MissingInformationItem[];
-    }>(`/api/events/${eventId}/missing-information`).then(setData).catch(() => setData({
+    }>(`/api/events/${eventId}/missing-information`);
+    setData(payload);
+  }
+
+  async function completeAssignment(speaker: MissingInformationItem, taskId: string, title: string): Promise<void> {
+    setBusyTaskId(taskId);
+    try {
+      await requestJson(`/api/events/${eventId}/tasks/${taskId}/assignees/${speaker.speakerId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "completed" }),
+      });
+      setMessage(`${title} was marked complete for ${speaker.name}.`);
+      await load();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Task status could not be updated.");
+    } finally {
+      setBusyTaskId(null);
+    }
+  }
+
+  useEffect(() => {
+    void load().catch(() => setData({
       worklistSpeakerCount: 0,
       incompleteSpeakerCount: 0,
       generatedAt: new Date().toISOString(),
@@ -474,7 +576,8 @@ function MissingInformationView() {
   }, []);
   if (data === null) return <LoadingState label="Finding missing speaker information" />;
   return (
-    <section className="missing-board">
+    <>
+      <section className="missing-board">
       <header className="missing-hero">
         <div><p className="eyebrow">TODAY'S CHASE LIST / LIVE</p><h2>Who still owes us something?</h2><p>Includes profile gaps for accepted speakers and every active incomplete onboarding assignment across the roster.</p></div>
         <div className="missing-score"><strong>{data.incompleteSpeakerCount}</strong><span>of {data.worklistSpeakerCount} speakers need follow-up</span></div>
@@ -494,6 +597,14 @@ function MissingInformationView() {
                 {speaker.missing.map((item) => (
                   <div className={item.overdueDays > 0 ? "missing-item overdue" : "missing-item"} key={`${item.kind}-${item.taskId ?? item.label}`}>
                     <span>{item.kind}</span><strong>{item.label}</strong><small>{item.overdueDays > 0 ? `${item.overdueDays} days overdue` : item.dueAt === null ? "No due date" : `Due ${new Date(item.dueAt).toLocaleDateString()}`}</small>
+                    {item.taskId === null ? null : (
+                      <Button
+                        aria-label={`Mark ${item.label} complete for ${speaker.name}`}
+                        disabled={busyTaskId === item.taskId}
+                        onClick={() => void completeAssignment(speaker, item.taskId!, item.label)}
+                        tone="quiet"
+                      >{busyTaskId === item.taskId ? "Completing…" : "Mark complete"}</Button>
+                    )}
                   </div>
                 ))}
               </div>
@@ -502,7 +613,9 @@ function MissingInformationView() {
           ))}
         </div>
       )}
-    </section>
+      </section>
+      <Toast message={message} />
+    </>
   );
 }
 

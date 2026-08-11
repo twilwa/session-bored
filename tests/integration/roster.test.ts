@@ -86,7 +86,7 @@ describe("organizer speaker roster", () => {
           email: "sbek-speaker2@example.com",
           status: "confirmed",
           profile: { bioComplete: true, headshotComplete: false },
-          taskSummary: { total: 0, incomplete: 0 },
+          taskSummary: { total: 0, incomplete: 1 },
         },
         {
           id: "spk_priya_devflow_2027",
@@ -195,6 +195,112 @@ describe("organizer speaker roster", () => {
     expect(priyaMissing?.missing.map((item) => item.label).sort()).toEqual(
       priyaTasks.map((task) => task.title).sort(),
     );
+
+    const marcusRoster = rosterPayload.items.find((speaker) => speaker.id === "spk_marcus_devflow_2027");
+    const marcusMissing = missingPayload.items.find((speaker) => speaker.speakerId === "spk_marcus_devflow_2027");
+    expect(marcusRoster?.taskSummary).toEqual({ total: 0, incomplete: 1 });
+    expect(marcusMissing?.missingCount).toBe(marcusRoster?.taskSummary.incomplete);
+  });
+
+  it("reports an unconfigured portal invitation honestly without creating a dispatch", async () => {
+    const before = await env.DB.prepare("select count(*) as count from email_dispatch").first<{ count: number }>();
+    const response = await request(
+      "/api/events/evt_devflow_conf_2027/speakers/spk_priya_devflow_2027/invitation",
+      { method: "POST", headers: { cookie: organizerCookie } },
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ status: "provider_not_configured" });
+    const after = await env.DB.prepare("select count(*) as count from email_dispatch").first<{ count: number }>();
+    expect(after?.count).toBe(before?.count);
+  });
+
+  it("lets an organizer complete and reopen one speaker's assignment", async () => {
+    const createdResponse = await request("/api/events/evt_devflow_conf_2027/tasks", {
+      method: "POST",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({
+        taskType: "general",
+        title: "Confirm accessibility needs",
+        speakerIds: ["spk_priya_devflow_2027"],
+      }),
+    });
+    const created = await createdResponse.json<{ id: string }>();
+    const path = `/api/events/evt_devflow_conf_2027/tasks/${created.id}/assignees/spk_priya_devflow_2027`;
+
+    const completed = await request(path, {
+      method: "PATCH",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({ status: "completed" }),
+    });
+    expect(completed.status).toBe(200);
+    await expect(completed.json()).resolves.toMatchObject({
+      taskId: created.id,
+      speakerId: "spk_priya_devflow_2027",
+      status: "completed",
+    });
+
+    const speakerCookie = await signIn("sbek-speaker@example.com", "SbekTest!2027-spk");
+    const afterCompletion = await request("/api/speaker/content", { headers: { cookie: speakerCookie } });
+    const completedTasks = await afterCompletion.json<{ tasks: Array<{ id: string; status: string }> }>();
+    expect(completedTasks.tasks).toContainEqual(expect.objectContaining({ id: created.id, status: "completed" }));
+
+    const reopened = await request(path, {
+      method: "PATCH",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({ status: "assigned" }),
+    });
+    expect(reopened.status).toBe(200);
+    await expect(reopened.json()).resolves.toMatchObject({ status: "assigned", completedAt: null });
+
+    const afterReopen = await request("/api/speaker/content", { headers: { cookie: speakerCookie } });
+    const reopenedTasks = await afterReopen.json<{ tasks: Array<{ id: string; status: string }> }>();
+    expect(reopenedTasks.tasks).toContainEqual(expect.objectContaining({ id: created.id, status: "assigned" }));
+  });
+
+  it("archives a mistaken speaker without destroying their event history", async () => {
+    const addedResponse = await request("/api/events/evt_devflow_conf_2027/speakers", {
+      method: "POST",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({ name: "Remove Me", email: "remove-me@example.test", status: "invited" }),
+    });
+    const added = await addedResponse.json<{ id: string }>();
+    const taskResponse = await request("/api/events/evt_devflow_conf_2027/tasks", {
+      method: "POST",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({
+        taskType: "general",
+        title: "Retained task history",
+        speakerIds: [added.id],
+      }),
+    });
+    const task = await taskResponse.json<{ id: string }>();
+
+    const archived = await request(`/api/events/evt_devflow_conf_2027/speakers/${added.id}`, {
+      method: "DELETE",
+      headers: { cookie: organizerCookie },
+    });
+    expect(archived.status).toBe(200);
+    await expect(archived.json()).resolves.toMatchObject({ id: added.id, archived: true });
+
+    const roster = await request("/api/events/evt_devflow_conf_2027/roster", {
+      headers: { cookie: organizerCookie },
+    });
+    const rosterPayload = await roster.json<{ items: Array<{ id: string }> }>();
+    expect(rosterPayload.items).not.toContainEqual(expect.objectContaining({ id: added.id }));
+    const history = await env.DB.prepare(
+      "select s.status as status, s.deleted_at as deletedAt, ta.id as assignmentId from speaker s inner join task_assignee ta on ta.speaker_id = s.id where s.id = ? and ta.task_id = ?",
+    ).bind(added.id, task.id).first<{ status: string; deletedAt: number | null; assignmentId: string }>();
+    expect(history).toMatchObject({ status: "withdrawn", assignmentId: expect.any(String) });
+    expect(history?.deletedAt).not.toBeNull();
+
+    const restoredResponse = await request("/api/events/evt_devflow_conf_2027/speakers", {
+      method: "POST",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({ name: "Remove Me", email: "remove-me@example.test", status: "onboarding" }),
+    });
+    expect(restoredResponse.status).toBe(200);
+    await expect(restoredResponse.json()).resolves.toMatchObject({ id: added.id, restoredSpeaker: true });
   });
 
   it("adopts an existing person without duplicating the event speaker", async () => {
@@ -867,6 +973,10 @@ describe("organizer speaker roster", () => {
         init: { method: "PATCH", headers: { "content-type": "application/json" }, body: "{}" },
       },
       {
+        path: "/api/events/evt_devflow_conf_2027/speakers/spk_priya_devflow_2027",
+        init: { method: "DELETE" },
+      },
+      {
         path: "/api/events/evt_devflow_conf_2027/tasks",
         init: { method: "POST", headers: { "content-type": "application/json" }, body: "{}" },
       },
@@ -877,6 +987,10 @@ describe("organizer speaker roster", () => {
       {
         path: "/api/events/evt_devflow_conf_2027/tasks/tsk_fixture_0",
         init: { method: "DELETE" },
+      },
+      {
+        path: "/api/events/evt_devflow_conf_2027/tasks/tsk_fixture_0/assignees/spk_priya_devflow_2027",
+        init: { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ status: "completed" }) },
       },
       {
         path: "/api/events/evt_devflow_conf_2027/speakers/spk_priya_devflow_2027/invitation",
