@@ -464,6 +464,15 @@ export interface PortalTaskFile {
   version: number;
 }
 
+export interface PortalFileVersion {
+  version: number;
+  displayName: string;
+  sizeBytes: number;
+  uploadedAt: string;
+  current: boolean;
+  downloadUrl: string;
+}
+
 export interface PortalFile {
   taskId: `tsk_${string}`;
   fileId: `fil_${string}`;
@@ -472,6 +481,7 @@ export interface PortalFile {
   version: number;
   archived: boolean;
   downloadUrl: string;
+  versions: PortalFileVersion[];
 }
 
 export type PortalTaskAssigneeStatus = "assigned" | "in_progress" | "completed";
@@ -488,10 +498,59 @@ export interface PortalTask {
   file: PortalTaskFile | null;
 }
 
+/**
+ * What a speaker is allowed to know about their own proposal. Committee vocabulary
+ * (`maybe`, and any decision before its letter is dispatched) never reaches a speaker,
+ * so the portal reads this instead of `submission.status`.
+ */
+export type SpeakerFacingSubmissionStatus =
+  | "draft"
+  | "submitted"
+  | "in_review"
+  | "accepted"
+  | "not_selected"
+  | "withdrawn";
+
+export const speakerFacingSubmissionLabels: Record<SpeakerFacingSubmissionStatus, string> = {
+  draft: "Draft",
+  submitted: "Submitted",
+  in_review: "In review",
+  accepted: "Accepted",
+  not_selected: "Not selected",
+  withdrawn: "Withdrawn",
+};
+
+/**
+ * A decision reaches the speaker only once it has actually been communicated: either the
+ * organizer dispatched its decision letter, or the acceptance already produced the session
+ * and onboarding work the speaker is looking at in their own portal. Everything still under
+ * deliberation reads as "In review".
+ */
+export function speakerFacingSubmissionStatus(submission: {
+  status: SubmissionStatus;
+  decisionNotified: boolean;
+  hasOwnSession: boolean;
+}): SpeakerFacingSubmissionStatus {
+  switch (submission.status) {
+    case "draft":
+      return "draft";
+    case "submitted":
+      return "submitted";
+    case "withdrawn":
+      return "withdrawn";
+    case "accepted":
+      return submission.decisionNotified || submission.hasOwnSession ? "accepted" : "in_review";
+    case "declined":
+      return submission.decisionNotified ? "not_selected" : "in_review";
+    default:
+      return "in_review";
+  }
+}
+
 export interface PortalSubmissionSummary {
   id: `sub_${string}`;
   title: string | null;
-  status: SubmissionStatus;
+  speakerStatus: SpeakerFacingSubmissionStatus;
 }
 
 export interface SpeakerContentPayload {

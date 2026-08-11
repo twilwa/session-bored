@@ -5,6 +5,7 @@ import { drizzle } from "drizzle-orm/d1";
 import { Hono } from "hono";
 import { createMiddleware } from "hono/factory";
 import {
+  decisionNotices,
   events,
   fileVersions,
   files,
@@ -26,8 +27,9 @@ import {
   type Role,
   roles,
 } from "../db/schema.ts";
-import type { ApiAccess } from "../shared/api.ts";
+import { speakerFacingSubmissionStatus, type ApiAccess, type PortalFileVersion } from "../shared/api.ts";
 import { authorizeAccess } from "./access.ts";
+import { accessDeniedDocument, prefersHtmlDocument } from "./access-page.ts";
 import { createAuth, type AuthSession } from "./auth.ts";
 import aiReviewRoutes from "./routes/ai-review.ts";
 import cfpBuilderRoutes from "./routes/cfp-builder.ts";
@@ -38,6 +40,7 @@ import { publicRoutes } from "./routes/public.ts";
 import reviewRoutes from "./routes/review.ts";
 import submitterRoutes from "./routes/submitter.ts";
 import { ensureSeeded, fixtureIds } from "./seed.ts";
+import { filenameForVersion } from "./storage/file-versions.ts";
 import dispositionRoutes from "./routes/disposition.ts";
 import rosterRoutes from "./routes/roster.ts";
 import agendaRoutes from "./routes/agenda.ts";
@@ -83,6 +86,40 @@ function requireAccess(access: ApiAccess) {
       );
     }
     await next();
+  });
+}
+
+/**
+ * Page routes answer the same access decision in the caller's own language: a person
+ * navigating gets a page they can read and act on, an API client gets the JSON error.
+ * Both carry the same 401 or 403.
+ */
+function requirePageAccess(access: ApiAccess) {
+  return createMiddleware<AppEnvironment>(async (context, next) => {
+    const role = context.get("role");
+    const decision = authorizeAccess(role === null ? null : { role }, access);
+    if (decision.allowed) {
+      await next();
+      return;
+    }
+    if (!prefersHtmlDocument(context.req.raw.headers)) {
+      return context.json(
+        { error: decision.status === 401 ? "authentication_required" : "forbidden" },
+        decision.status,
+      );
+    }
+    const user = context.get("authUser");
+    const url = new URL(context.req.url);
+    return context.html(
+      accessDeniedDocument({
+        status: decision.status,
+        path: url.pathname,
+        returnTo: `${url.pathname}${url.search}`,
+        requiredAccess: access,
+        user: user === null ? null : { name: user.name, role },
+      }),
+      decision.status,
+    );
   });
 }
 
@@ -360,6 +397,7 @@ app.get("/api/speaker/content", requireAccess("speaker"), async (context) => {
   const ownSessions = await database
     .select({
       id: sessions.id,
+      submissionId: sessions.submissionId,
       title: sessions.title,
       abstract: sessions.abstract,
       contentStatus: sessions.contentStatus,
@@ -417,11 +455,41 @@ app.get("/api/speaker/content", requireAccess("speaker"), async (context) => {
       eq(files.speakerId, profile.speakerId),
       eq(files.kind, "deliverable"),
     ));
+  const ownFileIds = ownFiles.map((file) => file.fileId);
+  const storedVersions = ownFileIds.length === 0 ? [] : await database
+    .select({
+      id: fileVersions.id,
+      fileId: fileVersions.fileId,
+      version: fileVersions.version,
+      storageKey: fileVersions.storageKey,
+      sizeBytes: fileVersions.sizeBytes,
+      latest: fileVersions.latest,
+      uploadedAt: fileVersions.createdAt,
+    })
+    .from(fileVersions)
+    .where(inArray(fileVersions.fileId, ownFileIds));
+  // Decisions stay silent until they are communicated, so the speaker's own list reads
+  // from the dispatched notice log and their own sessions, never from the live committee status.
+  const notifiedSubmissionIds = ownSubmissions.length === 0 ? [] : await database
+    .select({ submissionId: decisionNotices.submissionId })
+    .from(decisionNotices)
+    .where(inArray(decisionNotices.submissionId, ownSubmissions.map((submission) => submission.id)));
   return context.json({
     profile,
-    submissions: ownSubmissions,
+    submissions: ownSubmissions.map((submission) => ({
+      id: submission.id,
+      title: submission.title,
+      speakerStatus: speakerFacingSubmissionStatus({
+        status: submission.status,
+        decisionNotified: notifiedSubmissionIds.some((notice) => notice.submissionId === submission.id),
+        hasOwnSession: ownSessions.some((session) => session.submissionId === submission.id),
+      }),
+    })),
     sessions: ownSessions.map((session) => ({
-      ...session,
+      id: session.id,
+      title: session.title,
+      abstract: session.abstract,
+      contentStatus: session.contentStatus,
       editable: session.contentStatus !== "approved",
     })),
     tasks: ownTasks.map((task) => ({
@@ -436,6 +504,17 @@ app.get("/api/speaker/content", requireAccess("speaker"), async (context) => {
       version: file.version,
       archived: file.taskDeletedAt !== null || file.assignmentDeletedAt !== null,
       downloadUrl: `/api/portal/files/${file.fileId}`,
+      versions: storedVersions
+        .filter((version) => version.fileId === file.fileId)
+        .sort((first, second) => second.version - first.version)
+        .map((version): PortalFileVersion => ({
+          version: version.version,
+          displayName: filenameForVersion(version, file.displayName),
+          sizeBytes: version.sizeBytes,
+          uploadedAt: version.uploadedAt.toISOString(),
+          current: version.latest,
+          downloadUrl: `/api/portal/files/${file.fileId}?version=${version.version}`,
+        })),
     })),
   });
 });
@@ -484,11 +563,11 @@ for (const [prefix, access] of [
   ["/reviewer", "reviewer"],
   ["/speaker", "speaker"],
 ] as const) {
-  app.get(prefix, prepareRequest, requireAccess(access), (context) => context.env.ASSETS.fetch(context.req.raw));
-  app.get(`${prefix}/*`, prepareRequest, requireAccess(access), (context) => context.env.ASSETS.fetch(context.req.raw));
+  app.get(prefix, prepareRequest, requirePageAccess(access), (context) => context.env.ASSETS.fetch(context.req.raw));
+  app.get(`${prefix}/*`, prepareRequest, requirePageAccess(access), (context) => context.env.ASSETS.fetch(context.req.raw));
 }
-app.get("/submitter", prepareRequest, requireAccess("authenticated"), (context) => context.env.ASSETS.fetch(context.req.raw));
-app.get("/submitter/*", prepareRequest, requireAccess("authenticated"), (context) => context.env.ASSETS.fetch(context.req.raw));
+app.get("/submitter", prepareRequest, requirePageAccess("authenticated"), (context) => context.env.ASSETS.fetch(context.req.raw));
+app.get("/submitter/*", prepareRequest, requirePageAccess("authenticated"), (context) => context.env.ASSETS.fetch(context.req.raw));
 
 export type AppType = typeof app;
 export default app;

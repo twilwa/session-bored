@@ -35,6 +35,9 @@
 .submitter-dashboard__nav { min-height: 76px; display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 0 4vw; color: var(--white); background: var(--ink); border-bottom: 6px solid var(--signal); }
 .submitter-dashboard__nav nav { display: flex; flex-wrap: wrap; gap: clamp(14px, 3vw, 38px); font: 0.72rem "SFMono-Regular", Consolas, monospace; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
 .submitter-dashboard__nav nav a:hover { color: var(--signal); }
+.submitter-dashboard__nav nav button { min-height: 44px; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; letter-spacing: inherit; text-transform: inherit; cursor: pointer; }
+.submitter-dashboard__nav nav button:hover { color: var(--signal); }
+.submitter-dashboard__identity { display: inline-flex; align-items: center; color: var(--signal); text-transform: none; letter-spacing: 0.04em; }
 .submitter-dashboard main { width: min(1180px, 100%); margin: 0 auto; padding: clamp(46px, 7vw, 90px) clamp(18px, 5vw, 64px) 100px; }
 .submitter-dashboard__heading { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(260px, 0.5fr); gap: 48px; align-items: end; margin-bottom: 50px; }
 .submitter-dashboard__heading h1 { margin: 0; font: clamp(3.2rem, 7vw, 7rem) / 0.9 Georgia, "Times New Roman", serif; letter-spacing: -0.06em; }

@@ -170,4 +170,25 @@ describe("speaker portal authorization", () => {
     const reviewerBlocked = await request(`/api/portal/files/${fileId}`, { headers: { cookie: reviewerCookie } });
     expect(reviewerBlocked.status).toBe(403);
   });
+
+  it("scopes a superseded version to the same owners as the newest one", async () => {
+    await request("/api/portal/tasks/tsk_fixture_3/files", {
+      method: "POST",
+      headers: { cookie: priyaCookie },
+      body: pdfUpload("slides-v1.pdf"),
+    });
+    const replaced = await request("/api/portal/tasks/tsk_fixture_3/files", {
+      method: "POST",
+      headers: { cookie: priyaCookie },
+      body: pdfUpload("slides-v2.pdf"),
+    });
+    const { fileId, version } = await replaced.json<{ fileId: string; version: number }>();
+    const supersededUrl = `/api/portal/files/${fileId}?version=${version - 1}`;
+
+    expect((await request(supersededUrl)).status).toBe(401);
+    expect((await request(supersededUrl, { headers: { cookie: marcusCookie } })).status).toBe(403);
+    expect((await request(supersededUrl, { headers: { cookie: reviewerCookie } })).status).toBe(403);
+    expect((await request(supersededUrl, { headers: { cookie: priyaCookie } })).status).toBe(200);
+    expect((await request(supersededUrl, { headers: { cookie: organizerCookie } })).status).toBe(200);
+  });
 });

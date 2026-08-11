@@ -1,7 +1,13 @@
 // ABOUTME: Lets a signed-in speaker manage their own bio, headshot, sessions, tasks, and files.
 // ABOUTME: Every mutation writes through the shared speaker/session/task records the organizer reads.
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import type { PortalSession, PortalTask, SpeakerContentPayload } from "../../../shared/api.ts";
+import {
+  speakerFacingSubmissionLabels,
+  type PortalFile,
+  type PortalSession,
+  type PortalTask,
+  type SpeakerContentPayload,
+} from "../../../shared/api.ts";
 import { Button, DataTable, LoadingState, StatusChip, TextField, Toast } from "../../components/ui.tsx";
 import "./portal.css";
 
@@ -34,6 +40,60 @@ function initials(name: string): string {
   return parts.slice(0, 2).map((part) => part[0]?.toUpperCase() ?? "").join("");
 }
 
+function formatUploadedAt(uploadedAt: string): string {
+  return new Date(uploadedAt).toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function formatFileSize(sizeBytes: number): string {
+  if (sizeBytes < 1024) return `${sizeBytes} B`;
+  if (sizeBytes < 1024 * 1024) return `${Math.round(sizeBytes / 1024)} KB`;
+  return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function uploadRules(task: PortalTask): string | null {
+  const types = task.acceptedFileTypes === null || task.acceptedFileTypes.length === 0
+    ? null
+    : `Accepted: ${task.acceptedFileTypes.join(", ")}`;
+  const size = task.maximumFileBytes === null
+    ? null
+    : `up to ${formatFileSize(task.maximumFileBytes)}`;
+  const stated = [types ?? "Accepted: pdf, ppt, pptx, doc, docx, zip, key", size ?? "up to 25.0 MB"];
+  return task.taskType === "file_request" ? stated.join(" · ") : null;
+}
+
+function FileVersionList({ file }: { file: PortalFile }) {
+  const current = file.versions.find((version) => version.current) ?? null;
+  const superseded = file.versions.filter((version) => !version.current);
+  return (
+    <>
+      {current === null ? null : (
+        <small className="file-history__meta">
+          Uploaded {formatUploadedAt(current.uploadedAt)} · {formatFileSize(current.sizeBytes)}
+        </small>
+      )}
+      {superseded.length === 0 ? null : (
+        <details className="file-versions" open>
+          <summary>{superseded.length === 1 ? "1 earlier version" : `${superseded.length} earlier versions`}</summary>
+          <ol>
+            {superseded.map((version) => (
+              <li key={version.version}>
+                <a href={version.downloadUrl}>Version {version.version} · {version.displayName}</a>
+                <small>Uploaded {formatUploadedAt(version.uploadedAt)} · {formatFileSize(version.sizeBytes)}</small>
+              </li>
+            ))}
+          </ol>
+        </details>
+      )}
+    </>
+  );
+}
+
 function TaskRow({ task, onComplete, onUpload, busy }: {
   task: PortalTask;
   onComplete: (taskId: string) => void;
@@ -51,18 +111,22 @@ function TaskRow({ task, onComplete, onUpload, busy }: {
       <div className="task-row__action">
         <StatusChip tone={done ? "good" : "neutral"}>{task.status.replaceAll("_", " ")}</StatusChip>
         {task.taskType === "file_request" ? (
-          <label className="file-picker">
-            <span>{task.file === null ? "Upload file" : "Replace file"}</span>
-            <input
-              disabled={busy}
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                if (file !== undefined) onUpload(task.id, file);
-                event.target.value = "";
-              }}
-              type="file"
-            />
-          </label>
+          <div className="task-row__upload">
+            <label className="file-picker">
+              <span>{task.file === null ? "Upload file" : "Replace file"}</span>
+              <input
+                accept={task.acceptedFileTypes === null ? undefined : task.acceptedFileTypes.map((type) => `.${type}`).join(",")}
+                disabled={busy}
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file !== undefined) onUpload(task.id, file);
+                  event.target.value = "";
+                }}
+                type="file"
+              />
+            </label>
+            <small className="task-row__rules">{uploadRules(task)}</small>
+          </div>
         ) : (
           <Button disabled={busy || done} onClick={() => onComplete(task.id)} tone="quiet">
             {done ? "Completed" : "Mark complete"}
@@ -260,7 +324,7 @@ export function PortalPage() {
           )}
       </section>
 
-      <section className="workspace-section portal-profile">
+      <section className="workspace-section portal-profile" id="profile">
         <div className="section-heading"><div><p className="section-label">PROFILE</p><h2>Bio and headshot</h2></div></div>
         <div className="portal-profile__grid">
           <div className="headshot-picker">
@@ -293,22 +357,34 @@ export function PortalPage() {
         </div>
       </section>
 
-      <section className="workspace-section">
+      <section className="workspace-section" id="proposals">
         <div className="section-heading"><div><p className="section-label">MY PROPOSALS</p><h2>Submissions</h2></div></div>
         <DataTable caption="My proposals" columns={[
           { key: "title", label: "Proposal", render: (row) => <strong>{row.title}</strong> },
-          { key: "status", label: "Status", render: (row) => <StatusChip>{row.status.replaceAll("_", " ")}</StatusChip> },
-        ]} rows={content.submissions.filter((submission) => submission.status !== "accepted")} />
+          {
+            key: "speakerStatus",
+            label: "Status",
+            render: (row) => (
+              <StatusChip tone={row.speakerStatus === "accepted" ? "good" : "neutral"}>
+                {speakerFacingSubmissionLabels[row.speakerStatus]}
+              </StatusChip>
+            ),
+          },
+        ]} rows={content.submissions} />
+        <p className="quiet-copy">
+          An accepted proposal also appears below as a session to prepare. Anything still in review
+          stays with the committee until they write to you.
+        </p>
       </section>
 
-      <section className="workspace-section">
+      <section className="workspace-section" id="sessions">
         <div className="section-heading"><div><p className="section-label">MY SESSIONS</p><h2>Session content</h2></div></div>
         {content.sessions.length === 0
           ? <p className="quiet-copy">No sessions assigned yet.</p>
           : <div className="session-list">{content.sessions.map((session) => <SessionCard busy={busy} key={session.id} onSave={saveSession} session={session} />)}</div>}
       </section>
 
-      <section className="workspace-section">
+      <section className="workspace-section" id="tasks">
         <div className="section-heading"><div><p className="section-label">ONBOARDING TASKS</p><h2>Tasks and files</h2></div></div>
         {content.tasks.length === 0
           ? <p className="quiet-copy">No tasks assigned yet.</p>
@@ -321,7 +397,7 @@ export function PortalPage() {
           )}
       </section>
 
-      <section className="workspace-section">
+      <section className="workspace-section" id="files">
         <div className="section-heading"><div><p className="section-label">UPLOADED FILES</p><h2>File history</h2></div></div>
         {content.files.length === 0
           ? <p className="quiet-copy">No task files uploaded yet.</p>
@@ -332,6 +408,7 @@ export function PortalPage() {
                   <div>
                     <strong>{file.taskTitle}</strong>
                     <a href={file.downloadUrl}>{file.displayName}</a>
+                    <FileVersionList file={file} />
                   </div>
                   <StatusChip tone={file.archived ? "neutral" : "good"}>
                     {file.archived ? "Archived task" : `Version ${file.version}`}

@@ -18,6 +18,7 @@ import {
   type Role,
 } from "../../db/schema.ts";
 import type { AuthSession } from "../auth.ts";
+import { filenameForVersion } from "../storage/file-versions.ts";
 import {
   buildStorageKey,
   getFileObject,
@@ -471,10 +472,11 @@ portalRoutes.get("/portal/files/:fileId", async (context) => {
   if (object === null) {
     return context.json({ error: "file_object_missing" }, 404);
   }
+  const downloadName = filenameForVersion(version, file.displayName);
   return new Response(object.body, {
     headers: {
       "content-type": version.mimeType,
-      "content-disposition": `attachment; filename="${file.displayName.replaceAll('"', "")}"`,
+      "content-disposition": `attachment; filename="${downloadName.replaceAll('"', "")}"`,
       "content-length": String(version.sizeBytes),
     },
   });
