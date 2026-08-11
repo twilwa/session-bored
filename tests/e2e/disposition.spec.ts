@@ -13,13 +13,21 @@ test("organizer decides silently and reviews a queue-only batch", async ({ page 
   await expect(page.getByText("Status changes never notify speakers.")).toBeVisible();
   await expect(page.getByText("Email sender not connected")).toBeVisible();
 
+  const previewButton = page.getByRole("button", { name: "Preview decision batch" });
+  const applyButton = page.getByRole("button", { name: "Apply silently" });
+  await expect(previewButton).toBeDisabled();
+  await expect(applyButton).toBeDisabled();
+  await expect(previewButton).toHaveAttribute("aria-describedby", "disposition-selection-help");
+  await expect(applyButton).toHaveAttribute("aria-describedby", "disposition-selection-help");
+  await expect(page.getByText("Select at least one proposal to apply a decision or preview a batch.")).toBeVisible();
+
   const proposalRow = page.getByRole("row", { name: /Taming 40-Minute CI/ });
   await proposalRow.getByRole("combobox").selectOption("accepted");
   await expect(page.getByText("1 decision saved silently.")).toBeVisible();
   await expect(proposalRow.getByText("active", { exact: true })).toBeVisible();
 
   await proposalRow.getByRole("checkbox").check();
-  await page.getByRole("button", { name: "Preview decision batch" }).click();
+  await previewButton.click();
   await expect(page.getByRole("region", { name: "Decision batch preview" })).toBeVisible();
   await expect(page.getByText("No email has been sent.")).toBeVisible();
   await expect(page.getByText("Priya Raman <sbek-speaker@example.com>")).toBeVisible();

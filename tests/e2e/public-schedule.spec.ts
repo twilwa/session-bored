@@ -178,13 +178,15 @@ test("a placed session reads identically on the program, agenda, itinerary, and 
   await expect(speakerSession).toContainText("Main Stage");
 });
 
-test("the error-state retry control on agenda, itinerary, and gallery actually refetches", async ({ page }) => {
+test("every public error-state retry control actually refetches", async ({ page }) => {
   // ABOUTME: Each surface's retry used to be a Link back to its own current URL, which never
   // remounts the page or reruns its fetch effect — the button must trigger a real new request.
   for (const [path, apiPattern, heading] of [
     ["/agenda", "**/api/public/events/*/sessions", "Agenda"],
     ["/schedule", "**/api/public/events/*/sessions", "Schedule"],
     ["/gallery", "**/api/public/events/*/speakers", "Gallery"],
+    ["/program", "**/api/public/events/*/sessions", "DevFlow Conf 2027"],
+    ["/speakers", "**/api/public/events/*/speakers", "Speakers"],
   ] as const) {
     let requestCount = 0;
     await page.route(apiPattern, async (route) => {
@@ -198,6 +200,7 @@ test("the error-state retry control on agenda, itinerary, and gallery actually r
 
     await page.goto(path);
     await expect(page.getByText("could not be loaded", { exact: false })).toBeVisible();
+    await expect(page.locator(".loading-state")).toHaveCount(0);
 
     await page.getByRole("button", { name: "Try again" }).click();
     await expect(page.getByRole("heading", { name: heading, exact: true })).toBeVisible();

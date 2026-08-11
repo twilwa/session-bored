@@ -92,12 +92,37 @@ export function Link({
   );
 }
 
-export async function getJson<T>(path: string): Promise<T> {
-  const response = await fetch(path, { credentials: "same-origin" });
-  if (!response.ok) {
-    throw new Error(`${response.status}`);
+const requestTimeoutMs = 15_000;
+
+export async function requestJson<T>(
+  path: string,
+  init: RequestInit = {},
+  timeoutMs = requestTimeoutMs,
+): Promise<T> {
+  const controller = new AbortController();
+  const timeout = globalThis.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(path, {
+      credentials: "same-origin",
+      ...init,
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      throw new Error(`${response.status}`);
+    }
+    return response.json<T>();
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new Error("Request timed out. Try again.");
+    }
+    throw error;
+  } finally {
+    globalThis.clearTimeout(timeout);
   }
-  return response.json<T>();
+}
+
+export function getJson<T>(path: string, timeoutMs = requestTimeoutMs): Promise<T> {
+  return requestJson<T>(path, {}, timeoutMs);
 }
 
 export function Brand() {

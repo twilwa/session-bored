@@ -7,17 +7,21 @@ import type {
   DispositionSummary,
 } from "../../../shared/api.ts";
 import { Button, LoadingState, StatusChip, Toast } from "../../components/ui.tsx";
+import { requestJson } from "../../lib.tsx";
 import "./disposition.css";
 
 const eventId = "evt_devflow_conf_2027";
 const decisionStatuses: DecisionStatus[] = ["accepted", "maybe", "declined"];
 
 async function readJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, { credentials: "same-origin", ...init });
-  if (!response.ok) {
-    throw new Error(`Disposition request failed (${response.status}).`);
+  try {
+    return await requestJson<T>(path, init);
+  } catch (error) {
+    if (error instanceof Error && error.message === "Request timed out. Try again.") {
+      throw error;
+    }
+    throw new Error(`Disposition request failed (${error instanceof Error ? error.message : "unknown"}).`);
   }
-  return response.json<T>();
 }
 
 function statusLabel(status: string): string {
@@ -154,12 +158,26 @@ export function DispositionPage() {
             {decisionStatuses.map((status) => <option key={status} value={status}>{statusLabel(status)}</option>)}
           </select>
         </label>
-        <Button disabled={busy || selected.size === 0} onClick={() => void changeStatus([...selected], bulkStatus)}>
+        <Button
+          aria-describedby={selected.size === 0 ? "disposition-selection-help" : undefined}
+          disabled={busy || selected.size === 0}
+          onClick={() => void changeStatus([...selected], bulkStatus)}
+        >
           Apply silently
         </Button>
-        <Button disabled={busy || selected.size === 0} onClick={() => void buildPreview()} tone="signal">
+        <Button
+          aria-describedby={selected.size === 0 ? "disposition-selection-help" : undefined}
+          disabled={busy || selected.size === 0}
+          onClick={() => void buildPreview()}
+          tone="signal"
+        >
           Preview decision batch
         </Button>
+        {selected.size === 0 ? (
+          <p className="disposition-selection-help" id="disposition-selection-help">
+            Select at least one proposal to apply a decision or preview a batch.
+          </p>
+        ) : null}
       </section>
 
       {items === null ? <LoadingState label="Loading disposition table" /> : (

@@ -12,6 +12,8 @@ export default defineConfig({
         d1Databases: ["DB"],
         r2Buckets: ["FILES"],
         bindings: {
+          APP_ORIGIN: "http://example.test",
+          BETTER_AUTH_URL: "http://example.test",
           TEST_MIGRATIONS: await readD1Migrations(new URL("./migrations", import.meta.url).pathname),
           // Force email delivery into its unconfigured state regardless of what a
           // developer's local .dev.vars happens to hold, so these tests never send

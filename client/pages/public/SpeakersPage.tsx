@@ -43,6 +43,7 @@ export function SpeakersPage() {
   const [data, setData] = useState<PublicSpeakersResponse | null>(null);
   const [error, setError] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [retryToken, setRetryToken] = useState(0);
 
   useEffect(() => {
     const url = new URL(window.location.href);
@@ -76,7 +77,7 @@ export function SpeakersPage() {
     return () => {
       active = false;
     };
-  }, [query]);
+  }, [query, retryToken]);
 
   const facets = data?.facets ?? null;
   const items = data?.items ?? [];
@@ -119,7 +120,11 @@ export function SpeakersPage() {
         {loading ? <LoadingState label="Loading speakers" /> : null}
         {error ? (
           <p className="program-error" role="alert">
-            The speaker directory could not be loaded. <Link href="/speakers">Try again</Link>.
+            The speaker directory could not be loaded.{" "}
+            <button className="text-link" onClick={() => setRetryToken((token) => token + 1)} type="button">
+              Try again
+            </button>
+            .
           </p>
         ) : null}
         {!loading && !error && items.length === 0 ? (
