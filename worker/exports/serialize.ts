@@ -4,10 +4,11 @@ export type CsvCell = string | number | boolean | null | undefined;
 
 function serializeCsvCell(value: CsvCell): string {
   const text = value === null || value === undefined ? "" : String(value);
-  if (!/[",\r\n]/.test(text)) {
-    return text;
+  const safeText = typeof value === "string" && /^[=+\-@\t\r]/.test(text) ? `'${text}` : text;
+  if (!/[",\r\n]/.test(safeText)) {
+    return safeText;
   }
-  return `"${text.replaceAll('"', '""')}"`;
+  return `"${safeText.replaceAll('"', '""')}"`;
 }
 
 export function serializeCsv(headers: string[], rows: CsvCell[][]): string {

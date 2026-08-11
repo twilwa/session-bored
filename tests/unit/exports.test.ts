@@ -21,6 +21,27 @@ describe("serializeCsv", () => {
       "submission_id,decision\r\n",
     );
   });
+
+  it("neutralizes formula-leading text separately from RFC CSV quoting", () => {
+    const csv = serializeCsv(
+      ["kind", "text"],
+      [
+        ["equals", "=HYPERLINK(\"https://example.test\")"],
+        ["plus", "+SUM(A1:A2)"],
+        ["hyphen", "- follow up with the speaker"],
+        ["at", "@reviewer"],
+        ["tab", "\t=1+1"],
+        ["carriage return", "\r=1+1"],
+      ],
+    );
+
+    expect(csv).toContain('equals,"\'=HYPERLINK(""https://example.test"")"');
+    expect(csv).toContain("plus,\'+SUM(A1:A2)");
+    expect(csv).toContain("hyphen,\'- follow up with the speaker");
+    expect(csv).toContain("at,\'@reviewer");
+    expect(csv).toContain("tab,\'\t=1+1");
+    expect(csv).toContain('carriage return,"\'\r=1+1"');
+  });
 });
 
 describe("buildScheduleIcs", () => {

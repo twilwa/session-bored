@@ -18,6 +18,7 @@ import {
   sessions,
   speakers,
   submissionSpeakers,
+  submissionTracks,
   submissions,
   submissionValues,
   tracks,
@@ -160,7 +161,36 @@ exportRoutes.get("/api/events/:eventId/exports/sessions.json", async (context) =
     .where(and(eq(sessions.eventId, eventId), isNull(sessions.deletedAt)))
     .orderBy(asc(sessions.createdAt), asc(sessions.id));
   const sessionIds = sessionRows.map((session) => session.id);
-  const [speakerRows, answerRows] = await Promise.all([
+  const sourceSubmissionRows = await database
+    .select({
+      id: submissions.id,
+      formId: submissions.formId,
+      formVersion: submissions.formVersion,
+      submitterPersonId: submissions.submitterPersonId,
+      submitterName: people.name,
+      submitterEmail: people.email,
+      formatId: formats.id,
+      formatName: formats.name,
+      durationMinutes: formats.durationMinutes,
+      status: submissions.status,
+      isDraft: submissions.isDraft,
+      title: submissions.title,
+      abstract: submissions.abstract,
+      titleAtTime: submissions.titleAtTime,
+      orgAtTime: submissions.orgAtTime,
+      audienceLevel: submissions.audienceLevel,
+      notesForReviewers: submissions.notesForReviewers,
+      submittedAt: submissions.submittedAt,
+      createdAt: submissions.createdAt,
+      updatedAt: submissions.updatedAt,
+    })
+    .from(submissions)
+    .innerJoin(people, eq(submissions.submitterPersonId, people.id))
+    .leftJoin(formats, eq(submissions.formatId, formats.id))
+    .where(and(eq(submissions.eventId, eventId), isNull(submissions.deletedAt)))
+    .orderBy(asc(submissions.createdAt), asc(submissions.id));
+  const sourceSubmissionIds = sourceSubmissionRows.map((submission) => submission.id);
+  const [speakerRows, answerRows, sourceSpeakerRows, sourceTrackRows] = await Promise.all([
     sessionIds.length === 0
       ? Promise.resolve([])
       : database
@@ -179,11 +209,81 @@ exportRoutes.get("/api/events/:eventId/exports/sessions.json", async (context) =
         .where(and(inArray(sessionSpeakers.sessionId, sessionIds), isNull(sessionSpeakers.deletedAt)))
         .orderBy(asc(sessionSpeakers.sortOrder), asc(people.name)),
     readSubmissionAnswers(context.env.DB, eventId),
+    sourceSubmissionIds.length === 0
+      ? Promise.resolve([])
+      : database
+        .select({
+          submissionId: submissionSpeakers.submissionId,
+          personId: people.id,
+          name: people.name,
+          email: people.email,
+          role: submissionSpeakers.roleLabel,
+          sortOrder: submissionSpeakers.sortOrder,
+        })
+        .from(submissionSpeakers)
+        .innerJoin(people, eq(submissionSpeakers.personId, people.id))
+        .where(and(
+          inArray(submissionSpeakers.submissionId, sourceSubmissionIds),
+          isNull(submissionSpeakers.deletedAt),
+          isNull(people.deletedAt),
+        ))
+        .orderBy(asc(submissionSpeakers.sortOrder), asc(people.name)),
+    sourceSubmissionIds.length === 0
+      ? Promise.resolve([])
+      : database
+        .select({
+          submissionId: submissionTracks.submissionId,
+          id: tracks.id,
+          name: tracks.name,
+        })
+        .from(submissionTracks)
+        .innerJoin(tracks, eq(submissionTracks.trackId, tracks.id))
+        .where(and(
+          inArray(submissionTracks.submissionId, sourceSubmissionIds),
+          isNull(submissionTracks.deletedAt),
+          isNull(tracks.deletedAt),
+        ))
+        .orderBy(asc(tracks.sortOrder), asc(tracks.name)),
   ]);
   const document = {
     schemaVersion: 1,
     generatedAt: new Date().toISOString(),
     event: eventDocument(event),
+    sourceSubmissions: sourceSubmissionRows.map((submission) => ({
+      id: submission.id,
+      formId: submission.formId,
+      formVersion: submission.formVersion,
+      submitter: {
+        personId: submission.submitterPersonId,
+        name: submission.submitterName,
+        email: submission.submitterEmail,
+      },
+      format: submission.formatId === null ? null : {
+        id: submission.formatId,
+        name: submission.formatName,
+        durationMinutes: submission.durationMinutes,
+      },
+      status: submission.status,
+      isDraft: submission.isDraft,
+      title: submission.title,
+      abstract: submission.abstract,
+      titleAtTime: submission.titleAtTime,
+      orgAtTime: submission.orgAtTime,
+      audienceLevel: submission.audienceLevel,
+      notesForReviewers: submission.notesForReviewers,
+      tracks: sourceTrackRows
+        .filter((track) => track.submissionId === submission.id)
+        .map(({ submissionId: _submissionId, ...track }) => track),
+      speakers: sourceSpeakerRows
+        .filter((speaker) => speaker.submissionId === submission.id)
+        .map(({ submissionId: _submissionId, sortOrder: _sortOrder, ...speaker }) => speaker),
+      customAnswers: answerRows
+        .filter((answer) => answer.submissionId === submission.id)
+        .map(({ submissionId: _submissionId, ...answer }) => answer),
+      submittedAt: iso(submission.submittedAt),
+      createdAt: submission.createdAt.toISOString(),
+      updatedAt: submission.updatedAt.toISOString(),
+    })),
     sessions: sessionRows.map((session) => ({
       id: session.id,
       sourceSubmission: session.submissionId === null ? null : {
@@ -441,6 +541,7 @@ exportRoutes.get("/api/events/:eventId/exports/schedule.ics", async (context) =>
     .select({
       icsUid: sessions.icsUid,
       sequence: sessions.icsSequence,
+      updatedAt: sessions.updatedAt,
       title: sessions.title,
       description: sessions.abstract,
       startsAt: sessions.startsAt,
@@ -466,7 +567,7 @@ exportRoutes.get("/api/events/:eventId/exports/schedule.ics", async (context) =>
         ? []
         : [{
           icsUid: session.icsUid,
-          sequence: session.sequence,
+          sequence: Math.max(session.sequence, Math.floor(session.updatedAt.getTime() / 1000)),
           title: session.title ?? "Untitled session",
           description: session.description,
           startsAt: session.startsAt,

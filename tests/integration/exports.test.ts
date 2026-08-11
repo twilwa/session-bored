@@ -45,6 +45,19 @@ describe("organizer exports", () => {
   it("exports complete session and speaker records with meaningful relationships", async () => {
     const now = Date.now();
     await env.DB.prepare(
+      "update form_version_field set visible_in_blind_review = 0 where stable_field_id = ?",
+    ).bind("fld_key_takeaway").run();
+    await env.DB.prepare(
+      "insert into submission_value (id, submission_id, field_id, value, created_at, updated_at) values (?, ?, ?, ?, ?, ?) on conflict(submission_id, field_id) do update set value = excluded.value",
+    ).bind(
+      "val_export_blind_hidden",
+      "sub_ai_verification",
+      "fld_key_takeaway",
+      JSON.stringify("Keep this owner-visible source answer."),
+      now,
+      now,
+    ).run();
+    await env.DB.prepare(
       "insert into event (id, slug, name, timezone, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
     ).bind("evt_other_export", "other-export", "Other Export", "UTC", now, now).run();
     await env.DB.prepare(
@@ -94,6 +107,13 @@ describe("organizer exports", () => {
         speakers: Array<{ id: string; personId: string; name: string; email: string; role: string }>;
         calendar: { uid: string; sequence: number };
       }>;
+      sourceSubmissions: Array<{
+        id: string;
+        abstract: string | null;
+        audienceLevel: string | null;
+        notesForReviewers: string | null;
+        customAnswers: Array<{ key: string; label: string; value: unknown }>;
+      }>;
     }>();
     expect(sessionDocument).toMatchObject({
       schemaVersion: 1,
@@ -117,6 +137,21 @@ describe("organizer exports", () => {
       })],
       calendar: { uid: "ses_docs_retrieval@session-bored", sequence: 0 },
     }));
+    expect(sessionDocument.sourceSubmissions).toContainEqual(expect.objectContaining({
+      id: "sub_ai_verification",
+      abstract: expect.stringContaining("Code generation is easy"),
+      audienceLevel: "Advanced",
+      notesForReviewers: expect.any(String),
+      customAnswers: expect.arrayContaining([
+        expect.objectContaining({
+          key: "key_takeaway",
+          label: "Key takeaway",
+          value: "Keep this owner-visible source answer.",
+        }),
+      ]),
+    }));
+    expect(sessionDocument.sourceSubmissions.map((submission) => submission.id))
+      .not.toContain("sub_other_export");
 
     const speakersResponse = await request(`/api/events/${eventId}/exports/speakers.json`, {
       headers: { cookie: organizerCookie },
@@ -221,6 +256,25 @@ describe("organizer exports", () => {
     expect(ics).toContain("SUMMARY:Docs That Answer Back");
     expect(ics).toContain("LOCATION:Room 2A");
     expect(ics).toContain("END:VCALENDAR");
+
+    const firstSequence = Number(ics.match(/SEQUENCE:(\d+)/)?.[1]);
+    const storedSequenceBefore = await env.DB.prepare(
+      "select ics_sequence as sequence from program_session where id = ?",
+    ).bind("ses_docs_retrieval").first<{ sequence: number }>();
+    await env.DB.prepare(
+      "update program_session set room_id = ?, updated_at = ? where id = ?",
+    ).bind("rm_room_2b", Date.parse("2026-08-12T12:00:02Z"), "ses_docs_retrieval").run();
+    const updatedResponse = await request(`/api/events/${eventId}/exports/schedule.ics`, {
+      headers: { cookie: organizerCookie },
+    });
+    const updatedIcs = await updatedResponse.text();
+    const updatedSequence = Number(updatedIcs.match(/SEQUENCE:(\d+)/)?.[1]);
+    const storedSequenceAfter = await env.DB.prepare(
+      "select ics_sequence as sequence from program_session where id = ?",
+    ).bind("ses_docs_retrieval").first<{ sequence: number }>();
+    expect(updatedSequence).toBeGreaterThan(firstSequence);
+    expect(updatedIcs).toContain("LOCATION:Room 2B");
+    expect(storedSequenceAfter).toEqual(storedSequenceBefore);
   });
 
   it("returns valid empty documents for an event with no exportable records", async () => {

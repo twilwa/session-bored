@@ -8,7 +8,7 @@ const exports = [
   {
     filename: "sessions.json",
     format: "JSON",
-    description: "Program records with stable IDs, content and schedule states, track, format, room, speakers, source decision, saved form answers, and calendar identity.",
+    description: "Program records with stable IDs, content and schedule states, track, format, room, speakers, and calendar identity, plus every source submission and its saved form answers.",
   },
   {
     filename: "speakers.json",
@@ -18,7 +18,7 @@ const exports = [
   {
     filename: "reviews.csv",
     format: "CSV",
-    description: "One spreadsheet row per criterion score, with its label, reviewer, round, proposal decision, review notes, and attributed committee discussion.",
+    description: "One spreadsheet row per criterion score, with its label, reviewer, round, proposal decision, review notes, and attributed committee discussion. Formula-leading text is prefixed with an apostrophe for spreadsheet safety.",
   },
   {
     filename: "schedule.ics",
@@ -67,7 +67,7 @@ export function ExportsPage() {
         <div className="exports-notes__columns">
           <div>
             <h3>Included</h3>
-            <p>The program, people, source proposal links and answers, live decisions, review work, committee discussion, and placed calendar events.</p>
+            <p>The program, people, every source proposal and answer, live decisions, review work, committee discussion, and placed calendar events.</p>
           </div>
           <div>
             <h3>Not included</h3>
