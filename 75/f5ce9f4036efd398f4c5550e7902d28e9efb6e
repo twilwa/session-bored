@@ -1,0 +1,50 @@
+worker/email/ics.ts
+  s_234a0568bb5271::t_1bf5837f502fb0 26-32,100-127
+  s_dac1fe753facd3::t_b2417e4e013de8 128
+client/pages/exports/ExportsPage.tsx
+  s_234a0568bb5271::t_3c2273a5e0fe16 1-83
+tests/e2e/exports.spec.ts
+  s_234a0568bb5271::t_625293b3c8be3b 1-32
+worker/exports/serialize.ts
+  s_234a0568bb5271::t_1bf5837f502fb0 1-17
+worker/index.ts
+  s_234a0568bb5271::t_1bf5837f502fb0 47,142
+client/pages/exports/exports.css
+  s_234a0568bb5271::t_3c2273a5e0fe16 1-22
+client/App.tsx
+  s_234a0568bb5271::t_3c2273a5e0fe16 23,155,284
+tests/integration/exports.test.ts
+  s_234a0568bb5271::t_625293b3c8be3b 1-45,79-109,111-146,149-195,197-252
+  s_234a0568bb5271::t_df90635c8a3008 110,196
+  s_234a0568bb5271::t_95fb97b5bcefc7 46-78,147-148
+tests/unit/exports.test.ts
+  s_234a0568bb5271::t_625293b3c8be3b 1-71
+worker/routes/exports.ts
+  s_234a0568bb5271::t_95fb97b5bcefc7 268-273,287-292
+  s_234a0568bb5271::t_3c2273a5e0fe16 3,451,453-458
+  s_234a0568bb5271::t_1bf5837f502fb0 1-2,4-267,274-286,293-450,452,459-483
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "75f5ce9f4036efd398f4c5550e7902d28e9efb6e",
+  "prompts": {},
+  "sessions": {
+    "s_234a0568bb5271": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ff303-62a2-7410-b425-24e7a4977386",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    },
+    "s_dac1fe753facd3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ff2f5-2403-7f40-8991-882a4b59a73f",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
