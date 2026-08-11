@@ -576,4 +576,52 @@ describe.sequential("organizer CFP builder", () => {
     });
     expect(reopened.fields).toEqual(closed.fields);
   });
+
+  it("keeps an expired immutable version closed instead of claiming it reopened", async () => {
+    const cookie = await organizerCookie();
+    const headers = { cookie };
+    const createResponse = await request("/api/cfp-builder/events/evt_devflow_conf_2027/forms", {
+      method: "POST",
+      headers: { ...headers, "content-type": "application/json" },
+      body: JSON.stringify({
+        name: "Expired CFP",
+        publicSlug: "expired-cfp",
+        welcomeCopy: "This immutable call has ended.",
+        confirmationCopy: "Your proposal is saved.",
+        confirmationEmailCopy: null,
+        openAt: null,
+        closeAt: "2020-01-01T00:00:00.000Z",
+        minimumSpeakers: 1,
+        maximumSpeakers: null,
+        fields: versionTwoFields,
+      }),
+    });
+    expect(createResponse.status).toBe(201);
+    const created = await createResponse.json<{ form: { id: string } }>();
+    expect((await request(`/api/cfp-builder/forms/${created.form.id}/publish`, {
+      method: "POST",
+      headers,
+    })).status).toBe(200);
+    expect((await request(`/api/cfp-builder/forms/${created.form.id}/close`, {
+      method: "POST",
+      headers,
+    })).status).toBe(200);
+
+    const reopenResponse = await request(`/api/cfp-builder/forms/${created.form.id}/reopen`, {
+      method: "POST",
+      headers,
+    });
+    expect(reopenResponse.status).toBe(409);
+    expect(await reopenResponse.json()).toEqual({
+      error: "cfp_window_closed",
+      message: "This published version's close time has passed. Save and publish a draft with a later close time to reopen the call.",
+    });
+
+    const detailResponse = await request(`/api/cfp-builder/forms/${created.form.id}`, { headers });
+    expect(detailResponse.status).toBe(200);
+    expect(await detailResponse.json()).toMatchObject({
+      form: { status: "closed" },
+      selectedVersion: { status: "closed" },
+    });
+  });
 });

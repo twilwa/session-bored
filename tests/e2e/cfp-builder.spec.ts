@@ -108,10 +108,21 @@ test("organizer builds and publishes a conditional CFP form", async ({ page, con
   await page.getByLabel("Welcome copy").fill("Version two keeps the public call clear without changing version one answers.");
   await page.getByRole("button", { name: "Save changes" }).click();
   await expect(page.getByText("v2 · draft", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Close CFP" })).toBeVisible();
+  const closeButton = page.getByRole("button", { name: "Close CFP" });
+  await page.getByLabel("Welcome copy").fill("This edit must be saved before the public call closes.");
+  await expect(closeButton).toBeDisabled();
+  await expect(page.getByText("Save changes before closing or reopening the public call.", { exact: true })).toBeVisible();
+  const saveBeforeCloseResponse = page.waitForResponse((response) => (
+    response.request().method() === "PUT"
+    && response.url().endsWith(`/api/cfp-builder/forms/${createdForm.form.id}`)
+  ));
+  await page.getByRole("button", { name: "Save changes" }).click();
+  expect((await saveBeforeCloseResponse).status()).toBe(200);
+  await expect(closeButton).toBeEnabled();
   page.once("dialog", (dialog) => void dialog.accept());
-  await page.getByRole("button", { name: "Close CFP" }).click();
+  await closeButton.click();
   await expect(page.getByText("CFP closed. The public page remains available in a locked state.", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Welcome copy")).toHaveValue("This edit must be saved before the public call closes.");
   await expect(page.getByRole("button", { name: "Reopen CFP" })).toBeVisible();
 
   const publicStatePage = await context.newPage();
@@ -120,8 +131,19 @@ test("organizer builds and publishes a conditional CFP form", async ({ page, con
   await expect(publicStatePage.getByText("Editing is closed.", { exact: true })).toBeVisible();
   await expect(publicStatePage.getByRole("button", { name: "Submit proposal" })).toHaveCount(0);
 
-  await page.getByRole("button", { name: "Reopen CFP" }).click();
+  const reopenButton = page.getByRole("button", { name: "Reopen CFP" });
+  await page.getByLabel("Welcome copy").fill("This edit must be saved before the public call reopens.");
+  await expect(reopenButton).toBeDisabled();
+  const saveBeforeReopenResponse = page.waitForResponse((response) => (
+    response.request().method() === "PUT"
+    && response.url().endsWith(`/api/cfp-builder/forms/${createdForm.form.id}`)
+  ));
+  await page.getByRole("button", { name: "Save changes" }).click();
+  expect((await saveBeforeReopenResponse).status()).toBe(200);
+  await expect(reopenButton).toBeEnabled();
+  await reopenButton.click();
   await expect(page.getByText("CFP reopened. The published version is accepting proposals again.", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Welcome copy")).toHaveValue("This edit must be saved before the public call reopens.");
   await publicStatePage.reload();
   await expect(publicStatePage.getByText("CALL FOR SPEAKERS · open", { exact: true })).toBeVisible();
   await expect(publicStatePage.getByRole("button", { name: "Submit proposal" })).toBeVisible();

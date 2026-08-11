@@ -714,6 +714,12 @@ cfpBuilderRoutes.post("/forms/:formId/reopen", async (context) => {
   if (closedVersion === undefined) {
     return context.json({ error: "not_found", message: "The closed version could not be found." }, 404);
   }
+  if (closedVersion.closeAt !== null && closedVersion.closeAt.getTime() <= Date.now()) {
+    return context.json({
+      error: "cfp_window_closed",
+      message: "This published version's close time has passed. Save and publish a draft with a later close time to reopen the call.",
+    }, 409);
+  }
   await database
     .update(formVersions)
     .set({ status: "published" })
