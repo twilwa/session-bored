@@ -8,7 +8,7 @@
 .disposition-selection-help { flex-basis: 100%; margin: 0; color: var(--muted); font-size: 0.78rem; text-align: right; }
 .disposition-select { display: grid; gap: 5px; font: 0.68rem monospace; text-transform: uppercase; }
 .disposition-select select, .disposition-table select { min-height: 42px; border: 1px solid var(--ink); background: var(--white); padding: 8px 12px; text-transform: capitalize; }
-.disposition-table-wrap { padding: 0; }
+.disposition-table-wrap { max-width: 100%; padding: 0; overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .disposition-table td:first-child, .disposition-table th:first-child { width: 68px; text-align: center; }
 .disposition-table td:nth-child(2) { min-width: 300px; }
 .disposition-table td > small { display: block; margin-top: 6px; color: var(--muted); }

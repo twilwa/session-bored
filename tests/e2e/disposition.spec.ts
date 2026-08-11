@@ -54,3 +54,18 @@ test("organizer decides silently and reviews a queue-only batch", async ({ page 
   });
   await expect(page.getByText("1 notice queued; 0 already queued. No email provider is connected.")).toBeVisible();
 });
+
+test("contains the wide decision table at phone width", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/login");
+  await page.getByLabel("Email").fill("sbek-organizer@example.com");
+  await page.getByLabel("Password").fill("SbekTest!2027-org");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.getByRole("link", { name: "Disposition", exact: true }).click();
+
+  const tableWrap = page.locator(".disposition-table-wrap");
+  await expect(tableWrap).toHaveCSS("overflow-x", "auto");
+  await expect.poll(async () => page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  await expect.poll(async () => tableWrap.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
+  await expect(page.getByLabel(/Decision for/).first()).toBeVisible();
+});
