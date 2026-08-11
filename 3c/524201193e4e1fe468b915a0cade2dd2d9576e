@@ -1,0 +1,46 @@
+client/pages/public/SpeakersPage.tsx
+  s_3f81011b0ffd37::t_f378bbb3225283 1-145
+tests/unit/public-helpers.test.ts
+  s_3f81011b0ffd37::t_f378bbb3225283 1-150
+worker/public-queries.ts
+  s_3f81011b0ffd37::t_f378bbb3225283 1-413
+client/pages/public/shared.ts
+  s_3f81011b0ffd37::t_f378bbb3225283 1-117
+worker/index.ts
+  s_3f81011b0ffd37::t_f378bbb3225283 31,101
+tests/integration/public-surfaces.test.ts
+  s_3f81011b0ffd37::t_f378bbb3225283 1-253
+worker/routes/public.ts
+  s_3f81011b0ffd37::t_f378bbb3225283 1-119
+client/App.tsx
+  s_3f81011b0ffd37::t_f378bbb3225283 6-9,257-262
+client/pages/public/SpeakerDetailPage.tsx
+  s_3f81011b0ffd37::t_f378bbb3225283 1-144
+client/lib.tsx
+  s_3f81011b0ffd37::t_f378bbb3225283 1-103
+shared/api.ts
+  s_3f81011b0ffd37::t_f378bbb3225283 250-317
+  s_3f81011b0ffd37::t_102bb70f0713db 236-249
+tests/e2e/app-shell.spec.ts
+  s_3f81011b0ffd37::t_f378bbb3225283 19
+client/pages/public/ProgramPage.tsx
+  s_3f81011b0ffd37::t_f378bbb3225283 1-275
+client/styles.css
+  s_3f81011b0ffd37::t_f378bbb3225283 149-214,246-267
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "3c524201193e4e1fe468b915a0cade2dd2d9576e",
+  "prompts": {},
+  "sessions": {
+    "s_3f81011b0ffd37": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ses_0163a99f9ffeyqltV6j5Edd6MT",
+        "model": "unknown"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
