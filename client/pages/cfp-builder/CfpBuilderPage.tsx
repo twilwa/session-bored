@@ -143,6 +143,9 @@ export function CfpBuilderPage() {
   const readOnly = detail !== null
     && detail.selectedVersion.status !== "draft"
     && detail.selectedVersion.version !== detail.form.version;
+  const previewUrl = detail === null || detail.selectedVersion.status !== "draft"
+    ? null
+    : `${detail.publicUrl}?preview=${encodeURIComponent(detail.form.id)}&version=${detail.selectedVersion.version}`;
   const conditionOptions = useMemo(() => new Map((draft?.fields ?? []).map((field) => [
     field.key,
     field.key === "track" ? tracks : field.key === "format" ? formats : field.options ?? [],
@@ -225,6 +228,23 @@ export function CfpBuilderPage() {
       setToast("CFP closed. The public page remains available in a locked state.");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "The CFP could not be closed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function reopenForm(): Promise<void> {
+    if (detail === null) {
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await writeJson(`/api/cfp-builder/forms/${detail.form.id}/reopen`, "POST");
+      await loadForms(detail.form.id);
+      setToast("CFP reopened. The published version is accepting proposals again.");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "The CFP could not be reopened.");
     } finally {
       setBusy(false);
     }
@@ -388,10 +408,15 @@ export function CfpBuilderPage() {
 
               {readOnly ? null : (
                 <section className="cfp-builder__savebar">
-                  <div><strong>{detail.selectedVersion.status === "draft" ? `Editing draft v${detail.selectedVersion.version}` : `Published v${detail.selectedVersion.version} stays immutable`}</strong><span>Save first, then publish when the public version is ready.</span></div>
+                  <div>
+                    <strong>{detail.selectedVersion.status === "draft" ? `Editing draft v${detail.selectedVersion.version}` : `Published v${detail.selectedVersion.version} stays immutable`}</strong>
+                    <span>{detail.form.status === "closed" ? `The public call is closed. Reopening restores published v${detail.form.version}; this draft stays private.` : "Save first, then publish when the public version is ready."}</span>
+                  </div>
                   <Button disabled={busy} onClick={() => void save()} tone="quiet">{busy ? "Saving…" : "Save changes"}</Button>
+                  {previewUrl === null ? null : <a className="button button--quiet" href={previewUrl} rel="noreferrer" target="_blank">Preview as speaker ↗</a>}
                   {detail.selectedVersion.status === "draft" ? <Button disabled={busy} onClick={() => void publish()} tone="signal">Publish version {detail.selectedVersion.version}</Button> : null}
-                  {detail.selectedVersion.status === "published" ? <Button disabled={busy} onClick={() => void closeForm()} tone="quiet">Close CFP</Button> : null}
+                  {detail.form.status === "published" ? <Button disabled={busy} onClick={() => void closeForm()} tone="quiet">Close CFP</Button> : null}
+                  {detail.form.status === "closed" ? <Button disabled={busy} onClick={() => void reopenForm()} tone="signal">Reopen CFP</Button> : null}
                 </section>
               )}
             </div>

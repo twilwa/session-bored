@@ -375,6 +375,10 @@ export function CfpPage({ path }: { path: string }) {
   const segments = path.split("/").filter(Boolean);
   const slug = segments[1] ?? "devflow-conf-2027";
   const submissionId = segments[2] === "submissions" ? segments[3] ?? null : null;
+  const query = new URLSearchParams(window.location.search);
+  const previewFormId = query.get("preview");
+  const previewVersion = query.get("version");
+  const isPreview = previewFormId !== null;
   const [cfp, setCfp] = useState<CfpPayload | null>(null);
   const [availability, setAvailability] = useState<Availability | null>(null);
   const [state, setState] = useState<FormState>(emptyForm);
@@ -411,36 +415,47 @@ export function CfpPage({ path }: { path: string }) {
   } | null>(null);
 
   useEffect(() => {
-    const stopObservingSession = observePublicSession((user) => {
-      if (user === null) {
-        setAccountUser(null);
-      } else {
-        applyAccountUser(user);
-      }
-    });
-    setSavedReferences(readSavedReferences());
+    const stopObservingSession = isPreview
+      ? () => undefined
+      : observePublicSession((user) => {
+        if (user === null) {
+          setAccountUser(null);
+        } else {
+          applyAccountUser(user);
+        }
+      });
+    if (!isPreview) {
+      setSavedReferences(readSavedReferences());
+    }
     const key = new URLSearchParams(window.location.search).get("key");
     setEditKey(key);
-    const cfpRequest = readJson<CfpPayload>(`/api/public/cfp/${slug}`);
-    const submissionRequest = submissionId === null
+    const previewPath = previewFormId === null
+      ? null
+      : `/api/cfp-builder/forms/${encodeURIComponent(previewFormId)}/preview${previewVersion === null ? "" : `?version=${encodeURIComponent(previewVersion)}`}`;
+    const cfpRequest = readJson<CfpPayload>(previewPath ?? `/api/public/cfp/${slug}`);
+    const submissionRequest = submissionId === null || isPreview
       ? Promise.resolve(null)
       : readJson<SubmissionResponse>(
         `/api/public/cfp/${slug}/submissions/${submissionId}${key === null ? "" : `?key=${encodeURIComponent(key)}`}`,
       );
-    fetch("/api/session", { credentials: "same-origin" })
-      .then((response) => response.ok ? response.json<{ user: SubmitterAccountUser }>() : null)
-      .then((session) => {
-        if (session !== null) {
-          applyAccountUser(session.user);
-        }
-      })
-      .catch(() => undefined);
+    if (!isPreview) {
+      fetch("/api/session", { credentials: "same-origin" })
+        .then((response) => response.ok ? response.json<{ user: SubmitterAccountUser }>() : null)
+        .then((session) => {
+          if (session !== null) {
+            applyAccountUser(session.user);
+          }
+        })
+        .catch(() => undefined);
+    }
     Promise.all([cfpRequest, submissionRequest])
       .then(([cfpData, ownSubmission]) => {
         setCfp(ownSubmission?.form === undefined
           ? cfpData
           : { ...cfpData, form: ownSubmission.form, fields: ownSubmission.form.fields });
-        setAvailability(ownSubmission?.availability ?? localAvailability(cfpData.form));
+        setAvailability(isPreview
+          ? { canWrite: false, state: "unpublished", message: "Preview mode cannot save or submit proposals." }
+          : ownSubmission?.availability ?? localAvailability(cfpData.form));
         setNewerVersionAvailable(ownSubmission?.newerVersionAvailable ?? null);
         if (ownSubmission !== null) {
           setSubmission(ownSubmission.submission);
@@ -450,7 +465,7 @@ export function CfpPage({ path }: { path: string }) {
       })
       .catch((error: unknown) => setPageError(error instanceof Error ? error.message : "The CFP could not be loaded."));
     return stopObservingSession;
-  }, [slug, submissionId]);
+  }, [slug, submissionId, previewFormId, previewVersion, isPreview]);
 
   const deadline = useMemo(
     () => eventMoment(cfp?.form.closeAt ?? null, cfp?.event.timezone ?? "UTC"),
@@ -534,14 +549,24 @@ export function CfpPage({ path }: { path: string }) {
     return <div className="public-page"><PublicHeader /><main className="cfp-loading" aria-label="Loading call for speakers">Loading the call…</main></div>;
   }
   const isExisting = submission !== null;
-  const locked = !availability.canWrite;
+  const locked = !isPreview && !availability.canWrite;
   return (
     <div className="public-page cfp-portal">
       <PublicHeader />
       <main>
+        {isPreview ? (
+          <section className="cfp-preview-banner" role="status">
+            <div>
+              <strong>Preview mode</strong>
+              <span>Saved version {cfp.form.version}</span>
+              <p>Try the form exactly as a speaker will. Nothing entered here can be saved or submitted.</p>
+            </div>
+            <a className="button button--quiet" href="/organizer/cfp">Return to form builder</a>
+          </section>
+        ) : null}
         <section className="cfp-masthead">
           <div>
-            <p className="eyebrow">CALL FOR SPEAKERS · {availability.state}</p>
+            <p className="eyebrow">CALL FOR SPEAKERS · {isPreview ? "preview" : availability.state}</p>
             <h1>{cfp.event.name}</h1>
             <p className="cfp-masthead__tagline">{cfp.event.tagline}</p>
             <p className="cfp-masthead__description">{cfp.event.description}</p>
@@ -574,9 +599,9 @@ export function CfpPage({ path }: { path: string }) {
           </div>
         </section>
 
-        <SubmitterAccountPanel onAuthenticated={authenticateAccountUser} user={accountUser} />
+        {isPreview ? null : <SubmitterAccountPanel onAuthenticated={authenticateAccountUser} user={accountUser} />}
 
-        {savedReferences.length === 0 ? null : (
+        {isPreview || savedReferences.length === 0 ? null : (
           <section className="cfp-own-list" aria-label="Your proposals on this device">
             <div><p className="section-label">YOUR PROPOSALS ON THIS DEVICE</p><p>These private links are stored only in this browser.</p></div>
             <ul>{savedReferences.map((reference) => (
@@ -677,7 +702,11 @@ export function CfpPage({ path }: { path: string }) {
                 </div>
               </fieldset>
 
-              {locked ? null : (
+              {isPreview ? (
+                <div className="cfp-form-actions cfp-preview-actions">
+                  <p><strong>Preview only.</strong> Return to the form builder to keep editing or publish this version.</p>
+                </div>
+              ) : locked ? null : (
                 <div className="cfp-form-actions">
                   {isExisting && submission.status !== "draft" ? (
                     <button className="button button--quiet" disabled={busy} onClick={() => void save("submit")} type="button">

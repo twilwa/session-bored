@@ -50,6 +50,25 @@ test("organizer builds and publishes a conditional CFP form", async ({ page, con
   await page.getByRole("button", { name: "Save changes" }).click();
   await expect(page.getByText("Draft changes saved.", { exact: true })).toBeVisible();
   await expect(builder.locator('[data-field-key="session_title"]').getByRole("button", { name: "Remove" })).toBeDisabled();
+
+  const previewPagePromise = context.waitForEvent("page");
+  await page.getByRole("link", { name: "Preview as speaker ↗" }).click();
+  const previewPage = await previewPagePromise;
+  await previewPage.waitForLoadState("networkidle");
+  await expect(previewPage).toHaveURL(new RegExp(`/cfp/${slug}\\?preview=${createdForm.form.id}&version=1`));
+  await expect(previewPage.getByText("Preview mode", { exact: true })).toBeVisible();
+  await expect(previewPage.getByRole("link", { name: "Return to form builder" })).toBeVisible();
+  await expect(previewPage.getByText("Browser-built calls keep every answer attached to its original question.", { exact: true })).toBeVisible();
+  await expect(previewPage.getByLabel("Key takeaway")).toBeVisible();
+  await expect(previewPage.getByLabel("Workshop prerequisites")).toHaveCount(0);
+  await previewPage.getByLabel("Format").selectOption({ label: "Workshop (120 min)" });
+  await expect(previewPage.getByLabel("Workshop prerequisites")).toBeVisible();
+  await expect(previewPage.getByRole("button", { name: "Save draft" })).toHaveCount(0);
+  await expect(previewPage.getByRole("button", { name: "Submit proposal" })).toHaveCount(0);
+  await previewPage.setViewportSize({ width: 375, height: 812 });
+  expect(await previewPage.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
+  await previewPage.close();
+
   await page.getByRole("button", { name: "Publish version 1" }).click();
   await expect(page.getByText("v1 · published", { exact: true })).toBeVisible();
 
@@ -86,6 +105,25 @@ test("organizer builds and publishes a conditional CFP form", async ({ page, con
   await page.getByLabel("Welcome copy").fill("Version two keeps the public call clear without changing version one answers.");
   await page.getByRole("button", { name: "Save changes" }).click();
   await expect(page.getByText("v2 · draft", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Close CFP" })).toBeVisible();
+  page.once("dialog", (dialog) => void dialog.accept());
+  await page.getByRole("button", { name: "Close CFP" }).click();
+  await expect(page.getByText("CFP closed. The public page remains available in a locked state.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Reopen CFP" })).toBeVisible();
+
+  const publicStatePage = await context.newPage();
+  await publicStatePage.goto(`/cfp/${slug}`);
+  await expect(publicStatePage.getByText("CALL FOR SPEAKERS · closed", { exact: true })).toBeVisible();
+  await expect(publicStatePage.getByText("Editing is closed.", { exact: true })).toBeVisible();
+  await expect(publicStatePage.getByRole("button", { name: "Submit proposal" })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Reopen CFP" }).click();
+  await expect(page.getByText("CFP reopened. The published version is accepting proposals again.", { exact: true })).toBeVisible();
+  await publicStatePage.reload();
+  await expect(publicStatePage.getByText("CALL FOR SPEAKERS · open", { exact: true })).toBeVisible();
+  await expect(publicStatePage.getByRole("button", { name: "Submit proposal" })).toBeVisible();
+  await publicStatePage.close();
+
   await page.getByLabel("Welcome copy").fill("Unsaved draft edits are included when version two is published.");
   await page.getByRole("button", { name: "Publish version 2" }).click();
   await expect(page.getByText("v2 · published", { exact: true })).toBeVisible();

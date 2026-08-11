@@ -97,6 +97,57 @@ describe.sequential("organizer CFP builder", () => {
     expect(await afterResponse.text()).toBe(before);
   });
 
+  it("previews a saved draft through the speaker-facing form without publishing it", async () => {
+    const cookie = await organizerCookie();
+    const publicBefore = await request("/api/public/cfp/devflow-conf-2027");
+    expect(publicBefore.status).toBe(200);
+    expect(await publicBefore.json()).toMatchObject({
+      form: { version: 1, status: "published" },
+    });
+
+    const anonymousPreview = await request(
+      "/api/cfp-builder/forms/frm_devflow_cfp_2027/preview?version=2",
+    );
+    expect(anonymousPreview.status).toBe(401);
+
+    const previewResponse = await request(
+      "/api/cfp-builder/forms/frm_devflow_cfp_2027/preview?version=2",
+      { headers: { cookie } },
+    );
+    expect(previewResponse.status).toBe(200);
+    const preview = await previewResponse.json<{
+      event: { name: string };
+      form: { version: number; status: string; welcomeCopy: string | null };
+      tracks: string[];
+      formats: string[];
+      fields: Array<{ key: string; label: string }>;
+    }>();
+    expect(preview).toMatchObject({
+      event: { name: "DevFlow Conf 2027" },
+      form: {
+        version: 2,
+        status: "draft",
+        welcomeCopy: "Bring the hard-won lesson behind your work.",
+      },
+    });
+    expect(preview.tracks).toContain("Developer Experience");
+    expect(preview.formats).toContain("Workshop (120 min)");
+    expect(preview.fields.find((field) => field.key === "key_takeaway")).toMatchObject({
+      label: "One key takeaway",
+    });
+
+    const publicAfter = await request("/api/public/cfp/devflow-conf-2027");
+    expect(publicAfter.status).toBe(200);
+    const published = await publicAfter.json<{
+      form: { version: number; status: string };
+      fields: Array<{ key: string; label: string }>;
+    }>();
+    expect(published.form).toMatchObject({ version: 1, status: "published" });
+    expect(published.fields.find((field) => field.key === "key_takeaway")).toMatchObject({
+      label: "Key takeaway",
+    });
+  });
+
   it("renders each submission against the exact published version it used", async () => {
     const cookie = await organizerCookie();
     const headers = { cookie };
@@ -478,5 +529,51 @@ describe.sequential("organizer CFP builder", () => {
     });
     expect(blockedSubmission.status).toBe(409);
     expect(await blockedSubmission.json()).toMatchObject({ error: "cfp_closed" });
+  });
+
+  it("reopens the closed call without changing its published version contract", async () => {
+    const cookie = await organizerCookie();
+    const headers = { cookie };
+    const closedResponse = await request("/api/public/cfp/devflow-conf-2027");
+    expect(closedResponse.status).toBe(200);
+    const closed = await closedResponse.json<{
+      form: { version: number; status: string; welcomeCopy: string | null };
+      fields: Array<{ id: string; key: string; label: string }>;
+    }>();
+    expect(closed.form).toMatchObject({ version: 4, status: "closed" });
+
+    const reopenResponse = await request("/api/cfp-builder/forms/frm_devflow_cfp_2027/reopen", {
+      method: "POST",
+      headers,
+    });
+    expect(reopenResponse.status).toBe(200);
+    expect(await reopenResponse.json()).toMatchObject({
+      version: { version: 4, status: "published" },
+      publicUrl: "/cfp/devflow-conf-2027",
+    });
+
+    const detailResponse = await request("/api/cfp-builder/forms/frm_devflow_cfp_2027", { headers });
+    expect(detailResponse.status).toBe(200);
+    const detail = await detailResponse.json<{
+      form: { version: number; status: string };
+      selectedVersion: { version: number; status: string };
+      versions: Array<{ version: number }>;
+    }>();
+    expect(detail.form).toMatchObject({ version: 4, status: "published" });
+    expect(detail.selectedVersion).toMatchObject({ version: 4, status: "published" });
+    expect(detail.versions.map((version) => version.version)).toEqual([4, 3, 2, 1]);
+
+    const reopenedResponse = await request("/api/public/cfp/devflow-conf-2027");
+    expect(reopenedResponse.status).toBe(200);
+    const reopened = await reopenedResponse.json<{
+      form: { version: number; status: string; welcomeCopy: string | null };
+      fields: Array<{ id: string; key: string; label: string }>;
+    }>();
+    expect(reopened.form).toMatchObject({
+      version: 4,
+      status: "published",
+      welcomeCopy: closed.form.welcomeCopy,
+    });
+    expect(reopened.fields).toEqual(closed.fields);
   });
 });
