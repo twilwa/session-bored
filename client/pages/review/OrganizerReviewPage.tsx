@@ -124,7 +124,8 @@ function OrganizerReviewWorklist() {
 
   async function provisionReviewer(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     try {
       await reviewRequest(`/api/review/events/${eventId}/reviewers`, {
         method: "POST",
@@ -136,7 +137,7 @@ function OrganizerReviewWorklist() {
           roundIds: reviewerRoundIds,
         }),
       });
-      event.currentTarget.reset();
+      formElement.reset();
       setReviewerTrackIds([]);
       setReviewerRoundIds([]);
       setMessage("Reviewer added. Their password works immediately.");
@@ -148,7 +149,8 @@ function OrganizerReviewWorklist() {
 
   async function createRound(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     try {
       await reviewRequest(`/api/review/events/${eventId}/rounds`, {
         method: "POST",
@@ -160,7 +162,7 @@ function OrganizerReviewWorklist() {
           status: "open",
         }),
       });
-      event.currentTarget.reset();
+      formElement.reset();
       setMessage("Round created. It stays out of the committee’s way until you add reviewers.");
       await loadConfig();
     } catch (error) {
@@ -336,7 +338,7 @@ function OrganizerReviewWorklist() {
               <p className="section-label">ROUNDS & POOLS</p><h2>Available, never required.</h2>
               <p className="criterion-policy">Weight changes recalculate worklist averages. Removing a criterion preserves submitted score values but excludes it from aggregates. Types lock after scoring begins.</p>
               <div className="round-list">{config.rounds.map((round) => (
-                <article key={round.id}>
+                <article data-testid={`review-round-${round.id}`} key={round.id}>
                   <div><strong>{round.name}</strong><StatusChip tone={round.status === "open" ? "good" : "neutral"}>{round.status}</StatusChip></div>
                   <p>{round.anonymized ? "Blind review on" : "Speaker identity visible"} · {round.reviewerPool.length} reviewers</p>
                   <ul>{round.criteria.map((criterion) => (

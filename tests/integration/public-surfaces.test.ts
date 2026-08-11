@@ -201,7 +201,7 @@ describe("Public audience surfaces", () => {
     expect(body.facets.tracks).toContain("Developer Experience");
     expect(body.facets.formats).toContain("Lightning Talk (10 min)");
     expect(body.facets.rooms).toContain("Main Stage");
-    expect(body.facets.days).toContain("2027-05-13");
+    expect(body.facets.days).toEqual(["2027-05-12", "2027-05-13", "2027-05-14"]);
   });
 
   it("narrows sessions by title word and by speaker surname", async () => {

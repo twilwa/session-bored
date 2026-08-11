@@ -32,6 +32,21 @@ test("organizer review makes the coverage and decision sorts primary", async ({ 
   await expect(page.getByText("Priya Raman", { exact: true })).toBeVisible();
 });
 
+test("committee setup reports a newly created round without a client error", async ({ page }) => {
+  const name = `Browser setup round ${Date.now()}`;
+  await signIn(page, "sbek-organizer@example.com", "SbekTest!2027-org");
+  await page.getByRole("link", { name: "Review", exact: true }).click();
+  await page.getByText("Committee setup", { exact: true }).click();
+
+  const roundForm = page.getByRole("heading", { name: "Turn on another pass." }).locator("..");
+  await roundForm.getByLabel("Round name").fill(name);
+  await roundForm.getByRole("button", { name: "Create round" }).click();
+
+  await expect(page.getByText("Round created.", { exact: false })).toBeVisible();
+  await expect(page.getByTestId(/review-round-/).filter({ hasText: name })).toHaveCount(1);
+  await expect(page.getByText("Cannot read properties of null", { exact: false })).toHaveCount(0);
+});
+
 test("reviewer opens only their remit and posts to its durable thread", async ({ page }) => {
   await signIn(page, "sbek-reviewer@example.com", "SbekTest!2027-rev");
 
