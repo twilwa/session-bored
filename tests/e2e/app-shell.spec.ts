@@ -133,8 +133,8 @@ test("speaker shell shows only the signed-in speaker's work", async ({ page }) =
 
   await expect(page).toHaveURL(/\/speaker/);
   await expect(page.getByText("Priya Raman", { exact: true })).toBeVisible();
-  await expect(page.getByText("Taming 40-Minute CI", { exact: false })).toBeVisible();
-  await expect(page.getByText("Docs That Answer Back", { exact: false })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Taming 40-Minute CI", exact: false })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Docs That Answer Back", exact: false })).toHaveCount(0);
 
   await page.goto("/program");
   await expect(page.getByRole("navigation", { name: "Public navigation" }).getByRole("link", { name: "Speaker area" }))

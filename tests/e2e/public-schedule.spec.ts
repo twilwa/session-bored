@@ -35,17 +35,28 @@ async function placeDocsSession(page: Page, placement: Placement): Promise<void>
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ submissionIds: [submissionId], status: "accepted" }),
       });
+      const approved = await fetch(`/api/events/${eventId}/agenda/sessions/${sessionId}/content`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ contentStatus: "approved" }),
+      });
       const placed = await fetch(`/api/events/${eventId}/agenda/sessions/${sessionId}`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(placement),
       });
       const published = await fetch(`/api/events/${eventId}/agenda/publish`, { method: "POST" });
-      return { dispositionStatus: disposition.status, placedStatus: placed.status, publishedStatus: published.status };
+      return {
+        dispositionStatus: disposition.status,
+        approvalStatus: approved.status,
+        placedStatus: placed.status,
+        publishedStatus: published.status,
+      };
     },
     { eventId: EVENT_ID, submissionId: DOCS_SUBMISSION_ID, sessionId: DOCS_SESSION_ID, placement },
   );
   expect(result.dispositionStatus, "disposition accept failed").toBe(200);
+  expect(result.approvalStatus, "content approval failed").toBe(200);
   expect(result.placedStatus, "agenda placement failed").toBe(200);
   expect(result.publishedStatus, "agenda publish failed").toBe(200);
 }

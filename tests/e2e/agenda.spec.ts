@@ -155,4 +155,14 @@ test("organizer drags a session, resolves a clash, changes views, and publishes"
   await expect(page.getByText("2 approved agenda sessions published.")).toBeVisible();
   await page.goto("/program");
   await expect(page.getByRole("link", { name: "Taming 40-Minute CI", exact: false })).toBeVisible();
+
+  const cleanupStatus = await page.evaluate(async () => {
+    const response = await fetch("/api/review/submissions/sub_ci_monorepo/status", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ status: "under_review" }),
+    });
+    return response.status;
+  });
+  expect(cleanupStatus).toBe(200);
 });
