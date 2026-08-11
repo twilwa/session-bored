@@ -1,0 +1,19 @@
+tests/e2e/comms.spec.ts
+  s_6a9ec8710aa4d7::t_96d3bd9458bd97 13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "39c55741a5ae6f8f5781e46bee02ce9c09c5015b",
+  "prompts": {},
+  "sessions": {
+    "s_6a9ec8710aa4d7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fee1a-d4ee-72e1-b2a4-1239627fbec2",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
