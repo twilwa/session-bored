@@ -390,7 +390,7 @@ describe("AI-assisted review", () => {
     expect(generationCount).toBe(3);
   });
 
-  it("refuses a complete AI starting point until the reviewer changes a suggested value", async () => {
+  it("requires a human edit or confirmation for every AI-suggested score", async () => {
     await request("/api/health");
     const organizerCookie = await signIn("sbek-organizer@example.com", "SbekTest!2027-org");
     await request("/api/review/events/evt_devflow_conf_2027/ai-assistance", {
@@ -457,6 +457,25 @@ describe("AI-assisted review", () => {
       error: "human_score_choice_required",
     });
 
+    const confirmedResponse = await injectedApp.request(
+      reviewUrl,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          roundId: "rnd_initial_review",
+          scores: assistance.suggestedScores,
+          aiSuggestionId: assistance.suggestionId,
+          confirmedAiScoreCriterionIds: Object.keys(assistance.suggestedScores),
+        }),
+      },
+      env,
+    );
+    expect(confirmedResponse.status).toBe(200);
+    await expect(confirmedResponse.json()).resolves.toEqual(expect.objectContaining({
+      scores: assistance.suggestedScores,
+    }));
+
     const editedScores = { ...assistance.suggestedScores, crt_overall_rating: 3 };
     const editedResponse = await injectedApp.request(
       reviewUrl,
@@ -467,6 +486,8 @@ describe("AI-assisted review", () => {
           roundId: "rnd_initial_review",
           scores: editedScores,
           aiSuggestionId: assistance.suggestionId,
+          confirmedAiScoreCriterionIds: Object.keys(assistance.suggestedScores)
+            .filter((criterionId) => criterionId !== "crt_overall_rating"),
         }),
       },
       env,

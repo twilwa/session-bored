@@ -9,6 +9,9 @@ import {
   comments,
   createPublicId,
   events,
+  formats,
+  formVersionFields,
+  formVersions,
   people,
   reviewAssignments,
   reviewerRoundPools,
@@ -19,6 +22,7 @@ import {
   submissions,
   submissionSpeakers,
   submissionTracks,
+  submissionValues,
   tracks,
   type Role,
   users,
@@ -51,12 +55,15 @@ function requireRole(requiredRole: "organizer" | "reviewer") {
   });
 }
 
-function scoresMatch(
-  left: Record<string, string | number>,
-  right: Record<string, string | number>,
+function hasUnconfirmedSuggestedScores(
+  scores: Record<string, string | number>,
+  suggestedScores: Record<string, string | number>,
+  confirmedCriterionIds: Set<string>,
 ): boolean {
-  const keys = new Set([...Object.keys(left), ...Object.keys(right)]);
-  return [...keys].every((key) => left[key] === right[key]);
+  return Object.entries(suggestedScores).some(
+    ([criterionId, suggestion]) =>
+      scores[criterionId] === suggestion && !confirmedCriterionIds.has(criterionId),
+  );
 }
 
 interface ReviewQueueItem {
@@ -77,6 +84,16 @@ interface AggregateCriterion {
   weight: number | null;
 }
 
+const builtInProposalFieldKeys = new Set([
+  "abstract",
+  "audience_level",
+  "format",
+  "notes_for_reviewers",
+  "session_title",
+  "speaker_bio",
+  "track",
+]);
+
 export function computeAggregateScore(
   scores: Record<string, string | number>,
   criteria: AggregateCriterion[],
@@ -93,6 +110,30 @@ export function computeAggregateScore(
     totalWeight += weight;
   }
   return totalWeight === 0 ? null : weightedTotal / totalWeight;
+}
+
+async function recomputeRoundReviewAggregates(
+  database: ReturnType<typeof drizzle>,
+  roundId: string,
+): Promise<number> {
+  const [criteria, reviewRows] = await Promise.all([
+    database
+      .select()
+      .from(scorecardCriteria)
+      .where(eq(scorecardCriteria.roundId, roundId)),
+    database
+      .select({ id: reviews.id, scores: reviews.scores })
+      .from(reviews)
+      .innerJoin(reviewAssignments, eq(reviews.assignmentId, reviewAssignments.id))
+      .where(eq(reviewAssignments.roundId, roundId)),
+  ]);
+  for (const review of reviewRows) {
+    await database
+      .update(reviews)
+      .set({ aggregateScore: computeAggregateScore(review.scores ?? {}, criteria) })
+      .where(eq(reviews.id, review.id));
+  }
+  return reviewRows.length;
 }
 
 async function reviewerQueue(database: ReturnType<typeof drizzle>, reviewerUserId: string) {
@@ -232,20 +273,25 @@ reviewRoutes.get("/review/submissions/:submissionId", async (context) => {
     .select({
       id: submissions.id,
       eventId: submissions.eventId,
+      formId: submissions.formId,
+      formVersion: submissions.formVersion,
       title: submissions.title,
       abstract: submissions.abstract,
       status: submissions.status,
       audienceLevel: submissions.audienceLevel,
       notesForReviewers: submissions.notesForReviewers,
+      formatId: formats.id,
+      formatName: formats.name,
     })
     .from(submissions)
+    .leftJoin(formats, eq(submissions.formatId, formats.id))
     .where(eq(submissions.id, submissionId));
   if (submission === undefined) {
     return context.json({ error: "not_found" }, 404);
   }
 
   const roundId = scopedItem?.roundId ?? requestedRoundId;
-  const [commentRows, trackRows, criteria, reviewRows] = await Promise.all([
+  const [commentRows, trackRows, proposalAnswerRows, criteria, reviewRows] = await Promise.all([
     database
       .select({
         id: comments.id,
@@ -262,7 +308,31 @@ reviewRoutes.get("/review/submissions/:submissionId", async (context) => {
       .select({ id: tracks.id, name: tracks.name })
       .from(submissionTracks)
       .innerJoin(tracks, eq(submissionTracks.trackId, tracks.id))
-      .where(eq(submissionTracks.submissionId, submissionId)),
+      .where(eq(submissionTracks.submissionId, submissionId))
+      .orderBy(asc(tracks.sortOrder)),
+    database
+      .select({
+        valueId: submissionValues.id,
+        key: formVersionFields.key,
+        label: formVersionFields.label,
+        value: submissionValues.value,
+      })
+      .from(formVersionFields)
+      .innerJoin(formVersions, eq(formVersionFields.formVersionId, formVersions.id))
+      .leftJoin(
+        submissionValues,
+        and(
+          eq(submissionValues.fieldId, formVersionFields.stableFieldId),
+          eq(submissionValues.submissionId, submissionId),
+        ),
+      )
+      .where(
+        and(
+          eq(formVersions.formId, submission.formId),
+          eq(formVersions.version, submission.formVersion),
+        ),
+      )
+      .orderBy(asc(formVersionFields.sortOrder)),
     roundId === undefined
       ? Promise.resolve([])
       : database
@@ -305,11 +375,25 @@ reviewRoutes.get("/review/submissions/:submissionId", async (context) => {
       .where(eq(submissionSpeakers.submissionId, submissionId));
 
   return context.json({
-    ...submission,
+    id: submission.id,
+    eventId: submission.eventId,
+    title: submission.title,
+    abstract: submission.abstract,
+    status: submission.status,
+    audienceLevel: submission.audienceLevel,
+    notesForReviewers: submission.notesForReviewers,
+    format: submission.formatId === null
+      ? null
+      : { id: submission.formatId, name: submission.formatName },
     round: scopedItem === undefined
       ? null
       : { id: scopedItem.roundId, name: scopedItem.roundName, anonymized: scopedItem.anonymized },
     tracks: trackRows,
+    answers: anonymized
+      ? []
+      : proposalAnswerRows
+        .filter((answer) => answer.valueId !== null && !builtInProposalFieldKeys.has(answer.key))
+        .map(({ key, label, value }) => ({ key, label, value })),
     participants,
     criteria,
     reviews: reviewRows
@@ -664,6 +748,123 @@ reviewRoutes.post(
   },
 );
 
+reviewRoutes.patch(
+  "/review/criteria/:criterionId",
+  requireRole("organizer"),
+  async (context) => {
+    const payload = await context.req.json<{
+      label?: unknown;
+      criterionType?: unknown;
+      options?: unknown;
+      weight?: unknown;
+      required?: unknown;
+    }>();
+    if (Object.values(payload).every((value) => value === undefined)) {
+      return context.json({ error: "invalid_criterion" }, 400);
+    }
+    const database = drizzle(context.env.DB);
+    const criterionId = context.req.param("criterionId");
+    const [criterion] = await database
+      .select()
+      .from(scorecardCriteria)
+      .where(eq(scorecardCriteria.id, criterionId));
+    if (criterion === undefined) {
+      return context.json({ error: "not_found" }, 404);
+    }
+
+    const criterionTypes = ["numeric", "dropdown", "free_text"] as const;
+    const criterionType = payload.criterionType === undefined
+      ? criterion.criterionType
+      : criterionTypes.find((item) => item === payload.criterionType);
+    const label = payload.label === undefined
+      ? criterion.label
+      : typeof payload.label === "string" ? payload.label.trim() : "";
+    const options = payload.options === undefined
+      ? criterion.options
+      : payload.options === null
+        ? null
+        : Array.isArray(payload.options)
+          ? payload.options
+            .filter((option): option is string => typeof option === "string")
+            .map((option) => option.trim())
+            .filter(Boolean)
+          : undefined;
+    const weight = payload.weight === undefined
+      ? criterion.weight
+      : payload.weight === null
+        ? null
+        : typeof payload.weight === "number" && Number.isFinite(payload.weight) && payload.weight > 0
+          ? payload.weight
+          : undefined;
+    const required = payload.required === undefined
+      ? criterion.required
+      : typeof payload.required === "boolean" ? payload.required : undefined;
+    if (
+      criterionType === undefined ||
+      label.length === 0 ||
+      options === undefined ||
+      weight === undefined ||
+      required === undefined ||
+      (criterionType === "dropdown" && (options?.length ?? 0) === 0)
+    ) {
+      return context.json({ error: "invalid_criterion" }, 400);
+    }
+
+    const siblingCriteria = await database
+      .select({ id: scorecardCriteria.id, label: scorecardCriteria.label })
+      .from(scorecardCriteria)
+      .where(eq(scorecardCriteria.roundId, criterion.roundId));
+    if (siblingCriteria.some((item) => item.id !== criterionId && item.label === label)) {
+      return context.json({ error: "criterion_label_conflict" }, 409);
+    }
+    if (criterionType !== criterion.criterionType) {
+      const [recordedReview] = await database
+        .select({ id: reviews.id })
+        .from(reviews)
+        .innerJoin(reviewAssignments, eq(reviews.assignmentId, reviewAssignments.id))
+        .where(eq(reviewAssignments.roundId, criterion.roundId))
+        .limit(1);
+      if (recordedReview !== undefined) {
+        return context.json({ error: "criterion_type_locked" }, 409);
+      }
+    }
+
+    await database
+      .update(scorecardCriteria)
+      .set({ label, criterionType, options, weight, required })
+      .where(eq(scorecardCriteria.id, criterionId));
+    const [savedCriterion] = await database
+      .select()
+      .from(scorecardCriteria)
+      .where(eq(scorecardCriteria.id, criterionId));
+    const recomputedReviews = criterionType !== criterion.criterionType || weight !== criterion.weight
+      ? await recomputeRoundReviewAggregates(database, criterion.roundId)
+      : 0;
+    return context.json({ criterion: savedCriterion, recomputedReviews });
+  },
+);
+
+reviewRoutes.delete(
+  "/review/criteria/:criterionId",
+  requireRole("organizer"),
+  async (context) => {
+    const database = drizzle(context.env.DB);
+    const criterionId = context.req.param("criterionId");
+    const [criterion] = await database
+      .select({ id: scorecardCriteria.id, roundId: scorecardCriteria.roundId })
+      .from(scorecardCriteria)
+      .where(eq(scorecardCriteria.id, criterionId));
+    if (criterion === undefined) {
+      return context.json({ error: "not_found" }, 404);
+    }
+    await database.delete(scorecardCriteria).where(eq(scorecardCriteria.id, criterionId));
+    return context.json({
+      removedCriterionId: criterionId,
+      recomputedReviews: await recomputeRoundReviewAggregates(database, criterion.roundId),
+    });
+  },
+);
+
 reviewRoutes.post(
   "/review/rounds/:roundId/assignments",
   requireRole("organizer"),
@@ -766,6 +967,7 @@ reviewRoutes.post(
       scores?: unknown;
       comment?: unknown;
       aiSuggestionId?: unknown;
+      confirmedAiScoreCriterionIds?: unknown;
     }>();
     if (
       typeof payload.roundId !== "string" ||
@@ -812,12 +1014,17 @@ reviewRoutes.post(
       if (startingPoint === undefined) {
         return context.json({ error: "invalid_ai_starting_point" }, 400);
       }
-      if (scoresMatch(scores, startingPoint.scores)) {
+      const confirmedCriterionIds = new Set(
+        Array.isArray(payload.confirmedAiScoreCriterionIds)
+          ? payload.confirmedAiScoreCriterionIds.filter(
+            (criterionId): criterionId is string => typeof criterionId === "string",
+          )
+          : [],
+      );
+      if (hasUnconfirmedSuggestedScores(scores, startingPoint.scores, confirmedCriterionIds)) {
         return context.json({ error: "human_score_choice_required" }, 422);
       }
     }
-    const aggregateScore = computeAggregateScore(scores, criteria);
-
     let assignmentId = scopedItem.assignmentId;
     if (assignmentId === null) {
       assignmentId = createPublicId("asn");
@@ -845,6 +1052,18 @@ reviewRoutes.post(
       }
       assignmentId = assignment.id;
     }
+    const [existingReview] = await database
+      .select({ scores: reviews.scores })
+      .from(reviews)
+      .where(eq(reviews.assignmentId, assignmentId));
+    const currentCriterionIds = new Set(criteria.map((criterion) => criterion.id));
+    const historicalScores = Object.fromEntries(
+      Object.entries(existingReview?.scores ?? {}).filter(
+        ([criterionId]) => !currentCriterionIds.has(criterionId),
+      ),
+    );
+    const savedScores = { ...historicalScores, ...scores };
+    const aggregateScore = computeAggregateScore(savedScores, criteria);
     const reviewId = createPublicId("rev");
     const submittedAt = new Date();
     await database
@@ -853,7 +1072,7 @@ reviewRoutes.post(
         id: reviewId,
         assignmentId,
         authorUserId: user.id,
-        scores,
+        scores: savedScores,
         comment: typeof payload.comment === "string" ? payload.comment.trim() : null,
         aggregateScore,
         submittedAt,
@@ -861,7 +1080,7 @@ reviewRoutes.post(
       .onConflictDoUpdate({
         target: reviews.assignmentId,
         set: {
-          scores,
+          scores: savedScores,
           comment: typeof payload.comment === "string" ? payload.comment.trim() : null,
           aggregateScore,
           submittedAt,

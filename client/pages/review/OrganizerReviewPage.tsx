@@ -170,6 +170,7 @@ function OrganizerReviewWorklist() {
 
   async function createCriterion(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
+    const formElement = event.currentTarget;
     const form = new FormData(event.currentTarget);
     const roundId = String(form.get("roundId"));
     try {
@@ -183,11 +184,47 @@ function OrganizerReviewWorklist() {
           required: form.get("required") === "on",
         }),
       });
-      event.currentTarget.reset();
+      formElement.reset();
       setMessage("Scorecard criterion added.");
       await loadConfig();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "The criterion could not be added.");
+    }
+  }
+
+  async function updateCriterion(
+    event: FormEvent<HTMLFormElement>,
+    criterion: ReviewCriterion,
+  ): Promise<void> {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const weight = String(form.get("weight") ?? "").trim();
+    try {
+      await reviewRequest(`/api/review/criteria/${criterion.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          label: form.get("label"),
+          criterionType: form.get("criterionType"),
+          options: String(form.get("options") ?? "").split(",").map((item) => item.trim()).filter(Boolean),
+          weight: weight === "" ? null : Number(weight),
+          required: form.get("required") === "on",
+        }),
+      });
+      setMessage("Criterion updated. Current rubric weights now drive the worklist.");
+      await Promise.all([loadConfig(), loadWorklist()]);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "The criterion could not be updated.");
+    }
+  }
+
+  async function removeCriterion(criterion: ReviewCriterion): Promise<void> {
+    if (!window.confirm(`Remove “${criterion.label}” from this round's scorecard?`)) return;
+    try {
+      await reviewRequest(`/api/review/criteria/${criterion.id}`, { method: "DELETE" });
+      setMessage("Criterion removed. Historical score values were preserved and aggregates recalculated.");
+      await Promise.all([loadConfig(), loadWorklist()]);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "The criterion could not be removed.");
     }
   }
 
@@ -297,7 +334,32 @@ function OrganizerReviewWorklist() {
 
             <section className="setup-card rounds-card">
               <p className="section-label">ROUNDS & POOLS</p><h2>Available, never required.</h2>
-              <div className="round-list">{config.rounds.map((round) => <article key={round.id}><div><strong>{round.name}</strong><StatusChip tone={round.status === "open" ? "good" : "neutral"}>{round.status}</StatusChip></div><p>{round.anonymized ? "Blind review on" : "Speaker identity visible"} · {round.reviewerPool.length} reviewers</p><ul>{round.criteria.map((criterion) => <li key={criterion.id}>{criterion.label}<span>{criterion.criterionType.replace("_", " ")}{criterion.weight === null ? "" : ` · ×${criterion.weight}`}</span></li>)}</ul></article>)}</div>
+              <p className="criterion-policy">Weight changes recalculate worklist averages. Removing a criterion preserves submitted score values but excludes it from aggregates. Types lock after scoring begins.</p>
+              <div className="round-list">{config.rounds.map((round) => (
+                <article key={round.id}>
+                  <div><strong>{round.name}</strong><StatusChip tone={round.status === "open" ? "good" : "neutral"}>{round.status}</StatusChip></div>
+                  <p>{round.anonymized ? "Blind review on" : "Speaker identity visible"} · {round.reviewerPool.length} reviewers</p>
+                  <ul>{round.criteria.map((criterion) => (
+                    <li className="criterion-row" key={criterion.id}>
+                      <div><strong>{criterion.label}</strong><span>{criterion.criterionType.replace("_", " ")}{criterion.weight === null ? "" : ` · ×${criterion.weight}`}</span></div>
+                      <details>
+                        <summary>Edit</summary>
+                        <form onSubmit={(event) => void updateCriterion(event, criterion)}>
+                          <label className="review-field"><span>Criterion label</span><input defaultValue={criterion.label} name="label" required /></label>
+                          <label className="review-field"><span>Type</span><select defaultValue={criterion.criterionType} name="criterionType"><option value="numeric">Numeric</option><option value="dropdown">Dropdown</option><option value="free_text">Free text</option></select></label>
+                          <label className="review-field"><span>Dropdown options · comma separated</span><input defaultValue={criterion.options?.join(", ") ?? ""} name="options" /></label>
+                          <label className="review-field"><span>Weight</span><input defaultValue={criterion.weight ?? ""} min="0.1" name="weight" step="0.1" type="number" /></label>
+                          <label className="check-line"><input defaultChecked={criterion.required} name="required" type="checkbox" /> Required</label>
+                          <div className="criterion-actions">
+                            <Button type="submit">Save changes</Button>
+                            <Button onClick={() => void removeCriterion(criterion)} tone="quiet" type="button">Remove criterion</Button>
+                          </div>
+                        </form>
+                      </details>
+                    </li>
+                  ))}</ul>
+                </article>
+              ))}</div>
             </section>
 
             <form className="setup-card setup-form" onSubmit={(event) => void createRound(event)}>

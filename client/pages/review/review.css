@@ -88,6 +88,13 @@
 .round-list ul { list-style: none; margin: 0; padding: 0; }
 .round-list li { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-top: 1px solid var(--line); font-size: 0.82rem; }
 .round-list li span { color: var(--muted); }
+.criterion-policy { color: var(--muted); font-size: 0.78rem; }
+.round-list .criterion-row { display: grid; }
+.criterion-row > div { display: flex; justify-content: space-between; gap: 12px; }
+.criterion-row details { min-width: 0; }
+.criterion-row summary { color: var(--blue); font-weight: 800; cursor: pointer; }
+.criterion-row form { margin-top: 10px; border: 1px solid var(--line); background: #ebe7dd; padding: 14px; }
+.criterion-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 
 .review-back { display: inline-block; margin-bottom: 26px; color: var(--blue); font-weight: 800; }
 .review-detail__header { display: flex; justify-content: space-between; gap: 30px; padding-bottom: 30px; border-bottom: 1px solid var(--ink); }
@@ -96,6 +103,17 @@
 .review-detail__grid { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(270px, 0.42fr); gap: clamp(24px, 5vw, 64px); margin-top: 34px; }
 .proposal-copy { font-family: Georgia, serif; font-size: 1.18rem; line-height: 1.7; }
 .proposal-copy .section-label { font-family: monospace; font-size: 0.7rem; }
+.proposal-facts,
+.proposal-answers dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1px; margin: 28px 0 0; background: var(--ink); border: 1px solid var(--ink); }
+.proposal-facts > div,
+.proposal-answers dl > div { min-width: 0; background: var(--white); padding: 14px 16px; }
+.proposal-facts dt,
+.proposal-answers dt { font: 0.65rem monospace; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+.proposal-facts dd,
+.proposal-answers dd { margin: 3px 0 0; overflow-wrap: anywhere; }
+.proposal-answers { margin-top: 32px; }
+.proposal-answers h2 { margin: 0; font: 1.6rem Georgia, serif; }
+.proposal-answers dl { grid-template-columns: 1fr; margin-top: 12px; }
 .proposal-copy aside { margin-top: 28px; border-left: 6px solid var(--signal); background: var(--white); padding: 18px 22px; font-family: "Avenir Next", "Segoe UI", sans-serif; font-size: 0.9rem; }
 .ai-review-assistance { margin-bottom: 34px; border: 1px solid var(--blue); background: #edf2ff; padding: clamp(20px, 3vw, 28px); box-shadow: 7px 7px 0 var(--blue); }
 .ai-review-assistance__heading { display: flex; justify-content: space-between; gap: 20px; align-items: start; }
@@ -132,6 +150,8 @@
 .scorecard { display: grid; }
 .scorecard h2 { margin: 0; font: 1.7rem Georgia, serif; }
 .scorecard > div:first-child > p:last-child { color: var(--muted); font-size: 0.82rem; }
+.ai-score-confirmation { display: flex; gap: 8px; align-items: start; margin: -7px 0 15px; color: var(--blue); font-size: 0.78rem; font-weight: 700; }
+.ai-score-confirmation input { margin-top: 2px; accent-color: var(--blue); }
 .recorded-reviews article { padding: 13px 0; border-top: 1px solid var(--line); }
 .recorded-reviews article > div { display: flex; justify-content: space-between; gap: 12px; }
 .recorded-reviews article > div span { color: var(--blue); font: 1.2rem Georgia, serif; }

@@ -9,6 +9,12 @@ import type {
 import { Button, LoadingState, StatusChip, Toast } from "../../components/ui.tsx";
 import { ReviewLink, reviewRequest } from "./reviewClient.tsx";
 
+function displayAnswer(value: ReviewSubmissionDetail["answers"][number]["value"]): string {
+  if (Array.isArray(value)) return value.join(", ");
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  return value === null ? "No answer" : String(value);
+}
+
 function ScoreField({
   criterion,
   value,
@@ -78,16 +84,24 @@ export function SubmissionReviewPage({
   const [comment, setComment] = useState("");
   const [scores, setScores] = useState<Record<string, string | number>>({});
   const [aiStartingPointId, setAIStartingPointId] = useState<string | null>(null);
+  const [confirmedAiScoreCriterionIds, setConfirmedAiScoreCriterionIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [reviewComment, setReviewComment] = useState("");
   const [message, setMessage] = useState<string | null>(null);
 
-  async function load(): Promise<void> {
+  async function load({ hydrateScorecard = false }: { hydrateScorecard?: boolean } = {}): Promise<void> {
     try {
       const roundQuery = roundId === undefined ? "" : `?roundId=${encodeURIComponent(roundId)}`;
       const loadedDetail = await reviewRequest<ReviewSubmissionDetail>(
         `/api/review/submissions/${submissionId}${roundQuery}`,
       );
       setDetail(loadedDetail);
+      if (hydrateScorecard) {
+        const savedReview = role === "reviewer" ? loadedDetail.reviews[0] : undefined;
+        setScores(savedReview?.scores ?? {});
+        setReviewComment(savedReview?.comment ?? "");
+      }
       if (role === "reviewer" && loadedDetail.round !== null) {
         try {
           const availability = await reviewRequest<AIReviewAssistance>(
@@ -109,7 +123,11 @@ export function SubmissionReviewPage({
     }
   }
 
-  useEffect(() => { void load(); }, [submissionId, roundId]);
+  useEffect(() => {
+    setAIStartingPointId(null);
+    setConfirmedAiScoreCriterionIds(new Set());
+    void load({ hydrateScorecard: true });
+  }, [submissionId, roundId]);
 
   async function requestAssistance(): Promise<void> {
     if (detail?.round === null || detail?.round === undefined) return;
@@ -155,11 +173,13 @@ export function SubmissionReviewPage({
           scores,
           comment: reviewComment,
           aiSuggestionId: aiStartingPointId,
+          confirmedAiScoreCriterionIds: [...confirmedAiScoreCriterionIds],
         }),
       });
       setAIStartingPointId(null);
+      setConfirmedAiScoreCriterionIds(new Set());
       setMessage("Scorecard saved. Your discussion stays separate and editable.");
-      await load();
+      await load({ hydrateScorecard: true });
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "The scorecard could not be saved.");
     }
@@ -231,12 +251,13 @@ export function SubmissionReviewPage({
                 onClick={() => {
                   setScores({ ...assistance.suggestedScores });
                   setAIStartingPointId(assistance.suggestionId);
+                  setConfirmedAiScoreCriterionIds(new Set());
                 }}
                 type="button"
               >
                 Use as a starting point
               </Button>
-              <small>{assistance.attribution}. Change at least one suggested value before submitting.</small>
+              <small>{assistance.attribution}. Change or explicitly confirm each suggested value before submitting.</small>
             </section>
           ) : null}
           {role === "reviewer" && assistance?.status === "unavailable" ? (
@@ -249,6 +270,24 @@ export function SubmissionReviewPage({
           <article className="proposal-copy">
             <p className="section-label">THE PROPOSAL</p>
             <p>{detail.abstract}</p>
+            <dl className="proposal-facts">
+              <div><dt>Format</dt><dd>{detail.format?.name ?? "Not specified"}</dd></div>
+              <div><dt>Audience level</dt><dd>{detail.audienceLevel ?? "Not specified"}</dd></div>
+              <div><dt>Tracks</dt><dd>{detail.tracks.map((track) => track.name).join(", ") || "Not specified"}</dd></div>
+            </dl>
+            {detail.answers.length === 0 ? null : (
+              <section className="proposal-answers" aria-labelledby="proposal-answers-heading">
+                <h2 id="proposal-answers-heading">Submitted answers</h2>
+                <dl>
+                  {detail.answers.map((answer) => (
+                    <div key={answer.key}>
+                      <dt>{answer.label}</dt>
+                      <dd>{displayAnswer(answer.value)}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </section>
+            )}
             {detail.notesForReviewers === null ? null : <aside><strong>Reviewer note</strong><p>{detail.notesForReviewers}</p></aside>}
           </article>
           <section className="discussion-panel" aria-labelledby="discussion-heading">
@@ -286,17 +325,46 @@ export function SubmissionReviewPage({
           </section>
           {role === "reviewer" && detail.round !== null ? (
             <form className="scorecard" onSubmit={(event) => void submitScorecard(event)}>
-              <div><p className="section-label">LIGHTWEIGHT SCORECARD</p><h2>{detail.round.name}</h2><p>Conversation comes first. Ratings help order the meeting.</p></div>
-              {detail.criteria.map((criterion) => (
-                <ScoreField
-                  criterion={criterion}
-                  key={criterion.id}
-                  onChange={(value) => setScores((current) => ({ ...current, [criterion.id]: value }))}
-                  value={scores[criterion.id]}
-                />
-              ))}
+              <div>
+                <p className="section-label">LIGHTWEIGHT SCORECARD</p>
+                <h2>{detail.round.name}</h2>
+                {detail.reviews.length === 0
+                  ? <p>Conversation comes first. Ratings help order the meeting.</p>
+                  : <p className="scorecard__state">Editing saved scorecard</p>}
+              </div>
+              {detail.criteria.map((criterion) => {
+                const suggestion = assistance?.status === "ready"
+                  ? assistance.suggestedScores[criterion.id]
+                  : undefined;
+                const needsConfirmation = aiStartingPointId !== null &&
+                  suggestion !== undefined && scores[criterion.id] === suggestion;
+                return (
+                  <div key={criterion.id}>
+                    <ScoreField
+                      criterion={criterion}
+                      onChange={(value) => setScores((current) => ({ ...current, [criterion.id]: value }))}
+                      value={scores[criterion.id]}
+                    />
+                    {needsConfirmation ? (
+                      <label className="ai-score-confirmation">
+                        <input
+                          checked={confirmedAiScoreCriterionIds.has(criterion.id)}
+                          onChange={(event) => setConfirmedAiScoreCriterionIds((current) => {
+                            const next = new Set(current);
+                            if (event.target.checked) next.add(criterion.id);
+                            else next.delete(criterion.id);
+                            return next;
+                          })}
+                          type="checkbox"
+                        />
+                        <span>I confirm {criterion.label} as my choice</span>
+                      </label>
+                    ) : null}
+                  </div>
+                );
+              })}
               <label className="review-field"><span>Scorecard note</span><textarea onChange={(event) => setReviewComment(event.target.value)} rows={3} value={reviewComment} /></label>
-              <Button type="submit">Save scorecard</Button>
+              <Button type="submit">{detail.reviews.length === 0 ? "Save scorecard" : "Update scorecard"}</Button>
             </form>
           ) : null}
           {role === "organizer" ? (
