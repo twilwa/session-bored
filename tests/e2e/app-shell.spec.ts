@@ -1,6 +1,6 @@
 // ABOUTME: Verifies Greenroom's public, organizer, reviewer, and speaker shells in a real browser.
 // ABOUTME: Checks seeded visibility, scoped navigation, password login, and 375-pixel readability.
-import { expect, test } from "@playwright/test";
+import { expect, test, type Route } from "@playwright/test";
 import { formatFullDateTime } from "../../client/pages/public/shared.ts";
 
 test("public CFP is populated and mobile readable", async ({ page }) => {
@@ -37,6 +37,41 @@ test("public program shows a published fixture session", async ({ page }) => {
   await sessionLink.click();
   await expect(page).toHaveURL(/\/program\/ses_docs_retrieval$/);
   await expect(page.getByText("Docs That Answer Back", { exact: false })).toBeVisible();
+});
+
+test("returning to a page after leaving mid-request starts a clean load", async ({ page }) => {
+  let requestCount = 0;
+  const heldRequests: Route[] = [];
+  const sessionsPattern = "**/api/public/events/*/sessions";
+  await page.route(sessionsPattern, async (route) => {
+    requestCount += 1;
+    if (requestCount === 1) {
+      heldRequests.push(route);
+      return;
+    }
+    await route.continue();
+  });
+
+  try {
+    await page.goto("/program");
+    await expect(page.getByLabel("Loading program")).toBeVisible();
+
+    await page.evaluate(() => {
+      window.history.pushState({}, "", "/program/ses_docs_retrieval");
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    });
+    await expect.poll(() => requestCount).toBeGreaterThanOrEqual(2);
+    await expect(page.getByText("Docs That Answer Back", { exact: false })).toBeVisible();
+
+    await page.goBack();
+    await expect(page).toHaveURL(/\/program$/);
+    await expect.poll(() => requestCount).toBeGreaterThanOrEqual(3);
+    await expect(page.getByLabel("Loading program")).toHaveCount(0);
+    await expect(page.getByText("Docs That Answer Back", { exact: false })).toBeVisible();
+  } finally {
+    await heldRequests[0]?.abort().catch(() => undefined);
+    await page.unroute(sessionsPattern);
+  }
 });
 
 test("organizer password opens the populated operations shell", async ({ page }) => {
@@ -84,6 +119,29 @@ test("organizer password opens the populated operations shell", async ({ page })
   expect((await page.request.get("/api/session")).status()).toBe(401);
 });
 
+test("a failed organizer load clears loading, explains the failure, and can retry", async ({ page }) => {
+  let requestCount = 0;
+  await page.route("**/api/events", async (route) => {
+    requestCount += 1;
+    if (requestCount === 1) {
+      await route.fulfill({ status: 500, body: "forced failure" });
+      return;
+    }
+    await route.continue();
+  });
+
+  await page.goto("/login");
+  await page.getByLabel("Email").fill("sbek-organizer@example.com");
+  await page.getByLabel("Password").fill("SbekTest!2027-org");
+  await page.getByRole("button", { name: "Sign in" }).click();
+
+  await expect(page.getByRole("alert")).toContainText("Organizer workspace could not be loaded.");
+  await expect(page.getByLabel("Loading organizer workspace")).toHaveCount(0);
+  await page.getByRole("button", { name: "Try again" }).click();
+  await expect(page.getByRole("heading", { name: "DevFlow Conf 2027" })).toBeVisible();
+  expect(requestCount).toBeGreaterThanOrEqual(2);
+});
+
 test("speaker account with proposals and no portal profile links to the submitter area", async ({ page }) => {
   const unique = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   const email = `header-submitter-${unique}@example.com`;
@@ -106,14 +164,14 @@ test("speaker account with proposals and no portal profile links to the submitte
   await expect(nav.getByRole("link", { name: "Submitter area" })).toHaveAttribute("href", "/submitter");
 });
 
-test("reviewer sees exactly one assignment and no organizer navigation", async ({ page }) => {
+test("reviewer sees their review queue and no organizer navigation", async ({ page }) => {
   await page.goto("/login");
   await page.getByLabel("Email").fill("sbek-reviewer@example.com");
   await page.getByLabel("Password").fill("SbekTest!2027-rev");
   await page.getByRole("button", { name: "Sign in" }).click();
 
   await expect(page).toHaveURL(/\/reviewer/);
-  await expect(page.getByText("1 assigned proposal", { exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Your review queue" })).toBeVisible();
   await expect(page.getByText("Taming 40-Minute CI", { exact: false })).toBeVisible();
   await expect(page.getByRole("link", { name: "Organizer" })).toHaveCount(0);
 

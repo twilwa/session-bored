@@ -123,6 +123,7 @@ export function ProgramPage({ sessionId }: { sessionId: string | undefined }) {
   const [data, setData] = useState<PublicSessionsResponse | null>(null);
   const [error, setError] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [retryToken, setRetryToken] = useState(0);
 
   useEffect(() => {
     writeFiltersToUrl(filters);
@@ -153,7 +154,7 @@ export function ProgramPage({ sessionId }: { sessionId: string | undefined }) {
     return () => {
       active = false;
     };
-  }, [filters]);
+  }, [filters, retryToken]);
 
   const facets: PublicEventFacets | null = data?.facets ?? null;
   const timezone = facets?.event.timezone ?? "UTC";
@@ -247,7 +248,11 @@ export function ProgramPage({ sessionId }: { sessionId: string | undefined }) {
         {loading ? <LoadingState label="Loading program" /> : null}
         {error ? (
           <p className="program-error" role="alert">
-            The program could not be loaded. <Link href="/program">Try again</Link>.
+            The program could not be loaded.{" "}
+            <button className="text-link" onClick={() => setRetryToken((token) => token + 1)} type="button">
+              Try again
+            </button>
+            .
           </p>
         ) : null}
         {!loading && !error && visibleItems.length === 0 ? (

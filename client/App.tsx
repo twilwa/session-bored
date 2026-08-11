@@ -178,7 +178,12 @@ function OrganizerPage() {
     submissions: SubmissionRecord[];
     cfp: CfpPayload;
   } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [retryToken, setRetryToken] = useState(0);
   useEffect(() => {
+    let active = true;
+    setData(null);
+    setError(null);
     Promise.all([
       getJson<{ items: EventRecord[] }>("/api/events"),
       getJson<{ items: NamedRecord[] }>("/api/events/evt_devflow_conf_2027/tracks"),
@@ -187,17 +192,32 @@ function OrganizerPage() {
       getJson<CfpPayload>("/api/public/cfp/devflow-conf-2027"),
     ]).then(([eventData, trackData, formatData, submissionData, cfp]) => {
       const event = eventData.items[0];
-      if (event !== undefined) {
+      if (active && event !== undefined) {
         setData({ event, tracks: trackData.items, formats: formatData.items, submissions: submissionData.items, cfp });
       }
-    }).catch(() => undefined);
-  }, []);
+    }).catch((caught: unknown) => {
+      if (active) {
+        const detail = caught instanceof Error && caught.message === "Request timed out. Try again."
+          ? ` ${caught.message}`
+          : "";
+        setError(`Organizer workspace could not be loaded.${detail}`);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [retryToken]);
   const deadline = data?.cfp.form.closeAt === null || data?.cfp.form.closeAt === undefined
     ? "No deadline set"
     : formatFullDateTime(new Date(data.cfp.form.closeAt).getTime(), data.cfp.event.timezone);
   return (
     <RoleShell role="organizer">
-      {data === null ? <LoadingState label="Loading organizer workspace" /> : (
+      {data === null ? error === null ? <LoadingState label="Loading organizer workspace" /> : (
+        <section className="state-card" role="alert">
+          <p>{error}</p>
+          <Button onClick={() => setRetryToken((token) => token + 1)} tone="signal">Try again</Button>
+        </section>
+      ) : (
         <>
           <header className="workspace-header"><div><p className="eyebrow">PROGRAM CONTROL / LIVE</p><h1>{data.event.name}</h1><p>{data.event.venue} · {data.event.timezone}</p></div><StatusChip tone="good">CFP open</StatusChip></header>
           <section className="metric-strip">
@@ -232,13 +252,7 @@ function ReviewerPage({ path }: { path: string }) {
   );
 }
 
-export function App() {
-  const [path, setPath] = useState(window.location.pathname);
-  useEffect(() => {
-    const update = () => setPath(window.location.pathname);
-    window.addEventListener("popstate", update);
-    return () => window.removeEventListener("popstate", update);
-  }, []);
+function RoutedPage({ path }: { path: string }) {
   if (path === "/login") return <LoginPage />;
   if (path.startsWith("/cfp/")) return <CfpSubmissionPage path={path} />;
   if (path.startsWith("/organizer/cfp")) return <RoleShell role="organizer"><CfpBuilderPage /></RoleShell>;
@@ -264,4 +278,14 @@ export function App() {
   if (path.startsWith("/speaker")) return <RoleShell role="speaker"><PortalPage /></RoleShell>;
   if (path.startsWith("/submitter")) return <SubmitterDashboardPage />;
   return <HomePage />;
+}
+
+export function App() {
+  const [path, setPath] = useState(window.location.pathname);
+  useEffect(() => {
+    const update = () => setPath(window.location.pathname);
+    window.addEventListener("popstate", update);
+    return () => window.removeEventListener("popstate", update);
+  }, []);
+  return <RoutedPage key={path} path={path} />;
 }
