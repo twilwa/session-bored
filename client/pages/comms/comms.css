@@ -1,15 +1,32 @@
-/* ABOUTME: Styles the organizer communications page - the reminder review queue and dispatch log. */
-/* ABOUTME: Keeps the drafted-versus-sent distinction visible so nothing reads as already told. */
+/* ABOUTME: Styles event template authoring, personalized previews, the review queue, and dispatch history. */
+/* ABOUTME: Keeps editable copy, drafted messages, and completed sends visually distinct. */
 .comms-header h1 { max-width: 780px; }
 .comms-failed { border-left: 6px solid #9b3417; }
+.comms-template-help { max-width: 760px; color: var(--muted); }
+.comms-template-editor { max-width: 760px; margin-top: 22px; padding: 22px; border: 1px solid var(--ink); background: var(--paper); box-shadow: 8px 8px 0 var(--blue); }
+.comms-template-editor__heading { display: flex; justify-content: space-between; gap: 18px; align-items: start; margin-bottom: 20px; }
+.comms-template-editor__heading h3 { margin: 0; font: 1.5rem Georgia, serif; }
+.comms-template-editor__body { min-height: 180px; resize: vertical; }
+.comms-template-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .comms-draft-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 18px; margin-top: 18px; }
 .comms-draft { min-width: 0; padding: 18px; border: 1px solid var(--ink); background: var(--paper); display: grid; gap: 10px; }
 .comms-draft > p { margin: 0; overflow-wrap: anywhere; }
 .comms-draft__actions { display: flex; gap: 10px; flex-wrap: wrap; }
-.comms-preview { display: grid; gap: 14px; max-width: 520px; }
+.comms-preview { display: grid; gap: 14px; max-width: 760px; }
+.comms-template-kind { justify-self: start; margin: -6px 0 4px; padding: 5px 9px; border: 1px solid var(--ink); background: var(--signal); font: 0.68rem monospace; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; }
+.comms-recipient-picker { max-height: 280px; overflow-y: auto; margin: 4px 0 10px; padding: 0; border: 1px solid var(--ink); }
+.comms-recipient-picker legend { margin-left: 10px; padding: 0 7px; font: 0.68rem monospace; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
+.comms-recipient-picker > label { display: flex; gap: 11px; align-items: center; padding: 11px 13px; border-bottom: 1px solid var(--line); cursor: pointer; }
+.comms-recipient-picker > label:last-child { border-bottom: 0; }
+.comms-recipient-picker > label:has(input:checked) { background: #e7ecff; }
+.comms-recipient-picker input { width: 17px; height: 17px; accent-color: var(--blue); }
+.comms-recipient-picker span { display: grid; min-width: 0; }
+.comms-recipient-picker small { overflow-wrap: anywhere; color: var(--muted); }
 .comms-preview__result { padding: 18px; border: 1px solid var(--ink); background: var(--paper); }
 .comms-preview__result h3 { margin: 0 0 8px; font: 1.1rem Georgia, serif; }
 .comms-preview__result p { white-space: pre-wrap; }
+.comms-preview__result .button { margin-top: 8px; }
 @media (max-width: 900px) {
   .comms-draft-list { grid-template-columns: 1fr; }
+  .comms-template-editor { box-shadow: 5px 5px 0 var(--blue); }
 }

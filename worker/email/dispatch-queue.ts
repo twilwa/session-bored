@@ -1,10 +1,10 @@
 // ABOUTME: Lets an organizer review, edit, discard, or approve-and-send a queued email_dispatch row.
-// ABOUTME: This is the only path that turns a drafted reminder into an actual send.
+// ABOUTME: This is the only path that turns a drafted message into an actual send.
 import { and, eq, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { emailDispatches } from "../../db/schema.ts";
 import { resolveEmailDelivery, type EmailDelivery, type EmailEnvironment } from "../email.ts";
-import { logEmailSendOutcome, textToHtml } from "./send.ts";
+import { sendTrackedEmail, textToHtml } from "./send.ts";
 
 type EmailDatabase = ReturnType<typeof drizzle>;
 
@@ -59,14 +59,18 @@ export async function sendQueuedDispatch(
   let attempted = 0;
 
   for (const recipient of recipients) {
-    const result = await delivery.send({
+    const result = await sendTrackedEmail({
+      database,
+      delivery,
       eventId,
-      recipient: recipient.email,
+      templateKey: row.templateKey ?? "unknown",
+      recipient,
       subject: row.subject,
       html: textToHtml(row.body),
       text: row.body,
+      createdByUserId: row.createdByUserId,
+      draftDispatchId: row.id,
     });
-    logEmailSendOutcome({ templateKey: row.templateKey ?? "unknown", recipient: recipient.email, eventId, result });
     if (result.status === "provider_not_configured") {
       continue;
     }

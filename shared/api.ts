@@ -234,6 +234,36 @@ export const routeMap = {
     module: "communications",
     access: "organizer",
   },
+  commsRecipients: {
+    method: "GET",
+    path: "/api/events/:eventId/comms/recipients",
+    module: "communications",
+    access: "organizer",
+  },
+  createCommsTemplate: {
+    method: "POST",
+    path: "/api/events/:eventId/comms/templates",
+    module: "communications",
+    access: "organizer",
+  },
+  updateCommsTemplate: {
+    method: "PATCH",
+    path: "/api/events/:eventId/comms/templates/:key",
+    module: "communications",
+    access: "organizer",
+  },
+  removeCommsTemplate: {
+    method: "DELETE",
+    path: "/api/events/:eventId/comms/templates/:key",
+    module: "communications",
+    access: "organizer",
+  },
+  queueCommsTemplateDrafts: {
+    method: "POST",
+    path: "/api/events/:eventId/comms/templates/:key/drafts",
+    module: "communications",
+    access: "organizer",
+  },
   previewCommsTemplate: {
     method: "POST",
     path: "/api/events/:eventId/comms/templates/:key/preview",
@@ -719,7 +749,11 @@ export interface EmailDispatchSummary {
 
 export interface CommsTemplateDescriptor {
   key: string;
+  name: string;
   mergeFields: readonly string[];
+  editable: boolean;
+  subject: string | null;
+  body: string | null;
 }
 
 export const reviewRouteMap = {
