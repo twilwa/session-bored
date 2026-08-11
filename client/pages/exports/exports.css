@@ -1,0 +1,22 @@
+/* ABOUTME: Styles the organizer export center as a compact set of portable record cards. */
+/* ABOUTME: Keeps file contents and reconstruction boundaries readable on desktop and mobile. */
+.exports-header { max-width: 920px; }
+.exports-header h1 { max-width: 780px; }
+.exports-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; margin-top: 28px; }
+.export-card { display: grid; grid-template-columns: 54px minmax(0, 1fr); min-width: 0; border: 1px solid var(--ink); background: var(--paper); box-shadow: 7px 7px 0 var(--ink); }
+.export-card__index { padding: 18px 10px; border-right: 1px solid var(--ink); background: var(--signal); font: 0.75rem monospace; font-weight: 800; text-align: center; }
+.export-card__body { display: flex; min-width: 0; flex-direction: column; align-items: flex-start; padding: 20px; }
+.export-card__heading { display: flex; width: 100%; min-width: 0; align-items: start; justify-content: space-between; gap: 14px; }
+.export-card__heading h2 { min-width: 0; margin: 0; overflow-wrap: anywhere; font: 1.55rem Georgia, serif; }
+.export-card__heading span { flex: none; padding: 4px 7px; border: 1px solid var(--ink); background: var(--white); font: 0.65rem monospace; font-weight: 800; letter-spacing: 0.08em; }
+.export-card p { flex: 1; margin: 14px 0 20px; color: var(--muted); line-height: 1.55; }
+.exports-notes { margin-top: 34px; }
+.exports-notes__columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+.exports-notes__columns > div { min-width: 0; padding-left: 15px; border-left: 4px solid var(--blue); }
+.exports-notes h3 { margin: 0 0 8px; font: 1.1rem Georgia, serif; }
+.exports-notes p { margin: 0; line-height: 1.55; }
+.exports-notes__privacy { margin-top: 24px !important; padding: 14px 16px; border: 1px solid var(--ink); background: #e7ecff; }
+@media (max-width: 900px) {
+  .exports-grid, .exports-notes__columns { grid-template-columns: 1fr; }
+  .export-card { box-shadow: 5px 5px 0 var(--ink); }
+}

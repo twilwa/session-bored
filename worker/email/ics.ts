@@ -23,6 +23,13 @@ export interface BuildSessionIcsInput {
   status?: "CONFIRMED" | "CANCELLED";
 }
 
+export interface BuildScheduleIcsInput {
+  calendarName: string;
+  organizer: IcsPerson;
+  sessions: IcsSession[];
+  dtstamp: Date;
+}
+
 function foldIcsLine(line: string): string {
   if (line.length <= 75) {
     return line;
@@ -88,6 +95,35 @@ export function buildSessionIcs(input: BuildSessionIcsInput): string {
   }
   lines.push(`STATUS:${input.status ?? "CONFIRMED"}`, "TRANSP:OPAQUE", "END:VEVENT", "END:VCALENDAR");
   return lines.map(foldIcsLine).join("\r\n") + "\r\n";
+}
+
+/**
+ * Builds one importable event calendar while preserving each session's durable
+ * UID and sequence. Every VEVENT comes from the single-session builder used by
+ * delivered calendar invitations, so escaping and folding stay identical.
+ */
+export function buildScheduleIcs(input: BuildScheduleIcsInput): string {
+  const eventBlocks = input.sessions.map((session) => {
+    const invitation = buildSessionIcs({
+      session,
+      organizer: input.organizer,
+      attendees: [],
+      dtstamp: input.dtstamp,
+    });
+    const start = invitation.indexOf("BEGIN:VEVENT");
+    const end = invitation.indexOf("END:VEVENT") + "END:VEVENT".length;
+    return invitation.slice(start, end);
+  });
+  const lines = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//Greenroom//Event Schedule//EN",
+    "CALSCALE:GREGORIAN",
+    `X-WR-CALNAME:${escapeIcsText(input.calendarName)}`,
+    ...eventBlocks,
+    "END:VCALENDAR",
+  ];
+  return lines.map((line) => line.includes("\r\n") ? line : foldIcsLine(line)).join("\r\n") + "\r\n";
 }
 
 export function icsToBase64(ics: string): string {

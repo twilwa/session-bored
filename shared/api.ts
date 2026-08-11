@@ -10,6 +10,7 @@ export type ApiModule =
   | "communications"
   | "embeds"
   | "events"
+  | "exports"
   | "files"
   | "forms"
   | "public"
@@ -274,6 +275,30 @@ export const routeMap = {
     method: "POST",
     path: "/api/events/:eventId/sessions/:sessionId/calendar-invite",
     module: "communications",
+    access: "organizer",
+  },
+  exportSessions: {
+    method: "GET",
+    path: "/api/events/:eventId/exports/sessions.json",
+    module: "exports",
+    access: "organizer",
+  },
+  exportSpeakers: {
+    method: "GET",
+    path: "/api/events/:eventId/exports/speakers.json",
+    module: "exports",
+    access: "organizer",
+  },
+  exportReviews: {
+    method: "GET",
+    path: "/api/events/:eventId/exports/reviews.csv",
+    module: "exports",
+    access: "organizer",
+  },
+  exportSchedule: {
+    method: "GET",
+    path: "/api/events/:eventId/exports/schedule.ics",
+    module: "exports",
     access: "organizer",
   },
 } as const satisfies Record<string, RouteContract>;

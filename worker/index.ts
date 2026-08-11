@@ -44,6 +44,7 @@ import { filenameForVersion } from "./storage/file-versions.ts";
 import dispositionRoutes from "./routes/disposition.ts";
 import rosterRoutes from "./routes/roster.ts";
 import agendaRoutes from "./routes/agenda.ts";
+import exportRoutes from "./routes/exports.ts";
 
 type SessionUser = AuthSession["user"];
 type AppEnvironment = {
@@ -138,6 +139,7 @@ app.use("/api/*", prepareRequest);
 app.route("/", dispositionRoutes);
 app.route("/", rosterRoutes);
 app.route("/", agendaRoutes);
+app.route("/", exportRoutes);
 app.route("/", commsRoutes);
 app.on(["GET", "POST"], "/api/auth/*", (context) => createAuth(context.env).handler(context.req.raw));
 app.route("/api/public/cfp", cfpRoutes);

@@ -20,6 +20,7 @@ import { SubmitterDashboardPage } from "./pages/submitter/SubmitterDashboardPage
 import { RosterPage } from "./pages/roster/RosterPage.tsx";
 import { PortalPage } from "./pages/portal/PortalPage.tsx";
 import { formatFullDateTime } from "./pages/public/shared.ts";
+import { ExportsPage } from "./pages/exports/ExportsPage.tsx";
 
 type Role = "organizer" | "reviewer" | "speaker";
 interface SessionPayload {
@@ -151,6 +152,7 @@ function RoleShell({ role, children }: { role: Role; children: ReactNode }) {
       ["Speakers", "/organizer/roster"], ["Missing info", "/organizer/roster/missing"],
       ["Agenda", "/organizer/agenda"],
       ["Communications", "/organizer/comms"],
+      ["Exports", "/organizer/exports"],
     ]
     : role === "reviewer"
       ? [["Assignments", "/reviewer"]]
@@ -279,6 +281,7 @@ function RoutedPage({ path }: { path: string }) {
   if (path === "/organizer/disposition") return <RoleShell role="organizer"><DispositionPage /></RoleShell>;
   if (path === "/organizer/agenda") return <RoleShell role="organizer"><AgendaPage /></RoleShell>;
   if (path === "/organizer/comms") return <RoleShell role="organizer"><CommsPage /></RoleShell>;
+  if (path === "/organizer/exports") return <RoleShell role="organizer"><ExportsPage /></RoleShell>;
   if (path.startsWith("/organizer/review")) return <RoleShell role="organizer"><OrganizerReviewPage path={path} /></RoleShell>;
   if (path.startsWith("/organizer/roster")) return <RoleShell role="organizer"><RosterPage path={path} /></RoleShell>;
   if (path.startsWith("/organizer")) return <OrganizerPage />;

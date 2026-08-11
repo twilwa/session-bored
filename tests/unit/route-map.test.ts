@@ -13,6 +13,7 @@ describe("typed route map", () => {
         "communications",
         "embeds",
         "events",
+        "exports",
         "files",
         "forms",
         "public",
@@ -23,6 +24,20 @@ describe("typed route map", () => {
         "tasks",
       ]),
     );
+  });
+
+  it("declares every organizer export as a typed route", () => {
+    expect([
+      routeMap.exportSessions,
+      routeMap.exportSpeakers,
+      routeMap.exportReviews,
+      routeMap.exportSchedule,
+    ]).toEqual([
+      { method: "GET", path: "/api/events/:eventId/exports/sessions.json", module: "exports", access: "organizer" },
+      { method: "GET", path: "/api/events/:eventId/exports/speakers.json", module: "exports", access: "organizer" },
+      { method: "GET", path: "/api/events/:eventId/exports/reviews.csv", module: "exports", access: "organizer" },
+      { method: "GET", path: "/api/events/:eventId/exports/schedule.ics", module: "exports", access: "organizer" },
+    ]);
   });
 
   it("makes public and scoped access explicit", () => {
