@@ -319,6 +319,18 @@ async function saveVersion(
   return version;
 }
 
+function findFormVersion(
+  versions: Array<typeof formVersions.$inferSelect>,
+  requestedValue: string | undefined,
+  currentVersion: number,
+) {
+  const requestedVersion = Number(requestedValue);
+  return Number.isInteger(requestedVersion) && requestedVersion > 0
+    ? versions.find((version) => version.version === requestedVersion)
+    : versions.find((version) => version.status === "draft")
+      ?? versions.find((version) => version.version === currentVersion);
+}
+
 async function renderSubmission(database: BuilderDatabase, submissionId: string) {
   const [item] = await database
     .select({
@@ -454,11 +466,7 @@ cfpBuilderRoutes.get("/forms/:formId", async (context) => {
     .from(formVersions)
     .where(eq(formVersions.formId, form.id))
     .orderBy(desc(formVersions.version));
-  const requestedVersion = Number(context.req.query("version"));
-  const selectedVersion = Number.isInteger(requestedVersion) && requestedVersion > 0
-    ? versions.find((version) => version.version === requestedVersion)
-    : versions.find((version) => version.status === "draft")
-      ?? versions.find((version) => version.version === form.version);
+  const selectedVersion = findFormVersion(versions, context.req.query("version"), form.version);
   if (selectedVersion === undefined) {
     return context.json({ error: "not_found", message: "This CFP form version could not be found." }, 404);
   }
@@ -489,6 +497,55 @@ cfpBuilderRoutes.get("/forms/:formId", async (context) => {
     versions,
     fields,
     publicUrl: `/cfp/${form.publicSlug}`,
+  });
+});
+
+cfpBuilderRoutes.get("/forms/:formId/preview", async (context) => {
+  const database = drizzle(context.env.DB);
+  const [form] = await database.select().from(forms).where(eq(forms.id, context.req.param("formId")));
+  if (form === undefined) {
+    return context.json({ error: "not_found", message: "This CFP form could not be found." }, 404);
+  }
+  const versions = await database
+    .select()
+    .from(formVersions)
+    .where(eq(formVersions.formId, form.id))
+    .orderBy(desc(formVersions.version));
+  const selectedVersion = findFormVersion(versions, context.req.query("version"), form.version);
+  if (selectedVersion === undefined) {
+    return context.json({ error: "not_found", message: "This CFP form version could not be found." }, 404);
+  }
+  const [event, selectedFields, eventTracks, eventFormats] = await Promise.all([
+    database.select().from(events).where(eq(events.id, form.eventId)).then((rows) => rows[0]),
+    database
+      .select()
+      .from(formVersionFields)
+      .where(eq(formVersionFields.formVersionId, selectedVersion.id))
+      .orderBy(asc(formVersionFields.sortOrder)),
+    database.select({ name: tracks.name }).from(tracks).where(eq(tracks.eventId, form.eventId)),
+    database.select({ name: formats.name }).from(formats).where(eq(formats.eventId, form.eventId)),
+  ]);
+  if (event === undefined) {
+    return context.json({ error: "not_found", message: "This CFP event could not be found." }, 404);
+  }
+  return context.json({
+    event,
+    form: {
+      ...form,
+      version: selectedVersion.version,
+      status: selectedVersion.status,
+      openAt: selectedVersion.openAt,
+      closeAt: selectedVersion.closeAt,
+      welcomeCopy: selectedVersion.welcomeCopy,
+      confirmationCopy: selectedVersion.confirmationCopy,
+      confirmationEmailCopy: selectedVersion.confirmationEmailCopy,
+      minimumSpeakers: selectedVersion.minimumSpeakers,
+      maximumSpeakers: selectedVersion.maximumSpeakers,
+      publishedAt: selectedVersion.publishedAt,
+    },
+    tracks: eventTracks.map((track) => track.name),
+    formats: eventFormats.map((format) => format.name),
+    fields: selectedFields,
   });
 });
 
@@ -635,6 +692,41 @@ cfpBuilderRoutes.post("/forms/:formId/close", async (context) => {
   return version === undefined
     ? context.json({ error: "not_found", message: "The published version could not be found." }, 404)
     : context.json({ version, publicUrl: `/cfp/${form.publicSlug}` });
+});
+
+cfpBuilderRoutes.post("/forms/:formId/reopen", async (context) => {
+  const database = drizzle(context.env.DB);
+  const [form] = await database.select().from(forms).where(eq(forms.id, context.req.param("formId")));
+  if (form === undefined) {
+    return context.json({ error: "not_found", message: "This CFP form could not be found." }, 404);
+  }
+  if (form.status !== "closed") {
+    return context.json({ error: "not_closed", message: "This CFP is already open." }, 409);
+  }
+  const [closedVersion] = await database
+    .select()
+    .from(formVersions)
+    .where(and(
+      eq(formVersions.formId, form.id),
+      eq(formVersions.version, form.version),
+      eq(formVersions.status, "closed"),
+    ));
+  if (closedVersion === undefined) {
+    return context.json({ error: "not_found", message: "The closed version could not be found." }, 404);
+  }
+  if (closedVersion.closeAt !== null && closedVersion.closeAt.getTime() <= Date.now()) {
+    return context.json({
+      error: "cfp_window_closed",
+      message: "This published version's close time has passed. Save and publish a draft with a later close time to reopen the call.",
+    }, 409);
+  }
+  await database
+    .update(formVersions)
+    .set({ status: "published" })
+    .where(eq(formVersions.id, closedVersion.id));
+  await database.update(forms).set({ status: "published" }).where(eq(forms.id, form.id));
+  const [version] = await database.select().from(formVersions).where(eq(formVersions.id, closedVersion.id));
+  return context.json({ version, publicUrl: `/cfp/${form.publicSlug}` });
 });
 
 cfpBuilderRoutes.get("/submissions/:submissionId", async (context) => {

@@ -46,14 +46,14 @@
 @media (max-width: 1100px) {
   .cfp-builder__toolbar { grid-template-columns: 1fr 1fr auto; }
   .cfp-builder__toolbar .button { min-width: 0; }
-  .cfp-builder__layout { grid-template-columns: 1fr; }
+  .cfp-builder__layout { grid-template-columns: minmax(0, 1fr); }
   .cfp-builder__versions { position: static; grid-row: 1; }
   .cfp-builder__versions ol { display: flex; overflow-x: auto; }
   .cfp-builder__versions li { min-width: 150px; border-right: 1px solid var(--line); }
 }
 
 @media (max-width: 680px) {
-  .cfp-builder__toolbar, .cfp-builder__settings, .cfp-field-card__grid, .cfp-builder__create { grid-template-columns: 1fr; }
+  .cfp-builder__toolbar, .cfp-builder__settings, .cfp-field-card__grid, .cfp-builder__create { grid-template-columns: minmax(0, 1fr); }
   .cfp-builder__settings .section-heading, .cfp-builder__wide, .cfp-field-card__wide { grid-column: 1; }
   .cfp-builder__toolbar > * { min-width: 0; width: 100%; }
   .cfp-builder__savebar { bottom: 8px; }

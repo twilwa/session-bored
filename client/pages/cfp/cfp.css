@@ -6,6 +6,26 @@
   padding: clamp(42px, 7vw, 92px) clamp(18px, 5vw, 72px) 110px;
 }
 
+.cfp-preview-banner {
+  min-width: 0;
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  align-items: center;
+  margin: 0 0 42px;
+  padding: 18px 22px;
+  background: var(--signal);
+  border: 1px solid var(--ink);
+  box-shadow: 7px 7px 0 var(--ink);
+}
+
+.cfp-preview-banner > div { min-width: 0; display: grid; gap: 3px; }
+.cfp-preview-banner strong { font: 1.35rem Georgia, "Times New Roman", serif; }
+.cfp-preview-banner span { font: 0.68rem "SFMono-Regular", Consolas, monospace; letter-spacing: 0.08em; text-transform: uppercase; }
+.cfp-preview-banner p { margin: 4px 0 0; }
+.cfp-preview-banner .button { flex: 0 0 auto; }
+.cfp-preview-actions { background: var(--signal); }
+
 .cfp-masthead {
   display: grid;
   grid-template-columns: minmax(0, 1.45fr) minmax(260px, 0.55fr);
@@ -251,4 +271,6 @@
   .submission-receipt { margin-top: 34px; box-shadow: 7px 7px 0 var(--blue); }
   .submission-receipt dl div { grid-template-columns: minmax(0, 1fr); gap: 4px; }
   .submission-receipt__actions .button { width: 100%; }
+  .cfp-preview-banner { display: grid; }
+  .cfp-preview-banner .button { width: 100%; }
 }
