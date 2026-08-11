@@ -10,7 +10,7 @@ test("organizer reviews communications without anything sending itself", async (
   await page.getByRole("link", { name: "Communications" }).click();
 
   await expect(page.getByRole("heading", { name: /Draft it/ })).toBeVisible();
-  await expect(page.getByText("Reminders are drafted for review, never sent automatically.")).toBeVisible();
+  await expect(page.getByText("Messages are drafted for review, never sent automatically.")).toBeVisible();
 
   await page.getByRole("button", { name: "Draft reminders for overdue tasks" }).click();
   await expect(page.getByText(/reminder draft.* queued for review\./)).toBeVisible();
