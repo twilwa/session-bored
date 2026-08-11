@@ -1,0 +1,61 @@
+tests/integration/review-engine.test.ts
+  s_dac1fe753facd3::t_ccb07902a7dafc 591,661,677-680
+  s_dac1fe753facd3::t_d2dc3d11c53d32 586-590,592-627
+  s_dac1fe753facd3::t_734adcdc18cf9a 652,656-660
+  s_dac1fe753facd3::t_8741817e1a23f8 705-716
+  s_dac1fe753facd3::t_048f17cc1dbfdb 681
+tests/unit/review-answers.test.ts
+  s_dac1fe753facd3::t_7fc73fde782e72 1-60
+tests/integration/ai-review.test.ts
+  s_dac1fe753facd3::t_20eaca83dd5783 553-575,631-636
+migrations/0013_little_typhoid_mary.sql
+  s_dac1fe753facd3::t_2dc6d2274d7c9e 1
+migrations/meta/_journal.json
+  s_dac1fe753facd3::t_2dc6d2274d7c9e 95-101
+tests/integration/cfp-builder.test.ts
+  s_dac1fe753facd3::t_53f48a007fba6d 32-37,129,143-146
+  s_dac1fe753facd3::t_a05f00252cf2e0 31
+shared/api.ts
+  s_dac1fe753facd3::t_376f08189eb432 698
+client/pages/cfp-builder/CfpBuilderPage.tsx
+  s_dac1fe753facd3::t_376f08189eb432 16-24,96-100,378,408,413
+  s_dac1fe753facd3::t_650644879cc830 409-412
+worker/review-answers.ts
+  s_dac1fe753facd3::t_de69f2a9d660c2 27-31,33-42,72
+  s_dac1fe753facd3::t_347cc6cefb0a15 1-26,32,43-71,73
+client/pages/cfp-builder/cfp-builder.css
+  s_dac1fe753facd3::t_376f08189eb432 26-27
+tests/e2e/cfp-builder.spec.ts
+  s_dac1fe753facd3::t_650644879cc830 43,51
+  s_dac1fe753facd3::t_c3580f2991709d 44-49
+db/schema/cfp-builder.ts
+  s_dac1fe753facd3::t_6e1080b6fd51b3 63-65
+migrations/meta/0013_snapshot.json
+  s_dac1fe753facd3::t_2dc6d2274d7c9e 1-4935
+worker/ai/review-assistance.ts
+  s_dac1fe753facd3::t_347cc6cefb0a15 19-23,80-92
+  s_dac1fe753facd3::t_71cce59f4d3490 133-138
+worker/routes/cfp-builder.ts
+  s_dac1fe753facd3::t_376f08189eb432 38,162,489
+  s_dac1fe753facd3::t_931c7d221d51c5 259
+worker/routes/ai-review.ts
+  s_dac1fe753facd3::t_347cc6cefb0a15 19,163,175,191,202
+worker/routes/review.ts
+  s_dac1fe753facd3::t_347cc6cefb0a15 29,282,302,358
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "2e05d6910fd0cd851a888fb02a71ec24cc4beae5",
+  "prompts": {},
+  "sessions": {
+    "s_dac1fe753facd3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ff2f5-2403-7f40-8991-882a4b59a73f",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
