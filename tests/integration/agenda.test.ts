@@ -204,6 +204,7 @@ describe("agenda builder", () => {
     const conflicted = await place(aiSession.id, organizerCookie, sharedPlacement);
 
     expect(conflicted.metrics.conflicts).toBe(2);
+    expect(conflicted.metrics.conflicts).toBe(conflicted.conflicts.length);
     expect(conflicted.conflicts).toEqual(expect.arrayContaining([
       expect.objectContaining({
         kind: "room",
@@ -221,10 +222,11 @@ describe("agenda builder", () => {
 
     const moved = await place(aiSession.id, organizerCookie, {
       ...sharedPlacement,
-      startsAt: Date.parse("2027-05-12T17:00:00Z"),
+      startsAt: Date.parse("2027-05-12T16:30:00Z"),
     });
     expect(moved.conflicts).toEqual([]);
     expect(moved.metrics.conflicts).toBe(0);
+    expect(moved.metrics.conflicts).toBe(moved.conflicts.length);
   });
 
   it("keeps TBD as a day placement without requiring a time or room", async () => {
