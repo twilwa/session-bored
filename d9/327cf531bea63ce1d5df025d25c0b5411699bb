@@ -1,0 +1,19 @@
+tests/e2e/public-schedule.spec.ts
+  s_68ab9c9d7170e9::t_96a64e3db0569e 64-67,79,106,123,177,186
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "d9327cf531bea63ce1d5df025d25c0b5411699bb",
+  "prompts": {},
+  "sessions": {
+    "s_68ab9c9d7170e9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fef9a-2f7e-7231-973b-9799ef22fc31",
+        "model": "gpt-5.6-terra"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
