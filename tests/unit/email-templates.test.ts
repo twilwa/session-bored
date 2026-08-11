@@ -5,6 +5,7 @@ import {
   isTemplateKey,
   listTemplates,
   portalInvitationTemplate,
+  renderAuthoredTemplate,
   renderTemplate,
   submissionConfirmationTemplate,
   taskReminderTemplate,
@@ -63,6 +64,37 @@ describe("taskReminderTemplate", () => {
 });
 
 describe("template registry", () => {
+  it("renders organizer-authored templates as escaped plain text", () => {
+    const result = renderAuthoredTemplate(
+      {
+        subject: "Logistics for {{eventName}}",
+        body: "Hi {{recipientName}},\n\nMeet by <Gate A>.",
+      },
+      { eventName: "DevFlow Conf 2027", recipientName: "Priya Raman" },
+    );
+
+    expect(result).toEqual({
+      status: "rendered",
+      email: {
+        subject: "Logistics for DevFlow Conf 2027",
+        text: "Hi Priya Raman,\n\nMeet by <Gate A>.",
+        html: "<p>Hi Priya Raman,</p>\n<p>Meet by &lt;Gate A&gt;.</p>",
+      },
+    });
+  });
+
+  it("reports every merge field unavailable to the send context", () => {
+    const result = renderAuthoredTemplate(
+      {
+        subject: "Update for {{eventName}}",
+        body: "Hi {{recipientName}}, {{scheduleLink}} is ready for {{missingField}}.",
+      },
+      { eventName: "DevFlow Conf 2027", recipientName: "Priya Raman" },
+    );
+
+    expect(result).toEqual({ status: "missing_fields", fields: ["scheduleLink", "missingField"] });
+  });
+
   it("lists every registered template with its merge fields", () => {
     const templates = listTemplates();
     expect(templates.map((template) => template.key).sort()).toEqual([

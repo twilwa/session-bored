@@ -719,7 +719,11 @@ export interface EmailDispatchSummary {
 
 export interface CommsTemplateDescriptor {
   key: string;
+  name: string;
   mergeFields: readonly string[];
+  editable: boolean;
+  subject: string | null;
+  body: string | null;
 }
 
 export const reviewRouteMap = {

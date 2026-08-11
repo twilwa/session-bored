@@ -1,5 +1,6 @@
 // ABOUTME: Tracks and logs every email Greenroom actually attempts to send.
 // ABOUTME: Writes one email_dispatch row per recipient so sends stay auditable and retryable.
+import { and, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { emailDispatches } from "../../db/schema.ts";
 import type { EmailAttachment, EmailDelivery, EmailDeliveryResult } from "../email.ts";
@@ -22,14 +23,16 @@ export interface SendTrackedEmailInput {
   text: string;
   attachments?: EmailAttachment[];
   createdByUserId?: string | null;
+  draftDispatchId?: string;
 }
 
 /**
  * The single choke point every Greenroom send site should call through. It
  * delegates the network attempt to the injected `delivery`, logs a structured
  * outcome line, and - only once a real attempt was made - writes one
- * `email_dispatch` row per recipient so the send is later visible and, on
- * failure, distinguishable from a recipient who was silently never told.
+ * `email_dispatch` row per recipient or updates the supplied draft dispatch
+ * that already snapshots the message. Sends stay visible and distinguishable from
+ * recipients who were silently never told without duplicating queued rows.
  * Nothing is logged when delivery reports `provider_not_configured`, since no
  * attempt to reach the recipient actually happened.
  */
@@ -66,18 +69,31 @@ export async function sendTrackedEmail(input: SendTrackedEmailInput): Promise<Em
     return result;
   }
 
-  await input.database.insert(emailDispatches).values({
-    eventId: input.eventId,
-    templateKey: input.templateKey,
-    subject: input.subject,
-    body: input.text,
-    recipients: [input.recipient],
+  const dispatchValues = {
     status: result.status,
     providerMessageIds: result.providerMessageId ? [result.providerMessageId] : null,
     failureReason: result.error ?? null,
     sentAt: result.status === "sent" ? new Date() : null,
-    createdByUserId: input.createdByUserId ?? null,
-  });
+  } as const;
+  if (input.draftDispatchId === undefined) {
+    await input.database.insert(emailDispatches).values({
+      eventId: input.eventId,
+      templateKey: input.templateKey,
+      subject: input.subject,
+      body: input.text,
+      recipients: [input.recipient],
+      ...dispatchValues,
+      createdByUserId: input.createdByUserId ?? null,
+    });
+  } else {
+    await input.database
+      .update(emailDispatches)
+      .set(dispatchValues)
+      .where(and(
+        eq(emailDispatches.id, input.draftDispatchId),
+        eq(emailDispatches.eventId, input.eventId),
+      ));
+  }
 
   return result;
 }

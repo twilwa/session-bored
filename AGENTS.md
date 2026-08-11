@@ -192,9 +192,10 @@ Resend-backed sender (`worker/email/resend.ts`) when `RESEND_API_KEY` and
 stub otherwise - local dev, CI, and every test run stay in the unconfigured
 state unless a `.dev.vars` opts in, so nothing here ever reaches the network
 by accident. Every real attempt logs a structured line and, once attempted,
-writes one `email_dispatch` row per recipient
+creates or finalizes one `email_dispatch` row per recipient
 (`worker/email/send.ts#sendTrackedEmail`); a `provider_not_configured` result
-writes nothing, so unconfigured environments stay silent. Every sending
+creates nothing and leaves a queued draft unchanged, so unconfigured
+environments stay silent. Every sending
 function in `worker/email/*` takes an optional `delivery` parameter for this
 reason - tests inject a fake one instead of touching the network.
 
@@ -222,11 +223,13 @@ reason - tests inject a fake one instead of touching the network.
   `POST .../:id/send` (`worker/email/dispatch-queue.ts#sendQueuedDispatch`)
   ever delivers one. Nothing drafts a second time for a speaker who already
   has an unsent draft.
-- **Templates** (F-11.6) live in `worker/email/templates.ts` as a small
-  merge-field registry (`listTemplates`, `renderTemplate`), previewable at
-  `POST /api/events/:eventId/comms/templates/:key/preview` without sending.
-  Decision letters are rendered by disposition.ts itself and are not
-  duplicated here.
+- **Templates** (F-11.6) keep the three runtime-dependent built-ins read-only
+  and store organizer-authored event copy in `communication_template`.
+  `worker/email/templates.ts` resolves `{{field}}` values, supplies event and
+  recipient identity on the server, rejects every unresolved field before
+  queueing, and snapshots one personalized `email_dispatch` draft per selected
+  event speaker. Preview and queue actions never send. Decision letters remain
+  in `worker/routes/disposition.ts` and are not part of this registry.
 - **Calendar invites** (F-11.8/F-11.9): `sessions.icsUid` is fixed at session
   creation from the session's durable ID and never changes; `sessions.icsSequence`
   bumps on every regenerate. `worker/email/calendar-invite.ts#sendSessionCalendarInvite`
