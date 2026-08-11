@@ -50,7 +50,7 @@
 .agenda-time { position: sticky; left: 0; z-index: 2; background: var(--paper); border-right: 1px solid var(--ink); border-bottom: 1px solid var(--line); padding: 10px 9px; color: var(--muted); font: 0.65rem monospace; text-align: right; }
 .agenda-drop-slot { min-width: 0; height: 68px; position: relative; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); transition: background 100ms ease; }
 .agenda-drop-slot--ready { background: repeating-linear-gradient(135deg, transparent, transparent 9px, rgb(49 85 255 / 6%) 9px, rgb(49 85 255 / 6%) 18px); }.agenda-drop-slot--ready:hover { background: #dce2ff; outline: 2px solid var(--blue); outline-offset: -2px; }
-.agenda-drop-slot--ready > .agenda-session-card { pointer-events: none; }
+.agenda-drop-slot--ready > .agenda-session-card:not(.agenda-session-card--dragging) { pointer-events: none; }
 .agenda-drop-slot > .agenda-session-card { position: absolute; z-index: 1; top: 0; right: 4px; left: 4px; box-sizing: border-box; height: calc(68px * var(--agenda-session-duration)); overflow: hidden; }
 .agenda-drop-slot > .agenda-session-card--compact { padding: 3px 24px 3px 6px; }
 .agenda-drop-slot > .agenda-session-card--compact .agenda-session-card__track, .agenda-drop-slot > .agenda-session-card--compact p, .agenda-drop-slot > .agenda-session-card--compact small, .agenda-drop-slot > .agenda-session-card--compact .agenda-session-card__speakers { display: none; }

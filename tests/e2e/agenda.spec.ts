@@ -78,6 +78,11 @@ test("organizer drags a session, resolves a clash, changes views, and publishes"
   const docsCard = page.getByTestId("session-card-ses_docs_retrieval");
   await dispatchDrag(page, docsCard, firstSlot);
   await expect(firstSlot.getByTestId("session-card-ses_docs_retrieval")).toBeVisible();
+  const replacementSlot = page.getByTestId("agenda-slot-2027-05-12-rm_room_2a-09:30");
+  await firstSlot.getByTestId("session-card-ses_docs_retrieval").dragTo(replacementSlot);
+  await expect(replacementSlot.getByTestId("session-card-ses_docs_retrieval")).toBeVisible();
+  await dispatchDrag(page, replacementSlot.getByTestId("session-card-ses_docs_retrieval"), firstSlot);
+  await expect(firstSlot.getByTestId("session-card-ses_docs_retrieval")).toBeVisible();
   await page.getByTestId("session-card-ses_docs_retrieval")
     .getByRole("button", { name: /Edit placement/ })
     .click();
