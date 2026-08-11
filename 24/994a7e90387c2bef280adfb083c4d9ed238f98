@@ -1,0 +1,21 @@
+tests/e2e/cfp-builder.spec.ts
+  s_d82a1631d84ebb::t_c2bed004cf1a28 18-20
+client/pages/cfp-builder/cfp-builder.css
+  s_d82a1631d84ebb::t_d22c088c0d576f 49,56
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "24994a7e90387c2bef280adfb083c4d9ed238f98",
+  "prompts": {},
+  "sessions": {
+    "s_d82a1631d84ebb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fef9a-17c5-79b2-a9ec-744ad24c2368",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}

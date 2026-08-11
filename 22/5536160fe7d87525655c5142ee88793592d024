@@ -1,0 +1,43 @@
+tests/integration/cfp-builder.test.ts
+  s_d82a1631d84ebb::t_a217889edfe6a7 100-142,144-145,149-150
+  s_d82a1631d84ebb::t_4d97c3f3d2a0bc 143,146-148
+  s_d82a1631d84ebb::t_40cf9ea9cf1d62 533-578
+client/pages/cfp/CfpPage.tsx
+  s_d82a1631d84ebb::t_1eb65048e1fab9 378-381,418-429,432-436,441-450,456-458,468,552,557-566,569,602,604,705-709
+worker/routes/cfp-builder.ts
+  s_d82a1631d84ebb::t_4d97c3f3d2a0bc 322-333,469,503-548
+  s_d82a1631d84ebb::t_0a7871a80be768 550,697-725
+  s_68ab9c9d7170e9::t_55c45a3f97535e 549,551
+client/pages/cfp/cfp.css
+  s_d82a1631d84ebb::t_1eb65048e1fab9 9-28,274-275
+tests/e2e/cfp-builder.spec.ts
+  s_d82a1631d84ebb::t_eb6b65030ddbc5 108-126
+  s_d82a1631d84ebb::t_867404f1668d32 53-71
+client/pages/cfp-builder/CfpBuilderPage.tsx
+  s_d82a1631d84ebb::t_b10e3d5fd250d7 236-252,411-414,418-419
+  s_d82a1631d84ebb::t_1eb65048e1fab9 146-148,416
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "225536160fe7d87525655c5142ee88793592d024",
+  "prompts": {},
+  "sessions": {
+    "s_68ab9c9d7170e9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fef9a-2f7e-7231-973b-9799ef22fc31",
+        "model": "gpt-5.6-terra"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    },
+    "s_d82a1631d84ebb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fef9a-17c5-79b2-a9ec-744ad24c2368",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
