@@ -1,0 +1,41 @@
+worker/public-queries.ts
+  s_68ab9c9d7170e9::t_2179cb092cd1bf 400,404-408
+tests/e2e/review.spec.ts
+  s_68ab9c9d7170e9::t_4040e2f2f9e140 41
+  s_68ab9c9d7170e9::t_4224c5de242259 35-40,42-45,47-49
+  s_68ab9c9d7170e9::t_0b73808b814950 46
+tests/e2e/agenda.spec.ts
+  s_68ab9c9d7170e9::t_4224c5de242259 81-85
+tests/integration/public-surfaces.test.ts
+  s_68ab9c9d7170e9::t_4224c5de242259 204
+client/pages/review/OrganizerReviewPage.tsx
+  s_68ab9c9d7170e9::t_0b73808b814950 341
+  s_68ab9c9d7170e9::t_2179cb092cd1bf 127-128,140,152-153,165
+client/pages/agenda/AgendaPage.tsx
+  s_68ab9c9d7170e9::t_2179cb092cd1bf 225-244,413-419
+  s_d361eea63949ce::t_c6a8170aae47a5 420
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "845ccf8fb010645c7351ba35a0ac8a3a79e2bbe6",
+  "prompts": {},
+  "sessions": {
+    "s_68ab9c9d7170e9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fef9a-2f7e-7231-973b-9799ef22fc31",
+        "model": "gpt-5.6-terra"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    },
+    "s_d361eea63949ce": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fef99-b66f-72a0-a337-9d8554f5bc31",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
