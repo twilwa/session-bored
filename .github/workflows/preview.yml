@@ -1,10 +1,11 @@
 # ABOUTME: Deploys each Greenroom pull request to a stable Workers preview alias.
-# ABOUTME: Provisions isolated D1 state and updates one preview link comment per PR.
+# ABOUTME: Provisions isolated D1 state, reclaims it on close, and updates one preview link comment per PR.
 name: Preview
 
 on:
   pull_request:
     types:
+      - closed
       - opened
       - reopened
       - synchronize
@@ -20,6 +21,7 @@ concurrency:
 jobs:
   credentials:
     name: Check preview credentials
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     outputs:
       available: ${{ steps.check.outputs.available }}
@@ -41,7 +43,7 @@ jobs:
   deploy:
     name: Deploy preview
     needs: credentials
-    if: needs.credentials.outputs.available == 'true' && github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event.action != 'closed' && needs.credentials.outputs.available == 'true' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -70,10 +72,32 @@ jobs:
       - name: Provision preview database
         shell: bash
         run: |
-          database_id="$({ npx wrangler d1 list --json; } | jq -r --arg name "$DATABASE_NAME" '.[] | select(.name == $name) | .uuid')"
+          readonly database_quota=10
+          readonly sweep_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/workflows/preview-database-cleanup.yml"
+          inventory="$(npx wrangler d1 list --json)"
+          database_id="$(jq -r --arg name "$DATABASE_NAME" '.[] | select(.name == $name) | .uuid' <<< "$inventory")"
           if [[ -z "$database_id" ]]; then
-            npx wrangler d1 create "$DATABASE_NAME"
-            database_id="$({ npx wrangler d1 list --json; } | jq -r --arg name "$DATABASE_NAME" '.[] | select(.name == $name) | .uuid')"
+            database_count="$(jq 'length' <<< "$inventory")"
+            if (( database_count >= database_quota )); then
+              echo "::error title=D1 database quota exhausted::Cloudflare D1's ${database_quota}-database quota is full. Run the Preview database cleanup workflow at ${sweep_url}, using dry-run first."
+              exit 1
+            fi
+
+            if ! create_output="$(npx wrangler d1 create "$DATABASE_NAME" 2>&1)"; then
+              printf '%s\n' "$create_output" >&2
+              if refreshed_inventory="$(npx wrangler d1 list --json)"; then
+                database_count="$(jq 'length' <<< "$refreshed_inventory")"
+                if (( database_count >= database_quota )); then
+                  echo "::error title=D1 database quota exhausted::Cloudflare D1's ${database_quota}-database quota became full while provisioning. Run the Preview database cleanup workflow at ${sweep_url}, using dry-run first."
+                  exit 1
+                fi
+              fi
+              echo "::error title=Preview database provisioning failed::Wrangler could not create ${DATABASE_NAME}; see its output above."
+              exit 1
+            fi
+            printf '%s\n' "$create_output"
+            inventory="$(npx wrangler d1 list --json)"
+            database_id="$(jq -r --arg name "$DATABASE_NAME" '.[] | select(.name == $name) | .uuid' <<< "$inventory")"
           fi
           if [[ -z "$database_id" ]]; then
             echo "Wrangler did not return an ID for $DATABASE_NAME" >&2
@@ -139,3 +163,54 @@ jobs:
                 body,
               });
             }
+
+  cleanup:
+    name: Delete closed pull request database
+    needs: credentials
+    if: github.event.action == 'closed' && needs.credentials.outputs.available == 'true' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      DATABASE_NAME: session-bored-pr-${{ github.event.pull_request.number }}
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Delete preview database
+        shell: bash
+        run: |
+          if [[ ! "$DATABASE_NAME" =~ ^session-bored-pr-[1-9][0-9]*$ ]]; then
+            echo "::error title=Unsafe preview database name::Refusing to delete ${DATABASE_NAME}."
+            exit 1
+          fi
+
+          pr_number="${DATABASE_NAME#session-bored-pr-}"
+          if ! pr_state="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${pr_number}" --jq .state 2>&1)"; then
+            echo "::warning title=Pull request state unavailable::Skipping ${DATABASE_NAME}; GitHub did not return PR #${pr_number}: ${pr_state}"
+            exit 0
+          fi
+          if [[ "$pr_state" != "closed" ]]; then
+            echo "Keeping ${DATABASE_NAME}; PR #${pr_number} is ${pr_state}."
+            exit 0
+          fi
+
+          database_id="$(npx wrangler d1 list --json | jq -r --arg name "$DATABASE_NAME" '.[] | select(.name == $name) | .uuid')"
+          if [[ -z "$database_id" ]]; then
+            echo "${DATABASE_NAME} is already absent; nothing to delete."
+            exit 0
+          fi
+
+          npx wrangler d1 delete "$DATABASE_NAME" --skip-confirmation

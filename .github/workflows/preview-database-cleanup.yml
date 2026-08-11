@@ -1,0 +1,95 @@
+# ABOUTME: Reclaims D1 databases left behind by closed Greenroom pull requests.
+# ABOUTME: Runs on a schedule or manually, with manual runs defaulting to dry-run mode.
+name: Preview database cleanup
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: List closed-PR databases without deleting them
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: preview-database-cleanup
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    name: Sweep closed pull request databases
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || false }}
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Check required secrets
+        shell: bash
+        run: |
+          if [[ -z "$CLOUDFLARE_API_TOKEN" || -z "$CLOUDFLARE_ACCOUNT_ID" ]]; then
+            echo "::error title=Preview cleanup credentials unavailable::CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID are required."
+            exit 1
+          fi
+
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Sweep preview databases
+        shell: bash
+        run: |
+          inventory="$(npx wrangler d1 list --json)"
+          preview_database_count=0
+
+          while IFS= read -r database_name; do
+            if [[ ! "$database_name" =~ ^session-bored-pr-([1-9][0-9]*)$ ]]; then
+              echo "Skipping unrelated D1 database: ${database_name}"
+              continue
+            fi
+
+            preview_database_count=$((preview_database_count + 1))
+            pr_number="${BASH_REMATCH[1]}"
+            if ! pr_state="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${pr_number}" --jq .state 2>&1)"; then
+              echo "::warning title=Pull request state unavailable::Skipping ${database_name}; GitHub did not return PR #${pr_number}: ${pr_state}"
+              continue
+            fi
+
+            case "$pr_state" in
+              open)
+                echo "Keeping ${database_name}; PR #${pr_number} is open."
+                ;;
+              closed)
+                if [[ "$DRY_RUN" == "true" ]]; then
+                  echo "Would delete ${database_name}; PR #${pr_number} is closed."
+                else
+                  echo "Deleting ${database_name}; PR #${pr_number} is closed."
+                  npx wrangler d1 delete "$database_name" --skip-confirmation
+                fi
+                ;;
+              *)
+                echo "::warning title=Unexpected pull request state::Skipping ${database_name}; PR #${pr_number} returned state '${pr_state}'."
+                ;;
+            esac
+          done < <(jq -r '.[].name' <<< "$inventory")
+
+          if (( preview_database_count == 0 )); then
+            echo "No preview databases matched the required session-bored-pr-<number> format."
+          fi
