@@ -1,0 +1,46 @@
+db/schema/disposition.ts
+  s_8b00fa56597303::t_bd4868eed3bdb0 1-76
+db/schema.ts
+  s_8b00fa56597303::t_bd4868eed3bdb0 750
+client/App.tsx
+  s_8b00fa56597303::t_bd4868eed3bdb0 6,301,406
+migrations/meta/0002_snapshot.json
+  s_8b00fa56597303::t_2b7b004198d9f5 1-4176
+AGENTS.md
+  s_8b00fa56597303::t_bd4868eed3bdb0 13-27
+migrations/0002_long_ultragirl.sql
+  s_8b00fa56597303::t_2b7b004198d9f5 1-44
+client/pages/disposition/DispositionPage.tsx
+  s_8b00fa56597303::t_bd4868eed3bdb0 1-228
+worker/routes/disposition.ts
+  s_8b00fa56597303::t_bd4868eed3bdb0 1-563
+migrations/meta/_journal.json
+  s_8b00fa56597303::t_2b7b004198d9f5 18-24
+tests/e2e/disposition.spec.ts
+  s_8b00fa56597303::t_bd4868eed3bdb0 1-27
+shared/api.ts
+  s_8b00fa56597303::t_145afb4010f7ae 260
+  s_8b00fa56597303::t_bd4868eed3bdb0 117-140,261-298
+worker/index.ts
+  s_8b00fa56597303::t_bd4868eed3bdb0 32,90
+client/pages/disposition/disposition.css
+  s_8b00fa56597303::t_bd4868eed3bdb0 1-30
+tests/integration/disposition.test.ts
+  s_8b00fa56597303::t_bd4868eed3bdb0 1-351
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "2443128955d21239b4ebd91f455554f520a0def5",
+  "prompts": {},
+  "sessions": {
+    "s_8b00fa56597303": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fe9c5-1f3b-7061-bacb-1bc2ad119901",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
