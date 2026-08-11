@@ -10,8 +10,6 @@ import {
   createPublicId,
   events,
   formats,
-  formVersionFields,
-  formVersions,
   people,
   reviewAssignments,
   reviewerRoundPools,
@@ -22,13 +20,13 @@ import {
   submissions,
   submissionSpeakers,
   submissionTracks,
-  submissionValues,
   tracks,
   type Role,
   users,
 } from "../../db/schema.ts";
 import type { AuthSession } from "../auth.ts";
 import { createAuth } from "../auth.ts";
+import { reviewProposalAnswers } from "../review-answers.ts";
 import { changeSubmissionStatuses } from "../submission-decision.ts";
 
 type ReviewEnvironment = {
@@ -83,16 +81,6 @@ interface AggregateCriterion {
   criterionType: "numeric" | "dropdown" | "free_text";
   weight: number | null;
 }
-
-const builtInProposalFieldKeys = new Set([
-  "abstract",
-  "audience_level",
-  "format",
-  "notes_for_reviewers",
-  "session_title",
-  "speaker_bio",
-  "track",
-]);
 
 export function computeAggregateScore(
   scores: Record<string, string | number>,
@@ -291,6 +279,7 @@ reviewRoutes.get("/review/submissions/:submissionId", async (context) => {
   }
 
   const roundId = scopedItem?.roundId ?? requestedRoundId;
+  const anonymized = role === "reviewer" && scopedItem?.anonymized === true;
   const [commentRows, trackRows, proposalAnswerRows, criteria, reviewRows] = await Promise.all([
     database
       .select({
@@ -310,29 +299,7 @@ reviewRoutes.get("/review/submissions/:submissionId", async (context) => {
       .innerJoin(tracks, eq(submissionTracks.trackId, tracks.id))
       .where(eq(submissionTracks.submissionId, submissionId))
       .orderBy(asc(tracks.sortOrder)),
-    database
-      .select({
-        valueId: submissionValues.id,
-        key: formVersionFields.key,
-        label: formVersionFields.label,
-        value: submissionValues.value,
-      })
-      .from(formVersionFields)
-      .innerJoin(formVersions, eq(formVersionFields.formVersionId, formVersions.id))
-      .leftJoin(
-        submissionValues,
-        and(
-          eq(submissionValues.fieldId, formVersionFields.stableFieldId),
-          eq(submissionValues.submissionId, submissionId),
-        ),
-      )
-      .where(
-        and(
-          eq(formVersions.formId, submission.formId),
-          eq(formVersions.version, submission.formVersion),
-        ),
-      )
-      .orderBy(asc(formVersionFields.sortOrder)),
+    reviewProposalAnswers(database, submission, anonymized),
     roundId === undefined
       ? Promise.resolve([])
       : database
@@ -359,7 +326,6 @@ reviewRoutes.get("/review/submissions/:submissionId", async (context) => {
       .where(eq(reviewAssignments.submissionId, submissionId))
       .orderBy(asc(reviews.submittedAt)),
   ]);
-  const anonymized = role === "reviewer" && scopedItem?.anonymized === true;
   const participants = anonymized
     ? []
     : await database
@@ -389,11 +355,7 @@ reviewRoutes.get("/review/submissions/:submissionId", async (context) => {
       ? null
       : { id: scopedItem.roundId, name: scopedItem.roundName, anonymized: scopedItem.anonymized },
     tracks: trackRows,
-    answers: anonymized
-      ? []
-      : proposalAnswerRows
-        .filter((answer) => answer.valueId !== null && !builtInProposalFieldKeys.has(answer.key))
-        .map(({ key, label, value }) => ({ key, label, value })),
+    answers: proposalAnswerRows,
     participants,
     criteria,
     reviews: reviewRows

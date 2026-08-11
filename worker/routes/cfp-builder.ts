@@ -35,6 +35,7 @@ interface BuilderFieldInput {
   description: string | null;
   fieldType: BuilderFieldType;
   required: boolean;
+  visibleInBlindReview: boolean;
   options: string[] | null;
   conditional: {
     fieldKey: string;
@@ -158,6 +159,7 @@ function normalizeBuilderInput(value: unknown): BuilderVersionInput | null {
       description: textOrNull(field.description),
       fieldType: field.fieldType,
       required: field.required,
+      visibleInBlindReview: field.visibleInBlindReview === true,
       options,
       conditional,
     });
@@ -254,6 +256,7 @@ async function replaceVersionFields(
       description: field.description,
       fieldType: field.fieldType,
       required: field.required,
+      visibleInBlindReview: field.visibleInBlindReview,
       sortOrder,
       options: field.options,
       conditionalFieldId: null,
@@ -483,6 +486,7 @@ cfpBuilderRoutes.get("/forms/:formId", async (context) => {
     description: field.description,
     fieldType: field.fieldType,
     required: field.required,
+    visibleInBlindReview: field.visibleInBlindReview,
     sortOrder: field.sortOrder,
     options: field.options,
     conditional: field.conditionalFieldId === null ? null : {

@@ -13,6 +13,15 @@ import "./cfp-builder.css";
 
 const eventId = "evt_devflow_conf_2027";
 const requiredContractFieldKeys = new Set(["session_title", "abstract", "track"]);
+const reviewManagedFieldKeys = new Set([
+  "abstract",
+  "audience_level",
+  "format",
+  "notes_for_reviewers",
+  "session_title",
+  "speaker_bio",
+  "track",
+]);
 
 interface NamedRecord {
   id: string;
@@ -84,11 +93,11 @@ function orderedVersionInput(draft: CfpBuilderVersionInput): CfpBuilderVersionIn
 
 function defaultFields(): CfpBuilderField[] {
   return [
-    { key: "session_title", label: "Session title", description: null, fieldType: "short_text", required: true, sortOrder: 0, options: null, conditional: null },
-    { key: "abstract", label: "Abstract", description: null, fieldType: "long_text", required: true, sortOrder: 1, options: null, conditional: null },
-    { key: "track", label: "Track", description: null, fieldType: "dropdown", required: true, sortOrder: 2, options: null, conditional: null },
-    { key: "format", label: "Format", description: null, fieldType: "dropdown", required: true, sortOrder: 3, options: null, conditional: null },
-    { key: "speaker_bio", label: "Speaker bio", description: null, fieldType: "long_text", required: false, sortOrder: 4, options: null, conditional: null },
+    { key: "session_title", label: "Session title", description: null, fieldType: "short_text", required: true, visibleInBlindReview: false, sortOrder: 0, options: null, conditional: null },
+    { key: "abstract", label: "Abstract", description: null, fieldType: "long_text", required: true, visibleInBlindReview: false, sortOrder: 1, options: null, conditional: null },
+    { key: "track", label: "Track", description: null, fieldType: "dropdown", required: true, visibleInBlindReview: false, sortOrder: 2, options: null, conditional: null },
+    { key: "format", label: "Format", description: null, fieldType: "dropdown", required: true, visibleInBlindReview: false, sortOrder: 3, options: null, conditional: null },
+    { key: "speaker_bio", label: "Speaker bio", description: null, fieldType: "long_text", required: false, visibleInBlindReview: false, sortOrder: 4, options: null, conditional: null },
   ];
 }
 
@@ -366,6 +375,7 @@ export function CfpBuilderPage() {
                       description: null,
                       fieldType: "short_text",
                       required: false,
+                      visibleInBlindReview: false,
                       sortOrder: draft.fields.length,
                       options: null,
                       conditional: null,
@@ -395,6 +405,12 @@ export function CfpBuilderPage() {
                           {field.fieldType !== "dropdown" || field.key === "track" || field.key === "format" ? null : <label className="field cfp-field-card__wide"><span className="field__label">Dropdown options, one per line</span><textarea className="field__control" disabled={readOnly} onChange={(event) => replaceField(index, { options: event.target.value.split("\n").map((option) => option.trim()).filter(Boolean) })} rows={3} value={(field.options ?? []).join("\n")} /></label>}
                           <label className="field"><span className="field__label">Show only when</span><select className="field__control" disabled={readOnly || requiredContractField} onChange={(event) => replaceField(index, { conditional: event.target.value === "" ? null : { fieldKey: event.target.value, operator: "equals", value: "" } })} value={field.conditional?.fieldKey ?? ""}><option value="">Always visible</option>{draft.fields.filter((candidate) => candidate.key !== field.key && candidate.fieldType === "dropdown").map((candidate) => <option key={candidate.key} value={candidate.key}>{candidate.label}</option>)}</select></label>
                           {field.conditional === null ? null : <label className="field"><span className="field__label">Equals</span><select className="field__control" disabled={readOnly} onChange={(event) => replaceField(index, { conditional: { ...field.conditional!, value: event.target.value } })} value={field.conditional.value}><option value="">Choose value</option>{controllingOptions.map((option) => <option key={option} value={option}>{option}</option>)}</select></label>}
+                          {reviewManagedFieldKeys.has(field.key) ? null : (
+                            <div className="cfp-field-card__blind cfp-field-card__wide">
+                              <label htmlFor={`blind-review-${field.key}`}><input aria-describedby={`blind-review-help-${field.key}`} checked={field.visibleInBlindReview} disabled={readOnly} id={`blind-review-${field.key}`} onChange={(event) => replaceField(index, { visibleInBlindReview: event.target.checked })} type="checkbox" /> Visible in blind review</label>
+                              <small id={`blind-review-help-${field.key}`}>Reviewers will see this response even when speaker identities are hidden.</small>
+                            </div>
+                          )}
                         </div>
                         <div className="cfp-field-card__actions">
                           <label><input checked={field.required} disabled={readOnly || requiredContractField} onChange={(event) => replaceField(index, { required: event.target.checked })} type="checkbox" /> Required to submit</label>

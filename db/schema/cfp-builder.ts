@@ -60,6 +60,9 @@ export const formVersionFields = sqliteTable(
     description: text("description"),
     fieldType: text("field_type", { enum: ["short_text", "long_text", "dropdown"] }).notNull(),
     required: integer("required", { mode: "boolean" }).notNull().default(false),
+    visibleInBlindReview: integer("visible_in_blind_review", { mode: "boolean" })
+      .notNull()
+      .default(false),
     sortOrder: integer("sort_order").notNull().default(0),
     options: text("options", { mode: "json" }).$type<string[]>(),
     conditionalFieldId: text("conditional_field_id").references(
