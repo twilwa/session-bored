@@ -1,0 +1,42 @@
+client/pages/review/OrganizerReviewPage.tsx
+  s_466a19e4a8607b::t_371ab1570cf0a6 1-287
+client/pages/review/reviewClient.tsx
+  s_466a19e4a8607b::t_371ab1570cf0a6 1-45
+client/App.tsx
+  s_466a19e4a8607b::t_371ab1570cf0a6 6-7,253-262,269,325,328,402,404
+tests/integration/review-engine.test.ts
+  s_466a19e4a8607b::t_371ab1570cf0a6 1-448
+worker/index.ts
+  s_466a19e4a8607b::t_371ab1570cf0a6 31,101
+tests/e2e/review.spec.ts
+  s_466a19e4a8607b::t_371ab1570cf0a6 1-42
+client/pages/review/SubmissionReviewPage.tsx
+  s_466a19e4a8607b::t_371ab1570cf0a6 1-210
+worker/routes/review.ts
+  s_466a19e4a8607b::t_371ab1570cf0a6 1-964
+AGENTS.md
+  s_466a19e4a8607b::t_371ab1570cf0a6 13-26
+client/pages/review/review.css
+  s_466a19e4a8607b::t_371ab1570cf0a6 1-154
+shared/api.ts
+  s_466a19e4a8607b::t_371ab1570cf0a6 237-365
+  s_466a19e4a8607b::t_3d695569d9636c 236
+client/pages/review/ReviewerReviewPage.tsx
+  s_466a19e4a8607b::t_371ab1570cf0a6 1-68
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "955a7bb7692e26aa4172176d9c8695f931672d90",
+  "prompts": {},
+  "sessions": {
+    "s_466a19e4a8607b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fe9c4-f4b3-75d1-bfa5-516ed023e69a",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
