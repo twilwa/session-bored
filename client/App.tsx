@@ -1,6 +1,6 @@
 // ABOUTME: Renders Greenroom's populated public and role-specific application shells.
 // ABOUTME: Uses same-origin password sessions and client navigation without full-page reloads.
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useState, type FormEvent, type MouseEvent, type ReactNode } from "react";
 import { Button, DataTable, LoadingState, Modal, StatusChip, TextField, Toast } from "./components/ui.tsx";
 import { CfpPage as CfpSubmissionPage } from "./pages/cfp/CfpPage.tsx";
 import { CfpBuilderPage } from "./pages/cfp-builder/CfpBuilderPage.tsx";
@@ -9,7 +9,7 @@ import { DispositionPage } from "./pages/disposition/DispositionPage.tsx";
 import { AgendaPage } from "./pages/agenda/AgendaPage.tsx";
 import { OrganizerReviewPage } from "./pages/review/OrganizerReviewPage.tsx";
 import { ReviewerReviewPage } from "./pages/review/ReviewerReviewPage.tsx";
-import { Brand, Link, PublicHeader, getJson, navigate } from "./lib.tsx";
+import { Link, PublicHeader, getJson, navigate } from "./lib.tsx";
 import { AgendaPage as PublicAgendaPage } from "./pages/public/AgendaPage.tsx";
 import { ItineraryPage } from "./pages/public/ItineraryPage.tsx";
 import { ProgramPage } from "./pages/public/ProgramPage.tsx";
@@ -143,7 +143,7 @@ function LoginPage() {
 }
 
 function RoleShell({ role, children }: { role: Role; children: ReactNode }) {
-  const nav: Array<[string, string]> = role === "organizer"
+  const nav: Array<[string, string, string?]> = role === "organizer"
     ? [
       ["Overview", "/organizer"], ["Call for speakers", "/organizer/cfp"],
       ["Review", "/organizer/review"],
@@ -154,19 +154,39 @@ function RoleShell({ role, children }: { role: Role; children: ReactNode }) {
     ]
     : role === "reviewer"
       ? [["Assignments", "/reviewer"]]
-      : [["My proposals", "/speaker"], ["Profile", "/speaker"], ["Tasks", "/speaker"], ["Files", "/speaker"]];
+      : [
+        ["My proposals", "/speaker#proposals", "Submissions"],
+        ["Profile", "/speaker#profile", "Bio and headshot"],
+        ["Tasks", "/speaker#tasks", "Tasks and files"],
+        ["Files", "/speaker#files", "File history"],
+      ];
+
+  function scrollToWorkspaceSection(event: MouseEvent<HTMLAnchorElement>, href: string, heading: string): void {
+    if (event.metaKey || event.ctrlKey || event.shiftKey) return;
+    const section = [...document.querySelectorAll<HTMLElement>(".workspace-section")]
+      .find((item) => item.querySelector("h2")?.textContent === heading);
+    if (section === undefined) return;
+    event.preventDefault();
+    window.history.pushState({}, "", href);
+    section.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   return (
-    <div className="app-shell">
-      <aside className="side-nav">
-        <Brand />
-        <div className="event-switcher"><small>ACTIVE EVENT</small><strong>DevFlow Conf 2027</strong><span>May 12–14 · SFO</span></div>
-        <nav aria-label={`${role} navigation`}>
-          {nav.map(([label, href]) => <Link className={window.location.pathname === href || (href.endsWith("/review") && window.location.pathname.startsWith(href)) ? "active" : ""} href={href} key={label}>{label}</Link>)}
-        </nav>
-        <Link className="side-nav__public" href="/cfp/devflow-conf-2027">View public portal ↗</Link>
-      </aside>
-      <main className="workspace">{children}</main>
-    </div>
+    <>
+      <PublicHeader navigationLinkPrefix="Public" signedOutHref="/" />
+      <div className="app-shell">
+        <aside className="side-nav">
+          <div className="event-switcher"><small>ACTIVE EVENT</small><strong>DevFlow Conf 2027</strong><span>May 12–14 · SFO</span></div>
+          <nav aria-label={`${role} navigation`}>
+            {nav.map(([label, href, heading]) => heading === undefined
+              ? <Link className={window.location.pathname === href || (href.endsWith("/review") && window.location.pathname.startsWith(href)) ? "active" : ""} href={href} key={label}>{label}</Link>
+              : <a href={href} key={label} onClick={(event) => scrollToWorkspaceSection(event, href, heading)}>{label}</a>)}
+          </nav>
+          <Link className="side-nav__public" href="/cfp/devflow-conf-2027">View call for speakers ↗</Link>
+        </aside>
+        <main className="workspace">{children}</main>
+      </div>
+    </>
   );
 }
 
@@ -221,7 +241,7 @@ function OrganizerPage() {
         <>
           <header className="workspace-header"><div><p className="eyebrow">PROGRAM CONTROL / LIVE</p><h1>{data.event.name}</h1><p>{data.event.venue} · {data.event.timezone}</p></div><StatusChip tone="good">CFP open</StatusChip></header>
           <section className="metric-strip">
-            <article><span>SUBMISSIONS</span><strong>{data.submissions.length}</strong><small>fixture proposals</small></article>
+            <article><span>SUBMISSIONS</span><strong>{data.submissions.length}</strong><small>proposals received</small></article>
             <article><span>TRACKS</span><strong>{data.tracks.length}</strong><small>{data.tracks.map((item) => item.name).join(" · ")}</small></article>
             <article><span>FORMATS</span><strong>{data.formats.length}</strong><small>10–120 minutes</small></article>
             <article aria-label="CFP deadline"><span>DEADLINE</span><strong>{deadline}</strong><small>Event time · {data.cfp.event.timezone}</small></article>
@@ -229,7 +249,7 @@ function OrganizerPage() {
           <section className="workspace-section">
             <div className="section-heading"><div><p className="section-label">CALL FOR SPEAKERS</p><h2>Submission pulse</h2></div><Link className="text-link" href="/organizer/disposition">Disposition →</Link></div>
             <DataTable
-              caption="Seeded submissions"
+              caption="Event submissions"
               columns={[
                 { key: "title", label: "Proposal", render: (row) => <strong>{row.title}</strong> },
                 { key: "level", label: "Audience", render: (row) => row.audienceLevel ?? "TBD" },
