@@ -42,10 +42,26 @@ test("reviewer opens only their remit and posts to its durable thread", async ({
   await page.getByRole("link", { name: /Taming 40-Minute CI/ }).click();
   await expect(page).toHaveURL(/\/reviewer\/submissions\/sub_ci_monorepo/);
 
+  await page.getByLabel(/Overall rating/).fill("5");
+  await page.getByLabel(/Recommendation/).selectOption("Maybe");
+  await page.getByLabel(/Reviewer notes/).fill("Unsaved scorecard draft.");
+  await page.getByLabel("Scorecard note").fill("Keep this draft while discussing.");
   const comment = `Browser committee note ${Date.now()}`;
   await page.getByLabel("Add to the committee thread").fill(comment);
+  const refreshedDetail = page.waitForResponse((response) =>
+    response.request().method() === "GET" &&
+    response.url().includes("/api/review/submissions/sub_ci_monorepo")
+  );
   await page.getByRole("button", { name: "Post comment" }).click();
+  await refreshedDetail;
+  await page.evaluate(() => new Promise<void>((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+  }));
   await expect(page.getByText(comment, { exact: true })).toBeVisible();
+  await expect(page.getByLabel(/Overall rating/)).toHaveValue("5");
+  await expect(page.getByLabel(/Recommendation/)).toHaveValue("Maybe");
+  await expect(page.getByLabel(/Reviewer notes/)).toHaveValue("Unsaved scorecard draft.");
+  await expect(page.getByLabel("Scorecard note")).toHaveValue("Keep this draft while discussing.");
   await expect(page.getByRole("heading", { name: "Initial review" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "AI-generated reading aid" })).toHaveCount(0);
 });

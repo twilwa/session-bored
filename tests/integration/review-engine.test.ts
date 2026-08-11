@@ -342,6 +342,38 @@ describe("review engine", () => {
     expect(removedDetail.criteria.map((item) => item.id)).not.toContain(criterion.id);
     expect(removedDetail.reviews[0]?.scores).toEqual(scores);
     expect(removedDetail.reviews[0]?.aggregateScore).toBe(4);
+
+    const revisedScores: Record<string, string | number> = {
+      ...scores,
+      crt_overall_rating: 5,
+    };
+    delete revisedScores[criterion.id];
+    const remainingNumericCriteria = detail.criteria.filter(
+      (item) => item.id !== criterion.id && item.criterionType === "numeric",
+    );
+    const revisedWeight = remainingNumericCriteria.reduce(
+      (total, item) => total + (item.weight ?? 1),
+      0,
+    );
+    const revisedAggregate = remainingNumericCriteria.reduce(
+      (total, item) => total + Number(revisedScores[item.id]) * (item.weight ?? 1),
+      0,
+    ) / revisedWeight;
+    const revisedReviewResponse = await request(
+      "/api/review/submissions/sub_ci_monorepo/reviews",
+      {
+        method: "POST",
+        headers: { cookie: reviewerCookie, "content-type": "application/json" },
+        body: JSON.stringify({ roundId: "rnd_initial_review", scores: revisedScores }),
+      },
+    );
+    expect(revisedReviewResponse.status).toBe(200);
+    const revisedReview = await revisedReviewResponse.json<{
+      scores: Record<string, string | number>;
+      aggregateScore: number;
+    }>();
+    expect(revisedReview.scores).toEqual({ ...revisedScores, [criterion.id]: 2 });
+    expect(revisedReview.aggregateScore).toBeCloseTo(revisedAggregate, 5);
   });
 
   it("provisions usable reviewer credentials with all submissions as the default remit", async () => {

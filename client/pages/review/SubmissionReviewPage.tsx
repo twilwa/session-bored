@@ -90,16 +90,18 @@ export function SubmissionReviewPage({
   const [reviewComment, setReviewComment] = useState("");
   const [message, setMessage] = useState<string | null>(null);
 
-  async function load(): Promise<void> {
+  async function load({ hydrateScorecard = false }: { hydrateScorecard?: boolean } = {}): Promise<void> {
     try {
       const roundQuery = roundId === undefined ? "" : `?roundId=${encodeURIComponent(roundId)}`;
       const loadedDetail = await reviewRequest<ReviewSubmissionDetail>(
         `/api/review/submissions/${submissionId}${roundQuery}`,
       );
       setDetail(loadedDetail);
-      const savedReview = role === "reviewer" ? loadedDetail.reviews[0] : undefined;
-      setScores(savedReview?.scores ?? {});
-      setReviewComment(savedReview?.comment ?? "");
+      if (hydrateScorecard) {
+        const savedReview = role === "reviewer" ? loadedDetail.reviews[0] : undefined;
+        setScores(savedReview?.scores ?? {});
+        setReviewComment(savedReview?.comment ?? "");
+      }
       if (role === "reviewer" && loadedDetail.round !== null) {
         try {
           const availability = await reviewRequest<AIReviewAssistance>(
@@ -124,7 +126,7 @@ export function SubmissionReviewPage({
   useEffect(() => {
     setAIStartingPointId(null);
     setConfirmedAiScoreCriterionIds(new Set());
-    void load();
+    void load({ hydrateScorecard: true });
   }, [submissionId, roundId]);
 
   async function requestAssistance(): Promise<void> {
@@ -177,7 +179,7 @@ export function SubmissionReviewPage({
       setAIStartingPointId(null);
       setConfirmedAiScoreCriterionIds(new Set());
       setMessage("Scorecard saved. Your discussion stays separate and editable.");
-      await load();
+      await load({ hydrateScorecard: true });
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "The scorecard could not be saved.");
     }

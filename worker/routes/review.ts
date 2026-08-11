@@ -1025,8 +1025,6 @@ reviewRoutes.post(
         return context.json({ error: "human_score_choice_required" }, 422);
       }
     }
-    const aggregateScore = computeAggregateScore(scores, criteria);
-
     let assignmentId = scopedItem.assignmentId;
     if (assignmentId === null) {
       assignmentId = createPublicId("asn");
@@ -1054,6 +1052,18 @@ reviewRoutes.post(
       }
       assignmentId = assignment.id;
     }
+    const [existingReview] = await database
+      .select({ scores: reviews.scores })
+      .from(reviews)
+      .where(eq(reviews.assignmentId, assignmentId));
+    const currentCriterionIds = new Set(criteria.map((criterion) => criterion.id));
+    const historicalScores = Object.fromEntries(
+      Object.entries(existingReview?.scores ?? {}).filter(
+        ([criterionId]) => !currentCriterionIds.has(criterionId),
+      ),
+    );
+    const savedScores = { ...historicalScores, ...scores };
+    const aggregateScore = computeAggregateScore(savedScores, criteria);
     const reviewId = createPublicId("rev");
     const submittedAt = new Date();
     await database
@@ -1062,7 +1072,7 @@ reviewRoutes.post(
         id: reviewId,
         assignmentId,
         authorUserId: user.id,
-        scores,
+        scores: savedScores,
         comment: typeof payload.comment === "string" ? payload.comment.trim() : null,
         aggregateScore,
         submittedAt,
@@ -1070,7 +1080,7 @@ reviewRoutes.post(
       .onConflictDoUpdate({
         target: reviews.assignmentId,
         set: {
-          scores,
+          scores: savedScores,
           comment: typeof payload.comment === "string" ? payload.comment.trim() : null,
           aggregateScore,
           submittedAt,
