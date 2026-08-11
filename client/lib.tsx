@@ -71,13 +71,16 @@ export function Link({
   href,
   children,
   className = "",
+  ariaLabel,
 }: {
   href: string;
   children: ReactNode;
   className?: string;
+  ariaLabel?: string | undefined;
 }) {
   return (
     <a
+      aria-label={ariaLabel}
       className={className}
       href={href}
       onClick={(event) => {
@@ -134,8 +137,15 @@ export function Brand() {
   );
 }
 
-export function PublicHeader() {
+export function PublicHeader({
+  signedOutHref,
+  navigationLinkPrefix,
+}: {
+  signedOutHref?: string;
+  navigationLinkPrefix?: string;
+} = {}) {
   const [account, setAccount] = useState<{ session: SessionPayload; area: AccountArea } | null>(null);
+  const [navigationOpen, setNavigationOpen] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -171,19 +181,36 @@ export function PublicHeader() {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({}),
     });
-    if (response.ok) updatePublicSession(null);
+    if (response.ok) {
+      updatePublicSession(null);
+      if (signedOutHref !== undefined) navigate(signedOutHref);
+    }
   }
 
   return (
     <header className="public-header">
       <Brand />
-      <nav aria-label="Public navigation">
-        <Link href="/cfp/devflow-conf-2027">Call for speakers</Link>
-        <Link href="/program">Program</Link>
-        <Link href="/agenda">Agenda</Link>
-        <Link href="/schedule">Itinerary</Link>
-        <Link href="/speakers">Speakers</Link>
-        <Link href="/gallery">Gallery</Link>
+      <button
+        aria-controls="public-navigation"
+        aria-expanded={navigationOpen}
+        aria-label={navigationOpen ? "Close navigation" : "Open navigation"}
+        className="public-header__menu"
+        onClick={() => setNavigationOpen((open) => !open)}
+        type="button"
+      >
+        {navigationOpen ? "Close" : "Menu"}
+      </button>
+      <nav
+        aria-label="Public navigation"
+        className={navigationOpen ? "public-header__nav public-header__nav--open" : "public-header__nav"}
+        id="public-navigation"
+      >
+        <Link ariaLabel={navigationLinkPrefix === undefined ? undefined : `${navigationLinkPrefix} Call for speakers`} href="/cfp/devflow-conf-2027">Call for speakers</Link>
+        <Link ariaLabel={navigationLinkPrefix === undefined ? undefined : `${navigationLinkPrefix} Program`} href="/program">Program</Link>
+        <Link ariaLabel={navigationLinkPrefix === undefined ? undefined : `${navigationLinkPrefix} Agenda`} href="/agenda">Agenda</Link>
+        <Link ariaLabel={navigationLinkPrefix === undefined ? undefined : `${navigationLinkPrefix} Itinerary`} href="/schedule">Itinerary</Link>
+        <Link ariaLabel={navigationLinkPrefix === undefined ? undefined : `${navigationLinkPrefix} Speakers`} href="/speakers">Speakers</Link>
+        <Link ariaLabel={navigationLinkPrefix === undefined ? undefined : `${navigationLinkPrefix} Gallery`} href="/gallery">Gallery</Link>
         {account === null ? (
           <Link className="nav-signin" href="/login">Sign in</Link>
         ) : (

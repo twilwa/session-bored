@@ -11,6 +11,9 @@ test("organizer reviews communications without anything sending itself", async (
 
   await expect(page.getByRole("heading", { name: /Draft it/ })).toBeVisible();
   await expect(page.getByText("Messages are drafted for review, never sent automatically.")).toBeVisible();
+  const deliveryStatus = page.getByRole("region", { name: "Email delivery status" });
+  await expect(deliveryStatus).toContainText("Email sender not connected");
+  await expect(deliveryStatus).toContainText("Nothing will send until an email sender is configured.");
 
   await page.getByRole("button", { name: "Draft reminders for overdue tasks" }).click();
   await expect(page.getByText(/reminder draft.* queued for review\./)).toBeVisible();
@@ -64,4 +67,8 @@ test("organizer authors, previews, and queues a template without leaving Communi
   await expect(draftedMessage).toContainText("sbek-speaker@example.com");
   await expect(draftedMessage.getByLabel("Subject")).toHaveValue(expectedSubject);
   await expect(draftedMessage.getByLabel("Body")).toHaveValue("Hi Priya Raman, meet us at the north lobby.");
+
+  await draftedMessage.getByRole("button", { name: "Approve and send" }).click();
+  await expect(page.getByRole("status")).toContainText("No email sender is configured, so nothing was sent.");
+  await expect(draftedMessage).toBeVisible();
 });

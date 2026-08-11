@@ -38,7 +38,7 @@ function requestErrorMessage(status: number, payload: unknown): string {
       return "Merge fields must use matching braces, for example {{recipientName}}.";
     }
     if (error === "email_not_configured") {
-      return "Email delivery is not configured. The draft remains unsent.";
+      return "No email sender is configured, so nothing was sent. The draft remains ready for review.";
     }
   }
   return `Communications request failed (${status}).`;
@@ -306,6 +306,14 @@ export function CommsPage() {
         </div>
         <Button disabled={busy} onClick={() => void draftReminders()} tone="signal">Draft reminders for overdue tasks</Button>
       </header>
+
+      <section aria-label="Email delivery status" className="comms-delivery-status">
+        <span aria-hidden="true" className="comms-delivery-status__mark">!</span>
+        <div>
+          <strong>Email sender not connected</strong>
+          <p>You can draft, edit, and preview messages. Nothing will send until an email sender is configured.</p>
+        </div>
+      </section>
 
       {failedNotices.length === 0 ? null : (
         <section className="workspace-section comms-failed" aria-label="Failed decision letters">

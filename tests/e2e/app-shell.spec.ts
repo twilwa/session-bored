@@ -1,7 +1,16 @@
 // ABOUTME: Verifies Greenroom's public, organizer, reviewer, and speaker shells in a real browser.
 // ABOUTME: Checks seeded visibility, scoped navigation, password login, and 375-pixel readability.
-import { expect, test, type Route } from "@playwright/test";
+import { expect, test, type Page, type Route } from "@playwright/test";
 import { formatFullDateTime } from "../../client/pages/public/shared.ts";
+
+async function openMobileNavigation(page: Page): Promise<void> {
+  const menuButton = page.locator(".public-header__menu");
+  if (await menuButton.isVisible()) {
+    await expect(menuButton).toHaveAttribute("aria-expanded", "false");
+    await menuButton.click();
+    await expect(menuButton).toHaveAttribute("aria-expanded", "true");
+  }
+}
 
 test("public CFP is populated and mobile readable", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
@@ -18,10 +27,16 @@ test("every public surface is reachable from the nav at a 375-pixel phone width"
   await page.setViewportSize({ width: 375, height: 812 });
   await page.goto("/");
 
+  const menuButton = page.getByRole("button", { name: "Open navigation" });
+  await expect(menuButton).toBeVisible();
+  await menuButton.click();
   const nav = page.getByRole("navigation", { name: "Public navigation" });
   for (const label of ["Call for speakers", "Program", "Agenda", "Itinerary", "Speakers", "Gallery", "Sign in"]) {
     await expect(nav.getByRole("link", { name: label, exact: true })).toBeVisible();
   }
+  expect(await nav.evaluate((element) => element.scrollWidth)).toBeLessThanOrEqual(
+    await nav.evaluate((element) => element.clientWidth),
+  );
   expect((await page.request.get("/api/session")).status()).toBe(401);
   await expect(page.getByRole("alert")).toHaveCount(0);
   const width = await page.evaluate(() => document.documentElement.scrollWidth);
@@ -83,6 +98,16 @@ test("organizer password opens the populated operations shell", async ({ page })
   await expect(page).toHaveURL(/\/organizer/);
   await expect(page.getByRole("heading", { name: "DevFlow Conf 2027" })).toBeVisible();
   await expect(page.getByText("Taming 40-Minute CI", { exact: false })).toBeVisible();
+  await expect(page.getByText("proposals received", { exact: true })).toBeVisible();
+  await expect(page.getByRole("table", { name: "Event submissions" })).toBeVisible();
+  await expect(page.getByText("fixture proposals", { exact: true })).toHaveCount(0);
+  await openMobileNavigation(page);
+  const workspaceHeader = page.getByRole("banner");
+  const workspacePublicNav = workspaceHeader.getByRole("navigation", { name: "Public navigation" });
+  await expect(workspacePublicNav.getByRole("link", { name: "Public Call for speakers" })).toBeVisible();
+  await expect(workspacePublicNav.getByText("Jordan Alvarez", { exact: true })).toBeVisible();
+  await expect(workspacePublicNav.getByRole("link", { name: "Organizer area" })).toHaveAttribute("href", "/organizer");
+  await expect(workspacePublicNav.getByRole("button", { name: "Sign out" })).toBeVisible();
   const cfpResponse = await page.request.get("/api/public/cfp/devflow-conf-2027");
   const cfp = await cfpResponse.json() as {
     event: { timezone: string };
@@ -91,8 +116,9 @@ test("organizer password opens the populated operations shell", async ({ page })
   await expect(page.locator(".metric-strip article").filter({ hasText: "DEADLINE" })).toContainText(
     formatFullDateTime(new Date(cfp.form.closeAt).getTime(), cfp.event.timezone),
   );
-  await expect(page.getByRole("link", { name: "Call for speakers", exact: true })).toBeVisible();
-  const dispositionLink = page.getByRole("link", { name: "Disposition", exact: true });
+  const organizerNav = page.getByRole("navigation", { name: "organizer navigation" });
+  await expect(organizerNav.getByRole("link", { name: "Call for speakers", exact: true })).toBeVisible();
+  const dispositionLink = organizerNav.getByRole("link", { name: "Disposition", exact: true });
   await expect(dispositionLink).toHaveAttribute("href", "/organizer/disposition");
   await dispositionLink.click();
   await expect(page.getByRole("heading", { name: "Decide quietly. Tell deliberately." })).toBeVisible();
@@ -101,6 +127,7 @@ test("organizer password opens the populated operations shell", async ({ page })
   }
 
   await page.goto("/program");
+  await openMobileNavigation(page);
   const nav = page.getByRole("navigation", { name: "Public navigation" });
   await expect(nav.getByText("Jordan Alvarez", { exact: true })).toBeVisible();
   await expect(nav.getByRole("link", { name: "Organizer area" })).toHaveAttribute("href", "/organizer");
@@ -108,6 +135,7 @@ test("organizer password opens the populated operations shell", async ({ page })
   await expect(page).toHaveURL(/\/organizer$/);
 
   await page.goto("/cfp/devflow-conf-2027");
+  await openMobileNavigation(page);
   const cfpNav = page.getByRole("navigation", { name: "Public navigation" });
   await expect(cfpNav.getByRole("link", { name: "Organizer area" })).toHaveAttribute("href", "/organizer");
   const signOutResponse = page.waitForResponse("**/api/auth/sign-out");
@@ -142,6 +170,44 @@ test("a failed organizer load clears loading, explains the failure, and can retr
   expect(requestCount).toBeGreaterThanOrEqual(2);
 });
 
+test("signing out from a workspace returns to the anonymous public site", async ({ page }) => {
+  await page.goto("/login");
+  await page.getByLabel("Email").fill("sbek-organizer@example.com");
+  await page.getByLabel("Password").fill("SbekTest!2027-org");
+  await page.getByRole("button", { name: "Sign in" }).click();
+
+  await expect(page).toHaveURL(/\/organizer/);
+  await openMobileNavigation(page);
+  const signOutResponse = page.waitForResponse("**/api/auth/sign-out");
+  await page.getByRole("banner").getByRole("button", { name: "Sign out" }).click();
+  expect((await signOutResponse).status()).toBe(200);
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByRole("navigation", { name: "Public navigation" }).getByRole("link", { name: "Sign in" })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "organizer navigation" })).toHaveCount(0);
+});
+
+test("every organizer destination fits in the workspace navigation at phone width", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto("/login");
+  await page.getByLabel("Email").fill("sbek-organizer@example.com");
+  await page.getByLabel("Password").fill("SbekTest!2027-org");
+  await page.getByRole("button", { name: "Sign in" }).click();
+
+  await expect(page).toHaveURL(/\/organizer/);
+  const globalHeader = page.getByRole("banner");
+  await openMobileNavigation(page);
+  await expect(globalHeader.getByText("Jordan Alvarez", { exact: true })).toBeVisible();
+  await expect(globalHeader.getByRole("button", { name: "Sign out" })).toBeVisible();
+  const nav = page.getByRole("navigation", { name: "organizer navigation" });
+  for (const label of ["Overview", "Call for speakers", "Review", "Disposition", "Speakers", "Missing info", "Agenda", "Communications"]) {
+    await expect(nav.getByRole("link", { name: label, exact: true })).toBeVisible();
+  }
+  expect(await nav.evaluate((element) => element.scrollWidth)).toBeLessThanOrEqual(
+    await nav.evaluate((element) => element.clientWidth),
+  );
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
+});
+
 test("speaker account with proposals and no portal profile links to the submitter area", async ({ page }) => {
   const unique = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   const email = `header-submitter-${unique}@example.com`;
@@ -159,6 +225,7 @@ test("speaker account with proposals and no portal profile links to the submitte
   expect(submissionResponse.status()).toBe(201);
 
   await page.goto("/program");
+  await openMobileNavigation(page);
   const nav = page.getByRole("navigation", { name: "Public navigation" });
   await expect(nav.getByText("Casey Submitter", { exact: true })).toBeVisible();
   await expect(nav.getByRole("link", { name: "Submitter area" })).toHaveAttribute("href", "/submitter");
@@ -173,9 +240,15 @@ test("reviewer sees their review queue and no organizer navigation", async ({ pa
   await expect(page).toHaveURL(/\/reviewer/);
   await expect(page.getByRole("region", { name: "Your review queue" })).toBeVisible();
   await expect(page.getByText("Taming 40-Minute CI", { exact: false })).toBeVisible();
+  await openMobileNavigation(page);
+  const reviewerPublicNav = page.getByRole("banner").getByRole("navigation", { name: "Public navigation" });
+  await expect(reviewerPublicNav.getByText("Sam Whitfield", { exact: true })).toBeVisible();
+  await expect(reviewerPublicNav.getByRole("link", { name: "Reviewer area" })).toHaveAttribute("href", "/reviewer");
+  await expect(reviewerPublicNav.getByRole("button", { name: "Sign out" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Organizer" })).toHaveCount(0);
 
   await page.goto("/program");
+  await openMobileNavigation(page);
   await expect(page.getByRole("navigation", { name: "Public navigation" }).getByRole("link", { name: "Reviewer area" }))
     .toHaveAttribute("href", "/reviewer");
 
@@ -190,11 +263,31 @@ test("speaker shell shows only the signed-in speaker's work", async ({ page }) =
   await page.getByRole("button", { name: "Sign in" }).click();
 
   await expect(page).toHaveURL(/\/speaker/);
-  await expect(page.getByText("Priya Raman", { exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Taming 40-Minute CI", exact: false })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Priya Raman", exact: true })).toBeVisible();
+  await expect(page.getByText("Taming 40-Minute CI", { exact: false }).first()).toBeVisible();
   await expect(page.getByRole("heading", { name: "Docs That Answer Back", exact: false })).toHaveCount(0);
+  await openMobileNavigation(page);
+  const speakerPublicNav = page.getByRole("banner").getByRole("navigation", { name: "Public navigation" });
+  await expect(speakerPublicNav.getByText("Priya Raman", { exact: true })).toBeVisible();
+  await expect(speakerPublicNav.getByRole("link", { name: "Speaker area" })).toHaveAttribute("href", "/speaker");
+  await expect(speakerPublicNav.getByRole("button", { name: "Sign out" })).toBeVisible();
+  const speakerNav = page.getByRole("navigation", { name: "speaker navigation" });
+  await expect(speakerNav.getByRole("link", { name: "My proposals" })).toHaveAttribute("href", "/speaker#proposals");
+  await expect(speakerNav.getByRole("link", { name: "Profile" })).toHaveAttribute("href", "/speaker#profile");
+  await expect(speakerNav.getByRole("link", { name: "Tasks" })).toHaveAttribute("href", "/speaker#tasks");
+  await expect(speakerNav.getByRole("link", { name: "Files" })).toHaveAttribute("href", "/speaker#files");
+  await speakerNav.getByRole("link", { name: "Tasks" }).click();
+  await expect(page).toHaveURL(/\/speaker#tasks$/);
+  await expect(page.getByRole("heading", { name: "Tasks and files" })).toBeInViewport();
+  await expect(speakerPublicNav.getByRole("link", { name: "Public Call for speakers" })).toHaveAttribute(
+    "href",
+    "/cfp/devflow-conf-2027",
+  );
+  await expect(page.locator(".side-nav__public")).toHaveAttribute("href", "/cfp/devflow-conf-2027");
+  await expect(page.locator(".side-nav__public")).toHaveText("View call for speakers ↗");
 
   await page.goto("/program");
+  await openMobileNavigation(page);
   await expect(page.getByRole("navigation", { name: "Public navigation" }).getByRole("link", { name: "Speaker area" }))
     .toHaveAttribute("href", "/speaker");
 });

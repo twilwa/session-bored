@@ -228,7 +228,7 @@ export function DispositionPage() {
             <div><p className="section-label">REVIEW BEFORE DISPATCH</p><h2>{preview.items.length} rendered letter{preview.items.length === 1 ? "" : "s"}</h2></div>
             <StatusChip tone={preview.status === "queued" ? "good" : "signal"}>{preview.status}</StatusChip>
           </div>
-          <p className="decision-preview__warning"><strong>No email has been sent.</strong> Dispatch records each notice in Greenroom's queue. The communications lane will connect the real sender.</p>
+          <p className="decision-preview__warning"><strong>No email has been sent.</strong> Dispatch records each notice in Greenroom's queue. A configured email sender attempts delivery only when you dispatch.</p>
           <div className="decision-letter-grid">
             {preview.items.map((item) => (
               <article className="decision-letter" key={item.id}>

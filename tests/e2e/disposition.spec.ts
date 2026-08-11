@@ -28,8 +28,11 @@ test("organizer decides silently and reviews a queue-only batch", async ({ page 
 
   await proposalRow.getByRole("checkbox").check();
   await previewButton.click();
-  await expect(page.getByRole("region", { name: "Decision batch preview" })).toBeVisible();
-  await expect(page.getByText("No email has been sent.")).toBeVisible();
+  const decisionPreview = page.getByRole("region", { name: "Decision batch preview" });
+  await expect(decisionPreview).toBeVisible();
+  await expect(decisionPreview.getByText("No email has been sent.")).toBeVisible();
+  await expect(decisionPreview).toContainText("A configured email sender attempts delivery only when you dispatch.");
+  await expect(decisionPreview).not.toContainText("communications lane");
   await expect(page.getByText("Priya Raman <sbek-speaker@example.com>")).toBeVisible();
   const dispatchButton = page.getByRole("button", { name: "Dispatch to queue once" });
   await expect(dispatchButton).toBeVisible();
