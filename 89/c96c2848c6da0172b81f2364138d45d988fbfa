@@ -1,0 +1,21 @@
+tests/e2e/disposition.spec.ts
+  s_666a681f002370::t_e5b0a2f3db0e15 57-71
+client/pages/disposition/disposition.css
+  s_666a681f002370::t_e5b0a2f3db0e15 11
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "89c96c2848c6da0172b81f2364138d45d988fbfa",
+  "prompts": {},
+  "sessions": {
+    "s_666a681f002370": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fef9a-4739-7d33-b70f-a21864db0c80",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
