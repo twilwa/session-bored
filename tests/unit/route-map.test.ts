@@ -32,4 +32,45 @@ describe("typed route map", () => {
     expect(routeMap.submitterSubmissions.access).toBe("authenticated");
     expect(routeMap.events.access).toBe("organizer");
   });
+
+  it("publishes the complete organizer communication-template contract", () => {
+    expect([
+      routeMap.commsRecipients,
+      routeMap.createCommsTemplate,
+      routeMap.updateCommsTemplate,
+      routeMap.removeCommsTemplate,
+      routeMap.queueCommsTemplateDrafts,
+    ]).toEqual([
+      {
+        method: "GET",
+        path: "/api/events/:eventId/comms/recipients",
+        module: "communications",
+        access: "organizer",
+      },
+      {
+        method: "POST",
+        path: "/api/events/:eventId/comms/templates",
+        module: "communications",
+        access: "organizer",
+      },
+      {
+        method: "PATCH",
+        path: "/api/events/:eventId/comms/templates/:key",
+        module: "communications",
+        access: "organizer",
+      },
+      {
+        method: "DELETE",
+        path: "/api/events/:eventId/comms/templates/:key",
+        module: "communications",
+        access: "organizer",
+      },
+      {
+        method: "POST",
+        path: "/api/events/:eventId/comms/templates/:key/drafts",
+        module: "communications",
+        access: "organizer",
+      },
+    ]);
+  });
 });
