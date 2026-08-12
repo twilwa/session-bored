@@ -1,0 +1,51 @@
+client/pages/public/PersonalSchedulePage.tsx
+  s_922852267ee843::t_1804bdc846b4aa 12-17,19-24,70,72,75
+  s_922852267ee843::t_689d9a6939b4d8 18
+  s_922852267ee843::t_e28b84463f4015 1-11,25-69,71,73-74,76-154
+worker/routes/public.ts
+  s_922852267ee843::t_8f318818f0233d 7,116-137,138-142,144-146,149-164
+  s_1929f7fa310652::t_2166e6319a4b6e 165
+client/styles.css
+  s_922852267ee843::t_e28b84463f4015 342-343,348-351,368-369,380-384,478-480,482-486
+client/pages/public/personal-schedule.ts
+  s_922852267ee843::t_e28b84463f4015 1-49
+client/pages/public/ItineraryPage.tsx
+  s_922852267ee843::t_e28b84463f4015 7,9-10,19,82-87,97-104
+tests/e2e/public-schedule.spec.ts
+  s_922852267ee843::t_df1fbef46abf74 132-143,146-147,149-157,159,161-164
+  s_922852267ee843::t_e28b84463f4015 144-145,148,160
+  s_922852267ee843::t_5b4c755805ee50 158
+tests/integration/public-surfaces.test.ts
+  s_922852267ee843::t_d2b2f5699889e4 313-342,353,360-361
+  s_922852267ee843::t_9e75595d8a4f03 311-312,343-352,354-359,362-364
+client/pages/public/ItinerarySessionCard.tsx
+  s_922852267ee843::t_e28b84463f4015 1-58
+client/App.tsx
+  s_922852267ee843::t_e28b84463f4015 15,366
+client/lib.tsx
+  s_922852267ee843::t_e28b84463f4015 212
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "92435666bbd208cc8abfcffc3a9190c699b41da3",
+  "prompts": {},
+  "sessions": {
+    "s_1929f7fa310652": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ab8ec8ac-edc6-4bf5-ae6c-c9393eeff12b",
+        "model": "claude-opus-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    },
+    "s_922852267ee843": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ff375-5e48-70c0-a5b5-db6da827f50d",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
