@@ -1,0 +1,28 @@
+worker/routes/comms.ts
+  s_671043d2480275::t_c53e66eefe3f32 7,77-118
+tests/integration/disposition.test.ts
+  s_671043d2480275::t_190fe9a7337f54 257-260,272-303,316-320
+client/pages/comms/CommsPage.tsx
+  s_671043d2480275::t_c53e66eefe3f32 503
+tests/e2e/comms.spec.ts
+  s_671043d2480275::t_190fe9a7337f54 75-107
+client/App.tsx
+  s_671043d2480275::t_dbb6fac089b350 324-325
+  s_671043d2480275::t_2091183f13b538 322-323,326-327,331,341
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "f784fba101f34f793083084df2bac08799f76486",
+  "prompts": {},
+  "sessions": {
+    "s_671043d2480275": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ff361-238b-79c2-984a-ad68971c6fab",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
