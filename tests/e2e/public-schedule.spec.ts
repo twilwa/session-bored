@@ -205,6 +205,7 @@ test("a placed session reads identically on the program, agenda, itinerary, and 
   await expect(programCard).toContainText("Thu, May 13");
   await expect(programCard).toContainText("10:00 AM");
   await expect(programCard).toContainText("Main Stage");
+  await expect(programCard).toContainText("Marcus Okafor · Staff Developer Advocate, Cloudreach Labs");
 
   await page.goto("/agenda");
   await selectPlacedDay(page);
@@ -221,6 +222,7 @@ test("a placed session reads identically on the program, agenda, itinerary, and 
   await expect(itineraryItem).toContainText("Developer Experience");
   await expect(itineraryItem).toContainText("10:00 AM–10:10 AM");
   await expect(itineraryItem).toContainText("Main Stage");
+  await expect(itineraryItem).toContainText("Marcus Okafor · Staff Developer Advocate, Cloudreach Labs");
 
   await page.goto("/speakers/spk_marcus_devflow_2027");
   const speakerSession = page.locator(".speaker-sessions__item", { hasText: "Docs That Answer Back" });

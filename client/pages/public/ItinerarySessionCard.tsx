@@ -1,7 +1,7 @@
 // ABOUTME: Renders one public itinerary session with its device-local personal-schedule control.
 // ABOUTME: Keeps browsing and personal views visually and behaviorally consistent.
 import type { PublicSessionCard } from "../../../shared/api.ts";
-import { formatTimeRange, truncate } from "./shared.ts";
+import { formatSpeakerLine, formatTimeRange, truncate } from "./shared.ts";
 
 const ABSTRACT_PREVIEW = 220;
 
@@ -42,6 +42,7 @@ export function ItinerarySessionCard({
           </button>
         </h2>
         {shown === "" ? null : <p className="itinerary-item__abstract">{shown}</p>}
+        <p className="itinerary-item__speakers">{formatSpeakerLine(session.speakers)}</p>
       </div>
       <button
         aria-label={`${action} ${title} ${direction} my schedule`}
