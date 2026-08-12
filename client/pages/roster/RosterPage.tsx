@@ -16,6 +16,7 @@ import {
   TextField,
   Toast,
 } from "../../components/ui.tsx";
+import { initialsOf } from "../public/shared.ts";
 
 const eventId = "evt_devflow_conf_2027";
 const workflowStatuses = [
@@ -121,6 +122,37 @@ function openWorkLabel(speaker: RosterSpeakerSummary): ReactNode {
   return <><strong>{incomplete} open item{incomplete === 1 ? "" : "s"}</strong><small>{total === 0 ? "No onboarding tasks assigned" : `${total} task${total === 1 ? "" : "s"} assigned`}</small></>;
 }
 
+// The name is already announced beside it, so the avatar stays decorative whether
+// it renders a headshot or initials. A headshot that fails to load falls back to
+// the initials rather than leaving an empty block.
+export function rosterAvatar(name: string, url: string | null, imageFailed: boolean):
+  | { initials: string; kind: "initials" }
+  | { kind: "photo"; src: string } {
+  if (url === null || url === "" || imageFailed) {
+    return { initials: initialsOf(name), kind: "initials" };
+  }
+  return { kind: "photo", src: url };
+}
+
+export function SpeakerAvatar({ name, url }: { name: string; url: string | null }) {
+  const [failed, setFailed] = useState(false);
+  useEffect(() => setFailed(false), [url]);
+  const avatar = rosterAvatar(name, url, failed);
+  if (avatar.kind === "initials") {
+    return <span aria-hidden="true" className="speaker-avatar">{avatar.initials}</span>;
+  }
+  return (
+    <img
+      alt=""
+      aria-hidden="true"
+      className="speaker-avatar speaker-avatar--photo"
+      loading="lazy"
+      onError={() => setFailed(true)}
+      src={avatar.src}
+    />
+  );
+}
+
 function RosterList() {
   const [speakers, setSpeakers] = useState<RosterSpeakerSummary[] | null>(null);
   const [search, setSearch] = useState("");
@@ -208,7 +240,7 @@ function RosterList() {
                         type="button"
                       >{expanded ? "⌄" : ">"}</button>
                       <div className="speaker-record__identity">
-                        <span className="speaker-avatar" aria-hidden="true">{speaker.name.split(" ").map((part) => part[0]).join("").slice(0, 2)}</span>
+                        <SpeakerAvatar name={speaker.name} url={speaker.headshotUrl} />
                         <div className="speaker-record__identity-copy">
                           <strong className="speaker-record__name">{speaker.name}</strong>
                           <a href={`mailto:${speaker.email}`}>{speaker.email}</a>
