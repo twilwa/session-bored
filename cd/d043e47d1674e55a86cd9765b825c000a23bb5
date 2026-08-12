@@ -1,0 +1,23 @@
+client/pages/roster/RosterPage.tsx
+  s_86f194509047f7::t_e234064521f0a8 19,125-155,243
+client/styles.css
+  s_86f194509047f7::t_e234064521f0a8 234
+tests/unit/roster-avatar.test.ts
+  s_86f194509047f7::t_7f7dbe5ded1494 1-38
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "cdd043e47d1674e55a86cd9765b825c000a23bb5",
+  "prompts": {},
+  "sessions": {
+    "s_86f194509047f7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7c874c12-0d5a-43b6-b923-30f9d146a4f1",
+        "model": "claude-opus-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
