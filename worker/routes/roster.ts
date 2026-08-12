@@ -260,6 +260,9 @@ rosterRoutes.patch("/api/events/:eventId/speakers/:speakerId", async (context) =
       if (value !== null && typeof value !== "string") {
         return context.json({ error: "invalid_speaker" }, 400);
       }
+      if (field === "headshotUrl" && typeof value === "string" && value.trim().length === 0) {
+        continue;
+      }
       personUpdate[field] = value === null ? null : value.trim() || null;
     }
   }

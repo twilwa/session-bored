@@ -379,6 +379,57 @@ describe("organizer speaker roster", () => {
     expect(dispatchesAfter?.count).toBe(dispatchesBefore?.count);
   });
 
+  it("preserves an existing relative headshot when an organizer leaves its replacement blank", async () => {
+    const response = await request(
+      "/api/events/evt_devflow_conf_2027/speakers/spk_priya_devflow_2027",
+      {
+        method: "PATCH",
+        headers: { cookie: organizerCookie, "content-type": "application/json" },
+        body: JSON.stringify({ name: "Priya Raman-Smith", headshotUrl: "" }),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    const updated = await response.json();
+    const restored = await request(
+      "/api/events/evt_devflow_conf_2027/speakers/spk_priya_devflow_2027",
+      {
+        method: "PATCH",
+        headers: { cookie: organizerCookie, "content-type": "application/json" },
+        body: JSON.stringify({ name: "Priya Raman" }),
+      },
+    );
+    expect(restored.status).toBe(200);
+    expect(updated).toMatchObject({
+      name: "Priya Raman-Smith",
+      headshotUrl: "/headshots/priya-raman.jpg",
+    });
+  });
+
+  it("removes a stored headshot only when an organizer explicitly sends null", async () => {
+    const response = await request(
+      "/api/events/evt_devflow_conf_2027/speakers/spk_priya_devflow_2027",
+      {
+        method: "PATCH",
+        headers: { cookie: organizerCookie, "content-type": "application/json" },
+        body: JSON.stringify({ headshotUrl: null }),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    const updated = await response.json();
+    const restored = await request(
+      "/api/events/evt_devflow_conf_2027/speakers/spk_priya_devflow_2027",
+      {
+        method: "PATCH",
+        headers: { cookie: organizerCookie, "content-type": "application/json" },
+        body: JSON.stringify({ headshotUrl: "/headshots/priya-raman.jpg" }),
+      },
+    );
+    expect(restored.status).toBe(200);
+    expect(updated).toMatchObject({ headshotUrl: null });
+  });
+
   it("assigns one file request to many speakers at once", async () => {
     const response = await request("/api/events/evt_devflow_conf_2027/tasks", {
       method: "POST",
