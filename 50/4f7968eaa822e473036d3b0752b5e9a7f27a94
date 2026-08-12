@@ -1,0 +1,26 @@
+tests/unit/public-session-speakers.test.ts
+  s_542f34e0618d51::t_0a7a12c11dbd10 1-79
+client/styles.css
+  s_542f34e0618d51::t_35f641d0efe71d 380
+client/pages/public/ItinerarySessionCard.tsx
+  s_542f34e0618d51::t_80b9fa479d3a39 4
+  s_542f34e0618d51::t_d6c24917857eb1 45
+client/pages/public/ProgramPage.tsx
+  s_542f34e0618d51::t_435ea6c4b50cb0 67
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "504f7968eaa822e473036d3b0752b5e9a7f27a94",
+  "prompts": {},
+  "sessions": {
+    "s_542f34e0618d51": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e27ae1d9-74d4-4efe-8758-f53940787b05",
+        "model": "claude-opus-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
