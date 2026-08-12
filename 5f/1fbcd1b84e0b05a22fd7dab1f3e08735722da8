@@ -1,0 +1,19 @@
+tests/e2e/event-settings.spec.ts
+  s_4f51c4607aa205::t_f625004d0f513f 3,5,13-20,39,47,76,87,147,154
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "5f1fbcd1b84e0b05a22fd7dab1f3e08735722da8",
+  "prompts": {},
+  "sessions": {
+    "s_4f51c4607aa205": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ff412-33ba-7792-a502-de1a7ba3ac74",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
