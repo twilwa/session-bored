@@ -82,6 +82,7 @@ test("agenda grid renders a real placement with the event's own timezone, and op
 
   const sessionBlock = page.locator(".agenda-grid__session", { hasText: "Docs That Answer Back" });
   await expect(sessionBlock).toBeVisible();
+  await expect(sessionBlock).toContainText("Marcus Okafor · Staff Developer Advocate, Cloudreach Labs");
   await sessionBlock.click();
 
   const modal = page.getByRole("dialog");

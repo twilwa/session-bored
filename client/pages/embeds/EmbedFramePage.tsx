@@ -79,7 +79,11 @@ function AgendaWidget({ items, rooms, timezone }: { items: PublicSessionCard[]; 
                     {grid.columns.map((column) => (
                       <div className="embed-agenda__cell" key={column.key}>
                         {(grid.cells.get(agendaCellKey(row.key, column.key)) ?? []).map((session) => (
-                          <article key={session.id}><small>{session.track ?? "Track TBD"}</small><span>{session.title ?? "Untitled session"}</span></article>
+                          <article key={session.id}>
+                            <small>{session.track ?? "Track TBD"}</small>
+                            <span>{session.title ?? "Untitled session"}</span>
+                            <p className="embed-agenda__speakers">{formatSpeakerLine(session.speakers)}</p>
+                          </article>
                         ))}
                       </div>
                     ))}
@@ -114,12 +118,14 @@ function SpeakerWidget({ items, gallery }: { items: PublicSpeakerCard[]; gallery
 export function EmbedFramePage({ publicToken }: { publicToken: string }) {
   const [data, setData] = useState<PublicEmbedResponse | null>(null);
   const [error, setError] = useState(false);
+  const version = new URLSearchParams(window.location.search).get("version");
 
   useEffect(() => {
-    getJson<PublicEmbedResponse>(`/api/public/embeds/${publicToken}`)
+    const query = version === null ? "" : `?version=${encodeURIComponent(version)}`;
+    getJson<PublicEmbedResponse>(`/api/public/embeds/${publicToken}${query}`)
       .then(setData)
       .catch(() => setError(true));
-  }, [publicToken]);
+  }, [publicToken, version]);
 
   useEffect(() => {
     const reportHeight = () => window.parent.postMessage({

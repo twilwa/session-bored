@@ -38,6 +38,22 @@ async function createEmbed(
   return response.json();
 }
 
+function publicDeliveryPaths(publicToken: string): string[] {
+  return [
+    // The extensionless public read is the iframe document's data request.
+    `/api/public/embeds/${publicToken}`,
+    `/api/public/embeds/${publicToken}.json`,
+    `/api/public/embeds/${publicToken}.ics`,
+    `/embed/${publicToken}.js`,
+  ];
+}
+
+async function expectPublicDeliveryStatus(publicToken: string, status: number): Promise<void> {
+  for (const path of publicDeliveryPaths(publicToken)) {
+    expect((await request(path)).status, path).toBe(status);
+  }
+}
+
 describe("organizer embed builder", () => {
   let organizerCookie: string;
 
@@ -87,21 +103,16 @@ describe("organizer embed builder", () => {
     });
     expect(embed.status).toBe("draft");
 
-    for (const path of [
-      `/api/public/embeds/${embed.publicToken}`,
-      `/api/public/embeds/${embed.publicToken}.json`,
-      `/api/public/embeds/${embed.publicToken}.ics`,
-      `/embed/${embed.publicToken}.js`,
-    ]) {
-      expect((await request(path)).status).toBe(404);
-    }
+    await expectPublicDeliveryStatus(embed.publicToken, 404);
   });
 
-  it("updates and removes organizer-owned embed definitions", async () => {
+  it("publishes, edits, unpublishes, republishes, and deletes one token across every delivery format", async () => {
     const embed = await createEmbed(organizerCookie, {
       name: "Draft programme",
       widgetType: "sessions",
     });
+    await expectPublicDeliveryStatus(embed.publicToken, 404);
+
     const updateResponse = await request(`/api/events/${eventId}/embeds/${embed.id}`, {
       method: "PATCH",
       headers: { cookie: organizerCookie, "content-type": "application/json" },
@@ -120,14 +131,40 @@ describe("organizer embed builder", () => {
       status: "published",
       config: { track: "Developer Experience" },
     });
-    expect((await request(`/api/public/embeds/${embed.publicToken}`)).status).toBe(200);
+    await expectPublicDeliveryStatus(embed.publicToken, 200);
+
+    const unpublishResponse = await request(`/api/events/${eventId}/embeds/${embed.id}`, {
+      method: "PATCH",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({
+        name: "Published programme",
+        widgetType: "agenda",
+        status: "draft",
+        track: "Developer Experience",
+      }),
+    });
+    expect(unpublishResponse.status).toBe(200);
+    await expectPublicDeliveryStatus(embed.publicToken, 404);
+
+    const republishResponse = await request(`/api/events/${eventId}/embeds/${embed.id}`, {
+      method: "PATCH",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({
+        name: "Published programme",
+        widgetType: "agenda",
+        status: "published",
+        track: "Developer Experience",
+      }),
+    });
+    expect(republishResponse.status).toBe(200);
+    await expectPublicDeliveryStatus(embed.publicToken, 200);
 
     const removeResponse = await request(`/api/events/${eventId}/embeds/${embed.id}`, {
       method: "DELETE",
       headers: { cookie: organizerCookie },
     });
     expect(removeResponse.status).toBe(204);
-    expect((await request(`/api/public/embeds/${embed.publicToken}`)).status).toBe(404);
+    await expectPublicDeliveryStatus(embed.publicToken, 404);
   });
 
   it("delivers filtered JSON and iCal without leaking hidden sessions", async () => {
@@ -225,17 +262,26 @@ describe("organizer embed builder", () => {
       track: "Developer Experience",
     });
 
-    const jsonResponse = await request(`/api/public/embeds/${embed.publicToken}.json`);
-    expect(jsonResponse.status).toBe(200);
-    expect(jsonResponse.headers.get("access-control-allow-origin")).toBe("*");
-    const payload = await jsonResponse.json<{ items: Array<{ title: string | null; track: string | null }> }>();
-    expect(payload.items.length).toBeGreaterThan(0);
-    expect(payload.items.every((item) => item.track === "Developer Experience")).toBe(true);
-    expect(payload.items.map((item) => item.title)).not.toEqual(expect.arrayContaining([
-      "Unapproved embed secret",
-      "Unpublished embed secret",
-      "Withdrawn embed secret",
-    ]));
+    for (const path of [
+      `/api/public/embeds/${embed.publicToken}`,
+      `/api/public/embeds/${embed.publicToken}.json`,
+    ]) {
+      const response = await request(path);
+      expect(response.status, path).toBe(200);
+      expect(response.headers.get("access-control-allow-origin")).toBe("*");
+      const payload = await response.json<{ items: Array<{ title: string | null; track: string | null }> }>();
+      expect(payload.items.length).toBeGreaterThan(0);
+      expect(payload.items.every((item) => item.track === "Developer Experience")).toBe(true);
+      expect(payload.items.map((item) => item.title)).not.toEqual(expect.arrayContaining([
+        "Unapproved embed secret",
+        "Unpublished embed secret",
+        "Withdrawn embed secret",
+      ]));
+    }
+
+    const scriptResponse = await request(`/embed/${embed.publicToken}.js`);
+    expect(scriptResponse.status).toBe(200);
+    expect(await scriptResponse.text()).not.toContain("embed secret");
 
     const calendarResponse = await request(`/api/public/embeds/${embed.publicToken}.ics`);
     expect(calendarResponse.status).toBe(200);

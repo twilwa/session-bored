@@ -5,13 +5,14 @@ import { EmptyState, LoadingState } from "../../components/ui.tsx";
 import type { PublicSessionCard, PublicSessionsResponse } from "../../../shared/api.ts";
 import { Link, PublicHeader, getJson } from "../../lib.tsx";
 import { DayTabs, SessionDetailModal } from "./ScheduleShared.tsx";
-import { DEVFLOW_EVENT_ID, agendaCellKey, buildAgendaGrid, groupSessionsByDay } from "./shared.ts";
+import { DEVFLOW_EVENT_ID, agendaCellKey, buildAgendaGrid, formatSpeakerLine, groupSessionsByDay } from "./shared.ts";
 
 function AgendaSessionBlock({ session, onOpen }: { session: PublicSessionCard; onOpen: () => void }) {
   return (
     <button className="agenda-grid__session" onClick={onOpen} type="button">
       <span className="agenda-grid__session-track">{session.track ?? "Track TBD"}</span>
       <span className="agenda-grid__session-title">{session.title ?? "Untitled session"}</span>
+      <span className="agenda-grid__session-speakers">{formatSpeakerLine(session.speakers)}</span>
     </button>
   );
 }
