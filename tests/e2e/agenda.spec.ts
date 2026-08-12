@@ -106,6 +106,19 @@ test("organizer drags a session, sees a clash before dropping, undoes, resolves,
   await expect(firstSlot.getByTestId("session-card-ses_docs_retrieval")).toBeVisible();
   await expect(page.getByRole("status")).toContainText("placed at 9:00 AM");
 
+  // Dragging a placed card back to the inbox is the inverse of the gesture that placed it.
+  await dispatchDrag(
+    page,
+    firstSlot.getByTestId("session-card-ses_docs_retrieval"),
+    page.getByRole("complementary", { name: "Inbox" }),
+  );
+  await expect(page.getByRole("status")).toContainText("returned to the inbox");
+  await expect(firstSlot.getByTestId("session-card-ses_docs_retrieval")).toHaveCount(0);
+  await expect(page.getByRole("complementary", { name: "Inbox" })
+    .getByTestId("session-card-ses_docs_retrieval")).toBeVisible();
+  await dispatchDrag(page, docsCard, firstSlot);
+  await expect(firstSlot.getByTestId("session-card-ses_docs_retrieval")).toBeVisible();
+
   const replacementSlot = page.getByTestId("agenda-slot-2027-05-12-rm_room_2a-09:30");
   await dispatchDrag(page, firstSlot.getByTestId("session-card-ses_docs_retrieval"), replacementSlot);
   await expect(replacementSlot.getByTestId("session-card-ses_docs_retrieval")).toBeVisible();
@@ -223,17 +236,6 @@ test("organizer drags a session, sees a clash before dropping, undoes, resolves,
   await page.goto("/program");
   await expect(page.getByRole("link", { name: "Taming 40-Minute CI", exact: false })).toBeVisible();
 
-  // Dragging a placed card back to the inbox is the inverse of the gesture that placed it.
-  await page.goto("/organizer/agenda");
-  const trayBefore = await page.locator(".agenda-tray .agenda-session-card").count();
-  await dispatchDrag(
-    page,
-    page.getByTestId(`session-card-${ciSession.id}`),
-    page.getByRole("complementary", { name: "Inbox" }),
-  );
-  await expect(page.getByRole("status")).toContainText("returned to the inbox");
-  await expect(page.locator(".agenda-tray .agenda-session-card")).toHaveCount(trayBefore + 1);
-
   const cleanupStatus = await page.evaluate(async () => {
     const response = await fetch("/api/review/submissions/sub_ci_monorepo/status", {
       method: "PATCH",
@@ -286,4 +288,26 @@ test("a placed card can be picked up and moved with a real mouse drag", async ({
   await placed.dragTo(target, { timeout: 20_000 });
   await expect(target.getByTestId("session-card-ses_docs_retrieval")).toBeVisible();
   await expect(source.getByTestId("session-card-ses_docs_retrieval")).toHaveCount(0);
+
+  // Hand the fixtures back the way the suite expects to find them: the lightning talk placed on
+  // the Main Stage and published, so the public programme still has a session to show.
+  const restored = await page.evaluate(async ({ currentEventId }) => {
+    const placement = await fetch(`/api/events/${currentEventId}/agenda/sessions/ses_docs_retrieval`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        scheduleStatus: "placed",
+        scheduledDate: "2027-05-12",
+        roomId: "rm_main_stage",
+        startsAt: Date.parse("2027-05-12T16:00:00Z"),
+      }),
+    });
+    const published = await fetch(`/api/events/${currentEventId}/agenda/publish`, { method: "POST" });
+    return { placement: placement.status, published: published.status };
+  }, { currentEventId: eventId });
+  expect(restored).toEqual({ placement: 200, published: 200 });
+
+  await page.goto("/program");
+  await expect(page.getByRole("link", { name: "Docs That Answer Back", exact: false }))
+    .toHaveAttribute("href", "/program/ses_docs_retrieval");
 });
