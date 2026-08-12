@@ -36,13 +36,6 @@
 .file-history li { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 18px; border: 1px solid var(--line); }
 .file-history li > div { display: grid; gap: 5px; min-width: 0; }
 .file-history a { overflow-wrap: anywhere; }
-.file-history__meta { color: var(--muted); font: 0.72rem "SFMono-Regular", Consolas, monospace; }
-.file-versions { margin-top: 6px; padding-top: 10px; border-top: 1px solid var(--line); }
-.file-versions summary { font-size: 0.8rem; font-weight: 800; cursor: pointer; }
-.file-versions ol { display: grid; gap: 8px; margin: 10px 0 0; padding: 0; list-style: none; }
-.file-versions li { display: grid; gap: 2px; }
-.file-versions a { font-size: 0.9rem; text-decoration: underline; text-underline-offset: 3px; }
-.file-versions small { color: var(--muted); font: 0.72rem "SFMono-Regular", Consolas, monospace; }
 
 .portal-page section[id] { scroll-margin-top: 20px; }
 

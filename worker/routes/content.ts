@@ -19,6 +19,7 @@ import {
   users,
 } from "../../db/schema.ts";
 import type { AuthSession } from "../auth.ts";
+import { filenameForVersion } from "../storage/file-versions.ts";
 
 type ContentEnvironment = {
   Bindings: CloudflareBindings;
@@ -118,10 +119,37 @@ contentRoutes.get("/api/events/:eventId/deliverables", requireOrganizer, async (
       isNull(taskAssignees.deletedAt),
       isNull(speakers.deletedAt),
     ));
+  const storedVersions = await database
+    .select({
+      id: fileVersions.id,
+      fileId: fileVersions.fileId,
+      displayName: files.displayName,
+      version: fileVersions.version,
+      storageKey: fileVersions.storageKey,
+      sizeBytes: fileVersions.sizeBytes,
+      latest: fileVersions.latest,
+      uploadedAt: fileVersions.createdAt,
+    })
+    .from(fileVersions)
+    .innerJoin(files, eq(fileVersions.fileId, files.id))
+    .innerJoin(tasks, eq(files.taskId, tasks.id))
+    .where(and(
+      eq(tasks.eventId, context.req.param("eventId")),
+      eq(tasks.taskType, "file_request"),
+      eq(tasks.status, "active"),
+      eq(files.kind, "deliverable"),
+      isNull(tasks.deletedAt),
+      isNull(files.deletedAt),
+      isNull(fileVersions.deletedAt),
+    ));
 
   const now = Date.now();
   const items = rows.map((row) => {
-    const delivered = row.fileId !== null || row.assignmentStatus === "completed";
+    const delivered = row.fileId !== null
+      && row.version !== null
+      && row.mimeType !== null
+      && row.sizeBytes !== null
+      && row.uploadedAt !== null;
     const overdue = !delivered && row.dueAt !== null && row.dueAt.getTime() < now;
     const status = delivered ? "delivered" : overdue ? "overdue" : "requested";
     return {
@@ -131,7 +159,7 @@ contentRoutes.get("/api/events/:eventId/deliverables", requireOrganizer, async (
       task: { title: row.taskTitle, instructions: row.instructions, dueAt: row.dueAt },
       assignment: { status: row.assignmentStatus, completedAt: row.completedAt },
       status,
-      file: row.fileId === null || row.version === null || row.mimeType === null || row.sizeBytes === null || row.uploadedAt === null
+      file: !delivered
         ? null
         : {
           id: row.fileId,
@@ -141,6 +169,17 @@ contentRoutes.get("/api/events/:eventId/deliverables", requireOrganizer, async (
           sizeBytes: row.sizeBytes,
           uploadedAt: row.uploadedAt,
           downloadUrl: `/api/portal/files/${row.fileId}`,
+          versions: storedVersions
+            .filter((version) => version.fileId === row.fileId)
+            .sort((first, second) => second.version - first.version)
+            .map((version) => ({
+              version: version.version,
+              displayName: filenameForVersion(version, version.displayName),
+              sizeBytes: version.sizeBytes,
+              uploadedAt: version.uploadedAt,
+              current: version.latest,
+              downloadUrl: `/api/portal/files/${row.fileId}?version=${version.version}`,
+            })),
         },
     } as const;
   });
