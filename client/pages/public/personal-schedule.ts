@@ -1,5 +1,5 @@
 // ABOUTME: Persists an anonymous attendee's selected public session IDs on this device.
-// ABOUTME: Builds the matching public calendar-feed path without introducing attendee accounts.
+// ABOUTME: Builds a public calendar path containing the attendee's current selection snapshot.
 import { useState } from "react";
 
 const STORAGE_PREFIX = "greenroom.personal-schedule.v1";
@@ -43,7 +43,7 @@ export function usePersonalSchedule(eventId: string) {
   return { sessionIds, toggleSession };
 }
 
-export function personalScheduleFeedPath(eventId: string, sessionIds: string[]): string {
+export function personalScheduleSnapshotPath(eventId: string, sessionIds: string[]): string {
   const params = new URLSearchParams({ sessions: sessionIds.join(",") });
   return `/api/public/events/${eventId}/schedule.ics?${params.toString()}`;
 }

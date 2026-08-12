@@ -234,6 +234,9 @@ embedRoutes.get("/api/public/embeds/:delivery", async (context) => {
   const payload = await readPublicEmbed(database, publicToken);
   if (payload === null) return context.json({ error: "not_found" }, 404);
   if (format === "json") return context.json(payload, 200, publicHeaders);
+  if (payload.embed.widgetType === "speakers" || payload.embed.widgetType === "gallery") {
+    return context.json({ error: "not_found" }, 404);
+  }
 
   const sessions = await fetchPublicSessions(database, payload.embed.eventId, {
     q: undefined,

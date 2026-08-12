@@ -292,6 +292,20 @@ describe("organizer embed builder", () => {
     expect(calendar).not.toContain("embed secret");
   });
 
+  it("rejects iCal delivery for speaker widgets instead of serving session calendars", async () => {
+    for (const widgetType of ["speakers", "gallery"] as const) {
+      const embed = await createEmbed(organizerCookie, {
+        name: `${widgetType} without a calendar`,
+        widgetType,
+        status: "published",
+      });
+
+      const response = await request(`/api/public/embeds/${embed.publicToken}.ics`);
+      expect(response.status, widgetType).toBe(404);
+      await expect(response.json()).resolves.toEqual({ error: "not_found" });
+    }
+  });
+
   it("serves a host-safe iframe loader for a published token", async () => {
     const embed = await createEmbed(organizerCookie, {
       name: "Homepage programme",

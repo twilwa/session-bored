@@ -279,7 +279,7 @@ describe("AI-assisted review", () => {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           ...proposal,
-          intent: "save",
+          intent: "submit",
           proposal: { ...proposal.proposal, abstract: revisedAbstract },
         }),
       },

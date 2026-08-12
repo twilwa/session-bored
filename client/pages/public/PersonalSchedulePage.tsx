@@ -1,12 +1,12 @@
 // ABOUTME: Shows an anonymous attendee exactly the public sessions saved on this device.
-// ABOUTME: Offers removal, calendar download, and a copyable self-updating calendar feed.
+// ABOUTME: Offers removal, calendar download, and a copyable link for the current selection.
 import { useEffect, useMemo, useState } from "react";
 import type { PublicSessionCard, PublicSessionsResponse } from "../../../shared/api.ts";
 import { EmptyState, LoadingState, Toast } from "../../components/ui.tsx";
 import { Link, PublicHeader, getJson } from "../../lib.tsx";
 import { ItinerarySessionCard } from "./ItinerarySessionCard.tsx";
 import { DayTabs, SessionDetailModal } from "./ScheduleShared.tsx";
-import { personalScheduleFeedPath, usePersonalSchedule } from "./personal-schedule.ts";
+import { personalScheduleSnapshotPath, usePersonalSchedule } from "./personal-schedule.ts";
 import { DEVFLOW_EVENT_ID, sortSessionsChronologically } from "./shared.ts";
 
 function copyWithSelection(value: string): boolean {
@@ -63,16 +63,19 @@ export function PersonalSchedulePage() {
   const visibleItems = selectedDay === null
     ? savedItems
     : savedItems.filter((session) => session.scheduledDate === selectedDay);
-  const feedPath = personalScheduleFeedPath(DEVFLOW_EVENT_ID, savedItems.map((session) => session.id));
+  const calendarPath = personalScheduleSnapshotPath(DEVFLOW_EVENT_ID, savedItems.map((session) => session.id));
   const pickLabel = savedItems.length === 0 ? "No picks" : `${savedItems.length} pick${savedItems.length === 1 ? "" : "s"}`;
+  const currentPickLabel = `${savedItems.length} current pick${savedItems.length === 1 ? "" : "s"}`;
 
-  async function copySubscribeLink(): Promise<void> {
-    const subscribeUrl = new URL(feedPath, window.location.origin).toString();
+  async function copyCalendarLink(): Promise<void> {
+    const calendarUrl = new URL(calendarPath, window.location.origin).toString();
     try {
-      await navigator.clipboard.writeText(subscribeUrl);
-      setMessage("Subscribe link copied.");
+      await navigator.clipboard.writeText(calendarUrl);
+      setMessage(`Calendar link for ${currentPickLabel} copied.`);
     } catch {
-      setMessage(copyWithSelection(subscribeUrl) ? "Subscribe link copied." : "The subscribe link could not be copied.");
+      setMessage(copyWithSelection(calendarUrl)
+        ? `Calendar link for ${currentPickLabel} copied.`
+        : "The calendar link could not be copied.");
     }
   }
 
@@ -134,8 +137,8 @@ export function PersonalSchedulePage() {
                 </ul>
               )}
               <div className="personal-schedule-actions">
-                <a className="button button--signal" download="my-schedule.ics" href={feedPath}>Add to calendar (.ics)</a>
-                <button className="button button--quiet" onClick={() => void copySubscribeLink()} type="button">Copy subscribe link</button>
+                <a className="button button--signal" download="my-schedule.ics" href={calendarPath}>Add to calendar (.ics)</a>
+                <button className="button button--quiet" onClick={() => void copyCalendarLink()} type="button">Copy calendar link ({currentPickLabel})</button>
                 <span>{savedItems.length} session{savedItems.length === 1 ? "" : "s"} · saved on this device</span>
               </div>
             </>

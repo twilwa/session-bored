@@ -258,12 +258,14 @@ describe("organizer exports", () => {
     expect(ics).toContain("END:VCALENDAR");
 
     const firstSequence = Number(ics.match(/SEQUENCE:(\d+)/)?.[1]);
-    const storedSequenceBefore = await env.DB.prepare(
-      "select ics_sequence as sequence from program_session where id = ?",
-    ).bind("ses_docs_retrieval").first<{ sequence: number }>();
+    const storedBefore = await env.DB.prepare(
+      "select ics_sequence as sequence, updated_at as updatedAt from program_session where id = ?",
+    ).bind("ses_docs_retrieval").first<{ sequence: number; updatedAt: number }>();
+    expect(storedBefore).toBeDefined();
+    const nextUpdatedAt = Math.max(storedBefore!.updatedAt, storedBefore!.sequence * 1_000) + 1_000;
     await env.DB.prepare(
       "update program_session set room_id = ?, updated_at = ? where id = ?",
-    ).bind("rm_room_2b", Date.parse("2026-08-12T12:00:02Z"), "ses_docs_retrieval").run();
+    ).bind("rm_room_2b", nextUpdatedAt, "ses_docs_retrieval").run();
     const updatedResponse = await request(`/api/events/${eventId}/exports/schedule.ics`, {
       headers: { cookie: organizerCookie },
     });
@@ -274,7 +276,7 @@ describe("organizer exports", () => {
     ).bind("ses_docs_retrieval").first<{ sequence: number }>();
     expect(updatedSequence).toBeGreaterThan(firstSequence);
     expect(updatedIcs).toContain("LOCATION:Room 2B");
-    expect(storedSequenceAfter).toEqual(storedSequenceBefore);
+    expect(storedSequenceAfter).toMatchObject({ sequence: storedBefore!.sequence });
   });
 
   it("returns valid empty documents for an event with no exportable records", async () => {
