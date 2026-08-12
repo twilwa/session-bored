@@ -40,6 +40,7 @@ import { publicRoutes } from "./routes/public.ts";
 import reviewRoutes from "./routes/review.ts";
 import submitterRoutes from "./routes/submitter.ts";
 import { ensureSeeded, fixtureIds } from "./seed.ts";
+import { livingSessionSpeakers, livingSubmissionParticipants } from "./speaker-access.ts";
 import { filenameForVersion } from "./storage/file-versions.ts";
 import { limitsForTask } from "./storage/files.ts";
 import dispositionRoutes from "./routes/disposition.ts";
@@ -313,7 +314,7 @@ app.get("/api/speaker/submissions/:submissionId", requireAccess("speaker"), asyn
   const [item] = await drizzle(context.env.DB)
     .select({ id: submissions.id, title: submissions.title, abstract: submissions.abstract, status: submissions.status })
     .from(submissions)
-    .innerJoin(submissionSpeakers, eq(submissionSpeakers.submissionId, submissions.id))
+    .innerJoin(submissionSpeakers, livingSubmissionParticipants())
     .innerJoin(people, eq(submissionSpeakers.personId, people.id))
     .where(and(eq(people.userId, user.id), eq(submissions.id, context.req.param("submissionId"))));
   return item === undefined ? context.json({ error: "forbidden" }, 403) : context.json(item);
@@ -349,7 +350,7 @@ app.get("/api/speaker/content", requireAccess("speaker"), async (context) => {
   const ownSubmissions = await database
     .select({ id: submissions.id, title: submissions.title, status: submissions.status })
     .from(submissions)
-    .innerJoin(submissionSpeakers, eq(submissionSpeakers.submissionId, submissions.id))
+    .innerJoin(submissionSpeakers, livingSubmissionParticipants())
     .where(eq(submissionSpeakers.personId, profile.personId));
   const ownSessions = await database
     .select({
@@ -360,7 +361,7 @@ app.get("/api/speaker/content", requireAccess("speaker"), async (context) => {
       contentStatus: sessions.contentStatus,
     })
     .from(sessions)
-    .innerJoin(sessionSpeakers, eq(sessionSpeakers.sessionId, sessions.id))
+    .innerJoin(sessionSpeakers, livingSessionSpeakers())
     .where(eq(sessionSpeakers.speakerId, profile.speakerId));
   const ownTasks = await database
     .select({

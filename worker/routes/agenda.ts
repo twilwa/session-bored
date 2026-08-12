@@ -188,7 +188,14 @@ async function readAgenda(binding: D1Database, eventId: string): Promise<AgendaS
       .from(sessionSpeakers)
       .innerJoin(speakers, eq(sessionSpeakers.speakerId, speakers.id))
       .innerJoin(people, eq(speakers.personId, people.id))
-      .where(inArray(sessionSpeakers.sessionId, sessionRows.map((session) => session.id)))
+      // This one list is both the card's lineup and the input to the speaker-overlap rule, so a
+      // removed participant left in it does not just misread - it invents a clash and offers to
+      // unplace a correctly-placed session to resolve it.
+      .where(and(
+        inArray(sessionSpeakers.sessionId, sessionRows.map((session) => session.id)),
+        isNull(sessionSpeakers.deletedAt),
+        isNull(speakers.deletedAt),
+      ))
       .orderBy(asc(sessionSpeakers.sortOrder), asc(people.name));
   const speakersBySession = new Map<string, Array<{ id: string; name: string }>>();
   for (const speaker of speakerRows) {

@@ -1,6 +1,6 @@
 // ABOUTME: Serves optional AI reading aids inside Greenroom's existing committee review scope.
 // ABOUTME: Keeps organizer opt-in and reviewer assistance separate from decisions and human records.
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { Hono } from "hono";
 import { createMiddleware } from "hono/factory";
@@ -187,7 +187,7 @@ export function createAIReviewRoutes(
           })
           .from(submissionSpeakers)
           .innerJoin(people, eq(submissionSpeakers.personId, people.id))
-          .where(eq(submissionSpeakers.submissionId, submissionId)),
+          .where(and(eq(submissionSpeakers.submissionId, submissionId), isNull(submissionSpeakers.deletedAt))),
         reviewProposalAnswers(database, submission, scopedSubmission.anonymized),
       ]);
       const visibility = scopedSubmission.anonymized ? "blind" : "identified";

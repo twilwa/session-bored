@@ -1,6 +1,6 @@
 // ABOUTME: Sends a session's stable-UID calendar invite to its speakers, bumping SEQUENCE on every regenerate.
 // ABOUTME: A deliberate, organizer-triggered action - never wired to a schedule or status change.
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { events, people, rooms, sessions, sessionSpeakers, speakers } from "../../db/schema.ts";
 import { resolveEmailDelivery, type EmailDelivery, type EmailEnvironment } from "../email.ts";
@@ -67,7 +67,7 @@ export async function sendSessionCalendarInvite(
     .from(sessionSpeakers)
     .innerJoin(speakers, eq(sessionSpeakers.speakerId, speakers.id))
     .innerJoin(people, eq(speakers.personId, people.id))
-    .where(eq(sessionSpeakers.sessionId, sessionId));
+    .where(and(eq(sessionSpeakers.sessionId, sessionId), isNull(sessionSpeakers.deletedAt)));
   const attendees = attendeeRows.filter((attendee) => attendee.email.trim() !== "");
   if (attendees.length === 0) {
     return { status: "no_attendees" };

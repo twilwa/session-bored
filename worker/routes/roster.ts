@@ -78,7 +78,10 @@ rosterRoutes.get("/api/events/:eventId/roster", async (context) => {
     : await database
       .selectDistinct({ speakerId: speakers.id })
       .from(speakers)
-      .innerJoin(sessionSpeakers, eq(sessionSpeakers.speakerId, speakers.id))
+      .innerJoin(sessionSpeakers, and(
+        eq(sessionSpeakers.speakerId, speakers.id),
+        sql`${sessionSpeakers.deletedAt} is null`,
+      ))
       .innerJoin(sessions, eq(sessionSpeakers.sessionId, sessions.id))
       .innerJoin(submissions, eq(sessions.submissionId, submissions.id))
       .where(and(
@@ -725,7 +728,10 @@ rosterRoutes.get("/api/events/:eventId/missing-information", async (context) => 
       speakerId: speakers.id,
     })
     .from(speakers)
-    .innerJoin(sessionSpeakers, eq(sessionSpeakers.speakerId, speakers.id))
+    .innerJoin(sessionSpeakers, and(
+      eq(sessionSpeakers.speakerId, speakers.id),
+      sql`${sessionSpeakers.deletedAt} is null`,
+    ))
     .innerJoin(sessions, eq(sessionSpeakers.sessionId, sessions.id))
     .innerJoin(submissions, eq(sessions.submissionId, submissions.id))
     .where(and(

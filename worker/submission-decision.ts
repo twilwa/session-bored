@@ -1,6 +1,6 @@
 // ABOUTME: Applies submission status changes and their reversible downstream handoffs.
 // ABOUTME: Gives review and disposition routes one idempotent decision path.
-import { and, eq, inArray, isNull, ne } from "drizzle-orm";
+import { and, eq, inArray, isNull, ne, or } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import {
   createPublicId,
@@ -209,6 +209,98 @@ export async function carryParticipantIntoSession(
     sortOrder: participant.sortOrder,
     onboardingTasks: await resolveOnboardingTasks(database, eventId, sessionId),
   });
+}
+
+/**
+ * The onboarding work a session hands its participants: the event's configured templates and
+ * the session's own tasks. Read-only, unlike `resolveOnboardingTasks`, because taking work back
+ * from somebody must never seed the tasks it is about to archive.
+ */
+async function onboardingTaskIds(
+  database: DecisionDatabase,
+  eventId: string,
+  sessionId: string,
+): Promise<string[]> {
+  const rows = await database
+    .select({ id: tasks.id })
+    .from(tasks)
+    .leftJoin(taskScopes, eq(taskScopes.taskId, tasks.id))
+    .where(and(
+      eq(tasks.eventId, eventId),
+      or(
+        eq(tasks.sessionId, sessionId),
+        and(isNull(tasks.sessionId), isNull(taskScopes.taskId)),
+      ),
+    ));
+  return rows.map((task) => task.id);
+}
+
+export interface ParticipantRelease {
+  /** Whether they still hold a live session at this event after being let go of this one. */
+  speaksElsewhereAtEvent: boolean;
+}
+
+/**
+ * Takes back what `carryParticipantIntoSession` gave, for somebody the program team or the
+ * author has removed from the proposal. It archives the session link, and the onboarding work
+ * that being carried onto a session created, so no speaker-facing read or write still answers
+ * them. Their onboarding work survives while they still speak somewhere else at the event, and
+ * everything archived here comes back untouched if they are named again — the speaker, the
+ * session, the assignments, and their completion history are never erased.
+ *
+ * Whether the event-scoped `speaker` row itself should be withdrawn when this was their last
+ * session is an open programme decision (issue #127), and it is the answer that drives the
+ * public speaker directory, the roster's own row, and mail eligibility. This is where that
+ * answer belongs: `speaksElsewhereAtEvent` is the fact it needs, computed once, here.
+ */
+export async function releaseParticipantFromSession(
+  binding: D1Database,
+  eventId: string,
+  sessionId: string,
+  personId: string,
+): Promise<ParticipantRelease> {
+  const database = drizzle(binding);
+  const [speaker] = await database
+    .select({ id: speakers.id })
+    .from(speakers)
+    .where(and(eq(speakers.personId, personId), eq(speakers.eventId, eventId)));
+  if (speaker === undefined) {
+    return { speaksElsewhereAtEvent: false };
+  }
+  await database
+    .update(sessionSpeakers)
+    .set({ deletedAt: new Date() })
+    .where(and(
+      eq(sessionSpeakers.sessionId, sessionId),
+      eq(sessionSpeakers.speakerId, speaker.id),
+      isNull(sessionSpeakers.deletedAt),
+    ));
+  const stillSpeaking = await database
+    .select({ id: sessionSpeakers.id })
+    .from(sessionSpeakers)
+    .innerJoin(sessions, eq(sessions.id, sessionSpeakers.sessionId))
+    .where(and(
+      eq(sessionSpeakers.speakerId, speaker.id),
+      eq(sessions.eventId, eventId),
+      isNull(sessionSpeakers.deletedAt),
+      isNull(sessions.deletedAt),
+    ))
+    .limit(1);
+  if (stillSpeaking.length > 0) {
+    return { speaksElsewhereAtEvent: true };
+  }
+  const taskIds = await onboardingTaskIds(database, eventId, sessionId);
+  if (taskIds.length > 0) {
+    await database
+      .update(taskAssignees)
+      .set({ deletedAt: new Date() })
+      .where(and(
+        eq(taskAssignees.speakerId, speaker.id),
+        inArray(taskAssignees.taskId, taskIds),
+        isNull(taskAssignees.deletedAt),
+      ));
+  }
+  return { speaksElsewhereAtEvent: false };
 }
 
 async function ensureAcceptedHandoff(
