@@ -950,6 +950,271 @@ describe("review engine", () => {
       .run();
   });
 
+  it("records a reviewer's recusal on the same assignment without producing any review or notice", async () => {
+    await request("/api/health");
+    const organizerCookie = await signIn("sbek-organizer@example.com", "SbekTest!2027-org");
+    const organizerHeaders = { cookie: organizerCookie, "content-type": "application/json" };
+    const provisionResponse = await request(
+      "/api/review/events/evt_devflow_conf_2027/reviewers",
+      {
+        method: "POST",
+        headers: organizerHeaders,
+        body: JSON.stringify({
+          name: "Devin Okafor",
+          email: "devin-reviewer@example.com",
+          password: "ReviewTalks!2027",
+          trackIds: [],
+        }),
+      },
+    );
+    expect(provisionResponse.status).toBe(201);
+    const provisioned = await provisionResponse.json<{ reviewer: { id: string } }>();
+    const assignmentResponse = await request(
+      "/api/review/rounds/rnd_initial_review/assignments",
+      {
+        method: "POST",
+        headers: organizerHeaders,
+        body: JSON.stringify({
+          reviewerUserId: provisioned.reviewer.id,
+          submissionIds: ["sub_ci_monorepo", "sub_ai_verification"],
+        }),
+      },
+    );
+    expect(assignmentResponse.status).toBe(201);
+    const assignments = await assignmentResponse.json<{ items: Array<{ id: string; submissionId: string }> }>();
+    const conflicted = assignments.items.find((item) => item.submissionId === "sub_ci_monorepo");
+    expect(conflicted).toBeDefined();
+
+    const countRows = async () => ({
+      reviews: (await env.DB.prepare(
+        "select count(*) as count from review where assignment_id = ?",
+      ).bind(conflicted?.id).first<{ count: number }>())?.count,
+      dispatches: (await env.DB.prepare("select count(*) as count from email_dispatch")
+        .first<{ count: number }>())?.count,
+      notices: (await env.DB.prepare("select count(*) as count from decision_notice")
+        .first<{ count: number }>())?.count,
+    });
+    const before = await countRows();
+    const submissionStatusBefore = await env.DB.prepare(
+      "select status from submission where id = ?",
+    ).bind("sub_ci_monorepo").first<{ status: string }>();
+
+    const reviewerCookie = await signIn("devin-reviewer@example.com", "ReviewTalks!2027");
+    const reviewerHeaders = { cookie: reviewerCookie, "content-type": "application/json" };
+    const recusalResponse = await request(
+      "/api/review/submissions/sub_ci_monorepo/recusal",
+      {
+        method: "POST",
+        headers: reviewerHeaders,
+        body: JSON.stringify({ roundId: "rnd_initial_review" }),
+      },
+    );
+    expect(recusalResponse.status).toBe(200);
+    expect(await recusalResponse.json()).toEqual({
+      submissionId: "sub_ci_monorepo",
+      roundId: "rnd_initial_review",
+      assignmentId: conflicted?.id,
+      assignmentStatus: "recused",
+      reviewCreated: false,
+      notificationSent: false,
+    });
+
+    // The same assignment persists, recused rather than deleted or completed.
+    const assignmentRow = await env.DB.prepare(
+      "select status, completed_at, deleted_at from review_assignment where id = ?",
+    ).bind(conflicted?.id).first<{ status: string; completed_at: number | null; deleted_at: number | null }>();
+    expect(assignmentRow).toEqual(
+      expect.objectContaining({ status: "recused", completed_at: null, deleted_at: null }),
+    );
+
+    // Nothing else is created and the committee status is untouched.
+    expect(await countRows()).toEqual(before);
+    const submissionStatusAfter = await env.DB.prepare(
+      "select status from submission where id = ?",
+    ).bind("sub_ci_monorepo").first<{ status: string }>();
+    expect(submissionStatusAfter?.status).toBe(submissionStatusBefore?.status);
+
+    // The reviewer's own view: recused, and out of the actionable queue.
+    const queue = await (await request("/api/review/queue", { headers: reviewerHeaders }))
+      .json<{ items: Array<{ submissionId: string; assignmentStatus: string }> }>();
+    expect(queue.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ submissionId: "sub_ci_monorepo", assignmentStatus: "recused" }),
+        expect.objectContaining({ submissionId: "sub_ai_verification", assignmentStatus: "assigned" }),
+      ]),
+    );
+    const detail = await (await request(
+      "/api/review/submissions/sub_ci_monorepo?roundId=rnd_initial_review",
+      { headers: reviewerHeaders },
+    )).json<{ assignmentStatus: string }>();
+    expect(detail.assignmentStatus).toBe("recused");
+
+    // A recused reviewer can no longer score the proposal.
+    const blockedScore = await request(
+      "/api/review/submissions/sub_ci_monorepo/reviews",
+      {
+        method: "POST",
+        headers: reviewerHeaders,
+        body: JSON.stringify({
+          roundId: "rnd_initial_review",
+          scores: { crt_overall_rating: 5 },
+        }),
+      },
+    );
+    expect(blockedScore.status).toBe(409);
+    expect(await blockedScore.json()).toEqual({ error: "recused_from_submission" });
+    expect((await countRows()).reviews).toBe(before.reviews);
+
+    // A repeated recusal stays the same recusal.
+    const repeated = await request(
+      "/api/review/submissions/sub_ci_monorepo/recusal",
+      {
+        method: "POST",
+        headers: reviewerHeaders,
+        body: JSON.stringify({ roundId: "rnd_initial_review" }),
+      },
+    );
+    expect(repeated.status).toBe(200);
+    expect(
+      (await env.DB.prepare(
+        "select count(*) as count from review_assignment where reviewer_user_id = ? and submission_id = ?",
+      ).bind(provisioned.reviewer.id, "sub_ci_monorepo").first<{ count: number }>())?.count,
+    ).toBe(1);
+
+    // Organizer progress reads the recusal as its own outcome, not outstanding work.
+    const config = await (await request(
+      "/api/review/events/evt_devflow_conf_2027/config",
+      { headers: { cookie: organizerCookie } },
+    )).json<{
+      reviewers: Array<{ id: string; assignedCount: number; completedCount: number; recusedCount: number }>;
+    }>();
+    expect(config.reviewers.find((reviewer) => reviewer.id === provisioned.reviewer.id)).toEqual(
+      expect.objectContaining({ assignedCount: 1, completedCount: 0, recusedCount: 1 }),
+    );
+  });
+
+  it("refuses a recusal outside the reviewer's own remit and from every other role", async () => {
+    await request("/api/health");
+    const organizerCookie = await signIn("sbek-organizer@example.com", "SbekTest!2027-org");
+    const provisionResponse = await request(
+      "/api/review/events/evt_devflow_conf_2027/reviewers",
+      {
+        method: "POST",
+        headers: { cookie: organizerCookie, "content-type": "application/json" },
+        body: JSON.stringify({
+          name: "Rio Bennett",
+          email: "rio-reviewer@example.com",
+          password: "ReviewTalks!2027",
+          trackIds: ["trk_ai_engineering"],
+        }),
+      },
+    );
+    expect(provisionResponse.status).toBe(201);
+    const provisioned = await provisionResponse.json<{ reviewer: { id: string } }>();
+
+    const recuse = (submissionId: string, cookie?: string, body: unknown = { roundId: "rnd_initial_review" }) =>
+      request(`/api/review/submissions/${submissionId}/recusal`, {
+        method: "POST",
+        headers: {
+          ...(cookie === undefined ? {} : { cookie }),
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(body),
+      });
+
+    expect((await recuse("sub_ci_monorepo")).status).toBe(401);
+    expect((await recuse("sub_ci_monorepo", organizerCookie)).status).toBe(403);
+    const speakerCookie = await signIn("sbek-speaker@example.com", "SbekTest!2027-spk");
+    expect((await recuse("sub_ci_monorepo", speakerCookie)).status).toBe(403);
+
+    const reviewerCookie = await signIn("rio-reviewer@example.com", "ReviewTalks!2027");
+    // Outside their track remit, so refused for the same reason a read is.
+    expect((await recuse("sub_ci_monorepo", reviewerCookie)).status).toBe(403);
+    expect((await recuse("sub_ai_verification", reviewerCookie, {})).status).toBe(400);
+    expect(
+      (await env.DB.prepare(
+        "select count(*) as count from review_assignment where reviewer_user_id = ?",
+      ).bind(provisioned.reviewer.id).first<{ count: number }>())?.count,
+    ).toBe(0);
+  });
+
+  it("keeps a saved scorecard rather than letting its author recuse over it", async () => {
+    await request("/api/health");
+    const organizerCookie = await signIn("sbek-organizer@example.com", "SbekTest!2027-org");
+    const organizerHeaders = { cookie: organizerCookie, "content-type": "application/json" };
+    const provisionResponse = await request(
+      "/api/review/events/evt_devflow_conf_2027/reviewers",
+      {
+        method: "POST",
+        headers: organizerHeaders,
+        body: JSON.stringify({
+          name: "Noor Haddad",
+          email: "noor-reviewer@example.com",
+          password: "ReviewTalks!2027",
+          trackIds: [],
+        }),
+      },
+    );
+    const provisioned = await provisionResponse.json<{ reviewer: { id: string } }>();
+    const assignmentResponse = await request(
+      "/api/review/rounds/rnd_initial_review/assignments",
+      {
+        method: "POST",
+        headers: organizerHeaders,
+        body: JSON.stringify({
+          reviewerUserId: provisioned.reviewer.id,
+          submissionIds: ["sub_ai_verification"],
+        }),
+      },
+    );
+    expect(assignmentResponse.status).toBe(201);
+
+    const reviewerCookie = await signIn("noor-reviewer@example.com", "ReviewTalks!2027");
+    const reviewerHeaders = { cookie: reviewerCookie, "content-type": "application/json" };
+    const detail = await (await request(
+      "/api/review/submissions/sub_ai_verification?roundId=rnd_initial_review",
+      { headers: reviewerHeaders },
+    )).json<{
+      criteria: Array<{ id: string; criterionType: string; options: string[] | null }>;
+    }>();
+    const scores = Object.fromEntries(detail.criteria.map((criterion) => [
+      criterion.id,
+      criterion.criterionType === "numeric"
+        ? 4
+        : criterion.criterionType === "dropdown"
+          ? (criterion.options ?? ["Accept"])[0]
+          : "Clear framing.",
+    ]));
+    const scoreResponse = await request(
+      "/api/review/submissions/sub_ai_verification/reviews",
+      {
+        method: "POST",
+        headers: reviewerHeaders,
+        body: JSON.stringify({
+          roundId: "rnd_initial_review",
+          scores,
+          comment: "Clear framing.",
+        }),
+      },
+    );
+    expect(scoreResponse.status).toBe(200);
+
+    const recusalResponse = await request(
+      "/api/review/submissions/sub_ai_verification/recusal",
+      {
+        method: "POST",
+        headers: reviewerHeaders,
+        body: JSON.stringify({ roundId: "rnd_initial_review" }),
+      },
+    );
+    expect(recusalResponse.status).toBe(409);
+    expect(await recusalResponse.json()).toEqual({ error: "review_already_recorded" });
+    const assignmentRow = await env.DB.prepare(
+      "select status from review_assignment where reviewer_user_id = ? and submission_id = ?",
+    ).bind(provisioned.reviewer.id, "sub_ai_verification").first<{ status: string }>();
+    expect(assignmentRow?.status).toBe("completed");
+  });
+
   it("changes review status without creating any communication dispatch", async () => {
     await request("/api/health");
     const organizerCookie = await signIn("sbek-organizer@example.com", "SbekTest!2027-org");

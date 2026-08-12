@@ -24,6 +24,7 @@ import {
   type Role,
   users,
 } from "../../db/schema.ts";
+import type { ReviewAssignmentStatus } from "../../shared/api.ts";
 import type { AuthSession } from "../auth.ts";
 import { createAuth } from "../auth.ts";
 import { reviewProposalAnswers } from "../review-answers.ts";
@@ -66,7 +67,7 @@ function hasUnconfirmedSuggestedScores(
 
 interface ReviewQueueItem {
   assignmentId: string | null;
-  assignmentStatus: "assigned" | "completed" | "recused" | "unreviewed";
+  assignmentStatus: ReviewAssignmentStatus;
   roundId: string;
   roundName: string;
   eventId: string;
@@ -354,6 +355,7 @@ reviewRoutes.get("/review/submissions/:submissionId", async (context) => {
     round: scopedItem === undefined
       ? null
       : { id: scopedItem.roundId, name: scopedItem.roundName, anonymized: scopedItem.anonymized },
+    assignmentStatus: scopedItem?.assignmentStatus ?? null,
     tracks: trackRows,
     answers: proposalAnswerRows,
     participants,
@@ -553,8 +555,11 @@ reviewRoutes.get(
         trackIds: reviewerTrackRows
           .filter((item) => item.reviewerUserId === reviewer.id)
           .map((item) => item.trackId),
-        assignedCount: queue.length,
+        // Recused work is neither completed nor still owed, so it leaves the assigned count
+        // and is reported on its own instead.
+        assignedCount: queue.filter((item) => item.assignmentStatus !== "recused").length,
         completedCount: queue.filter((item) => item.assignmentStatus === "completed").length,
+        recusedCount: queue.filter((item) => item.assignmentStatus === "recused").length,
       };
     }));
     return context.json({
@@ -1096,6 +1101,9 @@ reviewRoutes.post(
     if (scopedItem === undefined) {
       return context.json({ error: "forbidden" }, 403);
     }
+    if (scopedItem.assignmentStatus === "recused") {
+      return context.json({ error: "recused_from_submission" }, 409);
+    }
     const criteria = await database
       .select()
       .from(scorecardCriteria)
@@ -1205,6 +1213,88 @@ reviewRoutes.post(
       .from(reviews)
       .where(eq(reviews.assignmentId, assignmentId));
     return context.json(savedReview);
+  },
+);
+
+// Recusal records a conflict on the reviewer's own assignment and nothing else: no review,
+// no score, no submission status change, and no communication.
+reviewRoutes.post(
+  "/review/submissions/:submissionId/recusal",
+  requireRole("reviewer"),
+  async (context) => {
+    const user = context.get("authUser");
+    if (user === null) {
+      return context.json({ error: "authentication_required" }, 401);
+    }
+    const payload: { roundId?: unknown } = await context.req
+      .json<{ roundId?: unknown }>()
+      .catch(() => ({}));
+    const roundId = payload.roundId;
+    if (typeof roundId !== "string") {
+      return context.json({ error: "invalid_recusal" }, 400);
+    }
+    const database = drizzle(context.env.DB);
+    const submissionId = context.req.param("submissionId");
+    const scopedItem = await reviewerSubmission(database, user.id, submissionId, roundId);
+    if (scopedItem === undefined) {
+      return context.json({ error: "forbidden" }, 403);
+    }
+
+    const recusal = (assignmentId: string) =>
+      context.json({
+        submissionId,
+        roundId,
+        assignmentId,
+        assignmentStatus: "recused" as const,
+        reviewCreated: false,
+        notificationSent: false,
+      });
+
+    if (scopedItem.assignmentId !== null) {
+      const [recordedReview] = await database
+        .select({ id: reviews.id })
+        .from(reviews)
+        .where(eq(reviews.assignmentId, scopedItem.assignmentId));
+      if (recordedReview !== undefined) {
+        return context.json({ error: "review_already_recorded" }, 409);
+      }
+      // A repeated recusal is the same recusal.
+      if (scopedItem.assignmentStatus !== "recused") {
+        await database
+          .update(reviewAssignments)
+          .set({ status: "recused" })
+          .where(eq(reviewAssignments.id, scopedItem.assignmentId));
+      }
+      return recusal(scopedItem.assignmentId);
+    }
+
+    // A proposal readable only through track remit still occupies the reviewer's queue,
+    // so recusing it records the same assignment the scorecard path would have created.
+    const assignmentId = createPublicId("asn");
+    await database
+      .insert(reviewAssignments)
+      .values({
+        id: assignmentId,
+        roundId,
+        submissionId,
+        reviewerUserId: user.id,
+        status: "recused",
+      })
+      .onConflictDoNothing();
+    const [assignment] = await database
+      .select({ id: reviewAssignments.id })
+      .from(reviewAssignments)
+      .where(
+        and(
+          eq(reviewAssignments.roundId, roundId),
+          eq(reviewAssignments.submissionId, submissionId),
+          eq(reviewAssignments.reviewerUserId, user.id),
+        ),
+      );
+    if (assignment === undefined) {
+      return context.json({ error: "assignment_unavailable" }, 409);
+    }
+    return recusal(assignment.id);
   },
 );
 

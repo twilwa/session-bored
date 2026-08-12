@@ -1,7 +1,7 @@
 // ABOUTME: Specifies the shared typed route catalog consumed by independent feature lanes.
 // ABOUTME: Ensures every PRD module declares its method, path, and access requirement.
 import { describe, expect, it } from "vitest";
-import { routeMap } from "../../shared/api.ts";
+import { reviewRouteMap, routeMap } from "../../shared/api.ts";
 
 describe("typed route map", () => {
   it("covers every planned product module", () => {
@@ -99,5 +99,15 @@ describe("typed route map", () => {
         access: "organizer",
       },
     ]);
+  });
+
+  it("keeps recusal a reviewer's own action, separate from an organizer decision", () => {
+    expect(reviewRouteMap.recusal).toEqual({
+      method: "POST",
+      path: "/api/review/submissions/:submissionId/recusal",
+      module: "reviews",
+      access: "reviewer",
+    });
+    expect(reviewRouteMap.status.access).toBe("organizer");
   });
 });

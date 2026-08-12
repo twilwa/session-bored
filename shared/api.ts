@@ -1059,6 +1059,12 @@ export const reviewRouteMap = {
     module: "reviews",
     access: "reviewer",
   },
+  recusal: {
+    method: "POST",
+    path: "/api/review/submissions/:submissionId/recusal",
+    module: "reviews",
+    access: "reviewer",
+  },
   status: {
     method: "PATCH",
     path: "/api/review/submissions/:submissionId/status",
@@ -1133,6 +1139,22 @@ export interface ReviewProgress {
   targetReviews: number;
 }
 
+/**
+ * A reviewer's state on one proposal. `unreviewed` covers a proposal readable through track
+ * remit that has no assignment row yet; `recused` is a declared conflict that leaves the
+ * actionable queue without producing a review.
+ */
+export type ReviewAssignmentStatus = "assigned" | "completed" | "recused" | "unreviewed";
+
+export interface ReviewRecusalResult {
+  submissionId: string;
+  roundId: string;
+  assignmentId: string;
+  assignmentStatus: "recused";
+  reviewCreated: false;
+  notificationSent: false;
+}
+
 export interface ReviewCriterion {
   id: string;
   roundId: string;
@@ -1175,6 +1197,8 @@ export interface ReviewSubmissionDetail {
   notesForReviewers: string | null;
   format: { id: string; name: string | null } | null;
   round: { id: string; name: string; anonymized: boolean } | null;
+  /** The reading reviewer's own assignment state; null for an organizer read. */
+  assignmentStatus: ReviewAssignmentStatus | null;
   tracks: Array<{ id: string; name: string }>;
   answers: Array<{
     key: string;

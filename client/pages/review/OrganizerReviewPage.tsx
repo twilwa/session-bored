@@ -16,6 +16,7 @@ interface ReviewerSummary {
   trackIds: string[];
   assignedCount: number;
   completedCount: number;
+  recusedCount: number;
 }
 
 interface RoundSummary {
@@ -369,7 +370,7 @@ function OrganizerReviewWorklist() {
                     <article key={reviewer.id}>
                       <div><strong>{reviewer.name}</strong><span>{reviewer.completedCount} / {reviewer.assignedCount}</span></div>
                       <div><span style={{ width: `${reviewerPercent}%` }} /></div>
-                      <small>{remitLabel(reviewer.trackIds.length, config.tracks.length)}</small>
+                      <small>{remitLabel(reviewer.trackIds.length, config.tracks.length)}{reviewer.recusedCount === 0 ? "" : ` · ${reviewer.recusedCount} recused`}</small>
                       <details className="reviewer-scope">
                         <summary>Edit remit</summary>
                         <form onSubmit={(event) => void saveReviewerScope(event, reviewer)}>

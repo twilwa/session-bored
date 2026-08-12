@@ -68,6 +68,14 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   access outside the new track remit. The organizer config route lists a
   reviewer by track responsibility *or* round pool, so a reviewer narrowed to
   zero tracks stays visible and editable.
+- `POST /api/review/submissions/:submissionId/recusal` is the reviewer's own action
+  and the only writer of `review_assignment.status = 'recused'`. It keeps the same
+  assignment row, creating one first if the proposal was readable through track
+  remit alone, and creates nothing else - no review, score, decision, email, or
+  notification, and no submission status change. It refuses once a review exists,
+  and the score route refuses a recused assignment. Recused work leaves the
+  reviewer's actionable queue and the organizer's `assignedCount`, and is reported
+  separately as `recusedCount`.
 - Review scores remain in `review.scores`; `review.aggregate_score` is the
   weighted mean of numeric criteria, and the organizer worklist averages those
   review aggregates per submission. Submission comments are one attributed,

@@ -163,6 +163,14 @@
 .scorecard { display: grid; }
 .scorecard h2 { margin: 0; font: 1.7rem Georgia, serif; }
 .scorecard > div:first-child > p:last-child { color: var(--muted); font-size: 0.82rem; }
+.scorecard--recused { background: var(--paper, #f6f4ec); }
+.scorecard--recused p { color: var(--muted); font-size: 0.86rem; }
+.recusal-panel { min-width: 0; border: 1px dashed var(--ink); background: var(--white); padding: 22px; }
+.recusal-panel h2 { margin: 0 0 8px; font: 1.35rem Georgia, serif; }
+.recusal-panel p { margin: 0 0 14px; color: var(--muted); font-size: 0.84rem; }
+.recusal-panel__actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.reviewer-recused { margin-top: 28px; }
+.reviewer-recused .reviewer-row { grid-template-columns: minmax(220px, 1fr) auto; opacity: 0.78; }
 .ai-score-confirmation { display: flex; gap: 8px; align-items: start; margin: -7px 0 15px; color: var(--blue); font-size: 0.78rem; font-weight: 700; }
 .ai-score-confirmation input { margin-top: 2px; accent-color: var(--blue); }
 .recorded-reviews article { padding: 13px 0; border-top: 1px solid var(--line); }
