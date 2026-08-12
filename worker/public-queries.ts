@@ -56,6 +56,8 @@ export interface PublicSessionCard {
   startsAt: number | null;
   endsAt: number | null;
   scheduleStatus: string;
+  icsUid: string;
+  icsSequence: number;
   speakers: PublicSpeakerRef[];
 }
 
@@ -168,6 +170,8 @@ export async function fetchPublicSessions(
       startsAt: sessions.startsAt,
       endsAt: sessions.endsAt,
       scheduleStatus: sessions.scheduleStatus,
+      icsUid: sessions.icsUid,
+      icsSequence: sessions.icsSequence,
     })
     .from(sessions)
     .leftJoin(tracks, eq(sessions.trackId, tracks.id))

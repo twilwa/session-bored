@@ -46,6 +46,7 @@ import rosterRoutes from "./routes/roster.ts";
 import agendaRoutes from "./routes/agenda.ts";
 import exportRoutes from "./routes/exports.ts";
 import contentRoutes from "./routes/content.ts";
+import embedRoutes from "./routes/embeds.ts";
 
 type SessionUser = AuthSession["user"];
 type AppEnvironment = {
@@ -143,6 +144,7 @@ app.route("/", agendaRoutes);
 app.route("/", exportRoutes);
 app.route("/", commsRoutes);
 app.route("/", contentRoutes);
+app.route("/", embedRoutes);
 app.on(["GET", "POST"], "/api/auth/*", (context) => createAuth(context.env).handler(context.req.raw));
 app.route("/api/public/cfp", cfpRoutes);
 app.route("/api/cfp-builder", cfpBuilderRoutes);
@@ -555,7 +557,6 @@ app.get("/api/events/:eventId/tasks", requireAccess("organizer"), async (context
 
 for (const path of [
   "/api/events/:eventId/files",
-  "/api/events/:eventId/embeds",
 ] as const) {
   app.get(path, requireAccess("organizer"), (context) =>
     context.json({ status: "foundation_stub", eventId: context.req.param("eventId"), items: [] }),

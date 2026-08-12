@@ -49,6 +49,9 @@ describe("typed route map", () => {
     expect(routeMap.deliverables).toMatchObject({ method: "GET", module: "files", access: "organizer" });
     expect(routeMap.fileComments).toMatchObject({ method: "GET", module: "files", access: "authenticated" });
     expect(routeMap.createFileComment).toMatchObject({ method: "POST", module: "files", access: "authenticated" });
+    expect(routeMap.embeds).toMatchObject({ method: "GET", module: "embeds", access: "organizer" });
+    expect(routeMap.createEmbed).toMatchObject({ method: "POST", module: "embeds", access: "organizer" });
+    expect(routeMap.publicEmbed).toMatchObject({ method: "GET", module: "public", access: "public" });
   });
 
   it("publishes the complete organizer communication-template contract", () => {

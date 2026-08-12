@@ -112,12 +112,3 @@ publicRoutes.get("/events/:eventId/agenda", async (context) => {
   });
   return context.json({ items });
 });
-
-publicRoutes.get("/embeds/:token", (context) =>
-  context.json({
-    status: "foundation_stub",
-    module: "embeds",
-    token: context.req.param("token"),
-    items: [],
-  }),
-);
