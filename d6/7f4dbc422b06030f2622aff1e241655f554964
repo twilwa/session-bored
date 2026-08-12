@@ -1,0 +1,24 @@
+worker/routes/cfp.ts
+  s_4295b1625f02e7::t_e0e1125f13e72d 191
+tests/integration/cfp-submission.test.ts
+  s_4295b1625f02e7::t_a3487fdb9ed5e5 36-47
+  s_4295b1625f02e7::t_e0e1125f13e72d 127
+shared/api.ts
+  s_4295b1625f02e7::t_e0e1125f13e72d 703
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "d67f4dbc422b06030f2622aff1e241655f554964",
+  "prompts": {},
+  "sessions": {
+    "s_4295b1625f02e7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ff7a7-d911-7370-88a3-3e114519b6f2",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
