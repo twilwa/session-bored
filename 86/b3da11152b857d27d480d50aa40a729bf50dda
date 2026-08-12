@@ -1,0 +1,42 @@
+tests/integration/content-management.test.ts
+  s_d484b657a227b0::t_8d32c3f81bed35 5,222,233
+  s_d484b657a227b0::t_a9ac2a2171e8c1 110-138,146,167-173,178,186-198,206,226
+  s_d484b657a227b0::t_7dcfabff541e15 182-183,185,199-205,207-221,223-225,227-232,234-261
+  s_d484b657a227b0::t_4fcf590809cf35 28-33,109,139-145,147-166,174-177,179-181
+  s_d484b657a227b0::t_e42f803f3465a1 184
+tests/e2e/content-management.spec.ts
+  s_d484b657a227b0::t_54eda5b18af77e 19-20,28,54
+  s_d484b657a227b0::t_feaca81212555a 25-27,29-38,44,70
+  s_d484b657a227b0::t_36c0d2a9a323aa 69
+  s_d484b657a227b0::t_6ce0e43a66e5a3 55-57,59,61-62
+  s_d484b657a227b0::t_96c2c4d68e9ded 58
+client/pages/portal/PortalPage.tsx
+  s_d484b657a227b0::t_2a96e1a355d3b3 13,369
+client/pages/content/file-versions.css
+  s_d484b657a227b0::t_2a96e1a355d3b3 1-9
+shared/api.ts
+  s_d484b657a227b0::t_fc5c080c31b4c7 566
+client/pages/content/FileVersionList.tsx
+  s_d484b657a227b0::t_2a96e1a355d3b3 1-47
+client/pages/content/ContentPage.tsx
+  s_d484b657a227b0::t_2a96e1a355d3b3 8,140-141
+worker/routes/content.ts
+  s_d484b657a227b0::t_cfc19e4048d326 148-152,162
+  s_d484b657a227b0::t_fc5c080c31b4c7 22,122-144,172-182
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "86b3da11152b857d27d480d50aa40a729bf50dda",
+  "prompts": {},
+  "sessions": {
+    "s_d484b657a227b0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ff437-ab70-7221-94b8-0e1ba87a5994",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
