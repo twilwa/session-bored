@@ -1,6 +1,8 @@
 // ABOUTME: Builds R2 storage keys and streams portal upload bytes to and from the FILES bucket.
 // ABOUTME: Defines the server-side file-type and size limits enforced on every speaker upload.
 
+import { fileRequestKindOf } from "../../shared/api.ts";
+
 export interface UploadLimits {
   maxBytes: number;
   mimeTypeByExtension: Record<string, string>;
@@ -77,22 +79,49 @@ export function validateUpload(
   return null;
 }
 
+/**
+ * Every extension this app knows how to accept, with the single mime type each one must
+ * carry. A file request can ask for any of them; anything it names outside this map is
+ * dropped rather than trusted, so an unknown extension can never widen what is accepted.
+ */
+const knownMimeTypeByExtension: Record<string, string> = {
+  ...deliverableMimeTypeByExtension,
+  ...headshotMimeTypeByExtension,
+};
+
+/** The limits the server enforces for one file request, resolved from its own declaration. */
 export function limitsForTask(
   task: { acceptedFileTypes: string[] | null; maximumFileBytes: number | null },
 ): UploadLimits {
   const requestedExtensions = task.acceptedFileTypes !== null && task.acceptedFileTypes.length > 0
     ? task.acceptedFileTypes.map((type) => type.toLowerCase())
     : null;
-  const mimeTypeByExtension = requestedExtensions === null
-    ? defaultDeliverableLimits.mimeTypeByExtension
-    : Object.fromEntries(
-      Object.entries(defaultDeliverableLimits.mimeTypeByExtension)
-        .filter(([extension]) => requestedExtensions.includes(extension)),
-    );
+  if (requestedExtensions === null) {
+    return {
+      maxBytes: task.maximumFileBytes ?? defaultDeliverableLimits.maxBytes,
+      mimeTypeByExtension: defaultDeliverableLimits.mimeTypeByExtension,
+    };
+  }
+  const mimeTypeByExtension = Object.fromEntries(
+    Object.entries(knownMimeTypeByExtension)
+      .filter(([extension]) => requestedExtensions.includes(extension)),
+  );
+  const kind = fileRequestKindOf(Object.keys(mimeTypeByExtension));
   return {
-    maxBytes: task.maximumFileBytes ?? defaultDeliverableLimits.maxBytes,
+    maxBytes: task.maximumFileBytes ?? (kind === "picture" ? headshotLimits.maxBytes : defaultDeliverableLimits.maxBytes),
     mimeTypeByExtension,
   };
+}
+
+/**
+ * True when a request asks only for pictures. Such a request is the organizer asking for
+ * the speaker's headshot through a task, so satisfying it also sets their profile photo.
+ */
+export function isPictureRequest(
+  task: { acceptedFileTypes: string[] | null; maximumFileBytes: number | null },
+): boolean {
+  const accepted = Object.keys(limitsForTask(task).mimeTypeByExtension);
+  return accepted.length > 0 && fileRequestKindOf(accepted) === "picture";
 }
 
 function sanitizeFilename(filename: string): string {

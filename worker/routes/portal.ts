@@ -24,6 +24,7 @@ import {
   getFileObject,
   headshotLimits,
   imageContentTypeForFilename,
+  isPictureRequest,
   limitsForTask,
   putFileObject,
   type UploadLimits,
@@ -233,6 +234,38 @@ portalRoutes.patch("/portal/profile", requireSpeaker, async (context) => {
   return context.json(updated);
 });
 
+/**
+ * Stores an image as the speaker's one profile headshot: a new version of the headshot
+ * file they already have, the profile photo every other surface reads, and any headshot
+ * task it settles. Both doors a speaker can deliver a headshot through call this, so the
+ * picture they end up with never depends on which one they used.
+ */
+async function storeSpeakerHeadshot(
+  env: CloudflareBindings,
+  database: ReturnType<typeof drizzle>,
+  profile: SpeakerProfile,
+  file: File,
+  uploadedByUserId: string,
+): Promise<{ fileId: string; version: number; headshotUrl: string }> {
+  const [existing] = await database
+    .select({ id: files.id })
+    .from(files)
+    .where(and(eq(files.speakerId, profile.speakerId), eq(files.kind, "headshot")));
+  const { fileId, version } = await recordFileVersion(env, database, {
+    existingFileId: existing?.id ?? null,
+    eventId: profile.eventId,
+    speakerId: profile.speakerId,
+    taskId: null,
+    kind: "headshot",
+    file,
+    uploadedByUserId,
+  });
+  const headshotUrl = `/api/public/portal/speakers/${profile.speakerId}/headshot`;
+  await database.update(people).set({ headshotUrl }).where(eq(people.id, profile.personId));
+  await completeMatchingTasks(database, profile.speakerId, /headshot/i);
+  return { fileId, version, headshotUrl };
+}
+
 portalRoutes.post("/portal/profile/headshot", requireSpeaker, async (context) => {
   const user = context.get("authUser");
   if (user === null) {
@@ -251,23 +284,7 @@ portalRoutes.post("/portal/profile/headshot", requireSpeaker, async (context) =>
   if (validationError !== null) {
     return context.json(validationError, validationErrorStatus(validationError.error));
   }
-  const [existing] = await database
-    .select({ id: files.id })
-    .from(files)
-    .where(and(eq(files.speakerId, profile.speakerId), eq(files.kind, "headshot")));
-  const { fileId, version } = await recordFileVersion(context.env, database, {
-    existingFileId: existing?.id ?? null,
-    eventId: profile.eventId,
-    speakerId: profile.speakerId,
-    taskId: null,
-    kind: "headshot",
-    file,
-    uploadedByUserId: user.id,
-  });
-  const headshotUrl = `/api/public/portal/speakers/${profile.speakerId}/headshot`;
-  await database.update(people).set({ headshotUrl }).where(eq(people.id, profile.personId));
-  await completeMatchingTasks(database, profile.speakerId, /headshot/i);
-  return context.json({ fileId, version, headshotUrl }, 201);
+  return context.json(await storeSpeakerHeadshot(context.env, database, profile, file, user.id), 201);
 });
 
 portalRoutes.patch("/portal/sessions/:sessionId", requireSpeaker, async (context) => {
@@ -431,7 +448,13 @@ portalRoutes.post("/portal/tasks/:taskId/files", requireSpeaker, async (context)
     .update(taskAssignees)
     .set({ status: "completed", completedAt: new Date() })
     .where(and(eq(taskAssignees.taskId, taskId), eq(taskAssignees.speakerId, profile.speakerId)));
-  return context.json({ fileId, version, taskId, status: "completed" }, 201);
+  // An organizer who asks for a picture is asking for the speaker's headshot, so this
+  // upload also becomes their profile photo. The deliverable itself stays a task file
+  // behind the same authentication as every other one; only the headshot serves publicly.
+  const headshotUrl = isPictureRequest(assignment)
+    ? (await storeSpeakerHeadshot(context.env, database, profile, file, user.id)).headshotUrl
+    : null;
+  return context.json({ fileId, version, taskId, status: "completed", headshotUrl }, 201);
 });
 
 portalRoutes.get("/portal/files/:fileId", async (context) => {

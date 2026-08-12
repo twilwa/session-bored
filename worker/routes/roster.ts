@@ -320,7 +320,7 @@ rosterRoutes.post("/api/events/:eventId/tasks", async (context) => {
     !Array.isArray(speakerIds) || speakerIds.length === 0 ||
     !speakerIds.every((speakerId) => typeof speakerId === "string" && speakerId.startsWith("spk_")) ||
     (payload.instructions !== undefined && payload.instructions !== null && typeof payload.instructions !== "string") ||
-    (payload.acceptedFileTypes !== undefined && (
+    (payload.acceptedFileTypes !== undefined && payload.acceptedFileTypes !== null && (
       !Array.isArray(payload.acceptedFileTypes) ||
       !payload.acceptedFileTypes.every((fileType) => typeof fileType === "string")
     )) ||
@@ -357,7 +357,8 @@ rosterRoutes.post("/api/events/:eventId/tasks", async (context) => {
 
   const taskId = createPublicId("tsk");
   const instructions = typeof payload.instructions === "string" ? payload.instructions.trim() || null : null;
-  const acceptedFileTypes = taskType === "file_request" && Array.isArray(payload.acceptedFileTypes)
+  const acceptedFileTypes = taskType === "file_request" &&
+      Array.isArray(payload.acceptedFileTypes) && payload.acceptedFileTypes.length > 0
     ? payload.acceptedFileTypes
     : null;
   const maximumFileBytes = taskType === "file_request" && typeof payload.maximumFileBytes === "number"
@@ -406,6 +407,7 @@ rosterRoutes.patch("/api/events/:eventId/tasks/:taskId", async (context) => {
     title?: unknown;
     instructions?: unknown;
     dueAt?: unknown;
+    acceptedFileTypes?: unknown;
     speakerIds?: unknown;
   }>().catch(() => null);
   if (
@@ -414,6 +416,10 @@ rosterRoutes.patch("/api/events/:eventId/tasks/:taskId", async (context) => {
     (payload.title !== undefined && (typeof payload.title !== "string" || payload.title.trim().length === 0)) ||
     (payload.instructions !== undefined && payload.instructions !== null && typeof payload.instructions !== "string") ||
     (payload.dueAt !== undefined && payload.dueAt !== null && typeof payload.dueAt !== "string") ||
+    (payload.acceptedFileTypes !== undefined && payload.acceptedFileTypes !== null && (
+      !Array.isArray(payload.acceptedFileTypes) ||
+      !payload.acceptedFileTypes.every((fileType) => typeof fileType === "string")
+    )) ||
     (payload.speakerIds !== undefined && (
       !Array.isArray(payload.speakerIds) ||
       !payload.speakerIds.every((speakerId) => typeof speakerId === "string" && speakerId.startsWith("spk_"))
@@ -484,6 +490,12 @@ rosterRoutes.patch("/api/events/:eventId/tasks/:taskId", async (context) => {
       update.acceptedFileTypes = null;
       update.maximumFileBytes = null;
     }
+  }
+  // A file request can change what it asks for; clearing the list returns it to documents.
+  if (payload.acceptedFileTypes !== undefined && update.acceptedFileTypes === undefined) {
+    update.acceptedFileTypes = payload.acceptedFileTypes === null || payload.acceptedFileTypes.length === 0
+      ? null
+      : (payload.acceptedFileTypes as string[]);
   }
   if (payload.title !== undefined) update.title = payload.title.trim();
   if (payload.instructions !== undefined) {

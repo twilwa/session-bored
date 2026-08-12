@@ -428,6 +428,8 @@ export interface RosterTaskSummary {
   taskType: "general" | "file_request";
   title: string;
   instructions: string | null;
+  acceptedFileTypes: string[] | null;
+  maximumFileBytes: number | null;
   dueAt: string | null;
   status: "draft" | "active" | "complete";
   assignees: Array<{
@@ -686,9 +688,34 @@ export interface PortalTask {
   taskType: "general" | "file_request";
   dueAt: string | null;
   status: PortalTaskAssigneeStatus;
+  /**
+   * The types and ceiling the server will actually enforce for this request, already
+   * resolved from the task's own declaration and the fallback it belongs to. Null for a
+   * general task, which takes no file. Speaker-facing copy renders these values and never
+   * restates a type list of its own.
+   */
   acceptedFileTypes: string[] | null;
   maximumFileBytes: number | null;
   file: PortalTaskFile | null;
+}
+
+/**
+ * What a file request asks a speaker for. The declaration itself is the task's
+ * `acceptedFileTypes` list, so a picture request is simply one that asks for the same
+ * images the speaker's headshot picker takes; a request that declares nothing is a
+ * document request, which is what every request created before this choice existed meant.
+ */
+export type FileRequestKind = "picture" | "document";
+
+/** The images a picture request accepts, matching the speaker headshot picker. */
+export const pictureRequestFileTypes = ["png", "jpg", "jpeg", "webp"];
+
+export function fileRequestKindOf(acceptedFileTypes: string[] | null): FileRequestKind {
+  if (acceptedFileTypes === null || acceptedFileTypes.length === 0) {
+    return "document";
+  }
+  const requested = acceptedFileTypes.map((fileType) => fileType.toLowerCase());
+  return requested.every((fileType) => pictureRequestFileTypes.includes(fileType)) ? "picture" : "document";
 }
 
 /**

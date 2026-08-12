@@ -250,6 +250,25 @@ enriched `tasks` (`taskType`, `instructions`, `acceptedFileTypes`,
 - Server-side upload limits default to 5MB/image types for headshots and
   25MB/office-doc types for deliverables (`worker/storage/files.ts`), overridden
   per task by `task.maximumFileBytes` / `task.acceptedFileTypes` when set.
+- What a file request wants *is* its `task.acceptedFileTypes` list - there is no
+  second flag. `fileRequestKindOf` in `shared/api.ts` reads that list as the
+  organizer's picture-or-document choice, and a request that declares nothing
+  stays a document request, which is what every request predating the choice
+  meant. `limitsForTask` resolves the list against the extensions the app knows,
+  dropping any it does not, and takes the image ceiling for a picture-only
+  request. `GET /api/speaker/content` answers with those resolved limits, so the
+  speaker's hint and every rejection name that request's own types; never
+  restate a type list in client copy.
+- A picture request is the organizer asking for the speaker's headshot, so
+  `worker/routes/portal.ts#storeSpeakerHeadshot` runs for both doors: the
+  dedicated picker and a picture-request upload. The deliverable itself stays a
+  task file behind the same authentication as any other; only the headshot serves
+  publicly, from the extension-derived content type.
+- Upload validation is AND-style across extension and declared content type
+  (`validateUpload`). `payload.png` claiming `text/html` must stay rejected -
+  that pairing was a stored XSS (PR #14). Never accept a file because one half
+  matches, and keep the regression tests in `tests/unit/portal-uploads.test.ts`
+  and `tests/integration/portal-content.test.ts` alive when widening types.
 
 ## Communications
 

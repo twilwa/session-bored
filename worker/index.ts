@@ -41,6 +41,7 @@ import reviewRoutes from "./routes/review.ts";
 import submitterRoutes from "./routes/submitter.ts";
 import { ensureSeeded, fixtureIds } from "./seed.ts";
 import { filenameForVersion } from "./storage/file-versions.ts";
+import { limitsForTask } from "./storage/files.ts";
 import dispositionRoutes from "./routes/disposition.ts";
 import rosterRoutes from "./routes/roster.ts";
 import participantRoutes from "./routes/participants.ts";
@@ -443,10 +444,17 @@ app.get("/api/speaker/content", requireAccess("speaker"), async (context) => {
       contentStatus: session.contentStatus,
       editable: session.contentStatus !== "approved",
     })),
-    tasks: ownTasks.map((task) => ({
-      ...task,
-      file: taskFiles.find((file) => file.taskId === task.id) ?? null,
-    })),
+    // A file request answers with the limits the upload route will actually apply, so the
+    // speaker reads one resolved list rather than a copy kept anywhere else.
+    tasks: ownTasks.map((task) => {
+      const limits = task.taskType === "file_request" ? limitsForTask(task) : null;
+      return {
+        ...task,
+        acceptedFileTypes: limits === null ? null : Object.keys(limits.mimeTypeByExtension),
+        maximumFileBytes: limits === null ? null : limits.maxBytes,
+        file: taskFiles.find((file) => file.taskId === task.id) ?? null,
+      };
+    }),
     files: ownFiles.map((file) => ({
       taskId: file.taskId,
       fileId: file.fileId,

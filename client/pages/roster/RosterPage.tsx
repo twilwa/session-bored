@@ -1,10 +1,12 @@
 // ABOUTME: Presents the organizer speaker roster, bulk onboarding tasks, and missing-information worklist.
 // ABOUTME: Keeps profile edits and workflow changes silent while making daily chase work immediately visible.
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
-import type {
-  MissingInformationItem,
-  RosterSpeakerSummary,
-  RosterTaskSummary,
+import {
+  fileRequestKindOf,
+  pictureRequestFileTypes,
+  type MissingInformationItem,
+  type RosterSpeakerSummary,
+  type RosterTaskSummary,
 } from "../../../shared/api.ts";
 import {
   Button,
@@ -597,6 +599,8 @@ function TaskFormModal({
   const [selected, setSelected] = useState(task?.assignees.map((assignee) => assignee.speakerId) ?? []);
   const [speakerSearch, setSpeakerSearch] = useState("");
   const [speakerStatus, setSpeakerStatus] = useState("all");
+  const [taskType, setTaskType] = useState(task?.taskType ?? "general");
+  const [fileRequestKind, setFileRequestKind] = useState(fileRequestKindOf(task?.acceptedFileTypes ?? null));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -620,7 +624,12 @@ function TaskFormModal({
     const dueDate = String(data.get("dueAt") ?? "");
     try {
       const payload = {
-        taskType: data.get("taskType"),
+        taskType,
+        // The kind of file a request wants is the list of types it accepts; a document
+        // request declares nothing and takes the server's document types.
+        acceptedFileTypes: taskType === "file_request" && fileRequestKind === "picture"
+          ? pictureRequestFileTypes
+          : null,
         title: data.get("title"),
         instructions: data.get("instructions"),
         dueAt: dueDate.length === 0 ? null : `${dueDate}T23:59:59.000Z`,
@@ -649,10 +658,33 @@ function TaskFormModal({
   return (
     <Modal onClose={onClose} open title={task === undefined ? "Create onboarding task" : `Edit ${task.title}`}>
       <form className="roster-form" onSubmit={(event) => void submit(event)}>
-        <SelectField defaultValue={task?.taskType ?? "general"} id="task-editor-type" label="Task kind" name="taskType">
+        <SelectField
+          id="task-editor-type"
+          label="Task kind"
+          name="taskType"
+          onChange={(event) => setTaskType(event.target.value as RosterTaskSummary["taskType"])}
+          value={taskType}
+        >
           <option value="general">General task</option>
           <option value="file_request">File request</option>
         </SelectField>
+        {taskType === "file_request" ? (
+          <>
+            <SelectField
+              id="task-editor-file-kind"
+              label="What this request wants"
+              name="fileRequestKind"
+              onChange={(event) => setFileRequestKind(event.target.value as "document" | "picture")}
+              value={fileRequestKind}
+            >
+              <option value="document">A document — pdf, ppt, pptx, doc, docx, zip, key</option>
+              <option value="picture">A picture — png, jpg, jpeg, webp</option>
+            </SelectField>
+            {fileRequestKind === "picture" ? (
+              <span className="n">The picture a speaker uploads here becomes their profile headshot.</span>
+            ) : null}
+          </>
+        ) : null}
         <TextField defaultValue={task?.title ?? ""} id="task-editor-title" label="Task title" name="title" placeholder="Upload final slides" required />
         <label className="field" htmlFor="task-editor-instructions">
           <span className="field__label">Instructions</span>
