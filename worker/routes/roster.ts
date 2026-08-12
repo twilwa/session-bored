@@ -60,6 +60,9 @@ rosterRoutes.get("/api/events/:eventId/roster", async (context) => {
       organization: people.organization,
       bio: people.bio,
       headshotUrl: people.headshotUrl,
+      twitter: people.twitter,
+      linkedin: people.linkedin,
+      socialLinks: people.socialLinks,
       status: speakers.status,
     })
     .from(speakers)

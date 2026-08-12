@@ -360,6 +360,9 @@ export interface RosterSpeakerSummary extends SpeakerSummary {
   personId: `psn_${string}`;
   bio: string | null;
   headshotUrl: string | null;
+  twitter: string | null;
+  linkedin: string | null;
+  socialLinks: Record<string, string> | null;
   profile: { bioComplete: boolean; headshotComplete: boolean };
   taskSummary: { total: number; incomplete: number };
 }
