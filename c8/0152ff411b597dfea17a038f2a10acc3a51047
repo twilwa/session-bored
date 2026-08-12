@@ -1,0 +1,121 @@
+worker/submission-decision.ts
+  s_91b5182c79b114::t_fd1d84ab75bef0 174-188
+  s_91b5182c79b114::t_2e5eea02f0164e 19
+worker/reviewer-invites.ts
+  s_91b5182c79b114::t_6788f194e2d3f0 1-126
+README.md
+  s_91b5182c79b114::t_682c741c4ea064 63-75
+migrations/0015_role-grants-and-reviewer-invites.sql
+  s_91b5182c79b114::t_e93f2f4bf4ff1c 1-78
+worker/seed.ts
+  s_91b5182c79b114::t_6d84d639f591e1 64,81-88
+  s_91b5182c79b114::t_a9ef932742c2b4 31,34
+tests/integration/submitter-account.test.ts
+  s_91b5182c79b114::t_251653ea33399c 56,64,68-80
+  s_91b5182c79b114::t_836fc112316a2a 81-82
+tests/unit/route-map.test.ts
+  s_91b5182c79b114::t_5c4cdd5700bce5 21
+  s_91b5182c79b114::t_709903033c740a 4,8-10
+client/App.tsx
+  s_91b5182c79b114::t_8b0893a93bd8ad 133-138
+  s_91b5182c79b114::t_48f58ab9ce7b50 28-29,31,190,344,352
+  s_91b5182c79b114::t_51b7cd3008b24a 162
+worker/routes/people.ts
+  s_91b5182c79b114::t_b61ef1678e0e2f 1-285
+worker/access-page.ts
+  s_91b5182c79b114::t_fdee559295d315 110-112,118-120
+  s_91b5182c79b114::t_249d2ec11893d1 22,25-31
+  s_91b5182c79b114::t_e4966886ba24f2 97-101
+  s_91b5182c79b114::t_bc52567be8e9c8 32
+tests/unit/people-evidence.test.ts
+  s_91b5182c79b114::t_b914322ebcc71f 1-71
+worker/email/address-confirmation.ts
+  s_91b5182c79b114::t_7b320d02f8f466 1-61
+worker/routes/review.ts
+  s_91b5182c79b114::t_61854b06b0fa95 1005
+  s_91b5182c79b114::t_bb2de546c99346 711,716
+  s_91b5182c79b114::t_6b9fa8c7470e3b 649-664
+  s_91b5182c79b114::t_bff08cb8b20126 1024-1029
+  s_91b5182c79b114::t_ecaea2fc5beb17 31-32
+shared/api.ts
+  s_91b5182c79b114::t_5c4cdd5700bce5 16
+  s_91b5182c79b114::t_abb3c97d97a7a5 346-393
+tests/e2e/account-access.spec.ts
+  s_91b5182c79b114::t_3487de0e765de8 36-37
+  s_91b5182c79b114::t_1ca4f4c5ceeced 1-35,38-98
+client/pages/people/people.css
+  s_91b5182c79b114::t_4f0fc913237bdb 1-62
+client/lib.tsx
+  s_91b5182c79b114::t_59b7d87da4a5cd 43-47,49,56-58
+  s_91b5182c79b114::t_4b37c0afd89846 5,27-28,225-228
+db/schema.ts
+  s_91b5182c79b114::t_8d408b405b6eb9 103-109
+  s_91b5182c79b114::t_f7c7c8cbc962b6 767
+  s_91b5182c79b114::t_fecc63b33ab54c 34
+worker/email/role-grant.ts
+  s_91b5182c79b114::t_869ac67df1ab10 1-54
+tests/integration/people.test.ts
+  s_91b5182c79b114::t_ef2a45e4c553a5 71-72,75-85
+  s_91b5182c79b114::t_8a6308da2a7e50 1-70,73-74,86-172
+migrations/meta/_journal.json
+  s_91b5182c79b114::t_d12f10aeb6bf29 109-115,118
+AGENTS.md
+  s_91b5182c79b114::t_5bada5d67aed31 116-152
+worker/email.ts
+  s_91b5182c79b114::t_08904cdd12ac7b 12-17
+db/schema/access.ts
+  s_91b5182c79b114::t_af9135fb0d4fea 1-85
+shared/people.ts
+  s_91b5182c79b114::t_e120ca1d733078 1-47
+worker/auth.ts
+  s_91b5182c79b114::t_bfa442be9fa7a0 41-47,49-51
+  s_91b5182c79b114::t_594d695356a0a6 2,8-9
+  s_91b5182c79b114::t_a01c939caf8f31 11-16
+  s_91b5182c79b114::t_d5a31a11aaa860 7
+  s_91b5182c79b114::t_2f6a0ba5888332 48
+worker/email/send.ts
+  s_91b5182c79b114::t_39a0a10b95318f 42
+worker/routes/content.ts
+  s_91b5182c79b114::t_2c2fa3d20ea97e 22
+  s_91b5182c79b114::t_abb77ac942fd6f 254,261-264,270
+tests/integration/account-access.test.ts
+  s_91b5182c79b114::t_5aa5642696ebfd 7-9
+  s_91b5182c79b114::t_1cc0c54828962d 191-204,209-215
+  s_91b5182c79b114::t_e6cb0bd2f2284c 1-6,10-190,205-208,216-271
+tests/unit/access-policy.test.ts
+  s_91b5182c79b114::t_5b38a7b356800e 30-40
+client/pages/account/SignUpPage.tsx
+  s_91b5182c79b114::t_e86c6649bac17b 1-70
+client/pages/submitter/SubmitterAccountPanel.tsx
+  s_91b5182c79b114::t_1d6e3f08f63ef2 10
+client/styles.css
+  s_91b5182c79b114::t_51b7cd3008b24a 90-93
+tests/unit/public-header.test.ts
+  s_91b5182c79b114::t_28ec66e1194ff1 31-44
+worker/roles.ts
+  s_91b5182c79b114::t_0c06f173ea4b03 1-148
+client/pages/people/PeoplePage.tsx
+  s_91b5182c79b114::t_cb88713b580713 7,163-164
+  s_91b5182c79b114::t_6c6a333ed90de8 1-6,8-162,165-248
+worker/index.ts
+  s_91b5182c79b114::t_69b7d04afd099a 53,151
+  s_91b5182c79b114::t_4e31941241fab8 31
+  s_91b5182c79b114::t_c82eaa69e9c2e7 72-78
+  s_91b5182c79b114::t_409df08c758af6 160-168
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "c80152ff411b597dfea17a038f2a10acc3a51047",
+  "prompts": {},
+  "sessions": {
+    "s_91b5182c79b114": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b6fbbb1b-6a4c-46d0-8b21-e5bbe4500b75",
+        "model": "claude-opus-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
