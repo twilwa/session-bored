@@ -1,0 +1,27 @@
+worker/routes/roster.ts
+  s_7b638722b8d323::t_4de722dcad0149 63-65
+tests/integration/roster.test.ts
+  s_7b638722b8d323::t_111e4d4c806468 103,120,129-130,133-134
+  s_7b638722b8d323::t_810f0898aa08dd 104-119,121-128,131-132
+shared/api.ts
+  s_7b638722b8d323::t_4de722dcad0149 363-365
+client/pages/roster/RosterPage.tsx
+  s_7b638722b8d323::t_d0a13f83f1a60d 260
+  s_7b638722b8d323::t_4de722dcad0149 87-115,199,241-252,255-259,261-262
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "45b29d3be7c00b30d83a5634319c7c14c0ddfe33",
+  "prompts": {},
+  "sessions": {
+    "s_7b638722b8d323": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ff7a8-00b4-7230-ae8d-8422a84f6a9f",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
