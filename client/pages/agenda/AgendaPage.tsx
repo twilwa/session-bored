@@ -16,6 +16,7 @@ import {
   type DropTarget,
   type OverlapColumn,
 } from "./board.ts";
+import { AgendaResourceManager } from "./AgendaResourceManager.tsx";
 import "./agenda.css";
 
 const eventId = "evt_devflow_conf_2027";
@@ -184,16 +185,19 @@ export function AgendaPage() {
   const [error, setError] = useState<string | null>(null);
   const clashesRef = useRef<HTMLElement | null>(null);
 
-  useEffect(() => {
-    agendaRequest<AgendaState>(`/api/events/${eventId}/agenda`)
-      .then((data) => {
-        setAgenda(data);
-        setActiveDay((current) => data.days.includes(current) ? current : (data.days[0] ?? ""));
-        setSelectedSessionId((current) => data.sessions.some((session) => session.id === current) ? current : (data.sessions[0]?.id ?? ""));
-        setSelectedRoomId((current) => data.rooms.some((room) => room.id === current) ? current : (data.rooms[0]?.id ?? ""));
-      })
-      .catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "Agenda could not be loaded."));
-  }, []);
+  async function refreshAgenda(): Promise<void> {
+    try {
+      const data = await agendaRequest<AgendaState>(`/api/events/${eventId}/agenda`);
+      setAgenda(data);
+      setActiveDay((current) => data.days.includes(current) ? current : (data.days[0] ?? ""));
+      setSelectedSessionId((current) => data.sessions.some((session) => session.id === current) ? current : (data.sessions[0]?.id ?? ""));
+      setSelectedRoomId((current) => data.rooms.some((room) => room.id === current) ? current : (data.rooms[0]?.id ?? ""));
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Agenda could not be loaded.");
+    }
+  }
+
+  useEffect(() => { void refreshAgenda(); }, []);
 
   useEffect(() => {
     if (toast === null) return;
@@ -584,6 +588,12 @@ export function AgendaPage() {
             </button>
           ))}
         </div>
+        <AgendaResourceManager
+          onChanged={refreshAgenda}
+          rooms={agenda.rooms}
+          sessions={agenda.sessions}
+          tracks={agenda.tracks}
+        />
         <div className="agenda-publish">
           <span>Public</span>
           <strong>{agenda.sessions.filter((session) => session.publishedAt !== null).length}/{agenda.sessions.length} current</strong>
