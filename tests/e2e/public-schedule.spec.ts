@@ -130,7 +130,7 @@ test("itinerary lists a real placement chronologically with track, title, descri
   await expect(item).toContainText("Main Stage");
 });
 
-test("an attendee can save a personal schedule, keep it across reloads, copy its feed, and remove a pick", async ({ page }) => {
+test("an attendee can save a personal schedule, keep it across reloads, copy a link for the current picks, and remove a pick", async ({ page }) => {
   await placeDocsSession(page, {
     scheduleStatus: "placed",
     scheduledDate: PLACED_DAY,
@@ -155,8 +155,8 @@ test("an attendee can save a personal schedule, keep it across reloads, copy its
   const calendarLink = page.getByRole("link", { name: "Add to calendar (.ics)" });
   await expect(calendarLink).toHaveAttribute("href", /schedule\.ics\?sessions=ses_docs_retrieval/);
 
-  await page.getByRole("button", { name: "Copy subscribe link" }).click();
-  await expect(page.getByRole("status")).toHaveText("Subscribe link copied.");
+  await page.getByRole("button", { name: "Copy calendar link (1 current pick)" }).click();
+  await expect(page.getByRole("status")).toHaveText("Calendar link for 1 current pick copied.");
 
   await page.getByRole("button", { name: /Remove Docs That Answer Back.*from my schedule/ }).click();
   await expect(page.getByRole("heading", { name: "No picks", exact: true })).toBeVisible();
