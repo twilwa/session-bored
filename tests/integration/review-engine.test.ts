@@ -426,6 +426,64 @@ describe("review engine", () => {
     ).toBe(403);
   });
 
+  it("gives a reviewer with an explicitly empty track selection no track remit", async () => {
+    await request("/api/health");
+    const organizerCookie = await signIn("sbek-organizer@example.com", "SbekTest!2027-org");
+    const provisionResponse = await request(
+      "/api/review/events/evt_devflow_conf_2027/reviewers",
+      {
+        method: "POST",
+        headers: { cookie: organizerCookie, "content-type": "application/json" },
+        body: JSON.stringify({
+          name: "No Track Reviewer",
+          email: "no-track-reviewer@example.com",
+          password: "ReviewTalks!2027",
+          trackIds: [],
+        }),
+      },
+    );
+    expect(provisionResponse.status).toBe(201);
+    const provisioned = await provisionResponse.json<{
+      remit: { mode: string; trackIds: string[] };
+    }>();
+    expect(provisioned.remit).toEqual({ mode: "no_tracks", trackIds: [] });
+
+    const reviewerCookie = await signIn("no-track-reviewer@example.com", "ReviewTalks!2027");
+    const queueResponse = await request("/api/review/queue", {
+      headers: { cookie: reviewerCookie },
+    });
+    expect(queueResponse.status).toBe(200);
+    const queue = await queueResponse.json<{ items: Array<{ submissionId: string }> }>();
+    expect(queue.items).toEqual([]);
+  });
+
+  it("limits a reviewer with a specific track remit to that track", async () => {
+    await request("/api/health");
+    const organizerCookie = await signIn("sbek-organizer@example.com", "SbekTest!2027-org");
+    const provisionResponse = await request(
+      "/api/review/events/evt_devflow_conf_2027/reviewers",
+      {
+        method: "POST",
+        headers: { cookie: organizerCookie, "content-type": "application/json" },
+        body: JSON.stringify({
+          name: "AI Track Reviewer",
+          email: "ai-track-reviewer@example.com",
+          password: "ReviewTalks!2027",
+          trackIds: ["trk_ai_engineering"],
+        }),
+      },
+    );
+    expect(provisionResponse.status).toBe(201);
+
+    const reviewerCookie = await signIn("ai-track-reviewer@example.com", "ReviewTalks!2027");
+    const queueResponse = await request("/api/review/queue", {
+      headers: { cookie: reviewerCookie },
+    });
+    expect(queueResponse.status).toBe(200);
+    const queue = await queueResponse.json<{ items: Array<{ submissionId: string }> }>();
+    expect(queue.items.map((item) => item.submissionId)).toEqual(["sub_ai_verification"]);
+  });
+
   it("combines track responsibility with explicit per-submission overrides", async () => {
     await request("/api/health");
     const organizerCookie = await signIn("sbek-organizer@example.com", "SbekTest!2027-org");

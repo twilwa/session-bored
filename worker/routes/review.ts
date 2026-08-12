@@ -600,13 +600,10 @@ reviewRoutes.post(
       return context.json({ error: "open_round_required" }, 409);
     }
     const availableTrackIds = new Set(eventTracks.map((track) => track.id));
-    const requestedTrackIds = Array.isArray(payload.trackIds)
+    const trackIds = Array.isArray(payload.trackIds)
       ? payload.trackIds.filter((trackId): trackId is string => typeof trackId === "string")
-      : [];
-    const trackIds = requestedTrackIds.length === 0
-      ? [...availableTrackIds]
-      : requestedTrackIds;
-    if (trackIds.length === 0 || trackIds.some((trackId) => !availableTrackIds.has(trackId))) {
+      : [...availableTrackIds];
+    if (trackIds.some((trackId) => !availableTrackIds.has(trackId))) {
       return context.json({ error: "invalid_reviewer_tracks" }, 400);
     }
     const availableRoundIds = new Set(eventRounds.map((round) => round.id));
@@ -657,7 +654,9 @@ reviewRoutes.post(
         email: authResult.user.email,
       },
       remit: {
-        mode: requestedTrackIds.length === 0 ? "all_submissions" : "tracks",
+        mode: trackIds.length === 0
+          ? "no_tracks"
+          : trackIds.length === availableTrackIds.size ? "all_submissions" : "tracks",
         trackIds,
       },
       roundIds,
