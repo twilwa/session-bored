@@ -188,7 +188,7 @@ function normalizeInput(value: unknown): CfpSubmissionInput | null {
     return null;
   }
   const record = value as Record<string, unknown>;
-  if (record.intent !== "draft" && record.intent !== "save" && record.intent !== "submit") {
+  if (record.intent !== "draft" && record.intent !== "submit") {
     return null;
   }
   const speaker = typeof record.speaker === "object" && record.speaker !== null

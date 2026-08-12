@@ -700,7 +700,7 @@ export const cfpRouteMap = {
 } as const satisfies Record<string, RouteContract>;
 
 export type CfpAvailabilityState = "closed" | "open" | "upcoming" | "unpublished";
-export type CfpSubmissionIntent = "draft" | "save" | "submit";
+export type CfpSubmissionIntent = "draft" | "submit";
 
 export interface CfpAuthorInput {
   name?: string;

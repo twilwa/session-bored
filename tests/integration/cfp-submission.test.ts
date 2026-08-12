@@ -33,6 +33,18 @@ describe("public CFP submissions", () => {
     });
   });
 
+  it("rejects submission intents outside the published draft-or-submit contract", async () => {
+    await request("/api/health");
+    const response = await request("/api/public/cfp/devflow-conf-2027/submissions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ...draft, intent: "save" }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({ error: "invalid_request" });
+  });
+
   it("round-trips a draft, final submission, and author edit without an account", async () => {
     await request("/api/health");
     const createResponse = await request("/api/public/cfp/devflow-conf-2027/submissions", {
@@ -112,7 +124,7 @@ describe("public CFP submissions", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         ...completeProposal,
-        intent: "save",
+        intent: "submit",
         speaker: { ...completeProposal.speaker, organization: "More Useful Systems" },
         proposal: {
           ...completeProposal.proposal,
