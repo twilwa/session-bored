@@ -70,6 +70,48 @@ test("committee setup reports a newly created round without a client error", asy
   await expect(page.getByText("Cannot read properties of null", { exact: false })).toHaveCount(0);
 });
 
+test("narrowing a remit in committee setup takes that reading access away", async ({ page, browser }) => {
+  const unique = Date.now();
+  const email = `narrowed-reviewer-${unique}@example.com`;
+  const password = "ReviewTalks!2027";
+  await signIn(page, "sbek-organizer@example.com", "SbekTest!2027-org");
+  await expect(page).toHaveURL(/\/organizer/);
+  const provision = await page.request.post("/api/review/events/evt_devflow_conf_2027/reviewers", {
+    data: { name: `Narrowed Reviewer ${unique}`, email, password },
+  });
+  expect(provision.status()).toBe(201);
+
+  const reviewerContext = await browser.newContext();
+  const reviewerPage = await reviewerContext.newPage();
+  await signIn(reviewerPage, email, password);
+  await expect(reviewerPage.getByRole("link", { name: /Taming 40-Minute CI/ })).toBeVisible();
+  await expect(reviewerPage.getByRole("link", { name: /Your AI Pair Programmer/ })).toBeVisible();
+
+  await page.getByRole("link", { name: "Review", exact: true }).click();
+  await page.getByText("Committee setup", { exact: true }).click();
+  const reviewerCard = page
+    .locator(".reviewer-progress-list article")
+    .filter({ hasText: `Narrowed Reviewer ${unique}` });
+  await expect(reviewerCard.getByText("All submissions", { exact: true })).toBeVisible();
+  await reviewerCard.getByText("Edit remit", { exact: true }).click();
+  await reviewerCard.getByLabel("Platform & Infra").uncheck();
+  await reviewerCard.getByLabel("Developer Experience").uncheck();
+  await reviewerCard.getByRole("button", { name: "Save remit" }).click();
+  await expect(page.getByText("2 removed. They lose that access immediately.", { exact: false }))
+    .toBeVisible();
+  await expect(reviewerCard.getByText("1 track remit", { exact: true })).toBeVisible();
+
+  await reviewerPage.reload();
+  await expect(reviewerPage.getByRole("link", { name: /Your AI Pair Programmer/ })).toBeVisible();
+  await expect(reviewerPage.getByRole("link", { name: /Taming 40-Minute CI/ })).toHaveCount(0);
+  await reviewerPage.goto("/reviewer/submissions/sub_ci_monorepo?roundId=rnd_initial_review");
+  await expect(
+    reviewerPage.getByRole("heading", { name: "This proposal isn’t available to you." }),
+  ).toBeVisible();
+  await expect(reviewerPage.getByText("Taming 40-Minute CI", { exact: false })).toHaveCount(0);
+  await reviewerContext.close();
+});
+
 test("reviewer opens only their remit and posts to its durable thread", async ({ page }) => {
   await signIn(page, "sbek-reviewer@example.com", "SbekTest!2027-rev");
 

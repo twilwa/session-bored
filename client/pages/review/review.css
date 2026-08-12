@@ -73,6 +73,9 @@
 .reviewer-progress-list article > div:nth-child(2) { height: 7px; margin: 10px 0 6px; background: #dedad0; }
 .reviewer-progress-list article > div:nth-child(2) span { display: block; height: 100%; background: var(--blue); }
 .reviewer-progress-list small { color: var(--muted); }
+.reviewer-scope { min-width: 0; margin-top: 10px; }
+.reviewer-scope summary { color: var(--blue); font-weight: 800; cursor: pointer; }
+.reviewer-scope form { margin-top: 10px; border: 1px solid var(--line); background: #ebe7dd; padding: 14px; }
 .setup-form { display: flex; flex-direction: column; }
 .setup-form .button { align-self: flex-start; margin-top: auto; }
 .review-field { min-width: 0; display: grid; gap: 6px; margin: 0 0 15px; }

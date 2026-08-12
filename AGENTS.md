@@ -48,7 +48,14 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   submitter, track links, and speaker role labels.
 - A reviewer's readable remit is the union of their event track responsibility
   and explicit per-submission assignments, limited to their per-round pool.
-  Provisioning defaults to every event track and the first open round.
+  Provisioning defaults to every event track and the first open round; an empty
+  `trackIds` array means no tracks, never all of them.
+  `PATCH /review/events/:eventId/reviewers/:reviewerUserId` replaces that remit
+  in both directions, so narrowing takes effect on the reviewer's next read. It
+  reports `retainedAssignments` because an explicit assignment still grants
+  access outside the new track remit. The organizer config route lists a
+  reviewer by track responsibility *or* round pool, so a reviewer narrowed to
+  zero tracks stays visible and editable.
 - Review scores remain in `review.scores`; `review.aggregate_score` is the
   weighted mean of numeric criteria, and the organizer worklist averages those
   review aggregates per submission. Submission comments are one attributed,
