@@ -64,6 +64,17 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   agenda before publishing; approval locks speaker edits but never publishes by
   itself. Placement edits clear publication and the agenda tells the organizer
   to publish again.
+- The organizer board (`client/pages/agenda/`) leads with the grid: a sticky
+  command strip, day tabs, then the workbench. `board.ts` holds its pure
+  helpers, and `predictDrop` there mirrors the server's room and speaker overlap
+  rules so the drop ghost can warn *before* release; the server's `conflicts`
+  array stays the only thing rendered as fact afterwards, so the two can never
+  disagree. Placement never blocks: warn on the ghost, then offer Undo, which
+  replays the previous placement through the same PATCH — publication stays
+  cleared and the toast says so. Every placement verb lives on the card's `⋯`
+  menu, and dragging a card into the inbox unplaces it. Chrome does not update
+  `:hover` during a drag, so drop-target styling must key on
+  `onDragEnter`/`onDragLeave` state, never `:hover`.
 - `worker/routes/ai-review.ts` owns optional, event-scoped AI reading aids. Its
   caches live in `db/schema/ai-review.ts`; generated output never belongs in a
   human review, comment, decision, email, or notification. Blind and identified
