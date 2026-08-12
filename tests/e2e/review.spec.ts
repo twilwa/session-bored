@@ -9,6 +9,22 @@ async function signIn(page: import("@playwright/test").Page, email: string, pass
   await page.getByRole("button", { name: "Sign in" }).click();
 }
 
+test("an out-of-remit proposal explains the assignment boundary without leaking content", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await signIn(page, "sbek-reviewer@example.com", "SbekTest!2027-rev");
+  await expect(page).toHaveURL(/\/reviewer$/);
+
+  await page.goto("/reviewer/submissions/sub_ai_verification?roundId=rnd_initial_review");
+
+  await expect(page.getByRole("heading", { name: "This proposal isn’t available to you." })).toBeVisible();
+  await expect(page.getByText("This proposal is not in your current assignment or review round.")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Back to Assigned proposals" })).toHaveAttribute("href", "/reviewer");
+  await expect(page.getByLabel("Loading proposal")).toHaveCount(0);
+  await expect(page.getByText("forbidden", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Your AI Pair Programmer Is Lying to You", { exact: false })).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
+});
+
 test("organizer review makes the coverage and decision sorts primary", async ({ page }, testInfo) => {
   await signIn(page, "sbek-organizer@example.com", "SbekTest!2027-org");
   await page.getByRole("link", { name: "Review", exact: true }).click();

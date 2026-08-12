@@ -81,6 +81,26 @@ function HomePage() {
   );
 }
 
+function NotFoundPage() {
+  return (
+    <div className="public-page">
+      <PublicHeader />
+      <main className="hero">
+        <div className="hero__copy">
+          <p className="eyebrow">404 · PAGE NOT FOUND</p>
+          <h1>This page isn’t<br /><em>in Greenroom.</em></h1>
+          <p className="hero__lede">The address may be mistyped, or the page may have moved.</p>
+          <div className="hero__actions">
+            <Link className="button button--signal" href="/">Back to Greenroom</Link>
+            <Link className="button button--quiet" href="/program">View the program</Link>
+          </div>
+        </div>
+      </main>
+      <footer className="public-footer">Greenroom / event operations at speaking speed</footer>
+    </div>
+  );
+}
+
 function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -276,34 +296,73 @@ function ReviewerPage({ path }: { path: string }) {
   );
 }
 
+function WorkspaceNotFoundPage({ role }: { role: Role }) {
+  const destination = role === "organizer" ? "organizer overview" : `${role} area`;
+  return (
+    <RoleShell role={role}>
+      <section className="state-card">
+        <p className="eyebrow">404 · PAGE NOT FOUND</p>
+        <h1>This workspace page doesn’t exist.</h1>
+        <p>The link may be out of date or the address may be mistyped.</p>
+        <div className="hero__actions">
+          <Link className="button button--signal" href={`/${role}`}>Back to {destination}</Link>
+          <Link className="button button--quiet" href="/program">View the public program</Link>
+        </div>
+      </section>
+    </RoleShell>
+  );
+}
+
+function hasOnePathSegment(path: string, prefix: string): boolean {
+  if (!path.startsWith(prefix)) return false;
+  const segment = path.slice(prefix.length);
+  return segment.length > 0 && !segment.includes("/");
+}
+
+function isCfpSubmissionPath(path: string): boolean {
+  const segments = path.split("/").filter(Boolean);
+  return segments[0] === "cfp" && (segments.length === 2
+    || (segments.length === 4 && segments[2] === "submissions" && segments[3] !== ""));
+}
+
 function RoutedPage({ path }: { path: string }) {
+  if (path === "/") return <HomePage />;
   if (path === "/login") return <LoginPage />;
-  if (path.startsWith("/cfp/")) return <CfpSubmissionPage path={path} />;
-  if (path.startsWith("/organizer/cfp")) return <RoleShell role="organizer"><CfpBuilderPage /></RoleShell>;
+  if (isCfpSubmissionPath(path)) return <CfpSubmissionPage path={path} />;
+  if (path === "/organizer/cfp") return <RoleShell role="organizer"><CfpBuilderPage /></RoleShell>;
   if (path === "/organizer/disposition") return <RoleShell role="organizer"><DispositionPage /></RoleShell>;
   if (path === "/organizer/agenda") return <RoleShell role="organizer"><AgendaPage /></RoleShell>;
   if (path === "/organizer/comms") return <RoleShell role="organizer"><CommsPage /></RoleShell>;
   if (path === "/organizer/exports") return <RoleShell role="organizer"><ExportsPage /></RoleShell>;
   if (path === "/organizer/content") return <RoleShell role="organizer"><ContentPage /></RoleShell>;
-  if (path.startsWith("/organizer/review")) return <RoleShell role="organizer"><OrganizerReviewPage path={path} /></RoleShell>;
-  if (path.startsWith("/organizer/roster")) return <RoleShell role="organizer"><RosterPage path={path} /></RoleShell>;
-  if (path.startsWith("/organizer")) return <OrganizerPage />;
-  if (path.startsWith("/reviewer")) return <ReviewerPage path={path} />;
-  if (path === "/program" || path.startsWith("/program/")) {
+  if (path === "/organizer/review" || hasOnePathSegment(path, "/organizer/review/submissions/")) {
+    return <RoleShell role="organizer"><OrganizerReviewPage path={path} /></RoleShell>;
+  }
+  if (path === "/organizer/roster" || path === "/organizer/roster/missing" || path === "/organizer/roster/tasks") {
+    return <RoleShell role="organizer"><RosterPage path={path} /></RoleShell>;
+  }
+  if (path === "/organizer") return <OrganizerPage />;
+  if (path.startsWith("/organizer/")) return <WorkspaceNotFoundPage role="organizer" />;
+  if (path === "/reviewer" || hasOnePathSegment(path, "/reviewer/submissions/")) {
+    return <ReviewerPage path={path} />;
+  }
+  if (path.startsWith("/reviewer/")) return <WorkspaceNotFoundPage role="reviewer" />;
+  if (path === "/program" || hasOnePathSegment(path, "/program/")) {
     const sessionId = path.split("/")[2];
     return <ProgramPage sessionId={sessionId} />;
   }
   if (path === "/speakers") return <SpeakersPage />;
-  if (path.startsWith("/speakers/")) {
+  if (hasOnePathSegment(path, "/speakers/")) {
     const speakerId = path.split("/")[2] ?? "";
     return <SpeakerDetailPage speakerId={speakerId} />;
   }
   if (path === "/gallery") return <SpeakerGalleryPage />;
   if (path === "/agenda") return <PublicAgendaPage />;
   if (path === "/schedule") return <ItineraryPage />;
-  if (path.startsWith("/speaker")) return <RoleShell role="speaker"><PortalPage /></RoleShell>;
-  if (path.startsWith("/submitter")) return <SubmitterDashboardPage />;
-  return <HomePage />;
+  if (path === "/speaker") return <RoleShell role="speaker"><PortalPage /></RoleShell>;
+  if (path.startsWith("/speaker/")) return <WorkspaceNotFoundPage role="speaker" />;
+  if (path === "/submitter") return <SubmitterDashboardPage />;
+  return <NotFoundPage />;
 }
 
 export function App() {

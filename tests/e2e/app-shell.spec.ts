@@ -43,6 +43,42 @@ test("every public surface is reachable from the nav at a 375-pixel phone width"
   expect(width).toBeLessThanOrEqual(375);
 });
 
+test("unknown public and organizer URLs say they do not exist", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto("/totally-made-up");
+
+  await expect(page.getByRole("heading", { name: "This page isn’t in Greenroom." })).toBeVisible();
+  await expect(page.getByText("The address may be mistyped, or the page may have moved.")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Back to Greenroom" })).toHaveAttribute("href", "/");
+  await expect(page.getByRole("heading", { name: /Run the program/ })).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
+
+  await page.goto("/login");
+  await page.getByLabel("Email").fill("sbek-organizer@example.com");
+  await page.getByLabel("Password").fill("SbekTest!2027-org");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page).toHaveURL(/\/organizer$/);
+  await page.goto("/organizer/nonexistent");
+
+  await expect(page.getByRole("heading", { name: "This workspace page doesn’t exist." })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Back to organizer overview" })).toHaveAttribute("href", "/organizer");
+  await expect(page.getByRole("heading", { name: "DevFlow Conf 2027" })).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
+});
+
+test("an unauthorized valid workspace route keeps its access page", async ({ page }) => {
+  await page.goto("/login");
+  await page.getByLabel("Email").fill("sbek-reviewer@example.com");
+  await page.getByLabel("Password").fill("SbekTest!2027-rev");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page).toHaveURL(/\/reviewer$/);
+
+  const response = await page.goto("/organizer/comms");
+  expect(response?.status()).toBe(403);
+  await expect(page.getByRole("heading", { name: "That page belongs to the organizer workspace." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /doesn’t exist/ })).toHaveCount(0);
+});
+
 test("public program shows a published fixture session", async ({ page }) => {
   await page.goto("/program");
 

@@ -254,6 +254,10 @@ describe("submission disposition", () => {
     ]);
     expect(preview.items.every((item) => item.subject.length > 0 && item.body.length > 0)).toBe(true);
 
+    const dispatchCountBefore = await env.DB.prepare(
+      "select count(*) as count from email_dispatch",
+    ).first<{ count: number }>();
+
     const firstDispatch = await request(
       `/api/events/evt_devflow_conf_2027/decision-batches/${preview.id}/dispatch`,
       { method: "POST", headers: { cookie } },
@@ -265,6 +269,38 @@ describe("submission disposition", () => {
       skippedCount: 0,
       emailDelivery: "not_configured",
     });
+    const dispatchCountAfter = await env.DB.prepare(
+      "select count(*) as count from email_dispatch",
+    ).first<{ count: number }>();
+    expect(dispatchCountAfter).toEqual(dispatchCountBefore);
+
+    const communicationsResponse = await request(
+      "/api/events/evt_devflow_conf_2027/email-dispatches",
+      { headers: { cookie } },
+    );
+    expect(communicationsResponse.status).toBe(200);
+    const communications = await communicationsResponse.json<{
+      items: Array<{
+        templateKey: string | null;
+        subject: string;
+        status: string;
+        failureReason: string | null;
+      }>;
+    }>();
+    const queuedDecisions = communications.items.filter((item) => item.templateKey?.startsWith("decision_"));
+    expect(queuedDecisions).toHaveLength(2);
+    expect(queuedDecisions).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        templateKey: "decision_accepted",
+        status: "queued",
+        failureReason: "Email sender is not connected, so delivery was not attempted.",
+      }),
+      expect.objectContaining({
+        templateKey: "decision_declined",
+        status: "queued",
+        failureReason: "Email sender is not connected, so delivery was not attempted.",
+      }),
+    ]));
 
     const secondDispatch = await request(
       `/api/events/evt_devflow_conf_2027/decision-batches/${preview.id}/dispatch`,
@@ -277,6 +313,11 @@ describe("submission disposition", () => {
       skippedCount: 2,
       emailDelivery: "not_configured",
     });
+    const communicationsAfterRepeat = await request(
+      "/api/events/evt_devflow_conf_2027/email-dispatches",
+      { headers: { cookie } },
+    ).then((response) => response.json<{ items: Array<{ templateKey: string | null }> }>());
+    expect(communicationsAfterRepeat.items.filter((item) => item.templateKey?.startsWith("decision_"))).toHaveLength(2);
 
     const notices = await env.DB.prepare(
       "select count(*) as count from decision_notice where batch_id = ?",

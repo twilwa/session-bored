@@ -4,7 +4,7 @@ import { and, desc, eq, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { Hono } from "hono";
 import { createMiddleware } from "hono/factory";
-import { emailDispatches, type Role } from "../../db/schema.ts";
+import { decisionBatches, decisionNotices, emailDispatches, type Role } from "../../db/schema.ts";
 import { sendSessionCalendarInvite } from "../email/calendar-invite.ts";
 import { discardDraftDispatch, sendQueuedDispatch, updateDraftDispatch } from "../email/dispatch-queue.ts";
 import { retryDecisionNotice } from "../email/decision-notices.ts";
@@ -74,11 +74,48 @@ commsRoutes.use("/api/events/:eventId/sessions/:sessionId/calendar-invite", requ
 
 commsRoutes.get("/api/events/:eventId/email-dispatches", async (context) => {
   const database = drizzle(context.env.DB);
-  const items = await database
-    .select()
-    .from(emailDispatches)
-    .where(and(eq(emailDispatches.eventId, context.req.param("eventId")), isNull(emailDispatches.deletedAt)))
-    .orderBy(desc(emailDispatches.createdAt));
+  const eventId = context.req.param("eventId");
+  const [dispatches, queuedDecisionNotices] = await Promise.all([
+    database
+      .select()
+      .from(emailDispatches)
+      .where(and(eq(emailDispatches.eventId, eventId), isNull(emailDispatches.deletedAt)))
+      .orderBy(desc(emailDispatches.createdAt)),
+    database
+      .select({
+        id: decisionNotices.id,
+        outcome: decisionNotices.outcome,
+        recipientName: decisionNotices.recipientName,
+        recipientEmail: decisionNotices.recipientEmail,
+        subject: decisionNotices.subject,
+        body: decisionNotices.body,
+        queuedAt: decisionNotices.queuedAt,
+      })
+      .from(decisionNotices)
+      .innerJoin(decisionBatches, eq(decisionNotices.batchId, decisionBatches.id))
+      .where(and(
+        eq(decisionBatches.eventId, eventId),
+        eq(decisionNotices.deliveryStatus, "queued"),
+      )),
+  ]);
+  const queuedItems = queuedDecisionNotices.map((notice) => ({
+    id: `eml_decision_${notice.id}`,
+    eventId,
+    templateKey: `decision_${notice.outcome}`,
+    subject: notice.subject,
+    body: notice.body,
+    recipients: [{ email: notice.recipientEmail, name: notice.recipientName }],
+    status: "queued" as const,
+    providerMessageIds: null,
+    failureReason: "Email sender is not connected, so delivery was not attempted.",
+    sentAt: null,
+    createdByUserId: null,
+    createdAt: notice.queuedAt,
+    updatedAt: notice.queuedAt,
+    deletedAt: null,
+  }));
+  const items = [...dispatches, ...queuedItems]
+    .sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime());
   return context.json({ items });
 });
 
