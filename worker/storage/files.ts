@@ -51,9 +51,45 @@ export interface FileValidationError {
   acceptedExtensions?: string[];
 }
 
+/**
+ * The declared content type as a value worth comparing: case and surrounding whitespace
+ * carry no meaning in a mime type, so both are normalized away. Everything else is left
+ * intact, so a value carrying parameters, or no `type/subtype` shape at all, simply fails
+ * the equality below rather than being repaired into a match.
+ */
+function declaredContentType(rawType: string): string {
+  return rawType.trim().toLowerCase();
+}
+
+/**
+ * The byte signature each image mime type must start with. Only formats with a mandatory,
+ * unambiguous magic number appear here: this list may refuse an upload that extension and
+ * content type both accepted, and must never be the reason one is let through.
+ */
+const imageSignatures: Record<string, (bytes: Uint8Array) => boolean> = {
+  "image/png": (bytes) =>
+    startsWith(bytes, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+  "image/jpeg": (bytes) => startsWith(bytes, [0xff, 0xd8, 0xff]),
+  "image/webp": (bytes) =>
+    startsWith(bytes, [0x52, 0x49, 0x46, 0x46]) &&
+    startsWith(bytes.subarray(8), [0x57, 0x45, 0x42, 0x50]),
+};
+
+function startsWith(bytes: Uint8Array, signature: number[]): boolean {
+  return signature.every((byte, index) => bytes[index] === byte);
+}
+
+/**
+ * Decides whether one upload may be stored. Extension and declared content type must each
+ * affirmatively name the same accepted type, and an image must additionally start with that
+ * format's signature. An absent, empty, or malformed content type names nothing, so it is a
+ * refusal — the declared type is entirely caller-supplied, and omitting it is as free as
+ * lying about it.
+ */
 export function validateUpload(
   file: { name: string; type: string; size: number },
   limits: UploadLimits,
+  bytes: ArrayBuffer,
 ): FileValidationError | null {
   if (file.size === 0) {
     return { error: "file_required", message: "Choose a file to upload." };
@@ -66,15 +102,18 @@ export function validateUpload(
     };
   }
   const acceptedExtensions = Object.keys(limits.mimeTypeByExtension);
+  const unsupportedFileType: FileValidationError = {
+    error: "unsupported_file_type",
+    message: `Accepted file types: ${acceptedExtensions.join(", ")}.`,
+    acceptedExtensions,
+  };
   const expectedMimeType = limits.mimeTypeByExtension[extensionOf(file.name)];
-  const matchesExpectedType = expectedMimeType !== undefined &&
-    (file.type.length === 0 || file.type === expectedMimeType);
-  if (!matchesExpectedType) {
-    return {
-      error: "unsupported_file_type",
-      message: `Accepted file types: ${acceptedExtensions.join(", ")}.`,
-      acceptedExtensions,
-    };
+  if (expectedMimeType === undefined || declaredContentType(file.type) !== expectedMimeType) {
+    return unsupportedFileType;
+  }
+  const signature = imageSignatures[expectedMimeType];
+  if (signature !== undefined && !signature(new Uint8Array(bytes))) {
+    return unsupportedFileType;
   }
   return null;
 }
