@@ -1,0 +1,47 @@
+client/pages/agenda/AgendaResourceManager.tsx
+  s_921e6a1bb2e3a0::t_db70556168c86e 87-88
+  s_921e6a1bb2e3a0::t_cd01b29c699444 1-64,66-86,89-209
+  s_921e6a1bb2e3a0::t_6b86fcfd794e07 65
+worker/index.ts
+  s_921e6a1bb2e3a0::t_1e6003f8722fda 50,149
+client/pages/agenda/agenda.css
+  s_921e6a1bb2e3a0::t_00f2482cd4b02e 5
+  s_921e6a1bb2e3a0::t_db70556168c86e 191-220
+tests/integration/agenda.test.ts
+  s_921e6a1bb2e3a0::t_ff3d6ab2662d01 185-226
+  s_921e6a1bb2e3a0::t_2678b39b18f210 267-288
+  s_921e6a1bb2e3a0::t_295a7a6ae4361f 227-266
+  s_921e6a1bb2e3a0::t_c44ff1bf43dddd 151-184
+client/pages/agenda/AgendaPage.tsx
+  s_921e6a1bb2e3a0::t_cd01b29c699444 19,188-200
+  s_921e6a1bb2e3a0::t_23956194f93329 591-596
+worker/routes/event-settings.ts
+  s_921e6a1bb2e3a0::t_1e6003f8722fda 1-6,17-89,94-97,213-215
+  s_921e6a1bb2e3a0::t_2dae9808d87f41 90-93,98-116
+  s_921e6a1bb2e3a0::t_896ece657ee07e 117-159,164-167
+  s_921e6a1bb2e3a0::t_585230c4196c29 7-16,160-163,168-212
+shared/api.ts
+  s_921e6a1bb2e3a0::t_1e6003f8722fda 40-42
+  s_921e6a1bb2e3a0::t_896ece657ee07e 35-37
+tests/e2e/event-settings.spec.ts
+  s_921e6a1bb2e3a0::t_0add2766822e8c 1-12,17-23,25,27,29-30,34-35,37-38,41,43,45
+  s_921e6a1bb2e3a0::t_c098e89fbef735 96-102,104-106
+  s_921e6a1bb2e3a0::t_26744050002bd3 46,48,52-57,59-61,63,65-67,71-73,76-78,81-84,86-95,103,107-154
+  s_921e6a1bb2e3a0::t_5fbad8fa56dc35 13-16,24,26,28,31-33,36,39-40,42,44,47,49-51,58,62,64,68-70,74-75,79-80,85
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "2c83142c6674338bf3a02da7ad8e634b98a7e2bf",
+  "prompts": {},
+  "sessions": {
+    "s_921e6a1bb2e3a0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ff3a1-dbc8-7330-a4d7-fd9e88aba046",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
