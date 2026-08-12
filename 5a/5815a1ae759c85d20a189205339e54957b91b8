@@ -1,0 +1,23 @@
+tests/e2e/public-schedule.spec.ts
+  s_4295b1625f02e7::t_60dc6e3a305909 133,158-159
+client/pages/public/personal-schedule.ts
+  s_4295b1625f02e7::t_88c9f0031c4623 2,46
+client/pages/public/PersonalSchedulePage.tsx
+  s_4295b1625f02e7::t_88c9f0031c4623 2,9,66,68,70-71,73-74,76-78,140-141
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "5a5815a1ae759c85d20a189205339e54957b91b8",
+  "prompts": {},
+  "sessions": {
+    "s_4295b1625f02e7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ff7a7-d911-7370-88a3-3e114519b6f2",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
