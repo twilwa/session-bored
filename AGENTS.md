@@ -334,7 +334,20 @@ Resend-backed sender (`worker/email/resend.ts`) when `RESEND_API_KEY` and
 `RESEND_FROM_ADDRESS` are set, and the visibly-unconfigured `emailDelivery`
 stub otherwise - local dev, CI, and every test run stay in the unconfigured
 state unless a `.dev.vars` opts in, so nothing here ever reaches the network
-by accident. Every real attempt logs a structured line and, once attempted,
+by accident. `resolveEmailDelivery` also wraps the real sender in
+`refuseUndeliverableRecipients` (`worker/email/reserved-domains.ts`), so a
+recipient at a domain the RFCs reserve - `example.com`/`.net`/`.org` and the
+`.invalid`, `.test`, `.example`, and `.localhost` TLDs, subdomains included -
+fails before the provider call rather than hard-bouncing off a verified sending
+domain. It guards what cannot receive mail and nothing more: no allow lists, no
+per-event settings. The refusal is an ordinary `failed` result, so it lands on
+the same `email_dispatch` and `decision_notice` rows, with the same reason
+field, as any provider rejection. It sits around the resolved sender rather than
+inside `sendTrackedEmail` so an unconfigured environment still reports
+`provider_not_configured`, writes nothing, and leaves a queued letter queued.
+Seeded fixture speakers are deliberately at `example.com`, so a test that must
+prove real delivery re-points its own recipient at a registrable domain and
+restores it afterwards rather than changing the seed. Every real attempt logs a structured line and, once attempted,
 creates or finalizes one `email_dispatch` row per recipient
 (`worker/email/send.ts#sendTrackedEmail`); a `provider_not_configured` result
 creates nothing and leaves a queued draft unchanged, so unconfigured
