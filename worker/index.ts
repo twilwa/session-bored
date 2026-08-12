@@ -43,6 +43,7 @@ import { ensureSeeded, fixtureIds } from "./seed.ts";
 import { filenameForVersion } from "./storage/file-versions.ts";
 import dispositionRoutes from "./routes/disposition.ts";
 import rosterRoutes from "./routes/roster.ts";
+import participantRoutes from "./routes/participants.ts";
 import agendaRoutes from "./routes/agenda.ts";
 import exportRoutes from "./routes/exports.ts";
 import contentRoutes from "./routes/content.ts";
@@ -141,6 +142,7 @@ app.onError((error, context) => {
 app.use("/api/*", prepareRequest);
 app.route("/", dispositionRoutes);
 app.route("/", rosterRoutes);
+app.route("/", participantRoutes);
 app.route("/", agendaRoutes);
 app.route("/", exportRoutes);
 app.route("/", commsRoutes);

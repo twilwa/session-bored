@@ -78,6 +78,12 @@ interface SavedReference {
   title: string;
 }
 
+interface CollaboratorState {
+  name: string;
+  email: string;
+  roleLabel: string;
+}
+
 interface FormState {
   speaker: {
     name: string;
@@ -86,6 +92,7 @@ interface FormState {
     organization: string;
     bio: string;
   };
+  collaborators: CollaboratorState[];
   proposal: {
     title: string;
     abstract: string;
@@ -97,8 +104,11 @@ interface FormState {
   };
 }
 
+const emptyCollaborator: CollaboratorState = { name: "", email: "", roleLabel: "" };
+
 const emptyForm: FormState = {
   speaker: { name: "", email: "", jobTitle: "", organization: "", bio: "" },
+  collaborators: [],
   proposal: {
     title: "",
     abstract: "",
@@ -180,6 +190,13 @@ function stateFromSubmission(submission: CfpOwnSubmission): FormState {
       organization: submission.speaker.organization ?? "",
       bio: submission.speaker.bio ?? "",
     },
+    collaborators: submission.participants
+      .filter((participant) => !participant.isSubmitter)
+      .map((participant) => ({
+        name: participant.name,
+        email: participant.email,
+        roleLabel: participant.roleLabel,
+      })),
     proposal: {
       title: submission.title ?? "",
       abstract: submission.abstract ?? "",
@@ -482,6 +499,26 @@ export function CfpPage({ path }: { path: string }) {
     };
   }
 
+  function updateCollaborator(index: number, field: keyof CollaboratorState, value: string): void {
+    setState((current) => ({
+      ...current,
+      collaborators: current.collaborators.map((collaborator, position) =>
+        position === index ? { ...collaborator, [field]: value } : collaborator
+      ),
+    }));
+  }
+
+  function addCollaborator(): void {
+    setState((current) => ({ ...current, collaborators: [...current.collaborators, { ...emptyCollaborator }] }));
+  }
+
+  function removeCollaborator(index: number): void {
+    setState((current) => ({
+      ...current,
+      collaborators: current.collaborators.filter((_, position) => position !== index),
+    }));
+  }
+
   async function save(intent: CfpSubmissionIntent): Promise<void> {
     if (cfp === null || availability?.canWrite !== true) {
       return;
@@ -490,7 +527,12 @@ export function CfpPage({ path }: { path: string }) {
     setErrors({});
     setPageError(null);
     setSaveMessage(null);
-    const input: CfpSubmissionWrite = { intent, speaker: state.speaker, proposal: state.proposal };
+    const input: CfpSubmissionWrite = {
+      intent,
+      speaker: state.speaker,
+      collaborators: state.collaborators,
+      proposal: state.proposal,
+    };
     const isExisting = submission !== null;
     const requestPath = isExisting
       ? `/api/public/cfp/${slug}/submissions/${submission.id}${editKey === null ? "" : `?key=${encodeURIComponent(editKey)}`}`
@@ -591,7 +633,7 @@ export function CfpPage({ path }: { path: string }) {
           <div className="cfp-guidelines">
             <p className="section-label">SUBMISSION NOTES</p>
             <ul>
-              <li>One speaker is enough. Add collaborators later if the program team requests them.</li>
+              <li>One speaker is enough. Name your co-presenters here whenever there are more, and add or remove them any time before the deadline.</li>
               <li>Save a draft as soon as you have an identity and an idea. Proposal fields can stay unfinished.</li>
               <li>Required fields are checked only when you submit.</li>
               <li>Your job title and organization are frozen with the submitted proposal.</li>
@@ -677,6 +719,73 @@ export function CfpPage({ path }: { path: string }) {
                     <input id="cfp-speaker-organization" onChange={updateSpeaker("organization")} value={state.speaker.organization} />
                   </label>
                 </div>
+              </fieldset>
+
+              <fieldset disabled={locked || busy}>
+                <legend>Who else is presenting</legend>
+                <p className="cfp-collaborators__hint">
+                  A panel, a co-presented talk, or a workshop with an assistant belongs to everybody on it.
+                  Name each person here and they stay on the proposal through review and onto the session.
+                </p>
+                {errors.collaborators === undefined
+                  ? null
+                  : <span className="proposal-field__error" role="alert">{errors.collaborators}</span>}
+                <ul className="cfp-collaborators">
+                  {state.collaborators.map((collaborator, index) => (
+                    // ABOUTME: A collaborator row is identified by its position because two rows can
+                    // legitimately be blank at once while the submitter is still typing into them.
+                    <li className="cfp-collaborator" key={`collaborator-${index}`}>
+                      <label className="proposal-field" htmlFor={`cfp-collaborator-name-${index}`}>
+                        <span className="proposal-field__label">Name <small>Required</small></span>
+                        <input
+                          aria-invalid={errors[`collaborators.${index}.name`] === undefined ? undefined : true}
+                          id={`cfp-collaborator-name-${index}`}
+                          onChange={(event) => updateCollaborator(index, "name", event.target.value)}
+                          value={collaborator.name}
+                        />
+                        {errors[`collaborators.${index}.name`] === undefined ? null : (
+                          <span className="proposal-field__error" role="alert">
+                            {errors[`collaborators.${index}.name`]}
+                          </span>
+                        )}
+                      </label>
+                      <label className="proposal-field" htmlFor={`cfp-collaborator-email-${index}`}>
+                        <span className="proposal-field__label">Email <small>Required</small></span>
+                        <input
+                          aria-invalid={errors[`collaborators.${index}.email`] === undefined ? undefined : true}
+                          id={`cfp-collaborator-email-${index}`}
+                          onChange={(event) => updateCollaborator(index, "email", event.target.value)}
+                          type="email"
+                          value={collaborator.email}
+                        />
+                        {errors[`collaborators.${index}.email`] === undefined ? null : (
+                          <span className="proposal-field__error" role="alert">
+                            {errors[`collaborators.${index}.email`]}
+                          </span>
+                        )}
+                      </label>
+                      <label className="proposal-field" htmlFor={`cfp-collaborator-role-${index}`}>
+                        <span className="proposal-field__label">Role <small>Optional</small></span>
+                        <input
+                          id={`cfp-collaborator-role-${index}`}
+                          onChange={(event) => updateCollaborator(index, "roleLabel", event.target.value)}
+                          placeholder="speaker"
+                          value={collaborator.roleLabel}
+                        />
+                      </label>
+                      <button
+                        className="button button--quiet"
+                        onClick={() => removeCollaborator(index)}
+                        type="button"
+                      >
+                        Remove
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                <button className="button button--quiet" onClick={addCollaborator} type="button">
+                  Add a participant
+                </button>
               </fieldset>
 
               <fieldset disabled={locked || busy}>

@@ -8,6 +8,7 @@ import type {
 } from "../../../shared/api.ts";
 import { Button, LoadingState, StatusChip, Toast } from "../../components/ui.tsx";
 import { humanScoreChoiceMessage, ReviewLink, reviewRequest } from "./reviewClient.tsx";
+import { SubmissionParticipants } from "./SubmissionParticipants.tsx";
 
 function displayAnswer(value: ReviewSubmissionDetail["answers"][number]["value"]): string {
   if (Array.isArray(value)) return value.join(", ");
@@ -354,13 +355,17 @@ export function SubmissionReviewPage({
         <aside className="review-sidebar">
           <section>
             <p className="section-label">SPEAKERS</p>
-            {detail.participants.length === 0 ? <p>Speaker identity is hidden for this round.</p> : detail.participants.map((participant) => (
-              <div className="participant" key={participant.id}>
-                <strong>{participant.name}</strong>
-                <span>{participant.roleLabel}</span>
-                <small>{[participant.jobTitle, participant.organization].filter(Boolean).join(" · ")}</small>
-              </div>
-            ))}
+            {role === "organizer"
+              ? <SubmissionParticipants eventId={detail.eventId} submissionId={detail.id} />
+              : detail.participants.length === 0
+              ? <p>Speaker identity is hidden for this round.</p>
+              : detail.participants.map((participant) => (
+                <div className="participant" key={participant.id}>
+                  <strong>{participant.name}</strong>
+                  <span>{participant.roleLabel}</span>
+                  <small>{[participant.jobTitle, participant.organization].filter(Boolean).join(" · ")}</small>
+                </div>
+              ))}
           </section>
           {role === "reviewer" && detail.round !== null ? (
             <form className="scorecard" onSubmit={(event) => void submitScorecard(event)} ref={scorecardRef}>

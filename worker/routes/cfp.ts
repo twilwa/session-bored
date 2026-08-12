@@ -1,6 +1,6 @@
 // ABOUTME: Serves the public CFP lifecycle from call details through author-owned edits.
 // ABOUTME: Keeps incomplete drafts writable while enforcing form rules and deadlines on the server.
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { Hono } from "hono";
 import {
@@ -44,6 +44,14 @@ interface SubmissionField {
   conditionalValue?: string | null;
 }
 
+export interface CfpCollaboratorEntry {
+  name?: string | undefined;
+  email?: string | undefined;
+  roleLabel?: string | undefined;
+  jobTitle?: string | undefined;
+  organization?: string | undefined;
+}
+
 export interface CfpSubmissionInput {
   intent: "draft" | "save" | "submit";
   speaker: {
@@ -53,6 +61,7 @@ export interface CfpSubmissionInput {
     organization?: string | undefined;
     bio?: string | undefined;
   };
+  collaborators?: CfpCollaboratorEntry[] | undefined;
   proposal: {
     title?: string | undefined;
     abstract?: string | undefined;
@@ -152,16 +161,70 @@ function isFieldVisible(
     && fieldValue(controllingField, input) === field.conditionalValue;
 }
 
+const emailPattern = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
+export interface CfpParticipantLimits {
+  minimumSpeakers: number;
+  maximumSpeakers: number | null;
+}
+
+/**
+ * A collaborator row the author left completely empty is an unused slot on the form rather
+ * than a mistake, so it never becomes a participant and never reports an error.
+ */
+export function namedCollaborators(input: CfpSubmissionInput): CfpCollaboratorEntry[] {
+  return (input.collaborators ?? []).filter((collaborator) =>
+    [collaborator.name, collaborator.email, collaborator.roleLabel, collaborator.jobTitle, collaborator.organization]
+      .some((value) => (value ?? "").trim() !== "")
+  );
+}
+
+function validateCollaborators(
+  input: CfpSubmissionInput,
+  limits: CfpParticipantLimits | undefined,
+): CfpValidationErrors {
+  const errors: CfpValidationErrors = {};
+  const collaborators = namedCollaborators(input);
+  const claimedEmails = new Set([input.speaker.email?.trim().toLowerCase() ?? ""]);
+  collaborators.forEach((collaborator, index) => {
+    if ((collaborator.name ?? "").trim() === "") {
+      errors[`collaborators.${index}.name`] = "Give this participant a name, or clear the row.";
+    }
+    const email = (collaborator.email ?? "").trim().toLowerCase();
+    if (!emailPattern.test(email)) {
+      errors[`collaborators.${index}.email`] = "Enter a valid email address for this participant.";
+      return;
+    }
+    if (claimedEmails.has(email)) {
+      errors[`collaborators.${index}.email`] = "This email is already on the proposal.";
+      return;
+    }
+    claimedEmails.add(email);
+  });
+  if (limits === undefined || input.intent === "draft") {
+    return errors;
+  }
+  const total = collaborators.length + 1;
+  if (total < limits.minimumSpeakers) {
+    errors.collaborators = `This call needs at least ${limits.minimumSpeakers} speakers on a proposal.`;
+  }
+  if (limits.maximumSpeakers !== null && total > limits.maximumSpeakers) {
+    errors.collaborators = `This call accepts at most ${limits.maximumSpeakers} speakers on a proposal.`;
+  }
+  return errors;
+}
+
 export function validateCfpSubmission(
   fields: readonly SubmissionField[],
   input: CfpSubmissionInput,
+  limits?: CfpParticipantLimits,
 ): CfpValidationErrors {
-  const errors: CfpValidationErrors = {};
+  const errors: CfpValidationErrors = { ...validateCollaborators(input, limits) };
   if (input.speaker.name?.trim() === "" || input.speaker.name === undefined) {
     errors.speakerName = "Your name is required to save this proposal.";
   }
   const email = input.speaker.email?.trim() ?? "";
-  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+  if (!emailPattern.test(email)) {
     errors.speakerEmail = "Enter a valid email address so you can return to this proposal.";
   }
   if (input.intent === "draft") {
@@ -201,6 +264,21 @@ function normalizeInput(value: unknown): CfpSubmissionInput | null {
   const answers = typeof proposal.answers === "object" && proposal.answers !== null && !Array.isArray(proposal.answers)
     ? proposal.answers as Record<string, string | number | boolean | string[] | null>
     : {};
+  const collaborators = Array.isArray(record.collaborators)
+    ? record.collaborators.flatMap((entry) => {
+      if (typeof entry !== "object" || entry === null) {
+        return [];
+      }
+      const collaborator = entry as Record<string, unknown>;
+      return [{
+        name: textValue(collaborator.name),
+        email: textValue(collaborator.email),
+        roleLabel: textValue(collaborator.roleLabel),
+        jobTitle: textValue(collaborator.jobTitle),
+        organization: textValue(collaborator.organization),
+      }];
+    })
+    : [];
   return {
     intent: record.intent,
     speaker: {
@@ -210,6 +288,7 @@ function normalizeInput(value: unknown): CfpSubmissionInput | null {
       organization: textValue(speaker.organization),
       bio: textValue(speaker.bio),
     },
+    collaborators,
     proposal: {
       title: textValue(proposal.title),
       abstract: textValue(proposal.abstract),
@@ -401,6 +480,114 @@ async function findOrCreateSpeaker(
   return { personId: person.id, speakerId: speaker.id };
 }
 
+/**
+ * Adopts a collaborator's lasting identity by normalized email, exactly as the author's own
+ * identity is adopted. An email already known to Greenroom keeps the profile it already has:
+ * naming somebody on a proposal must never let one submitter rewrite another person's record.
+ */
+async function findOrCreateCollaboratorPerson(
+  database: CfpDatabase,
+  collaborator: CfpCollaboratorEntry,
+): Promise<string> {
+  const email = collaborator.email?.trim().toLowerCase() ?? "";
+  const [existing] = await database.select({ id: people.id }).from(people).where(eq(people.email, email));
+  if (existing !== undefined) {
+    return existing.id;
+  }
+  const personId = createPublicId("psn");
+  await database.insert(people).values({
+    id: personId,
+    name: collaborator.name?.trim() ?? "",
+    email,
+    jobTitle: collaborator.jobTitle?.trim() || null,
+    organization: collaborator.organization?.trim() || null,
+  });
+  return personId;
+}
+
+/**
+ * Rewrites the proposal's participant list to exactly what the author last saved, with the
+ * author always first. A participant the author drops is archived rather than erased so a
+ * restored collaborator keeps the same `submission_speaker` row, and so an already-accepted
+ * proposal never loses the history behind its session.
+ */
+async function replaceParticipants(
+  database: CfpDatabase,
+  submissionId: string,
+  authorPersonId: string,
+  input: CfpSubmissionInput,
+): Promise<void> {
+  const collaborators = namedCollaborators(input);
+  const collaboratorPersonIds = await Promise.all(
+    collaborators.map((collaborator) => findOrCreateCollaboratorPerson(database, collaborator)),
+  );
+  const desired = [
+    { personId: authorPersonId, roleLabel: "speaker", sortOrder: 0 },
+    ...collaborators.flatMap((collaborator, index) => {
+      const personId = collaboratorPersonIds[index];
+      return personId === undefined || personId === authorPersonId ? [] : [{
+        personId,
+        roleLabel: collaborator.roleLabel?.trim() || "speaker",
+        sortOrder: index + 1,
+      }];
+    }),
+  ];
+  const existing = await database
+    .select({ id: submissionSpeakers.id, personId: submissionSpeakers.personId })
+    .from(submissionSpeakers)
+    .where(eq(submissionSpeakers.submissionId, submissionId));
+  const existingByPerson = new Map(existing.map((row) => [row.personId, row.id]));
+  for (const participant of desired) {
+    const rowId = existingByPerson.get(participant.personId);
+    if (rowId === undefined) {
+      await database.insert(submissionSpeakers).values({
+        id: createPublicId("sspk"),
+        submissionId,
+        personId: participant.personId,
+        roleLabel: participant.roleLabel,
+        sortOrder: participant.sortOrder,
+      });
+      continue;
+    }
+    await database
+      .update(submissionSpeakers)
+      .set({ roleLabel: participant.roleLabel, sortOrder: participant.sortOrder, deletedAt: null })
+      .where(eq(submissionSpeakers.id, rowId));
+  }
+  const keptPersonIds = new Set(desired.map((participant) => participant.personId));
+  for (const row of existing) {
+    if (!keptPersonIds.has(row.personId)) {
+      await database
+        .update(submissionSpeakers)
+        .set({ deletedAt: new Date() })
+        .where(eq(submissionSpeakers.id, row.id));
+    }
+  }
+}
+
+async function readParticipants(
+  database: CfpDatabase,
+  submissionId: string,
+  submitterPersonId: string,
+) {
+  const rows = await database
+    .select({
+      id: submissionSpeakers.id,
+      personId: people.id,
+      name: people.name,
+      email: people.email,
+      jobTitle: people.jobTitle,
+      organization: people.organization,
+      roleLabel: submissionSpeakers.roleLabel,
+      sortOrder: submissionSpeakers.sortOrder,
+    })
+    .from(submissionSpeakers)
+    .innerJoin(people, eq(submissionSpeakers.personId, people.id))
+    .where(and(eq(submissionSpeakers.submissionId, submissionId), isNull(submissionSpeakers.deletedAt)))
+    .orderBy(asc(submissionSpeakers.sortOrder), asc(submissionSpeakers.id));
+  return rows.map((row) => ({ ...row, isSubmitter: row.personId === submitterPersonId }));
+}
+
 function answersForFields(
   fields: Array<typeof formVersionFields.$inferSelect>,
   input: CfpSubmissionInput,
@@ -477,7 +664,7 @@ async function readSubmission(
   if (item === undefined) {
     return null;
   }
-  const [[track], valueRows, [speaker]] = await Promise.all([
+  const [[track], valueRows, [speaker], participants] = await Promise.all([
     database
       .select({ name: tracks.name })
       .from(submissionTracks)
@@ -492,6 +679,7 @@ async function readSubmission(
       .select({ id: speakers.id })
       .from(speakers)
       .where(and(eq(speakers.personId, item.personId), eq(speakers.eventId, cfp.event.id))),
+    readParticipants(database, submissionId, item.personId),
   ]);
   return {
     id: item.id,
@@ -516,6 +704,7 @@ async function readSubmission(
       organization: item.organization,
       bio: item.bio,
     },
+    participants,
   };
 }
 
@@ -549,7 +738,7 @@ cfpRoutes.post("/:slug/submissions", async (context) => {
     return context.json({ error: "invalid_request", message: "The proposal data could not be read." }, 400);
   }
   const taxonomy = await resolveTaxonomy(database, cfp.event.id, input);
-  const validation = { ...validateCfpSubmission(cfp.fields, input), ...taxonomy.errors };
+  const validation = { ...validateCfpSubmission(cfp.fields, input, cfp.form), ...taxonomy.errors };
   if (Object.keys(validation).length > 0) {
     return context.json(
       { error: "validation_failed", message: "Add your return details before saving, and complete required fields before submitting.", fields: validation },
@@ -604,12 +793,7 @@ cfpRoutes.post("/:slug/submissions", async (context) => {
   if (access !== null) {
     await database.insert(submissionAuthorAccess).values({ submissionId, authorKeyHash: access.hash });
   }
-  await database.insert(submissionSpeakers).values({
-    id: createPublicId("sspk"),
-    submissionId,
-    personId: author.personId,
-    roleLabel: "speaker",
-  });
+  await replaceParticipants(database, submissionId, author.personId, input);
   await replaceProposalRelations(database, submissionId, cfp.fields, input, taxonomy.trackId);
   const submission = await readSubmission(database, cfp, submissionId);
   if (input.intent === "submit") {
@@ -713,7 +897,7 @@ cfpRoutes.patch("/:slug/submissions/:submissionId", async (context) => {
     }, 422);
   }
   const taxonomy = await resolveTaxonomy(database, cfp.event.id, input);
-  const validation = { ...validateCfpSubmission(cfp.fields, input), ...taxonomy.errors };
+  const validation = { ...validateCfpSubmission(cfp.fields, input, cfp.form), ...taxonomy.errors };
   if (Object.keys(validation).length > 0) {
     return context.json(
       { error: "validation_failed", message: "Complete every required field before submitting. Your existing saved work is unchanged.", fields: validation },
@@ -751,6 +935,7 @@ cfpRoutes.patch("/:slug/submissions/:submissionId", async (context) => {
       submittedAt: becomesSubmitted ? new Date() : undefined,
     })
     .where(eq(submissions.id, submissionId));
+  await replaceParticipants(database, submissionId, existing.speaker.id, input);
   await replaceProposalRelations(database, submissionId, cfp.fields, input, taxonomy.trackId);
   const submission = await readSubmission(database, cfp, submissionId);
   if (becomesSubmitted) {

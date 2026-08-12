@@ -22,6 +22,18 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   onboarding tasks. Names, emails, bios, job titles, organizations, roles,
   title, abstract, format, and track come from the submission graph without
   re-entry. The roster and portal must consume these rows rather than copy them.
+- A proposal names as many participants as it has. `submission_speaker` is the
+  one list: the CFP write path rewrites it from the author's `collaborators`
+  input, and organizers amend the same rows through `worker/routes/participants.ts`.
+  Removal archives the link so a restored participant keeps their row and their
+  completion history. `worker/submission-decision.ts#carryParticipantIntoSession`
+  is the single participant handoff — acceptance runs it per participant, and a
+  late organizer addition runs it once — so it also promotes an `invited` speaker
+  to `onboarding`. Without that promotion the CFP author, who already had an
+  `invited` row from their first draft, is the one name missing from the roster's
+  onboarding work and from every public surface. A collaborator is named, not
+  admitted: naming somebody mints no author key, grants no dashboard, and never
+  overwrites the profile an existing person already has.
 - A sessionless task with no `task_scope` row is an event-wide onboarding
   template assigned by later acceptances. Roster-created bulk tasks use the
   `selected_speakers` scope and must remain limited to their explicit assignees.
@@ -135,6 +147,12 @@ lifecycle and relationships are fixed as follows:
   event-scoped `speakers` row, and links the author through both
   `submitterPersonId` and `submissionSpeakers`. `people.userId` stays nullable so
   a later account can claim the same identity without changing submission IDs.
+- Each save rewrites the whole participant list from `collaborators`, author
+  first. A blank collaborator row is an unused slot, not an error. The form
+  version's `minimumSpeakers`/`maximumSpeakers` are enforced on submit only.
+  `worker/routes/review.ts` still reads `submission_speaker` without filtering
+  `deleted_at`, so its detail sidebar can show a participant an organizer has
+  removed; that filter belongs to the review lane.
 - `formId` and `formVersion` freeze the form contract. `formatId`,
   `submissionTracks`, and `submissionValues` carry taxonomy and answers; built-in
   title, abstract, audience, and reviewer-note columns remain the list/detail
