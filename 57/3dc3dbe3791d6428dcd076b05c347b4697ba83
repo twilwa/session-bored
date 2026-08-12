@@ -1,0 +1,39 @@
+client/pages/agenda/AgendaPage.tsx
+  s_2edd279e5a8041::t_d1dc4c6149b585 4
+  s_2edd279e5a8041::t_5078bfe26687e8 35-37
+  s_2edd279e5a8041::t_688c049ecd2567 209
+  s_2edd279e5a8041::t_f9207fb4e0f954 301,370,404,431
+  s_2edd279e5a8041::t_d3b52ec83970a8 515,518-528
+  s_2edd279e5a8041::t_7b2cef00771af8 992-996
+worker/routes/agenda.ts
+  s_2edd279e5a8041::t_93c5026a3e678f 411-422,424,428,430,433-441
+  s_2edd279e5a8041::t_b7157b89c0725e 22-24
+  s_2edd279e5a8041::t_8cf0cb1cba132d 370-406
+shared/api.ts
+  s_2edd279e5a8041::t_837770670663ef 497-519
+client/pages/agenda/agenda.css
+  s_2edd279e5a8041::t_c3ac24371e0b76 173
+tests/e2e/agenda.spec.ts
+  s_2edd279e5a8041::t_c29d3797caff9a 226,228-234,254-256
+tests/integration/agenda.test.ts
+  s_2edd279e5a8041::t_1c5a82a6669b09 5
+  s_2edd279e5a8041::t_fbf100a395e23f 475,532,553
+  s_2edd279e5a8041::t_34be3cd94d786e 474
+  s_2edd279e5a8041::t_d6ec5c5f966727 499-531,533-552,554-556
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "573dc3dbe3791d6428dcd076b05c347b4697ba83",
+  "prompts": {},
+  "sessions": {
+    "s_2edd279e5a8041": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a32ebebc-b913-4012-b0f8-13c6d9d6c1dd",
+        "model": "claude-opus-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
