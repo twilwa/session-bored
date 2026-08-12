@@ -145,6 +145,7 @@ async function readAgenda(binding: D1Database, eventId: string): Promise<AgendaS
         id: sessions.id,
         title: sessions.title,
         abstract: sessions.abstract,
+        approvedContent: sessions.approvedContent,
         contentStatus: sessions.contentStatus,
         scheduleStatus: sessions.scheduleStatus,
         scheduledDate: sessions.scheduledDate,
@@ -197,6 +198,11 @@ async function readAgenda(binding: D1Database, eventId: string): Promise<AgendaS
     id: session.id as `ses_${string}`,
     title: session.title ?? "Untitled session",
     abstract: session.abstract,
+    approvedContent: session.approvedContent,
+    editedSinceApproval: session.approvedContent !== null && (
+      session.title !== session.approvedContent.title ||
+      session.abstract !== session.approvedContent.abstract
+    ),
     contentStatus: session.contentStatus,
     scheduleStatus: session.scheduleStatus,
     scheduledDate: session.scheduledDate,
@@ -301,11 +307,8 @@ agendaRoutes.patch("/api/events/:eventId/agenda/sessions/:sessionId", async (con
 
 agendaRoutes.patch("/api/events/:eventId/agenda/sessions/:sessionId/content", async (context) => {
   const input = await context.req.json<unknown>().catch(() => null);
-  if (
-    typeof input !== "object" || input === null ||
-    !("contentStatus" in input) || input.contentStatus !== "approved"
-  ) {
-    return context.json({ error: "invalid_content_status" }, 400);
+  if (typeof input !== "object" || input === null) {
+    return context.json({ error: "invalid_session_content" }, 400);
   }
   const eventId = context.req.param("eventId");
   const agenda = await readAgenda(context.env.DB, eventId);
@@ -313,10 +316,48 @@ agendaRoutes.patch("/api/events/:eventId/agenda/sessions/:sessionId/content", as
   const session = agenda.sessions.find((item) => item.id === context.req.param("sessionId"));
   if (session === undefined) return context.json({ error: "session_not_found" }, 404);
 
-  await drizzle(context.env.DB)
-    .update(sessions)
-    .set({ contentStatus: "approved" })
-    .where(eq(sessions.id, session.id));
+  const database = drizzle(context.env.DB);
+  if ("contentStatus" in input) {
+    if (
+      input.contentStatus !== "approved" ||
+      "title" in input ||
+      "abstract" in input
+    ) {
+      return context.json({ error: "invalid_content_status" }, 400);
+    }
+    if (session.contentStatus !== "approved") {
+      const [currentContent] = await database
+        .select({ title: sessions.title, abstract: sessions.abstract })
+        .from(sessions)
+        .where(eq(sessions.id, session.id));
+      if (currentContent === undefined) return context.json({ error: "session_not_found" }, 404);
+      await database
+        .update(sessions)
+        .set({
+          contentStatus: "approved",
+          approvedContent: currentContent,
+        })
+        .where(eq(sessions.id, session.id));
+    }
+  } else {
+    const update: { title?: string; abstract?: string } = {};
+    if ("title" in input) {
+      if (typeof input.title !== "string" || input.title.trim().length === 0) {
+        return context.json({ error: "invalid_session_content" }, 400);
+      }
+      update.title = input.title.trim();
+    }
+    if ("abstract" in input) {
+      if (typeof input.abstract !== "string" || input.abstract.trim().length === 0) {
+        return context.json({ error: "invalid_session_content" }, 400);
+      }
+      update.abstract = input.abstract.trim();
+    }
+    if (Object.keys(update).length === 0) {
+      return context.json({ error: "invalid_session_content" }, 400);
+    }
+    await database.update(sessions).set(update).where(eq(sessions.id, session.id));
+  }
 
   const updatedAgenda = await readAgenda(context.env.DB, eventId);
   if (updatedAgenda === null) throw new Error(`Agenda disappeared for ${eventId}`);

@@ -24,7 +24,9 @@ function session(overrides: Partial<AgendaSession> & { id: string; title: string
   return {
     startsAt,
     abstract: null,
+    approvedContent: null,
     contentStatus: "draft",
+    editedSinceApproval: false,
     endsAt: startsAt === null ? null : startsAt + durationMinutes * 60_000,
     publishedAt: null,
     room: null,

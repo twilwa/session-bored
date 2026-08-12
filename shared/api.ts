@@ -172,6 +172,12 @@ export const routeMap = {
       module: "agenda",
       access: "organizer",
     },
+    updateAgendaSessionContent: {
+      method: "PATCH",
+      path: "/api/events/:eventId/agenda/sessions/:sessionId/content",
+      module: "agenda",
+      access: "organizer",
+    },
     publishAgenda: {
       method: "POST",
       path: "/api/events/:eventId/agenda/publish",
@@ -448,6 +454,8 @@ export interface AgendaSession {
   id: `ses_${string}`;
   title: string;
   abstract: string | null;
+  approvedContent: { title: string | null; abstract: string | null } | null;
+  editedSinceApproval: boolean;
   contentStatus: SessionContentStatus;
   scheduleStatus: ScheduleStatus;
   scheduledDate: string | null;

@@ -548,4 +548,83 @@ describe("agenda builder", () => {
     expect(republish.status).toBe(200);
     expect(await publicSessionIds()).toContain(session.id);
   });
+
+  it("keeps approved published content live while showing its net changes from approval", async () => {
+    await accept(["sub_ci_monorepo"], organizerCookie);
+    const acceptedAgenda = await readAgenda(organizerCookie);
+    const session = acceptedAgenda.sessions.find((item) => item.title.startsWith("Taming 40-Minute CI"));
+    expect(session).toBeDefined();
+    if (session === undefined) return;
+
+    await place(session.id, organizerCookie, {
+      scheduleStatus: "placed",
+      scheduledDate: "2027-05-12",
+      roomId: "rm_room_2a",
+      startsAt: Date.parse("2027-05-12T17:00:00Z"),
+    });
+    const approval = await request(`/api/events/${eventId}/agenda/sessions/${session.id}/content`, {
+      method: "PATCH",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({ contentStatus: "approved" }),
+    });
+    expect(approval.status).toBe(200);
+    const approvedAgenda = await approval.json<AgendaState>();
+    expect(approvedAgenda.sessions.find((item) => item.id === session.id)).toMatchObject({
+      approvedContent: { title: session.title, abstract: session.abstract },
+      contentStatus: "approved",
+      editedSinceApproval: false,
+    });
+
+    const publish = await request(`/api/events/${eventId}/agenda/publish`, {
+      method: "POST",
+      headers: { cookie: organizerCookie },
+    });
+    expect(publish.status).toBe(200);
+    const publishedAgenda = await readAgenda(organizerCookie);
+    const publishedAt = publishedAgenda.sessions.find((item) => item.id === session.id)?.publishedAt;
+    expect(publishedAt).toEqual(expect.any(Number));
+
+    const editedTitle = "Taming CI without the wait";
+    const editedAbstract = "A corrected organizer summary with the approved state left intact.";
+    const edit = await request(`/api/events/${eventId}/agenda/sessions/${session.id}/content`, {
+      method: "PATCH",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({ title: editedTitle, abstract: editedAbstract }),
+    });
+    expect(edit.status).toBe(200);
+    const editedAgenda = await edit.json<AgendaState>();
+    expect(editedAgenda.sessions.find((item) => item.id === session.id)).toMatchObject({
+      title: editedTitle,
+      abstract: editedAbstract,
+      approvedContent: { title: session.title, abstract: session.abstract },
+      contentStatus: "approved",
+      editedSinceApproval: true,
+      publishedAt,
+    });
+
+    const publicResponse = await request(`/api/public/events/${eventId}/sessions`);
+    expect(publicResponse.status).toBe(200);
+    await expect(publicResponse.json()).resolves.toMatchObject({
+      items: expect.arrayContaining([
+        expect.objectContaining({ id: session.id, title: editedTitle, abstract: editedAbstract }),
+      ]),
+    });
+
+    const republish = await request(`/api/events/${eventId}/agenda/publish`, {
+      method: "POST",
+      headers: { cookie: organizerCookie },
+    });
+    expect(republish.status).toBe(200);
+    expect((await readAgenda(organizerCookie)).sessions.find((item) => item.id === session.id))
+      .toMatchObject({ editedSinceApproval: true, contentStatus: "approved" });
+  });
+
+  it("does not infer edits for an existing approval without a content snapshot", async () => {
+    const agenda = await readAgenda(organizerCookie);
+    expect(agenda.sessions.find((session) => session.id === "ses_docs_retrieval")).toMatchObject({
+      approvedContent: null,
+      contentStatus: "approved",
+      editedSinceApproval: false,
+    });
+  });
 });
