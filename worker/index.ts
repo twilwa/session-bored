@@ -1,6 +1,6 @@
 // ABOUTME: Serves Greenroom's same-origin Hono routes, Better Auth, and protected React assets.
 // ABOUTME: Seeds fixture data and enforces role plus ownership scoping before resource access.
-import { and, eq, inArray, isNull, ne } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { Hono } from "hono";
 import { createMiddleware } from "hono/factory";
@@ -190,65 +190,6 @@ app.get("/api/public/cfp/:slug", async (context) => {
     formats: eventFormats.map((format) => format.name),
     fields,
   });
-});
-
-app.get("/api/public/events/:eventId/sessions", async (context) => {
-  const database = drizzle(context.env.DB);
-  const items = await database
-    .select({
-      id: sessions.id,
-      title: sessions.title,
-      abstract: sessions.abstract,
-      contentStatus: sessions.contentStatus,
-      scheduleStatus: sessions.scheduleStatus,
-      scheduledDate: sessions.scheduledDate,
-      startsAt: sessions.startsAt,
-      endsAt: sessions.endsAt,
-      track: tracks.name,
-      format: formats.name,
-      room: rooms.name,
-    })
-    .from(sessions)
-    .leftJoin(tracks, eq(sessions.trackId, tracks.id))
-    .leftJoin(formats, eq(sessions.formatId, formats.id))
-    .leftJoin(rooms, eq(sessions.roomId, rooms.id))
-    .where(and(eq(sessions.eventId, context.req.param("eventId")), eq(sessions.contentStatus, "approved")));
-  return context.json({ items });
-});
-
-app.get("/api/public/events/:eventId/speakers", async (context) => {
-  const database = drizzle(context.env.DB);
-  const items = await database
-    .select({
-      id: speakers.id,
-      name: people.name,
-      jobTitle: people.jobTitle,
-      organization: people.organization,
-      bio: people.bio,
-      headshotUrl: people.headshotUrl,
-    })
-    .from(speakers)
-    .innerJoin(people, eq(speakers.personId, people.id))
-    .where(and(eq(speakers.eventId, context.req.param("eventId")), ne(speakers.status, "withdrawn")));
-  return context.json({ items });
-});
-
-app.get("/api/public/events/:eventId/agenda", async (context) => {
-  const database = drizzle(context.env.DB);
-  const items = await database
-    .select({
-      id: sessions.id,
-      title: sessions.title,
-      scheduledDate: sessions.scheduledDate,
-      startsAt: sessions.startsAt,
-      endsAt: sessions.endsAt,
-      scheduleStatus: sessions.scheduleStatus,
-      room: rooms.name,
-    })
-    .from(sessions)
-    .leftJoin(rooms, eq(sessions.roomId, rooms.id))
-    .where(and(eq(sessions.eventId, context.req.param("eventId")), eq(sessions.contentStatus, "approved")));
-  return context.json({ items });
 });
 
 app.get("/api/public/embeds/:token", (context) =>

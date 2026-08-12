@@ -170,6 +170,7 @@
 .agenda-toast--clash { border-left-color: var(--danger); }
 .agenda-toast strong { font-size: 0.92rem; }
 .agenda-toast small { color: #d7d5dd; font-size: 0.76rem; }
+.agenda-toast__notes { margin: 4px 0 0; padding-left: 16px; display: grid; gap: 3px; color: #d7d5dd; font-size: 0.76rem; max-height: 168px; overflow-y: auto; }
 .agenda-toast__actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .agenda-toast__actions button { border: 1px solid var(--white); background: var(--signal); color: var(--ink); padding: 6px 12px; cursor: pointer; font-size: 0.74rem; font-weight: 800; }
 .agenda-toast__review { background: transparent !important; color: var(--white) !important; }

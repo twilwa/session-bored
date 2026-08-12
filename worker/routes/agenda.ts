@@ -19,6 +19,9 @@ import {
 import type {
   AgendaConflict,
   AgendaPlacement,
+  AgendaPublishResult,
+  AgendaPublishSkip,
+  AgendaPublishSkipReason,
   AgendaSession,
   AgendaState,
 } from "../../shared/api.ts";
@@ -364,28 +367,78 @@ agendaRoutes.patch("/api/events/:eventId/agenda/sessions/:sessionId/content", as
   return context.json(updatedAgenda);
 });
 
+function publishSkipReasons(session: AgendaSession): AgendaPublishSkipReason[] {
+  const reasons: AgendaPublishSkipReason[] = [];
+  if (session.contentStatus !== "approved") reasons.push("content_not_approved");
+  if (session.scheduleStatus === "unplaced") reasons.push("not_placed");
+  return reasons;
+}
+
+function skipNote(skip: AgendaPublishSkip): string {
+  const reasons = skip.reasons.map((reason) =>
+    reason === "content_not_approved"
+      ? "its content is not approved yet"
+      : "it is not on the schedule yet"
+  );
+  return `Skipped “${skip.title}” — ${reasons.join(" and ")}.`;
+}
+
+function countLabel(count: number): string {
+  return `${count} ${count === 1 ? "session" : "sessions"}`;
+}
+
+function publishMessage(
+  newlyPublished: number,
+  alreadyPublic: number,
+  skipped: number,
+): string {
+  if (newlyPublished === 0 && alreadyPublic === 0) {
+    return skipped === 0
+      ? "Nothing to publish — the agenda has no sessions."
+      : `Nothing published — ${countLabel(skipped)} skipped.`;
+  }
+  const parts: string[] = [];
+  if (newlyPublished > 0) parts.push(`${countLabel(newlyPublished)} published`);
+  if (alreadyPublic > 0) parts.push(`${countLabel(alreadyPublic)} already public`);
+  if (skipped > 0) parts.push(`${countLabel(skipped)} skipped`);
+  return `${parts.join(" · ")}.`;
+}
+
 agendaRoutes.post("/api/events/:eventId/agenda/publish", async (context) => {
   const eventId = context.req.param("eventId");
   const agenda = await readAgenda(context.env.DB, eventId);
   if (agenda === null) return context.json({ error: "event_not_found" }, 404);
-  const eligibleIds = agenda.sessions
-    .filter((session) =>
-      session.contentStatus === "approved" && session.scheduleStatus !== "unplaced"
-    )
-    .map((session) => session.id);
+  const eligible = agenda.sessions.filter((session) =>
+    session.contentStatus === "approved" && session.scheduleStatus !== "unplaced"
+  );
+  const skipped: AgendaPublishSkip[] = agenda.sessions
+    .filter((session) => !eligible.includes(session))
+    .map((session) => ({
+      id: session.id,
+      title: session.title,
+      reasons: publishSkipReasons(session),
+    }));
+  const alreadyPublicCount = eligible.filter((session) => session.publishedAt !== null).length;
+  const newlyPublishedCount = eligible.length - alreadyPublicCount;
   const publishedAt = new Date();
-  if (eligibleIds.length > 0) {
+  if (eligible.length > 0) {
     await drizzle(context.env.DB)
       .update(sessions)
       .set({ publishedAt })
-      .where(inArray(sessions.id, eligibleIds));
+      .where(inArray(sessions.id, eligible.map((session) => session.id)));
   }
-  return context.json({
+  const result: AgendaPublishResult = {
     status: "published",
-    publishedCount: eligibleIds.length,
     publishedAt: publishedAt.getTime(),
-    message: `${eligibleIds.length} approved agenda ${eligibleIds.length === 1 ? "session" : "sessions"} published.`,
-  });
+    publishedCount: eligible.length,
+    newlyPublishedCount,
+    alreadyPublicCount,
+    published: eligible.map((session) => ({ id: session.id, title: session.title })),
+    skipped,
+    message: publishMessage(newlyPublishedCount, alreadyPublicCount, skipped.length),
+    notes: skipped.map(skipNote),
+  };
+  return context.json(result);
 });
 
 export default agendaRoutes;

@@ -63,7 +63,11 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   exposing schedule data. Organizers approve accepted session content from the
   agenda before publishing; approval locks speaker edits but never publishes by
   itself. Placement edits clear publication and the agenda tells the organizer
-  to publish again.
+  to publish again. Publishing answers with `AgendaPublishResult`: it names
+  every session it published and every one it skipped with the reasons why, so
+  the organizer is never told only about its successes. `worker/public-queries.ts`
+  is the only written form of the public read; route through it rather than
+  growing another copy in the router.
 - The organizer board (`client/pages/agenda/`) leads with the grid: a sticky
   command strip, day tabs, then the workbench. `board.ts` holds its pure
   helpers, and `predictDrop` there mirrors the server's room and speaker overlap
