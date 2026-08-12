@@ -1,0 +1,55 @@
+client/pages/agenda/AgendaPage.tsx
+  s_bd6bd59bbf3a70::t_7e8786641c1cb8 630-638,640
+  s_bd6bd59bbf3a70::t_9b81f10bcfa5ba 646-647,649
+  s_bd6bd59bbf3a70::t_3ab828d92425b4 573
+  s_bd6bd59bbf3a70::t_be58d5601457d3 74-79,204-205,208-216,218-219,222-223,543
+  s_bd6bd59bbf3a70::t_69eb11a49fac49 648,753
+  s_bd6bd59bbf3a70::t_5ee77a8e4f4283 199-203,206
+  s_bd6bd59bbf3a70::t_43c8b05da9c4e7 616
+  s_bd6bd59bbf3a70::t_5273e74d6d279d 772
+  s_bd6bd59bbf3a70::t_51aea9b4d3fef9 104
+  s_bd6bd59bbf3a70::t_ef41ba3e3c877a 588
+  s_bd6bd59bbf3a70::t_65ba7c5e5bfa10 559-561,577-578
+  s_bd6bd59bbf3a70::t_02f1829512d926 1-2,4-18,25-38,64-68,71,82-83,91-93,97,103,105,109,111-112,115,117-125,129,134-135,137,139-151,159-163,176-179,181,183,185,198,207,217,220-221,224-227,232,236,243,247-267,271,283-291,296,300-337,340,343,351-358,366-368,371,374,377-384,392-414,418-428,433-456,466,476-485,498-532,534,538-539,541-542,544-545,547-548,550,554-555,558,563-572,574-576,591,602-615,617-629,645,651-657,660-661,664-666,668-692,697,732,737-752,754-771,773-782,784-839,842-877
+  s_bd6bd59bbf3a70::t_7d97fdd34caa52 587,589-590
+tests/e2e/agenda.spec.ts
+  s_bd6bd59bbf3a70::t_ea30d224f99bd1 1-2,7,12,19-33,81-85,88,90-103,107-108,114,116,118,138-148,161-165,171-181,187,189-190,192-194,209,211,226-231,233-235
+  s_bd6bd59bbf3a70::t_1369abf3cbcfdd 110,247-288
+  s_bd6bd59bbf3a70::t_43c8b05da9c4e7 212,232
+  s_bd6bd59bbf3a70::t_20a871c828e16b 236,289
+AGENTS.md
+  s_bd6bd59bbf3a70::t_2db87d19dbd2d4 67-77
+tests/unit/agenda-board.test.ts
+  s_bd6bd59bbf3a70::t_3d920ec2211c97 1-24,26-106,108-273,275-277
+  s_bd6bd59bbf3a70::t_51aea9b4d3fef9 25
+  s_bd6bd59bbf3a70::t_a59137c1e14b1a 107,274
+client/pages/agenda/agenda.css
+  s_bd6bd59bbf3a70::t_69eb11a49fac49 35-36,50,127
+  s_bd6bd59bbf3a70::t_5ee77a8e4f4283 17
+  s_bd6bd59bbf3a70::t_7e8786641c1cb8 46-47,178-179
+  s_bd6bd59bbf3a70::t_54d4ac6bcafa6e 6-8,11,20-23
+  s_bd6bd59bbf3a70::t_0f74bd366a2c21 1-4,10,12-16,24-26,28,30-34,37-45,48-49,51-79,81-82,84-126,128,130-158,161,163-170,172-177,180-190
+  s_bd6bd59bbf3a70::t_ef41ba3e3c877a 5
+  s_bd6bd59bbf3a70::t_89254591d2c7fb 9,18
+  s_bd6bd59bbf3a70::t_46d2089c85ed50 29
+  s_bd6bd59bbf3a70::t_65ba7c5e5bfa10 171
+  s_bd6bd59bbf3a70::t_5273e74d6d279d 129
+client/pages/agenda/board.ts
+  s_bd6bd59bbf3a70::t_388ad954d9a089 1-209
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "e698fbe285e272550e14f1f333149f6cf664b2c7",
+  "prompts": {},
+  "sessions": {
+    "s_bd6bd59bbf3a70": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0a116226-5a12-42ae-b646-ecf5b7c5526d",
+        "model": "claude-opus-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
