@@ -209,6 +209,7 @@ export function PublicHeader({
         <Link ariaLabel={navigationLinkPrefix === undefined ? undefined : `${navigationLinkPrefix} Program`} href="/program">Program</Link>
         <Link ariaLabel={navigationLinkPrefix === undefined ? undefined : `${navigationLinkPrefix} Agenda`} href="/agenda">Agenda</Link>
         <Link ariaLabel={navigationLinkPrefix === undefined ? undefined : `${navigationLinkPrefix} Itinerary`} href="/schedule">Itinerary</Link>
+        <Link ariaLabel={navigationLinkPrefix === undefined ? undefined : `${navigationLinkPrefix} My schedule`} href="/schedule/mine">My schedule</Link>
         <Link ariaLabel={navigationLinkPrefix === undefined ? undefined : `${navigationLinkPrefix} Speakers`} href="/speakers">Speakers</Link>
         <Link ariaLabel={navigationLinkPrefix === undefined ? undefined : `${navigationLinkPrefix} Gallery`} href="/gallery">Gallery</Link>
         {account === null ? (

@@ -4,34 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import { EmptyState, LoadingState } from "../../components/ui.tsx";
 import type { PublicSessionCard, PublicSessionsResponse } from "../../../shared/api.ts";
 import { Link, PublicHeader, getJson } from "../../lib.tsx";
+import { ItinerarySessionCard } from "./ItinerarySessionCard.tsx";
 import { DayTabs, SessionDetailModal } from "./ScheduleShared.tsx";
-import { DEVFLOW_EVENT_ID, formatTimeRange, groupSessionsByDay, sortSessionsChronologically, truncate } from "./shared.ts";
-
-const ABSTRACT_PREVIEW = 220;
-
-function ItineraryCard({ session, onOpen, timezone }: { session: PublicSessionCard; onOpen: () => void; timezone: string }) {
-  const abstract = session.abstract ?? "";
-  const shown = abstract.length > ABSTRACT_PREVIEW ? truncate(abstract, ABSTRACT_PREVIEW) : abstract;
-  return (
-    <li className="itinerary-item">
-      <div className="itinerary-item__time">
-        <span>{formatTimeRange(session.startsAt, session.endsAt, timezone)}</span>
-        <span className="itinerary-item__room">{session.room ?? "Room TBD"}</span>
-      </div>
-      <div className="itinerary-item__body">
-        <p className="itinerary-item__track">
-          {[session.track, session.format].filter((value) => value !== null && value !== "").join(" · ") || "Session"}
-        </p>
-        <h2>
-          <button className="itinerary-item__title" onClick={onOpen} type="button">
-            {session.title ?? "Untitled session"}
-          </button>
-        </h2>
-        {shown === "" ? null : <p className="itinerary-item__abstract">{shown}</p>}
-      </div>
-    </li>
-  );
-}
+import { usePersonalSchedule } from "./personal-schedule.ts";
+import { DEVFLOW_EVENT_ID, groupSessionsByDay, sortSessionsChronologically } from "./shared.ts";
 
 export function ItineraryPage() {
   const [data, setData] = useState<PublicSessionsResponse | null>(null);
@@ -40,6 +16,7 @@ export function ItineraryPage() {
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [openSession, setOpenSession] = useState<PublicSessionCard | null>(null);
   const [retryToken, setRetryToken] = useState(0);
+  const { sessionIds, toggleSession } = usePersonalSchedule(DEVFLOW_EVENT_ID);
 
   useEffect(() => {
     let active = true;
@@ -102,7 +79,12 @@ export function ItineraryPage() {
             />
           ) : (
             <>
-              <DayTabs days={facets.days} onSelect={setSelectedDay} selected={selectedDay} />
+              <div className="schedule-tabs">
+                <DayTabs days={facets.days} onSelect={setSelectedDay} selected={selectedDay} />
+                <Link className="my-schedule-link" href="/schedule/mine">
+                  My schedule <span>{sessionIds.length}</span>
+                </Link>
+              </div>
 
               {dayItems.length === 0 ? (
                 <EmptyState
@@ -112,7 +94,14 @@ export function ItineraryPage() {
               ) : (
                 <ul className="itinerary-list" aria-label={`Sessions for ${selectedDay ?? ""}`}>
                   {dayItems.map((session) => (
-                    <ItineraryCard key={session.id} onOpen={() => setOpenSession(session)} session={session} timezone={timezone} />
+                    <ItinerarySessionCard
+                      key={session.id}
+                      onOpen={() => setOpenSession(session)}
+                      onToggleSaved={() => toggleSession(session.id)}
+                      saved={sessionIds.includes(session.id)}
+                      session={session}
+                      timezone={timezone}
+                    />
                   ))}
                 </ul>
               )}
