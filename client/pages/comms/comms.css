@@ -1,11 +1,10 @@
 /* ABOUTME: Styles event template authoring, personalized previews, the review queue, and dispatch history. */
 /* ABOUTME: Keeps editable copy, drafted messages, and completed sends visually distinct. */
 .comms-header h1 { max-width: 780px; }
-.comms-delivery-status { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 14px; align-items: center; margin-top: 28px; padding: 16px 18px; border: 1px solid var(--ink); border-left: 6px solid var(--blue); background: #e7ecff; }
-.comms-delivery-status__mark { display: grid; width: 34px; height: 34px; place-items: center; border: 1px solid var(--ink); background: var(--white); font: 1.35rem Georgia, serif; font-weight: 700; }
-.comms-delivery-status strong { font: 0.72rem monospace; letter-spacing: 0.1em; text-transform: uppercase; }
-.comms-delivery-status p { margin: 3px 0 0; }
-.comms-failed { border-left: 6px solid #9b3417; }
+.comms-undelivered { border-left: 6px solid #9b3417; }
+.comms-undelivered-state { font: 0.68rem monospace; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; }
+.comms-undelivered-reason { margin: 0; overflow-wrap: anywhere; }
+.comms-undelivered-blocked { margin: 0; color: var(--muted); }
 .comms-template-help { max-width: 760px; color: var(--muted); }
 .comms-template-editor { max-width: 760px; margin-top: 22px; padding: 22px; border: 1px solid var(--ink); background: var(--paper); box-shadow: 8px 8px 0 var(--blue); }
 .comms-template-editor__heading { display: flex; justify-content: space-between; gap: 18px; align-items: start; margin-bottom: 20px; }

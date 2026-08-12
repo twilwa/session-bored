@@ -17,6 +17,7 @@ import {
   tracks,
   type Role,
 } from "../../db/schema.ts";
+import { isEmailConfigured } from "../email.ts";
 import { dispatchDecisionNoticeEmails } from "../email/decision-notices.ts";
 import { changeSubmissionStatuses } from "../submission-decision.ts";
 
@@ -92,6 +93,7 @@ dispositionRoutes.get("/api/events/:eventId/disposition", async (context) => {
       noticeOutcome: decisionNotices.outcome,
       noticeDeliveryStatus: decisionNotices.deliveryStatus,
       noticeQueuedAt: decisionNotices.queuedAt,
+      noticeFailureReason: decisionNotices.failureReason,
     })
     .from(submissions)
     .innerJoin(people, eq(submissions.submitterPersonId, people.id))
@@ -113,7 +115,7 @@ dispositionRoutes.get("/api/events/:eventId/disposition", async (context) => {
   }
   return context.json({
     notificationMode: "silent",
-    emailDelivery: "not_configured",
+    emailDelivery: isEmailConfigured(context.env) ? "configured" : "not_configured",
     items: rows.map((row) => ({
       id: row.id,
       title: row.title,
@@ -131,6 +133,7 @@ dispositionRoutes.get("/api/events/:eventId/disposition", async (context) => {
         outcome: row.noticeOutcome,
         deliveryStatus: row.noticeDeliveryStatus,
         queuedAt: row.noticeQueuedAt,
+        failureReason: row.noticeFailureReason,
       },
       diverged: row.noticeOutcome !== null && row.noticeOutcome !== row.status,
     })),
@@ -279,23 +282,43 @@ dispositionRoutes.post("/api/events/:eventId/decision-batches/:batchId/dispatch"
     .set({ status: "queued", dispatchedAt: batch.dispatchedAt ?? queuedAt })
     .where(eq(decisionBatches.id, batch.id));
 
+  // Every notice in this batch that has never reached a recipient, not only the
+  // rows this call inserted. A batch dispatched while no sender was connected
+  // left its notices `queued`, and this is how they go out once one is. The
+  // status filter is what keeps a second dispatch from emailing anyone twice.
+  const pending = await database
+    .select({
+      id: decisionNotices.id,
+      submissionId: decisionNotices.submissionId,
+      outcome: decisionNotices.outcome,
+      recipientEmail: decisionNotices.recipientEmail,
+      subject: decisionNotices.subject,
+      body: decisionNotices.body,
+    })
+    .from(decisionNotices)
+    .where(and(eq(decisionNotices.batchId, batch.id), eq(decisionNotices.deliveryStatus, "queued")));
+
   const emailResult = await dispatchDecisionNoticeEmails(
     database,
     context.env,
     context.req.param("eventId") as `evt_${string}`,
-    inserted,
+    pending,
   );
 
+  // Whether this deployment can send at all, which is not the same question as
+  // whether this call happened to have anything left to hand over.
+  const connected = isEmailConfigured(context.env);
   return context.json({
     status: "queued",
     queuedCount: inserted.length,
     skippedCount: items.length - inserted.length,
-    emailDelivery: emailResult.configured ? "dispatched" : "not_configured",
+    pendingCount: connected ? 0 : pending.length,
+    emailDelivery: connected ? "dispatched" : "not_configured",
     sent: emailResult.sent,
     failed: emailResult.failed,
-    message: emailResult.configured
+    message: connected
       ? `Decision notices dispatched: ${emailResult.sent.length} sent, ${emailResult.failed.length} failed.`
-      : "Decision notices are queued in Greenroom. No email provider is connected in this lane.",
+      : "Decision notices are recorded in Greenroom and waiting to send. No email sender is connected, so nothing was attempted.",
   });
 });
 

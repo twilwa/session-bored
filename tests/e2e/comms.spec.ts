@@ -13,7 +13,14 @@ test("organizer reviews communications without anything sending itself", async (
   await expect(page.getByText("Messages are drafted for review, never sent automatically.")).toBeVisible();
   const deliveryStatus = page.getByRole("region", { name: "Email delivery status" });
   await expect(deliveryStatus).toContainText("Email sender not connected");
-  await expect(deliveryStatus).toContainText("Nothing will send until an email sender is configured.");
+  await expect(deliveryStatus).toContainText("Nothing will send until then.");
+  // The alert has to say what is missing, who can set it, and exactly what to ask for.
+  await expect(deliveryStatus).toContainText("RESEND_API_KEY and RESEND_FROM_ADDRESS");
+  await expect(deliveryStatus).toContainText("Whoever deploys this Greenroom");
+  await expect(deliveryStatus).toContainText("npx wrangler secret put RESEND_FROM_ADDRESS");
+  await expect(deliveryStatus.getByRole("link", { name: "Connecting an email sender" })).toBeVisible();
+  // And it may only promise a later send because a waiting letter is genuinely kept and sendable.
+  await expect(deliveryStatus).toContainText("go out once a sender is connected");
 
   await page.getByRole("button", { name: "Draft reminders for overdue tasks" }).click();
   await expect(page.getByText(/reminder draft.* queued for review\./)).toBeVisible();
@@ -100,8 +107,39 @@ test("a queued decision notice stays visible when no sender is connected", async
   const log = page.getByRole("region", { name: "Dispatch log" });
   const notice = log.getByRole("row").filter({ hasText: "Your talk has been accepted to DevFlow Conf 2027" });
   await expect(notice).toContainText("queued");
-  await expect(notice).toContainText("Email sender is not connected, so delivery was not attempted.");
+  await expect(notice).toContainText("No email sender is connected, so delivery was not attempted.");
   await expect(notice.getByText("sent", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("region", { name: "Email delivery status" })).toContainText("Email sender not connected");
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
+});
+
+test("a decision letter that could not be sent stays visible and honest in Communications", async ({ page }) => {
+  await page.goto("/login");
+  await page.getByLabel("Email").fill("sbek-organizer@example.com");
+  await page.getByLabel("Password").fill("SbekTest!2027-org");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page).toHaveURL(/\/organizer$/);
+
+  // Record and dispatch a decision letter with no email sender connected. The proposal is
+  // already accepted in the fixture, so this changes no state other lanes' tests read.
+  await page.request.patch("/api/events/evt_devflow_conf_2027/disposition", {
+    data: { submissionIds: ["sub_ai_verification"], status: "accepted" },
+  });
+  const batchResponse = await page.request.post("/api/events/evt_devflow_conf_2027/decision-batches", {
+    data: { submissionIds: ["sub_ai_verification"] },
+  });
+  const batch = await batchResponse.json() as { id: string };
+  const dispatchResponse = await page.request.post(
+    `/api/events/evt_devflow_conf_2027/decision-batches/${batch.id}/dispatch`,
+  );
+  await expect(dispatchResponse.json()).resolves.toMatchObject({ emailDelivery: "not_configured" });
+
+  // The organizer can see what they decided, that it has not gone out, and why.
+  await page.goto("/organizer/comms");
+  const undelivered = page.getByRole("region", { name: "Decision letters not yet delivered" });
+  await expect(undelivered).toContainText("Your AI Pair Programmer Is Lying to You");
+  await expect(undelivered).toContainText("Waiting to send — no delivery has been attempted");
+  await expect(undelivered).toContainText("It will go out once an email sender is connected.");
+  // With no sender there is nothing to click, so the page offers no dead-end send action.
+  await expect(undelivered.getByRole("button", { name: "Send now" })).toHaveCount(0);
 });

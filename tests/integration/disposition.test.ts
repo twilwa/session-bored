@@ -293,12 +293,12 @@ describe("submission disposition", () => {
       expect.objectContaining({
         templateKey: "decision_accepted",
         status: "queued",
-        failureReason: "Email sender is not connected, so delivery was not attempted.",
+        failureReason: "No email sender is connected, so delivery was not attempted.",
       }),
       expect.objectContaining({
         templateKey: "decision_declined",
         status: "queued",
-        failureReason: "Email sender is not connected, so delivery was not attempted.",
+        failureReason: "No email sender is connected, so delivery was not attempted.",
       }),
     ]));
 

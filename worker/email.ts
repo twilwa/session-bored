@@ -51,6 +51,18 @@ export function isEmailConfigured(env: EmailEnvironment): boolean {
   return Boolean(env.RESEND_API_KEY && env.RESEND_FROM_ADDRESS);
 }
 
+/**
+ * Names the Worker secrets an operator still has to set before Greenroom can
+ * send anything. Organizer surfaces show these names so the alert can say what
+ * is missing instead of only that something is.
+ */
+export function missingEmailSenderSecrets(env: EmailEnvironment): string[] {
+  return [
+    ...(env.RESEND_API_KEY ? [] : ["RESEND_API_KEY"]),
+    ...(env.RESEND_FROM_ADDRESS ? [] : ["RESEND_FROM_ADDRESS"]),
+  ];
+}
+
 export function resolveEmailDelivery(env: EmailEnvironment): EmailDelivery {
   if (!isEmailConfigured(env)) {
     return emailDelivery;

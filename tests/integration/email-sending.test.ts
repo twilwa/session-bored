@@ -3,7 +3,7 @@
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { env } from "cloudflare:workers";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { decisionNotices, emailDispatches, sessions, speakers, tasks, taskAssignees } from "../../db/schema.ts";
 import type { EmailDelivery, EmailDeliveryResult } from "../../worker/email.ts";
 import { dispatchDecisionNoticeEmails, retryDecisionNotice } from "../../worker/email/decision-notices.ts";
@@ -15,6 +15,35 @@ import worker from "../../worker/index.ts";
 
 async function request(path: string, init?: RequestInit): Promise<Response> {
   return worker.request(`http://example.test${path}`, init, env);
+}
+
+const senderSecrets = { RESEND_API_KEY: "re_test_key", RESEND_FROM_ADDRESS: "Greenroom <program@example.test>" };
+
+/**
+ * The same Worker with the two sender secrets present, so a route resolves the
+ * real Resend delivery exactly as production would. Every test that uses this
+ * also installs `interceptResend`, so the attempt is answered in-process and
+ * detection is never weakened to keep the network out.
+ */
+async function requestWithSenderConnected(path: string, init?: RequestInit): Promise<Response> {
+  return worker.request(`http://example.test${path}`, init, { ...env, ...senderSecrets });
+}
+
+/** Answers only Resend's endpoint; any other host reaching global fetch fails the test. */
+function interceptResend(reply: { ok: boolean; id?: string }): { calls: Array<{ to: string[]; from: string }> } {
+  const calls: Array<{ to: string[]; from: string }> = [];
+  const original = globalThis.fetch;
+  vi.stubGlobal("fetch", async (input: RequestInfo | URL, requestInit?: RequestInit) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    if (!url.startsWith("https://api.resend.com/")) {
+      return original(input as RequestInfo, requestInit);
+    }
+    calls.push(JSON.parse(String(requestInit?.body ?? "{}")));
+    return reply.ok
+      ? new Response(JSON.stringify({ id: reply.id ?? "resend_1" }), { status: 200 })
+      : new Response("sender domain is not verified", { status: 403 });
+  });
+  return { calls };
 }
 
 async function signIn(email: string, password: string): Promise<string> {
@@ -128,7 +157,7 @@ describe("decision notice dispatch", () => {
     // Now exercise the send logic itself with a fake delivery injected - no network involved.
     const delivery = alternatingDelivery();
     const result = await dispatchDecisionNoticeEmails(database, env, eventId, queuedNotices, delivery);
-    expect(result.configured).toBe(true);
+    expect(result.attempted).toBe(true);
     expect(result.sent).toHaveLength(1);
     expect(result.failed).toHaveLength(1);
     expect(delivery.calls).toHaveLength(2);
@@ -184,6 +213,217 @@ describe("decision notice dispatch", () => {
     });
     await expect(secondDispatch.json()).resolves.toMatchObject({ queuedCount: 0, skippedCount: 2 });
     expect(reDelivery.calls).toHaveLength(0);
+  });
+});
+
+describe("a decision recorded while no sender is connected", () => {
+  const submissionId = "sub_docs_retrieval";
+  let cookie: string;
+  let database: ReturnType<typeof drizzle>;
+
+  beforeEach(async () => {
+    await request("/api/health");
+    database = drizzle(env.DB);
+    cookie = await signIn("sbek-organizer@example.com", "SbekTest!2027-org");
+    // Storage carries across tests in this file, so start each one from a
+    // proposal that has never had a decision letter.
+    await database.delete(decisionNotices).where(eq(decisionNotices.submissionId, submissionId));
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  /** Decides the proposal and builds a reviewed batch, stopping short of dispatch. */
+  async function buildBatch(): Promise<string> {
+    await request(`/api/events/${eventId}/disposition`, {
+      method: "PATCH",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ submissionIds: [submissionId], status: "declined" }),
+    });
+    const previewResponse = await request(`/api/events/${eventId}/decision-batches`, {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ submissionIds: [submissionId] }),
+    });
+    return (await previewResponse.json<{ id: string }>()).id;
+  }
+
+  interface LoggedDispatch {
+    id: string;
+    status: string;
+    templateKey: string | null;
+    failureReason: string | null;
+    recipients: Array<{ email: string }>;
+  }
+
+  /** The Communications dispatch log rows addressed to this proposal's speaker. */
+  async function readLetterLog(recipientEmail: string): Promise<LoggedDispatch[]> {
+    const response = await request(`/api/events/${eventId}/email-dispatches`, { headers: { cookie } });
+    expect(response.status).toBe(200);
+    const payload = await response.json<{ items: LoggedDispatch[] }>();
+    return payload.items.filter((item) =>
+      item.templateKey?.startsWith("decision_") === true &&
+      item.recipients.some((recipient) => recipient.email === recipientEmail)
+    );
+  }
+
+  it("names the missing Worker secrets so the organizer's alert can offer recourse", async () => {
+    const unconfigured = await request("/api/email-sender", { headers: { cookie } });
+    expect(unconfigured.status).toBe(200);
+    await expect(unconfigured.json()).resolves.toEqual({
+      connected: false,
+      missingSecrets: ["RESEND_API_KEY", "RESEND_FROM_ADDRESS"],
+    });
+
+    const halfConfigured = await worker.request(
+      "http://example.test/api/email-sender",
+      { headers: { cookie } },
+      { ...env, RESEND_API_KEY: "re_test_key" },
+    );
+    await expect(halfConfigured.json()).resolves.toEqual({
+      connected: false,
+      missingSecrets: ["RESEND_FROM_ADDRESS"],
+    });
+
+    const configured = await requestWithSenderConnected("/api/email-sender", { headers: { cookie } });
+    await expect(configured.json()).resolves.toEqual({ connected: true, missingSecrets: [] });
+
+    const anonymous = await request("/api/email-sender");
+    expect(anonymous.status).toBe(401);
+  });
+
+  it("keeps the letter visible in Communications as pending, without claiming an attempt (#79)", async () => {
+    const batchId = await buildBatch();
+    const dispatchResponse = await request(`/api/events/${eventId}/decision-batches/${batchId}/dispatch`, {
+      method: "POST",
+      headers: { cookie },
+    });
+    await expect(dispatchResponse.json()).resolves.toMatchObject({
+      emailDelivery: "not_configured",
+      queuedCount: 1,
+      pendingCount: 1,
+      sent: [],
+      failed: [],
+    });
+
+    const [notice] = await database.select().from(decisionNotices).where(eq(decisionNotices.batchId, batchId));
+    expect(notice?.deliveryStatus).toBe("queued");
+
+    // Nothing was attempted, so nothing is recorded as an attempt.
+    const attempts = await database.select().from(emailDispatches).where(eq(emailDispatches.eventId, eventId));
+    expect(attempts.some((row) =>
+      row.templateKey?.startsWith("decision_") === true &&
+      row.recipients.some((recipient) => recipient.email === notice!.recipientEmail)
+    )).toBe(false);
+
+    // The letter is still visible in the Communications dispatch log, in its own pending
+    // state - neither sent nor failed - and says why nothing went out.
+    const logged = await readLetterLog(notice!.recipientEmail);
+    expect(logged).toHaveLength(1);
+    expect(logged[0]).toMatchObject({
+      status: "queued",
+      templateKey: `decision_${notice!.outcome}`,
+      failureReason: "No email sender is connected, so delivery was not attempted.",
+    });
+
+    // Dispatching the batch again keeps reporting the same waiting letter rather than
+    // forgetting it, and still queues nothing new.
+    const second = await request(`/api/events/${eventId}/decision-batches/${batchId}/dispatch`, {
+      method: "POST",
+      headers: { cookie },
+    });
+    await expect(second.json()).resolves.toMatchObject({ queuedCount: 0, skippedCount: 1, pendingCount: 1 });
+    expect(await readLetterLog(notice!.recipientEmail)).toHaveLength(1);
+  });
+
+  it("sends the waiting letter once a sender is connected, and never sends it twice", async () => {
+    const batchId = await buildBatch();
+    await request(`/api/events/${eventId}/decision-batches/${batchId}/dispatch`, {
+      method: "POST",
+      headers: { cookie },
+    });
+    const [queued] = await database.select().from(decisionNotices).where(eq(decisionNotices.batchId, batchId));
+    expect(queued?.deliveryStatus).toBe("queued");
+
+    const resend = interceptResend({ ok: true, id: "resend_waiting" });
+    const sendWaiting = await requestWithSenderConnected(
+      `/api/events/${eventId}/decision-notices/${queued!.submissionId}/retry`,
+      { method: "POST", headers: { cookie } },
+    );
+    expect(sendWaiting.status).toBe(200);
+    await expect(sendWaiting.json()).resolves.toEqual({ status: "sent" });
+    expect(resend.calls).toHaveLength(1);
+    expect(resend.calls[0]).toMatchObject({ to: [queued!.recipientEmail], from: senderSecrets.RESEND_FROM_ADDRESS });
+
+    const [delivered] = await database.select().from(decisionNotices).where(eq(decisionNotices.id, queued!.id));
+    expect(delivered).toMatchObject({ deliveryStatus: "sent", providerMessageId: "resend_waiting" });
+
+    // The letter now reads as sent in the shared log, and no longer as pending.
+    const logged = await readLetterLog(queued!.recipientEmail);
+    expect(logged).toHaveLength(1);
+    expect(logged[0]?.status).toBe("sent");
+
+    // A delivered letter is refused, so connecting a sender can never re-send it.
+    const again = await requestWithSenderConnected(
+      `/api/events/${eventId}/decision-notices/${queued!.submissionId}/retry`,
+      { method: "POST", headers: { cookie } },
+    );
+    expect(again.status).toBe(409);
+    await expect(again.json()).resolves.toMatchObject({ error: "notice_not_retryable", currentStatus: "sent" });
+    expect(resend.calls).toHaveLength(1);
+
+    // Re-dispatching the batch has nothing left to hand over.
+    const redispatch = await requestWithSenderConnected(`/api/events/${eventId}/decision-batches/${batchId}/dispatch`, {
+      method: "POST",
+      headers: { cookie },
+    });
+    await expect(redispatch.json()).resolves.toMatchObject({ queuedCount: 0, sent: [], failed: [] });
+    expect(resend.calls).toHaveLength(1);
+  });
+
+  it("dispatching with a sender connected sends the letters it just queued", async () => {
+    const batchId = await buildBatch();
+    const resend = interceptResend({ ok: true, id: "resend_direct" });
+    const dispatched = await requestWithSenderConnected(`/api/events/${eventId}/decision-batches/${batchId}/dispatch`, {
+      method: "POST",
+      headers: { cookie },
+    });
+    await expect(dispatched.json()).resolves.toMatchObject({
+      emailDelivery: "dispatched",
+      queuedCount: 1,
+      pendingCount: 0,
+      sent: [submissionId],
+      failed: [],
+    });
+    expect(resend.calls).toHaveLength(1);
+    const [notice] = await database.select().from(decisionNotices).where(eq(decisionNotices.batchId, batchId));
+    expect(notice?.deliveryStatus).toBe("sent");
+  });
+
+  it("records a provider rejection as failed and keeps it visible for a retry", async () => {
+    const batchId = await buildBatch();
+    const rejecting = interceptResend({ ok: false });
+    const dispatched = await requestWithSenderConnected(`/api/events/${eventId}/decision-batches/${batchId}/dispatch`, {
+      method: "POST",
+      headers: { cookie },
+    });
+    await expect(dispatched.json()).resolves.toMatchObject({ failed: [submissionId], sent: [] });
+    expect(rejecting.calls).toHaveLength(1);
+
+    const [notice] = await database.select().from(decisionNotices).where(eq(decisionNotices.batchId, batchId));
+    expect(notice?.deliveryStatus).toBe("failed");
+    expect(notice?.failureReason).toContain("resend_403");
+
+    const logged = await readLetterLog(notice!.recipientEmail);
+    expect(logged.some((row) => row.status === "failed")).toBe(true);
+
+    // Disposition reports the reason too, which is what Communications shows beside the letter.
+    const disposition = await request(`/api/events/${eventId}/disposition`, { headers: { cookie } });
+    const payload = await disposition.json<{ items: Array<{ id: string; notice: { deliveryStatus: string; failureReason: string | null } | null }> }>();
+    const item = payload.items.find((row) => row.id === submissionId);
+    expect(item?.notice).toMatchObject({ deliveryStatus: "failed" });
+    expect(item?.notice?.failureReason).toContain("resend_403");
   });
 });
 

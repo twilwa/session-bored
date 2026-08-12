@@ -1,5 +1,5 @@
 // ABOUTME: Fills disposition.ts's dispatch seam - sends the letters it already rendered and queued.
-// ABOUTME: Owns per-recipient delivery outcome and the one retry path for a notice that failed.
+// ABOUTME: Owns per-recipient delivery outcome and the one send path for a letter still undelivered.
 import { and, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { decisionBatches, decisionNotices } from "../../db/schema.ts";
@@ -18,7 +18,8 @@ export interface DecisionNoticeRow {
 }
 
 export interface DispatchDecisionNoticeEmailsResult {
-  configured: boolean;
+  /** True once at least one letter reached the provider - sent or rejected. */
+  attempted: boolean;
   sent: string[];
   failed: string[];
 }
@@ -56,17 +57,17 @@ async function deliverAndRecord(
 }
 
 /**
- * Sends the letters for notice rows disposition.ts just newly queued (its
- * unique index on submissionId means a repeated dispatch of the same batch
- * inserts nothing new, so this only ever runs against rows queued for the
- * first time - dispatching twice can't email anyone twice). Every attempt
- * goes through `sendTrackedEmail`, so a configured send also lands in the
- * shared `email_dispatch` communications log, not just `decision_notice`.
- * Pass `delivery` explicitly in tests so nothing reaches the network;
- * production call sites can omit it and get the env-resolved sender. When
- * delivery reports `provider_not_configured` a notice's row is left
- * untouched (still `queued`), so unconfigured environments keep
- * disposition.ts's exact existing `not_configured` behavior.
+ * Sends the letters for the notice rows disposition.ts hands over - every
+ * notice in the batch still `queued`, which is how a batch dispatched with no
+ * sender connected goes out once one is. Dispatching twice can't email anyone
+ * twice, because a delivered notice is no longer `queued` and so is never
+ * handed over again. Every attempt goes through `sendTrackedEmail`, so a
+ * configured send also lands in the shared `email_dispatch` communications
+ * log, not just `decision_notice`. Pass `delivery` explicitly in tests so
+ * nothing reaches the network; production call sites can omit it and get the
+ * env-resolved sender. When delivery reports `provider_not_configured` a
+ * notice's row is left untouched (still `queued`), so unconfigured
+ * environments record the decision without claiming an attempt.
  */
 export async function dispatchDecisionNoticeEmails(
   database: EmailDatabase,
@@ -77,16 +78,16 @@ export async function dispatchDecisionNoticeEmails(
 ): Promise<DispatchDecisionNoticeEmailsResult> {
   const sent: string[] = [];
   const failed: string[] = [];
-  let configured = false;
+  let attempted = false;
   for (const notice of notices) {
     const outcome = await deliverAndRecord(database, delivery, eventId, notice);
     if (outcome === "provider_not_configured") {
       continue;
     }
-    configured = true;
+    attempted = true;
     (outcome === "sent" ? sent : failed).push(notice.submissionId);
   }
-  return { configured, sent, failed };
+  return { attempted, sent, failed };
 }
 
 export type RetryDecisionNoticeResult =
@@ -96,7 +97,12 @@ export type RetryDecisionNoticeResult =
   | { status: "sent" }
   | { status: "failed"; error: string };
 
-/** The per-recipient retry path for a notice whose send previously failed. */
+/**
+ * The per-recipient send path for a notice that has not reached its recipient -
+ * one whose send failed, and one still `queued` because no sender was connected
+ * when its batch was dispatched. A notice already `sent` is refused here, so
+ * this can never deliver the same letter twice.
+ */
 export async function retryDecisionNotice(
   database: EmailDatabase,
   env: EmailEnvironment,
@@ -120,7 +126,7 @@ export async function retryDecisionNotice(
   if (row === undefined) {
     return { status: "not_found" };
   }
-  if (row.deliveryStatus !== "failed") {
+  if (row.deliveryStatus === "sent") {
     return { status: "not_retryable", currentStatus: row.deliveryStatus };
   }
   const outcome = await deliverAndRecord(database, delivery, eventId, row);
