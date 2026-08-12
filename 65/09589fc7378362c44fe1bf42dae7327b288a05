@@ -1,0 +1,94 @@
+tests/integration/submission-participants.test.ts
+  s_63577f17a1c450::t_00a71fe352c0d7 170-171
+  s_63577f17a1c450::t_e7f5d84cd7e1fa 1-169,172-251,259-274,278-415
+  s_63577f17a1c450::t_b32095523e2c40 275-277
+  s_63577f17a1c450::t_8c49df751119b0 252-258
+worker/submission-decision.ts
+  s_63577f17a1c450::t_bf48afe0aac311 259-260
+  s_63577f17a1c450::t_79cd77c467070b 28-138,149-197
+  s_63577f17a1c450::t_2675377669d093 139-148
+  s_63577f17a1c450::t_00ddb7f29b9266 276,279-286,288
+worker/index.ts
+  s_63577f17a1c450::t_e4f0018de8cb1f 46
+  s_63577f17a1c450::t_238d8d8d4a8a8a 145
+client/pages/cfp/CfpPage.tsx
+  s_63577f17a1c450::t_bc42b848b9277f 725-790
+  s_63577f17a1c450::t_0e75213f293f37 81-86,95
+  s_63577f17a1c450::t_3a3183ce8f47ea 193-199
+  s_63577f17a1c450::t_b3ba91031b6d1a 107-108,111
+  s_63577f17a1c450::t_d9b864b44f022d 502-521
+  s_63577f17a1c450::t_84d4debc2d5fec 530-535
+  s_63577f17a1c450::t_a8f6888ff7721c 636
+  s_b0417a2dcb3a84::t_d5f550d8e8e643 724
+tests/unit/cfp-rules.test.ts
+  s_63577f17a1c450::t_a43ff0fea5fb15 179
+  s_63577f17a1c450::t_351684ce6ad1d8 82-136
+client/pages/review/review.css
+  s_63577f17a1c450::t_96f4fb3d6627af 147,149-159
+client/pages/review/SubmissionParticipants.tsx
+  s_63577f17a1c450::t_7ecde154407aff 1-150
+shared/api.ts
+  s_63577f17a1c450::t_94822e6d079963 863
+  s_63577f17a1c450::t_0b9f2f1742675f 821,825-837
+  s_63577f17a1c450::t_7e41cc920af7b6 359-414
+  s_63577f17a1c450::t_729022d5cb1eca 795-807,838
+  s_b0417a2dcb3a84::t_73d46318e2cf9b 839
+client/pages/cfp/cfp.css
+  s_63577f17a1c450::t_9057fbfe7157db 272
+  s_63577f17a1c450::t_4bed1dcbdb361f 213-226
+AGENTS.md
+  s_63577f17a1c450::t_d29f332b1653f3 25-36
+  s_63577f17a1c450::t_86e4165b09dac5 143-148
+tests/e2e/submission-participants.spec.ts
+  s_63577f17a1c450::t_55e42fec47ffcd 1-18,20-26,28-45,47-76,109
+  s_63577f17a1c450::t_4b1195d093c2e0 27
+  s_63577f17a1c450::t_ca6697f89aaba7 77,86
+  s_63577f17a1c450::t_72d2fa111aee91 79-85,87-108
+  s_63577f17a1c450::t_24d12dce482846 78
+  s_63577f17a1c450::t_ce9867db4b7a66 19
+  s_63577f17a1c450::t_554c7faf0a30ad 46
+client/pages/review/SubmissionReviewPage.tsx
+  s_63577f17a1c450::t_8d7f1c87aab1ba 11
+  s_63577f17a1c450::t_0c4388b435955a 358-368
+worker/routes/cfp.ts
+  s_63577f17a1c450::t_90386f22c1d057 47-54,64
+  s_63577f17a1c450::t_e20021d5a51016 667
+  s_63577f17a1c450::t_d1e2a57a539b7d 741,900
+  s_63577f17a1c450::t_e5fd492d58e3fe 164-216,220,222,227
+  s_63577f17a1c450::t_07c7a26af17584 938
+  s_63577f17a1c450::t_00c1cf4374d04d 483-590
+  s_63577f17a1c450::t_530d1efdb3ca45 707
+  s_63577f17a1c450::t_6c91fae0d9be63 796
+  s_63577f17a1c450::t_cfbda72fd5bfe5 267-281,291
+  s_63577f17a1c450::t_9baf1396d53973 682
+  s_63577f17a1c450::t_cecaeb869c8f85 3
+worker/routes/participants.ts
+  s_63577f17a1c450::t_ab99d56b8299f7 1-62,64-67,69-84,91-93,99-122,124-128,132-220,223-303
+  s_63577f17a1c450::t_3ba99375685ba9 123,129-131
+  s_63577f17a1c450::t_3d6f933ba0d014 221-222
+  s_63577f17a1c450::t_ffd4c2678bed27 63,68,85-90,94-98
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "6509589fc7378362c44fe1bf42dae7327b288a05",
+  "prompts": {},
+  "sessions": {
+    "s_63577f17a1c450": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1945680f-c91d-49fa-82f8-7360cc77669d",
+        "model": "claude-opus-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    },
+    "s_b0417a2dcb3a84": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0ab851c6-4098-46fb-9582-db675a535e9e",
+        "model": "claude-opus-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
