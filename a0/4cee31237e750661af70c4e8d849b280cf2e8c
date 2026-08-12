@@ -1,0 +1,23 @@
+client/App.tsx
+  s_671043d2480275::t_1169f5cb553384 84-103,299-321,323,325-326,332-344,349,356-359
+tests/e2e/app-shell.spec.ts
+  s_671043d2480275::t_af72d0168ba7af 46-59,61-73,75-77,79-81
+  s_671043d2480275::t_21181ab8245e67 60
+  s_671043d2480275::t_1169f5cb553384 74,78
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "a04cee31237e750661af70c4e8d849b280cf2e8c",
+  "prompts": {},
+  "sessions": {
+    "s_671043d2480275": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ff361-238b-79c2-984a-ad68971c6fab",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
