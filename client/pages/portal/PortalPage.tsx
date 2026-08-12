@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   speakerFacingSubmissionLabels,
-  type PortalFile,
   type PortalSession,
   type PortalTask,
   type SpeakerContentPayload,
@@ -11,6 +10,7 @@ import {
 import { Button, DataTable, LoadingState, StatusChip, TextField, Toast } from "../../components/ui.tsx";
 import "./portal.css";
 import { FileComments } from "../content/FileComments.tsx";
+import { FileVersionList, formatFileSize } from "../content/FileVersionList.tsx";
 
 async function readJson<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, { credentials: "same-origin", ...init });
@@ -41,22 +41,6 @@ function initials(name: string): string {
   return parts.slice(0, 2).map((part) => part[0]?.toUpperCase() ?? "").join("");
 }
 
-function formatUploadedAt(uploadedAt: string): string {
-  return new Date(uploadedAt).toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
-function formatFileSize(sizeBytes: number): string {
-  if (sizeBytes < 1024) return `${sizeBytes} B`;
-  if (sizeBytes < 1024 * 1024) return `${Math.round(sizeBytes / 1024)} KB`;
-  return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 function uploadRules(task: PortalTask): string | null {
   const types = task.acceptedFileTypes === null || task.acceptedFileTypes.length === 0
     ? null
@@ -66,33 +50,6 @@ function uploadRules(task: PortalTask): string | null {
     : `up to ${formatFileSize(task.maximumFileBytes)}`;
   const stated = [types ?? "Accepted: pdf, ppt, pptx, doc, docx, zip, key", size ?? "up to 25.0 MB"];
   return task.taskType === "file_request" ? stated.join(" · ") : null;
-}
-
-function FileVersionList({ file }: { file: PortalFile }) {
-  const current = file.versions.find((version) => version.current) ?? null;
-  const superseded = file.versions.filter((version) => !version.current);
-  return (
-    <>
-      {current === null ? null : (
-        <small className="file-history__meta">
-          Uploaded {formatUploadedAt(current.uploadedAt)} · {formatFileSize(current.sizeBytes)}
-        </small>
-      )}
-      {superseded.length === 0 ? null : (
-        <details className="file-versions" open>
-          <summary>{superseded.length === 1 ? "1 earlier version" : `${superseded.length} earlier versions`}</summary>
-          <ol>
-            {superseded.map((version) => (
-              <li key={version.version}>
-                <a href={version.downloadUrl}>Version {version.version} · {version.displayName}</a>
-                <small>Uploaded {formatUploadedAt(version.uploadedAt)} · {formatFileSize(version.sizeBytes)}</small>
-              </li>
-            ))}
-          </ol>
-        </details>
-      )}
-    </>
-  );
 }
 
 function TaskRow({ task, onComplete, onUpload, busy }: {
@@ -409,7 +366,7 @@ export function PortalPage() {
                   <div>
                     <strong>{file.taskTitle}</strong>
                     <a href={file.downloadUrl}>{file.displayName}</a>
-                    <FileVersionList file={file} />
+                    <FileVersionList versions={file.versions} />
                     <FileComments fileId={file.fileId} />
                   </div>
                   <StatusChip tone={file.archived ? "neutral" : "good"}>

@@ -563,6 +563,7 @@ export interface DeliverableItem {
     sizeBytes: number;
     uploadedAt: string;
     downloadUrl: string;
+    versions: PortalFileVersion[];
   };
 }
 

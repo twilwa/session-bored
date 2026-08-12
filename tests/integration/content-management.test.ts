@@ -2,6 +2,7 @@
 // ABOUTME: Proves uploads, deadlines, approval state, and speaker ownership remain connected to canonical records.
 import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
+import type { PortalFileVersion } from "../../shared/api.ts";
 import worker from "../../worker/index.ts";
 
 async function request(path: string, init?: RequestInit): Promise<Response> {
@@ -21,6 +22,12 @@ async function signIn(email: string, password: string): Promise<string> {
 function pdfUpload(name: string): FormData {
   const formData = new FormData();
   formData.append("file", new File([new Uint8Array([1, 2, 3, 4])], name, { type: "application/pdf" }));
+  return formData;
+}
+
+function imageUpload(name: string): FormData {
+  const formData = new FormData();
+  formData.append("file", new File([new Uint8Array([1, 2, 3, 4])], name, { type: "image/png" }));
   return formData;
 }
 
@@ -97,6 +104,159 @@ describe("content management", () => {
         downloadUrl: `/api/portal/files/${uploaded.fileId}`,
       },
     });
+  });
+
+  it("counts only file requests with an uploaded deliverable as delivered", async () => {
+    const beforeResponse = await request(`/api/events/${eventId}/deliverables`, {
+      headers: { cookie: organizerCookie },
+    });
+    const before = await beforeResponse.json<{
+      metrics: { total: number; requested: number; overdue: number; delivered: number };
+    }>();
+    const emptyRequestResponse = await request(`/api/events/${eventId}/tasks`, {
+      method: "POST",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({
+        taskType: "file_request",
+        title: "Upload headshot for delivered-count coverage",
+        speakerIds: ["spk_priya_devflow_2027"],
+      }),
+    });
+    expect(emptyRequestResponse.status).toBe(201);
+    const emptyRequest = await emptyRequestResponse.json<{ id: string }>();
+    const deliveredRequestResponse = await request(`/api/events/${eventId}/tasks`, {
+      method: "POST",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({
+        taskType: "file_request",
+        title: "Upload deck for delivered-count coverage",
+        speakerIds: ["spk_priya_devflow_2027"],
+      }),
+    });
+    expect(deliveredRequestResponse.status).toBe(201);
+    const deliveredRequest = await deliveredRequestResponse.json<{ id: string }>();
+
+    const headshot = await request("/api/portal/profile/headshot", {
+      method: "POST",
+      headers: { cookie: priyaCookie },
+      body: imageUpload("profile-headshot.png"),
+    });
+    expect(headshot.status).toBe(201);
+
+    const upload = await request(`/api/portal/tasks/${deliveredRequest.id}/files`, {
+      method: "POST",
+      headers: { cookie: priyaCookie },
+      body: pdfUpload("delivered-slides.pdf"),
+    });
+    expect(upload.status).toBe(201);
+
+    const response = await request(`/api/events/${eventId}/deliverables`, {
+      headers: { cookie: organizerCookie },
+    });
+    expect(response.status).toBe(200);
+    const payload = await response.json<{
+      metrics: { total: number; requested: number; overdue: number; delivered: number };
+      items: Array<{
+        taskId: string;
+        assignment: { status: string };
+        status: "requested" | "overdue" | "delivered";
+        file: null | { displayName: string };
+      }>;
+    }>();
+
+    expect(payload.metrics).toMatchObject({
+      total: before.metrics.total + 2,
+      requested: before.metrics.requested + 1,
+      overdue: before.metrics.overdue,
+      delivered: before.metrics.delivered + 1,
+    });
+    expect(payload.items.find((item) => item.taskId === emptyRequest.id)).toMatchObject({
+      assignment: { status: "completed" },
+      status: "requested",
+      file: null,
+    });
+    expect(payload.items.find((item) => item.taskId === deliveredRequest.id)).toMatchObject({
+      assignment: { status: "completed" },
+      status: "delivered",
+      file: { displayName: "delivered-slides.pdf" },
+    });
+  });
+
+  it("gives organizers the speaker's complete downloadable file version history", async () => {
+    const taskResponse = await request(`/api/events/${eventId}/tasks`, {
+      method: "POST",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({
+        taskType: "file_request",
+        title: "Upload deck for version-history coverage",
+        speakerIds: ["spk_priya_devflow_2027"],
+      }),
+    });
+    expect(taskResponse.status).toBe(201);
+    const task = await taskResponse.json<{ id: string }>();
+
+    const firstUpload = await request(`/api/portal/tasks/${task.id}/files`, {
+      method: "POST",
+      headers: { cookie: priyaCookie },
+      body: pdfUpload("draft-deck.pdf"),
+    });
+    expect(firstUpload.status).toBe(201);
+    const first = await firstUpload.json<{ fileId: string }>();
+
+    const secondUpload = await request(`/api/portal/tasks/${task.id}/files`, {
+      method: "POST",
+      headers: { cookie: priyaCookie },
+      body: pdfUpload("final-deck.pdf"),
+    });
+    expect(secondUpload.status).toBe(201);
+
+    const organizerResponse = await request(`/api/events/${eventId}/deliverables`, {
+      headers: { cookie: organizerCookie },
+    });
+    expect(organizerResponse.status).toBe(200);
+    const organizerPayload = await organizerResponse.json<{
+      items: Array<{
+        taskId: string;
+        file: null | {
+          id: string;
+          versions: PortalFileVersion[];
+        };
+      }>;
+    }>();
+    const organizerFile = organizerPayload.items.find((item) => item.taskId === task.id)?.file;
+
+    const speakerResponse = await request("/api/speaker/content", {
+      headers: { cookie: priyaCookie },
+    });
+    expect(speakerResponse.status).toBe(200);
+    const speakerPayload = await speakerResponse.json<{
+      files: Array<{ fileId: string; versions: PortalFileVersion[] }>;
+    }>();
+    const speakerFile = speakerPayload.files.find((file) => file.fileId === first.fileId);
+
+    expect(organizerFile?.versions).toEqual(speakerFile?.versions);
+    expect(organizerFile?.versions).toEqual([
+      expect.objectContaining({
+        version: 2,
+        displayName: "final-deck.pdf",
+        sizeBytes: 4,
+        current: true,
+        downloadUrl: `/api/portal/files/${first.fileId}?version=2`,
+      }),
+      expect.objectContaining({
+        version: 1,
+        displayName: "draft-deck.pdf",
+        sizeBytes: 4,
+        current: false,
+        downloadUrl: `/api/portal/files/${first.fileId}?version=1`,
+      }),
+    ]);
+
+    const previousVersion = await request(`/api/portal/files/${first.fileId}?version=1`, {
+      headers: { cookie: organizerCookie },
+    });
+    expect(previousVersion.status).toBe(200);
+    expect(previousVersion.headers.get("content-disposition")).toBe('attachment; filename="draft-deck.pdf"');
   });
 
   it("surfaces session content awaiting approval without changing its status", async () => {

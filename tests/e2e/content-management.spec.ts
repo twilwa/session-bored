@@ -16,15 +16,32 @@ test("speaker and organizer discuss a delivered file from the content board", as
   const organizerNote = `Organizer response from ${runMarker}.`;
   await signIn(page, "sbek-speaker@example.com", "SbekTest!2027-spk", "/speaker");
   await expect(page.getByRole("heading", { name: "Priya Raman" })).toBeVisible();
+  await page.locator(".headshot-picker input[type='file']").setInputFiles("fixtures/headshot.png");
+  await expect(page.getByText("Headshot uploaded.")).toBeVisible();
 
   const slidesTask = page.locator("li.task-row", { hasText: "Upload final slides" });
   await slidesTask.locator("input[type='file']").setInputFiles("fixtures/slides.pdf");
   await expect(page.getByText("File uploaded. Task marked complete.")).toBeVisible();
+  const refreshedContentPromise = page.waitForResponse((response) => (
+    response.url().endsWith("/api/speaker/content") && response.status() === 200
+  ));
+  await slidesTask.locator("input[type='file']").setInputFiles("fixtures/slides.pdf");
+  const refreshedContent = await refreshedContentPromise;
+  const refreshedPayload = await refreshedContent.json() as {
+    files: Array<{ displayName: string; versions: Array<{ current: boolean }> }>;
+  };
+  const earlierVersionCount = refreshedPayload.files
+    .find((file) => file.displayName === "slides.pdf")
+    ?.versions.filter((version) => !version.current).length ?? 0;
+  const versionSummary = earlierVersionCount === 1
+    ? "1 earlier version"
+    : `${earlierVersionCount} earlier versions`;
 
   const speakerFile = page.locator(".file-history > li").filter({
     has: page.getByRole("link", { name: "slides.pdf", exact: true }),
   });
   await expect(speakerFile).toHaveCount(1);
+  await expect(speakerFile.locator(".file-versions summary")).toHaveText(versionSummary);
   await speakerFile.locator(".file-comments summary").click();
   await speakerFile.getByLabel("Add a comment").fill(speakerNote);
   await speakerFile.getByRole("button", { name: "Post comment" }).click();
@@ -34,15 +51,23 @@ test("speaker and organizer discuss a delivered file from the content board", as
   await signIn(page, "sbek-organizer@example.com", "SbekTest!2027-org", "/organizer");
   await page.goto("/organizer/content");
   await expect(page.getByRole("heading", { name: "Know what landed. Chase what didn’t." })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Delivered 1", exact: true })).toBeVisible();
+  const emptyRequest = page.locator("li.deliverable-card", { hasText: "Upload headshot" }).filter({
+    has: page.getByText("Priya Raman", { exact: true }),
+  });
+  await expect(emptyRequest).toContainText(/requested/i);
+  await expect(emptyRequest).toContainText("No uploaded file.");
 
-  await page.getByRole("button", { name: /Delivered/ }).click();
+  await page.getByRole("button", { name: "Delivered 1", exact: true }).click();
+  await expect(emptyRequest).toHaveCount(0);
   await page.getByLabel("Search speaker, task, or file").fill("Priya");
   const delivered = page.locator("li.deliverable-card").filter({
     has: page.getByRole("link", { name: "slides.pdf", exact: true }),
   });
   await expect(delivered).toHaveCount(1);
   await expect(delivered.locator(".deliverable-card__identity strong").getByText("Priya Raman", { exact: true })).toBeVisible();
-  await expect(delivered.getByRole("link", { name: "slides.pdf" })).toBeVisible();
+  await expect(delivered.getByRole("link", { name: "slides.pdf", exact: true })).toBeVisible();
+  await expect(delivered.locator(".file-versions summary")).toHaveText(versionSummary);
   await delivered.locator(".file-comments summary").click();
   await expect(delivered.locator(".file-comments__thread").getByText(speakerNote, { exact: true })).toBeVisible();
   await delivered.getByLabel("Add a comment").fill(organizerNote);

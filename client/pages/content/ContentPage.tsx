@@ -5,6 +5,7 @@ import type { DeliverablesPayload, DeliverableStatus } from "../../../shared/api
 import { LoadingState, StatusChip, TextField } from "../../components/ui.tsx";
 import { Link } from "../../lib.tsx";
 import { FileComments } from "./FileComments.tsx";
+import { FileVersionList } from "./FileVersionList.tsx";
 import "./content.css";
 
 const eventId = "evt_devflow_conf_2027";
@@ -21,12 +22,6 @@ async function loadDeliverables(): Promise<DeliverablesPayload> {
 function formatDate(value: string | null): string {
   if (value === null) return "No due date";
   return new Date(value).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
-}
-
-function formatFileSize(sizeBytes: number): string {
-  if (sizeBytes < 1024) return `${sizeBytes} B`;
-  if (sizeBytes < 1024 * 1024) return `${Math.round(sizeBytes / 1024)} KB`;
-  return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function statusTone(status: DeliverableStatus): "neutral" | "good" | "signal" {
@@ -142,7 +137,8 @@ export function ContentPage() {
                 ) : (
                   <div className="deliverable-card__file">
                     <a href={item.file.downloadUrl}>{item.file.displayName}</a>
-                    <span>Version {item.file.version} · {formatFileSize(item.file.sizeBytes)} · {new Date(item.file.uploadedAt).toLocaleString()}</span>
+                    <span>Version {item.file.version}</span>
+                    <FileVersionList versions={item.file.versions} />
                     <FileComments fileId={item.file.id} />
                   </div>
                 )}
