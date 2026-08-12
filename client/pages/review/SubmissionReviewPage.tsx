@@ -450,8 +450,9 @@ export function SubmissionReviewPage({
               <h2 id="recusal-heading">Can’t judge this one fairly?</h2>
               {detail.reviews.length > 0 ? (
                 <p>
-                  You’ve already saved a scorecard here. Ask an organizer to withdraw it before
-                  recusing, so the committee never keeps a score from a recused reviewer.
+                  You’ve already scored this proposal, so recusing here would leave the committee
+                  holding a score from a recused reviewer. Raise the conflict with the committee
+                  chair instead.
                 </p>
               ) : confirmingRecusal ? (
                 <>
