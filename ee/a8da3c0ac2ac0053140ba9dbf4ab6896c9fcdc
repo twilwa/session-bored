@@ -1,0 +1,59 @@
+tests/integration/embeds.test.ts
+  s_81508c725e328d::t_676c69ae33516c 54,56,61,73-80
+  s_81508c725e328d::t_2685a134126396 100-132
+  s_81508c725e328d::t_595f44952262e2 1-53,55,57-60,62-72,81-99,133-136,155-244,246-261,263-264
+  s_81508c725e328d::t_0087d412c21a3e 137-154,245,262
+tests/e2e/embeds.spec.ts
+  s_81508c725e328d::t_b66f20b29a9e0f 13
+  s_81508c725e328d::t_34ebbad8158f48 27-32,35
+  s_81508c725e328d::t_595f44952262e2 1-12,14-26,33-34,36-49
+worker/routes/embeds.ts
+  s_81508c725e328d::t_329b9ee923d668 117-124,139-145
+  s_81508c725e328d::t_6bb5b81cc449b4 1-116,125-138,146-305
+worker/public-queries.ts
+  s_81508c725e328d::t_6bb5b81cc449b4 59-60,173-174
+worker/index.ts
+  s_81508c725e328d::t_6bb5b81cc449b4 49,147
+client/pages/embeds/EmbedFramePage.tsx
+  s_81508c725e328d::t_3b9dc269ab5322 1-158
+client/pages/embeds/embeds.css
+  s_81508c725e328d::t_3b9dc269ab5322 1-2,4-62,65-74
+  s_81508c725e328d::t_34ebbad8158f48 3,63-64
+client/pages/embeds/EmbedsPage.tsx
+  s_81508c725e328d::t_3b9dc269ab5322 1-250
+client/App.tsx
+  s_81508c725e328d::t_3b9dc269ab5322 25-26,180,340
+shared/api.ts
+  s_81508c725e328d::t_3b9dc269ab5322 1112
+  s_81508c725e328d::t_329b9ee923d668 1095-1096
+  s_81508c725e328d::t_6bb5b81cc449b4 176-178,1100-1111,1113-1129
+  s_922852267ee843::t_b4ec452fa396da 1130
+wrangler.jsonc
+  s_81508c725e328d::t_6bb5b81cc449b4 13
+tests/unit/route-map.test.ts
+  s_81508c725e328d::t_595f44952262e2 52-54
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "eea8da3c0ac2ac0053140ba9dbf4ab6896c9fcdc",
+  "prompts": {},
+  "sessions": {
+    "s_81508c725e328d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ff375-67da-7080-817b-bec52a8a8de3",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    },
+    "s_922852267ee843": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ff375-5e48-70c0-a5b5-db6da827f50d",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
