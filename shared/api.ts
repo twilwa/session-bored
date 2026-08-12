@@ -356,6 +356,62 @@ export const rosterRouteMap = {
   },
 } as const satisfies Record<string, RouteContract>;
 
+/**
+ * The program team's own hold on a proposal's participant list. Organizers work the same
+ * `submission_speaker` rows the submitter wrote, so an amendment made here survives
+ * acceptance exactly as an author-entered participant does.
+ */
+export const submissionParticipantRouteMap = {
+  submissionParticipants: {
+    method: "GET",
+    path: "/api/events/:eventId/submissions/:submissionId/participants",
+    module: "submissions",
+    access: "organizer",
+  },
+  addSubmissionParticipant: {
+    method: "POST",
+    path: "/api/events/:eventId/submissions/:submissionId/participants",
+    module: "submissions",
+    access: "organizer",
+  },
+  updateSubmissionParticipant: {
+    method: "PATCH",
+    path: "/api/events/:eventId/submissions/:submissionId/participants/:participantId",
+    module: "submissions",
+    access: "organizer",
+  },
+  removeSubmissionParticipant: {
+    method: "DELETE",
+    path: "/api/events/:eventId/submissions/:submissionId/participants/:participantId",
+    module: "submissions",
+    access: "organizer",
+  },
+} as const satisfies Record<string, RouteContract>;
+
+/**
+ * Participants as the program team sees them. Organizers already hold speaker contact
+ * details across the roster, so this projection carries email; `onSession` reports whether
+ * the participant has already been carried into the accepted session.
+ */
+export interface SubmissionParticipantSummary {
+  id: `sspk_${string}`;
+  personId: `psn_${string}`;
+  name: string;
+  email: string;
+  roleLabel: string;
+  jobTitle: string | null;
+  organization: string | null;
+  sortOrder: number;
+  isSubmitter: boolean;
+  onSession: boolean;
+}
+
+export interface SubmissionParticipantsPayload {
+  submissionId: `sub_${string}`;
+  sessionId: `ses_${string}` | null;
+  participants: SubmissionParticipantSummary[];
+}
+
 export interface RosterSpeakerSummary extends SpeakerSummary {
   personId: `psn_${string}`;
   bio: string | null;
@@ -736,6 +792,19 @@ export interface CfpAuthorInput {
   bio?: string;
 }
 
+/**
+ * A collaborator the submitter names alongside themselves. The author identifies a
+ * collaborator by name and email exactly as they identify themselves; the role label is
+ * free text so a proposal can say co-speaker, panellist, moderator, or workshop assistant.
+ */
+export interface CfpCollaboratorInput {
+  name?: string;
+  email?: string;
+  roleLabel?: string;
+  jobTitle?: string;
+  organization?: string;
+}
+
 export interface CfpProposalInput {
   title?: string;
   abstract?: string;
@@ -749,7 +818,23 @@ export interface CfpProposalInput {
 export interface CfpSubmissionWrite {
   intent: CfpSubmissionIntent;
   speaker: CfpAuthorInput;
+  collaborators?: CfpCollaboratorInput[];
   proposal: CfpProposalInput;
+}
+
+/**
+ * One named participant on a proposal. The author-owned read returns emails because the
+ * author supplied them; every other surface projects participants without contact details.
+ */
+export interface CfpParticipant {
+  id: `sspk_${string}`;
+  personId: `psn_${string}`;
+  name: string;
+  email: string;
+  roleLabel: string;
+  jobTitle: string | null;
+  organization: string | null;
+  isSubmitter: boolean;
 }
 
 export interface CfpOwnSubmission {
@@ -775,6 +860,7 @@ export interface CfpOwnSubmission {
     organization: string | null;
     bio: string | null;
   };
+  participants: CfpParticipant[];
 }
 
 export const cfpBuilderRouteMap = {

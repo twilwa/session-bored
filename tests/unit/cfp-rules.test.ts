@@ -79,6 +79,61 @@ describe("CFP submission validation", () => {
   });
 });
 
+describe("CFP participant validation", () => {
+  it("treats a collaborator row the author never filled in as an unused slot", () => {
+    expect(validateCfpSubmission(requiredFields, {
+      ...partialDraft,
+      collaborators: [{ name: "", email: "", roleLabel: "" }],
+    })).toEqual({});
+  });
+
+  it("reports each unusable collaborator identity against its own row", () => {
+    const errors = validateCfpSubmission(requiredFields, {
+      ...partialDraft,
+      collaborators: [
+        { name: "", email: "dev@example.test" },
+        { name: "Bad Address", email: "nope" },
+        { name: "Same Person", email: "SBEK-Speaker@example.com" },
+      ],
+    });
+
+    expect(errors).toMatchObject({
+      "collaborators.0.name": "Give this participant a name, or clear the row.",
+      "collaborators.1.email": "Enter a valid email address for this participant.",
+      "collaborators.2.email": "This email is already on the proposal.",
+    });
+  });
+
+  it("holds the form's own speaker count only when the proposal is submitted", () => {
+    const panel = {
+      ...partialDraft,
+      collaborators: [
+        { name: "Dev Malhotra", email: "dev@example.test", roleLabel: "co-speaker" },
+        { name: "Ines Brenner", email: "ines@example.test", roleLabel: "moderator" },
+      ],
+      proposal: {
+        title: "A panel",
+        abstract: "Three voices, one question.",
+        track: "Developer Experience",
+        format: "Panel (45 min)",
+        answers: { key_takeaway: "A shared question." },
+      },
+    };
+    const limits = { minimumSpeakers: 1, maximumSpeakers: 2 };
+
+    expect(validateCfpSubmission(requiredFields, panel, limits)).toEqual({});
+    expect(validateCfpSubmission(requiredFields, { ...panel, intent: "submit" }, limits)).toEqual({
+      collaborators: "This call accepts at most 2 speakers on a proposal.",
+    });
+    expect(
+      validateCfpSubmission(requiredFields, { ...panel, intent: "submit" }, {
+        minimumSpeakers: 4,
+        maximumSpeakers: null,
+      }),
+    ).toEqual({ collaborators: "This call needs at least 4 speakers on a proposal." });
+  });
+});
+
 describe("CFP conditional field visibility", () => {
   it("hides a chained dependent when its controlling field is itself hidden", () => {
     const fields = [
@@ -121,6 +176,7 @@ describe("CFP conditional field visibility", () => {
     ];
     const state = {
       speaker: { name: "", email: "", jobTitle: "", organization: "", bio: "" },
+      collaborators: [],
       proposal: {
         title: "",
         abstract: "",

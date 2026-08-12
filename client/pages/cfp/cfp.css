@@ -210,6 +210,20 @@
 .proposal-field [aria-invalid="true"] { border: 2px solid var(--danger); }
 .proposal-field__error { color: var(--danger); font-size: 0.82rem; font-weight: 800; }
 
+.cfp-collaborators__hint { margin: -12px 0 20px; color: var(--muted); font-size: 0.78rem; max-width: 62ch; }
+.cfp-collaborators { min-width: 0; display: grid; gap: 20px; margin: 0 0 20px; padding: 0; list-style: none; }
+
+.cfp-collaborator {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.4fr) minmax(0, 0.9fr) auto;
+  gap: 16px 20px;
+  align-items: end;
+  padding: 20px;
+  background: #f7f5ee;
+  border: 1px solid var(--ink);
+}
+
 .cfp-form-actions {
   display: flex;
   flex-wrap: wrap;
@@ -255,6 +269,7 @@
   .cfp-own-list,
   .cfp-identity-grid,
   .cfp-proposal-fields { grid-template-columns: minmax(0, 1fr); }
+  .cfp-collaborator { grid-template-columns: minmax(0, 1fr); align-items: stretch; }
   .cfp-masthead h1 { font-size: clamp(3.5rem, 17vw, 5rem); }
   .cfp-deadline { box-shadow: 7px 7px 0 var(--blue); }
   .cfp-brief { margin-top: 54px; }

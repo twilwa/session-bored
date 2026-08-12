@@ -147,9 +147,19 @@
 .review-sidebar { min-width: 0; display: grid; align-content: start; gap: 20px; }
 .review-sidebar > section,
 .scorecard { min-width: 0; border: 1px solid var(--ink); background: var(--white); padding: 22px; }
-.participant { display: grid; padding: 12px 0; border-top: 1px solid var(--line); }
+.participant { display: grid; gap: 4px; padding: 12px 0; border-top: 1px solid var(--line); }
 .participant span { color: var(--blue); font: 0.68rem monospace; text-transform: uppercase; }
-.participant small { color: var(--muted); }
+.participant small { color: var(--muted); overflow-wrap: anywhere; }
+.participant__role { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; align-items: center; }
+.participant__role input { min-width: 0; padding: 5px 7px; border: 1px solid var(--line); }
+.participant__state { display: flex; flex-wrap: wrap; gap: 8px; }
+.participant .button { justify-self: start; margin-top: 6px; }
+.participants__error { color: var(--danger); font-size: 0.82rem; font-weight: 800; }
+.participants__note { margin-top: 12px; color: var(--muted); font-size: 0.76rem; }
+.participants__add { display: grid; gap: 10px; padding: 14px 0; border-top: 1px solid var(--line); }
+.participants__add label { display: grid; gap: 4px; }
+.participants__add label span { color: var(--blue); font: 0.68rem monospace; text-transform: uppercase; }
+.participants__add input { min-width: 0; padding: 7px 9px; border: 1px solid var(--line); }
 .scorecard { display: grid; }
 .scorecard h2 { margin: 0; font: 1.7rem Georgia, serif; }
 .scorecard > div:first-child > p:last-child { color: var(--muted); font-size: 0.82rem; }

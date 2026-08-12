@@ -25,6 +25,176 @@ const defaultOnboardingTasks = [
   "Sign speaker release form",
 ] as const;
 
+type DecisionDatabase = ReturnType<typeof drizzle>;
+
+interface OnboardingTask {
+  id: string;
+  title: string;
+}
+
+/**
+ * The onboarding work every participant on a session picks up. The event's own sessionless,
+ * unscoped tasks are the configured template; an event that has configured none falls back to
+ * the session's own tasks, seeded on first use.
+ */
+async function resolveOnboardingTasks(
+  database: DecisionDatabase,
+  eventId: string,
+  sessionId: string,
+): Promise<OnboardingTask[]> {
+  let onboardingTasks = await database
+    .select({ id: tasks.id, title: tasks.title })
+    .from(tasks)
+    .leftJoin(taskScopes, eq(taskScopes.taskId, tasks.id))
+    .where(
+      and(
+        eq(tasks.eventId, eventId),
+        isNull(tasks.sessionId),
+        isNull(taskScopes.taskId),
+        ne(tasks.status, "complete"),
+      ),
+    )
+    .orderBy(tasks.id);
+  const configuredTemplates = onboardingTasks.length > 0
+    ? onboardingTasks
+    : await database
+      .select({ id: tasks.id })
+      .from(tasks)
+      .leftJoin(taskScopes, eq(taskScopes.taskId, tasks.id))
+      .where(and(
+        eq(tasks.eventId, eventId),
+        isNull(tasks.sessionId),
+        isNull(taskScopes.taskId),
+      ))
+      .limit(1);
+  if (configuredTemplates.length > 0) {
+    return onboardingTasks;
+  }
+  onboardingTasks = await database
+    .select({ id: tasks.id, title: tasks.title })
+    .from(tasks)
+    .where(eq(tasks.sessionId, sessionId))
+    .orderBy(tasks.title);
+  if (onboardingTasks.length > 0) {
+    await database
+      .update(tasks)
+      .set({ status: "active" })
+      .where(eq(tasks.sessionId, sessionId));
+    return onboardingTasks;
+  }
+  await database
+    .insert(tasks)
+    .values(defaultOnboardingTasks.map((title) => ({
+      id: createPublicId("tsk"),
+      eventId,
+      sessionId,
+      taskType: title.includes("Upload") ? "file_request" as const : "general" as const,
+      title,
+      dueAt: title.includes("2027-05-01") ? new Date("2027-05-01T23:59:59Z") : null,
+      status: "active" as const,
+    })))
+    .onConflictDoNothing();
+  return database
+    .select({ id: tasks.id, title: tasks.title })
+    .from(tasks)
+    .where(eq(tasks.sessionId, sessionId))
+    .orderBy(tasks.title);
+}
+
+/**
+ * Carries one named participant onto a session: adopts their event speaker identity, links
+ * them to the session under their own role label, and gives them the same onboarding work as
+ * everybody else on it. Archived links are restored rather than duplicated, so a participant
+ * who is removed and named again keeps their completion history.
+ */
+async function attachParticipant(
+  database: DecisionDatabase,
+  participant: {
+    eventId: string;
+    sessionId: string;
+    personId: string;
+    roleLabel: string;
+    sortOrder: number;
+    onboardingTasks: OnboardingTask[];
+  },
+): Promise<string> {
+  const { eventId, sessionId, personId, roleLabel, sortOrder } = participant;
+  let [speaker] = await database
+    .select()
+    .from(speakers)
+    .where(and(eq(speakers.personId, personId), eq(speakers.eventId, eventId)));
+  if (speaker === undefined) {
+    await database
+      .insert(speakers)
+      .values({ id: createPublicId("spk"), personId, eventId, status: "onboarding" })
+      .onConflictDoNothing();
+    [speaker] = await database
+      .select()
+      .from(speakers)
+      .where(and(eq(speakers.personId, personId), eq(speakers.eventId, eventId)));
+  }
+  if (speaker === undefined) {
+    throw new Error(`Speaker handoff failed for ${personId}`);
+  }
+  // ABOUTME: A CFP author already has an `invited` speaker row from their first draft. Being carried
+  // onto a session is what starts onboarding, so promote them the same way a newly adopted
+  // participant starts — otherwise the person who wrote the proposal is the one missing from the
+  // roster's onboarding work and from every public surface that gates on a cleared speaker.
+  if (speaker.status === "invited") {
+    await database
+      .update(speakers)
+      .set({ status: "onboarding" })
+      .where(eq(speakers.id, speaker.id));
+  }
+  await database
+    .insert(sessionSpeakers)
+    .values({
+      id: createPublicId("ssnr"),
+      sessionId,
+      speakerId: speaker.id,
+      roleLabel,
+      sortOrder,
+    })
+    .onConflictDoNothing();
+  await database
+    .update(sessionSpeakers)
+    .set({ roleLabel, sortOrder, deletedAt: null })
+    .where(and(eq(sessionSpeakers.sessionId, sessionId), eq(sessionSpeakers.speakerId, speaker.id)));
+  for (const task of participant.onboardingTasks) {
+    await database
+      .insert(taskAssignees)
+      .values({ id: createPublicId("tassn"), taskId: task.id, speakerId: speaker.id })
+      .onConflictDoNothing();
+    await database
+      .update(taskAssignees)
+      .set({ deletedAt: null })
+      .where(and(eq(taskAssignees.taskId, task.id), eq(taskAssignees.speakerId, speaker.id)));
+  }
+  return speaker.id;
+}
+
+/**
+ * Gives an already-accepted proposal's session a participant the program team named after the
+ * decision. It runs the acceptance handoff for that one person, so a late addition reaches the
+ * session, the roster, and their onboarding work on exactly the same terms as the rest.
+ */
+export async function carryParticipantIntoSession(
+  binding: D1Database,
+  eventId: string,
+  sessionId: string,
+  participant: { personId: string; roleLabel: string; sortOrder: number },
+): Promise<string> {
+  const database = drizzle(binding);
+  return attachParticipant(database, {
+    eventId,
+    sessionId,
+    personId: participant.personId,
+    roleLabel: participant.roleLabel,
+    sortOrder: participant.sortOrder,
+    onboardingTasks: await resolveOnboardingTasks(database, eventId, sessionId),
+  });
+}
+
 async function ensureAcceptedHandoff(
   binding: D1Database,
   eventId: string,
@@ -86,8 +256,8 @@ async function ensureAcceptedHandoff(
     })
     .from(submissionSpeakers)
     .innerJoin(people, eq(submissionSpeakers.personId, people.id))
-    .where(eq(submissionSpeakers.submissionId, submissionId))
-    .orderBy(submissionSpeakers.sortOrder);
+    .where(and(eq(submissionSpeakers.submissionId, submissionId), isNull(submissionSpeakers.deletedAt)))
+    .orderBy(submissionSpeakers.sortOrder, submissionSpeakers.id);
   if (participants.length === 0) {
     const [submitter] = await database
       .select({
@@ -103,124 +273,25 @@ async function ensureAcceptedHandoff(
     participants = submitter === undefined ? [] : [{ ...submitter, roleLabel: "speaker", sortOrder: 0 }];
   }
 
+  const onboardingTasks = await resolveOnboardingTasks(database, eventId, session.id);
   const acceptedSpeakers = [];
   for (const participant of participants) {
-    let [speaker] = await database
-      .select()
-      .from(speakers)
-      .where(and(eq(speakers.personId, participant.personId), eq(speakers.eventId, eventId)));
-    if (speaker === undefined) {
-      await database
-        .insert(speakers)
-        .values({
-          id: createPublicId("spk"),
-          personId: participant.personId,
-          eventId,
-          status: "onboarding",
-        })
-        .onConflictDoNothing();
-      [speaker] = await database
-        .select()
-        .from(speakers)
-        .where(and(eq(speakers.personId, participant.personId), eq(speakers.eventId, eventId)));
-    }
-    if (speaker === undefined) {
-      throw new Error(`Speaker handoff failed for ${participant.personId}`);
-    }
-    await database
-      .insert(sessionSpeakers)
-      .values({
-        id: createPublicId("ssnr"),
-        sessionId: session.id,
-        speakerId: speaker.id,
-        roleLabel: participant.roleLabel,
-        sortOrder: participant.sortOrder,
-      })
-      .onConflictDoNothing();
+    const speakerId = await attachParticipant(database, {
+      eventId,
+      sessionId: session.id,
+      personId: participant.personId,
+      roleLabel: participant.roleLabel,
+      sortOrder: participant.sortOrder,
+      onboardingTasks,
+    });
     acceptedSpeakers.push({
-      id: speaker.id,
+      id: speakerId,
       name: participant.name,
       email: participant.email,
       jobTitle: participant.jobTitle,
       organization: participant.organization,
       bio: participant.bio,
     });
-  }
-
-  let onboardingTasks = await database
-    .select({ id: tasks.id, title: tasks.title })
-    .from(tasks)
-    .leftJoin(taskScopes, eq(taskScopes.taskId, tasks.id))
-    .where(
-      and(
-        eq(tasks.eventId, eventId),
-        isNull(tasks.sessionId),
-        isNull(taskScopes.taskId),
-        ne(tasks.status, "complete"),
-      ),
-    )
-    .orderBy(tasks.id);
-  const configuredTemplates = onboardingTasks.length > 0
-    ? onboardingTasks
-    : await database
-      .select({ id: tasks.id })
-      .from(tasks)
-      .leftJoin(taskScopes, eq(taskScopes.taskId, tasks.id))
-      .where(and(
-        eq(tasks.eventId, eventId),
-        isNull(tasks.sessionId),
-        isNull(taskScopes.taskId),
-      ))
-      .limit(1);
-  if (configuredTemplates.length === 0) {
-    onboardingTasks = await database
-      .select({ id: tasks.id, title: tasks.title })
-      .from(tasks)
-      .where(eq(tasks.sessionId, session.id))
-      .orderBy(tasks.title);
-    if (onboardingTasks.length === 0) {
-      await database
-        .insert(tasks)
-        .values(defaultOnboardingTasks.map((title) => ({
-          id: createPublicId("tsk"),
-          eventId,
-          sessionId: session.id,
-          taskType: title.includes("Upload") ? "file_request" as const : "general" as const,
-          title,
-          dueAt: title.includes("2027-05-01") ? new Date("2027-05-01T23:59:59Z") : null,
-          status: "active" as const,
-        })))
-        .onConflictDoNothing();
-      onboardingTasks = await database
-        .select({ id: tasks.id, title: tasks.title })
-        .from(tasks)
-        .where(eq(tasks.sessionId, session.id))
-        .orderBy(tasks.title);
-    } else {
-      await database
-        .update(tasks)
-        .set({ status: "active" })
-        .where(eq(tasks.sessionId, session.id));
-    }
-  }
-  for (const task of onboardingTasks) {
-    for (const speaker of acceptedSpeakers) {
-      await database
-        .insert(taskAssignees)
-        .values({
-          id: createPublicId("tassn"),
-          taskId: task.id,
-          speakerId: speaker.id,
-        })
-        .onConflictDoNothing();
-      await database
-        .update(taskAssignees)
-        .set({ deletedAt: null })
-        .where(and(
-          eq(taskAssignees.taskId, task.id),
-          eq(taskAssignees.speakerId, speaker.id),
-        ));
-    }
   }
 
   return {
