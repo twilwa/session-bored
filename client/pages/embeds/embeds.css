@@ -5,6 +5,8 @@
 .embeds-page__intro p:last-child { max-width: 66ch; margin-top: 12px; }
 .embeds-page__empty { color: var(--muted); }
 .embed-list__name { border: 0; background: transparent; color: inherit; cursor: pointer; font: inherit; font-weight: 800; padding: 0; text-align: left; text-decoration: underline; text-underline-offset: 3px; }
+.embed-list__actions { display: flex; flex-wrap: wrap; gap: 7px; min-width: 250px; }
+.embed-list__actions .button { padding: 8px 10px; white-space: nowrap; }
 .embed-type-fieldset { border: 0; margin: 0 0 22px; padding: 0; }
 .embed-type-fieldset legend, .embed-filter-heading h3 { font: 800 .72rem var(--mono); letter-spacing: .09em; margin-bottom: 9px; text-transform: uppercase; }
 .embed-type-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); }
@@ -14,6 +16,9 @@
 .embed-type--selected { background: var(--ink); color: var(--white); position: relative; z-index: 1; }
 .embed-type--selected span { color: var(--cream); }
 .embed-form-grid { display: grid; gap: 18px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.embed-form-status { align-content: start; display: grid; gap: 8px; }
+.embed-form-status > span:last-child { color: var(--muted); font-size: .78rem; }
+.embed-form-actions { display: flex; flex-wrap: wrap; gap: 10px; }
 .embed-filter-heading { border-top: 1px solid var(--line); margin: 8px 0 16px; padding-top: 20px; }
 .embed-filter-heading p { color: var(--muted); font-size: .88rem; margin-top: -3px; }
 .embed-format-tabs { display: flex; flex-wrap: wrap; margin-bottom: 16px; }
@@ -45,6 +50,7 @@
 .embed-agenda__cell article { background: var(--white); border: 1px solid var(--ink); display: grid; gap: 5px; padding: 9px; }
 .embed-agenda__cell article + article { margin-top: 7px; }
 .embed-agenda__cell small { color: var(--muted); font: .62rem var(--mono); text-transform: uppercase; }
+.embed-agenda__speakers { color: var(--muted); font-size: .72rem; line-height: 1.3; }
 .embed-speakers { border: 1px solid var(--ink); display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); list-style: none; margin: 0; padding: 0; }
 .embed-speakers li { align-items: center; display: flex; gap: 14px; min-width: 0; padding: 16px; }
 .embed-speakers li:nth-child(even) { border-left: 1px solid var(--ink); }
