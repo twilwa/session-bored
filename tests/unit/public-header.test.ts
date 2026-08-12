@@ -28,4 +28,15 @@ describe("public header account area", () => {
       label: "Submitter area",
     });
   });
+
+  it("lands an attendee on their schedule whether or not they own proposals", () => {
+    // The destination must not move with state the person cannot see. Proposals stay
+    // reachable, but by deliberate navigation rather than by changing where they land.
+    for (const hasProposals of [false, true]) {
+      expect(accountAreaFor("attendee", false, hasProposals)).toEqual({
+        href: "/schedule/mine",
+        label: "My schedule",
+      });
+    }
+  });
 });

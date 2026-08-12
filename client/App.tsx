@@ -25,8 +25,10 @@ import { ExportsPage } from "./pages/exports/ExportsPage.tsx";
 import { ContentPage } from "./pages/content/ContentPage.tsx";
 import { EmbedsPage } from "./pages/embeds/EmbedsPage.tsx";
 import { EmbedFramePage } from "./pages/embeds/EmbedFramePage.tsx";
+import { SignUpPage } from "./pages/account/SignUpPage.tsx";
+import { PeoplePage } from "./pages/people/PeoplePage.tsx";
 
-type Role = "organizer" | "reviewer" | "speaker";
+type Role = "organizer" | "reviewer" | "speaker" | "attendee";
 interface SessionPayload {
   user: { id: string; name: string; email: string; role: Role };
 }
@@ -128,7 +130,12 @@ function LoginPage() {
       const session = await getJson<SessionPayload>("/api/session");
       setMessage(`Welcome, ${session.user.name}.`);
       const returnTo = new URLSearchParams(window.location.search).get("returnTo");
-      navigate(returnTo !== null && !returnTo.startsWith("//") && (returnTo.startsWith("/submitter") || returnTo.startsWith(`/${session.user.role}`)) ? returnTo : `/${session.user.role}`);
+      // An attendee has no workspace of their own, so their own schedule is home.
+      const home = session.user.role === "attendee" ? "/schedule/mine" : `/${session.user.role}`;
+      const ownArea = returnTo !== null
+        && !returnTo.startsWith("//")
+        && (returnTo.startsWith("/submitter") || returnTo.startsWith(home));
+      navigate(ownArea ? returnTo : home);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Sign in failed.");
     } finally {
@@ -152,6 +159,7 @@ function LoginPage() {
           <TextField autoComplete="current-password" label="Password" name="password" onChange={(event) => setPassword(event.target.value)} required type="password" value={password} />
           <Button disabled={busy} type="submit">{busy ? "Signing in…" : "Sign in"}</Button>
           <p className="login-form__note">Password login is always available. No inbox required.</p>
+          <p className="login-form__note">No account yet? <Link href="/signup">Create one</Link>.</p>
         </form>
       </main>
       <Modal onClose={() => setShowCredentials(false)} open={showCredentials} title="Demo crew">
@@ -179,6 +187,7 @@ function RoleShell({ role, children }: { role: Role; children: ReactNode }) {
       ["Communications", "/organizer/comms"],
       ["Exports", "/organizer/exports"],
       ["Embeds", "/organizer/embeds"],
+      ["People", "/organizer/people"],
     ]
     : role === "reviewer"
       ? [["Assignments", "/reviewer"]]
@@ -332,6 +341,7 @@ function isCfpSubmissionPath(path: string): boolean {
 function RoutedPage({ path }: { path: string }) {
   if (path === "/") return <HomePage />;
   if (path === "/login") return <LoginPage />;
+  if (path === "/signup") return <SignUpPage />;
   if (isCfpSubmissionPath(path)) return <CfpSubmissionPage path={path} />;
   if (path === "/organizer/cfp") return <RoleShell role="organizer"><CfpBuilderPage /></RoleShell>;
   if (path === "/organizer/disposition") return <RoleShell role="organizer"><DispositionPage /></RoleShell>;
@@ -339,6 +349,7 @@ function RoutedPage({ path }: { path: string }) {
   if (path === "/organizer/comms") return <RoleShell role="organizer"><CommsPage /></RoleShell>;
   if (path === "/organizer/exports") return <RoleShell role="organizer"><ExportsPage /></RoleShell>;
   if (path === "/organizer/embeds") return <RoleShell role="organizer"><EmbedsPage /></RoleShell>;
+  if (path === "/organizer/people") return <RoleShell role="organizer"><PeoplePage /></RoleShell>;
   if (path === "/organizer/content") return <RoleShell role="organizer"><ContentPage /></RoleShell>;
   if (path === "/organizer/review" || hasOnePathSegment(path, "/organizer/review/submissions/")) {
     return <RoleShell role="organizer"><OrganizerReviewPage path={path} /></RoleShell>;

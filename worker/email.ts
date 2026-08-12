@@ -9,7 +9,12 @@ export interface EmailAttachment {
 }
 
 export interface EmailMessage {
-  eventId: `evt_${string}`;
+  /**
+   * The event this message belongs to, or `platform` for account mail that belongs to no
+   * event. Only event mail can be a tracked dispatch, because `email_dispatch.event_id`
+   * references a real event; account mail goes straight to the delivery and is only logged.
+   */
+  eventId: `evt_${string}` | "platform";
   recipient: string;
   subject: string;
   html: string;

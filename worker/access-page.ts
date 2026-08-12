@@ -19,7 +19,16 @@ const workspaceNames: Record<Role, string> = {
   organizer: "organizer",
   reviewer: "reviewer",
   speaker: "speaker",
+  attendee: "attendee",
 };
+
+/**
+ * Where an account's own work lives. An attendee has no workspace to be sent back to, so the
+ * refusal offers them the public program and their own schedule instead of a dead link.
+ */
+function workspaceHref(role: Role): string | null {
+  return role === "attendee" ? null : `/${role}`;
+}
 
 function escapeHtml(value: string): string {
   return value.replaceAll(/[&<>"']/g, (character) => {
@@ -85,7 +94,11 @@ export function accessDeniedDocument(denial: {
   const lede = signedOut
     ? `<code>${path}</code> is only open to a signed-in ${escapeHtml(workspace)} account. Sign in and we'll bring you straight back here.`
     : `You're signed in as ${escapeHtml(denial.user?.name ?? "another account")}${
-      ownWorkspace === null ? "" : `, ${escapeHtml(workspaceNames[ownWorkspace])} on this event`
+      ownWorkspace === null
+        ? ""
+        : ownWorkspace === "attendee"
+          ? ", an attendee"
+          : `, ${escapeHtml(workspaceNames[ownWorkspace])} on this event`
     }, so <code>${path}</code> stays closed to you.`;
   const actions = signedOut
     ? [
@@ -94,15 +107,17 @@ export function accessDeniedDocument(denial: {
       `<a class="button button--quiet" href="/cfp/devflow-conf-2027">Call for speakers</a>`,
     ]
     : [
-      ...ownWorkspace === null
-        ? []
-        : [`<a class="button button--signal" href="/${ownWorkspace}">Go to my ${escapeHtml(workspaceNames[ownWorkspace])} workspace</a>`],
+      ...ownWorkspace === null || workspaceHref(ownWorkspace) === null
+        ? [`<a class="button button--signal" href="/schedule/mine">My schedule</a>`]
+        : [`<a class="button button--signal" href="${workspaceHref(ownWorkspace)}">Go to my ${escapeHtml(workspaceNames[ownWorkspace])} workspace</a>`],
       `<a class="button button--quiet" href="/program">Public program</a>`,
       `<a class="button button--quiet" href="${signInHref}">Sign in as someone else</a>`,
     ];
   const note = signedOut
     ? "Bookmarks keep working — sessions expire, accounts don't."
-    : "Roles are per account. Signing in with the account that owns this area opens it.";
+    : ownWorkspace === "attendee"
+      ? "Speaker, reviewer, and organizer areas are opened by an organizer. Your account keeps working meanwhile."
+      : "Roles are per account. Signing in with the account that owns this area opens it.";
 
   return `<!doctype html>
 <html lang="en">

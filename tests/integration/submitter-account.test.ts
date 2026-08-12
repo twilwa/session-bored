@@ -53,7 +53,7 @@ describe("submitter account ownership", () => {
     expect(response.status).toBe(401);
   });
 
-  it("creates a password-authenticated speaker account from the public origin", async () => {
+  it("creates a password-authenticated account from the public origin", async () => {
     await request("/api/health");
     const cookie = await createAccount("Portal Account", "portal-account@example.com");
 
@@ -61,8 +61,23 @@ describe("submitter account ownership", () => {
 
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({
-      user: { name: "Portal Account", email: "portal-account@example.com", role: "speaker" },
+      user: { name: "Portal Account", email: "portal-account@example.com" },
     });
+  });
+
+  it("gives a self-created account the submitter dashboard and nothing more", async () => {
+    await request("/api/health");
+    const cookie = await createAccount("Self Serve", "self-serve@example.com");
+
+    // The dashboard is theirs: it is scoped to the person, not to a role.
+    const dashboard = await request("/api/submitter/submissions", { headers: { cookie } });
+    expect(dashboard.status).toBe(200);
+    expect(await dashboard.json()).toEqual({ items: [] });
+
+    // Every role-scoped area stays shut.
+    for (const path of ["/api/speaker/content", "/api/reviewer/assignments", "/api/events"]) {
+      expect((await request(path, { headers: { cookie } })).status).toBe(403);
+    }
   });
 
   it("does not list an anonymous proposal after account creation with the same email", async () => {

@@ -25,10 +25,10 @@ import {
   tasks,
   tracks,
   type Role,
-  roles,
 } from "../db/schema.ts";
 import { speakerFacingSubmissionStatus, type ApiAccess, type PortalFileVersion } from "../shared/api.ts";
 import { authorizeAccess } from "./access.ts";
+import { resolveEffectiveRole } from "./roles.ts";
 import { accessDeniedDocument, prefersHtmlDocument } from "./access-page.ts";
 import { createAuth, type AuthSession } from "./auth.ts";
 import aiReviewRoutes from "./routes/ai-review.ts";
@@ -50,6 +50,7 @@ import exportRoutes from "./routes/exports.ts";
 import contentRoutes from "./routes/content.ts";
 import embedRoutes from "./routes/embeds.ts";
 import eventSettingsRoutes from "./routes/event-settings.ts";
+import peopleRoutes from "./routes/people.ts";
 
 type SessionUser = AuthSession["user"];
 type AppEnvironment = {
@@ -63,21 +64,18 @@ type AppEnvironment = {
 
 const app = new Hono<AppEnvironment>();
 
-function parseRole(value: unknown): Role | null {
-  for (const role of roles) {
-    if (value === role) {
-      return role;
-    }
-  }
-  return null;
-}
-
 const prepareRequest = createMiddleware<AppEnvironment>(async (context, next) => {
   await ensureSeeded(context.env);
   const authSession = await createAuth(context.env).api.getSession({ headers: context.req.raw.headers });
   context.set("authSession", authSession?.session ?? null);
   context.set("authUser", authSession?.user ?? null);
-  context.set("role", parseRole(authSession?.user.role));
+  // Role comes from the account's live grants, never from the session or the `user.role`
+  // column. Signing up therefore reaches nothing beyond a signed-in attendee until an
+  // organizer decides otherwise.
+  context.set(
+    "role",
+    authSession === null ? null : await resolveEffectiveRole(drizzle(context.env.DB), authSession.user.id),
+  );
   await next();
 });
 
@@ -150,6 +148,7 @@ app.route("/", commsRoutes);
 app.route("/", contentRoutes);
 app.route("/", embedRoutes);
 app.route("/", eventSettingsRoutes);
+app.route("/", peopleRoutes);
 app.on(["GET", "POST"], "/api/auth/*", (context) => createAuth(context.env).handler(context.req.raw));
 app.route("/api/public/cfp", cfpRoutes);
 app.route("/api/cfp-builder", cfpBuilderRoutes);
@@ -158,9 +157,15 @@ app.get("/api/health", (context) =>
   context.json({ status: "healthy", service: "greenroom", seededEventId: fixtureIds.event }),
 );
 
-app.get("/api/session", requireAccess("authenticated"), (context) =>
-  context.json({ user: context.get("authUser"), session: context.get("authSession") }),
-);
+app.get("/api/session", requireAccess("authenticated"), (context) => {
+  const user = context.get("authUser");
+  // The role the client sees is the resolved one, so a signed-in attendee is described as an
+  // attendee rather than by the `user.role` column nothing reads any more.
+  return context.json({
+    user: user === null ? null : { ...user, role: context.get("role") ?? "attendee" },
+    session: context.get("authSession"),
+  });
+});
 
 app.route("/api", reviewRoutes);
 app.route("/api", aiReviewRoutes);

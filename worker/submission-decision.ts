@@ -16,6 +16,7 @@ import {
   tasks,
   type SubmissionStatus,
 } from "../db/schema.ts";
+import { grantRole } from "./roles.ts";
 
 const defaultOnboardingTasks = [
   "Confirm participation",
@@ -169,6 +170,21 @@ async function attachParticipant(
       .update(taskAssignees)
       .set({ deletedAt: null })
       .where(and(eq(taskAssignees.taskId, task.id), eq(taskAssignees.speakerId, speaker.id)));
+  }
+  // Being carried onto a session is the organizer's decision that this person is presenting,
+  // so it also opens the speaker portal to whichever account already holds their identity.
+  // Naming somebody still mints nothing: an unclaimed person has no account to grant.
+  const [linkedAccount] = await database
+    .select({ userId: people.userId })
+    .from(people)
+    .where(eq(people.id, personId));
+  if (linkedAccount?.userId != null) {
+    await grantRole(database, {
+      userId: linkedAccount.userId,
+      role: "speaker",
+      source: "acceptance",
+      note: "Carried onto a session in the programme.",
+    });
   }
   return speaker.id;
 }

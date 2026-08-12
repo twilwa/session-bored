@@ -13,6 +13,7 @@ export type ApiModule =
   | "exports"
   | "files"
   | "forms"
+  | "people"
   | "public"
   | "reviews"
   | "sessions"
@@ -341,6 +342,54 @@ export const routeMap = {
     access: "organizer",
   },
 } as const satisfies Record<string, RouteContract>;
+
+/**
+ * Access is platform-wide today: a grant opens an area everywhere, not on one event. Scoping
+ * a grant to an event is issue #120 and would add the event to these paths, not replace them.
+ */
+export const peopleRouteMap = {
+  people: { method: "GET", path: "/api/people", module: "people", access: "organizer" },
+  grantRole: { method: "POST", path: "/api/people/:userId/grants", module: "people", access: "organizer" },
+  revokeRole: { method: "DELETE", path: "/api/people/:userId/grants/:role", module: "people", access: "organizer" },
+  inviteReviewer: {
+    method: "POST",
+    path: "/api/events/:eventId/reviewer-invites",
+    module: "people",
+    access: "organizer",
+  },
+  revokeReviewerInvite: {
+    method: "DELETE",
+    path: "/api/reviewer-invites/:inviteId",
+    module: "people",
+    access: "organizer",
+  },
+} as const satisfies Record<string, RouteContract>;
+
+/** What an account has actually done here, so an organizer never grants blind. */
+export interface PersonAccountEvidence {
+  kind: "programmed" | "proposals" | "none";
+  programmedSessions: number;
+  proposals: number;
+}
+
+export interface PersonAccountGrant {
+  role: "organizer" | "reviewer" | "speaker";
+  source: "backfill" | "organizer" | "acceptance" | "reviewer_invite";
+  note: string | null;
+  grantedAt: string;
+  grantedByName: string | null;
+}
+
+export interface PersonAccountSummary {
+  id: string;
+  name: string;
+  email: string;
+  emailVerified: boolean;
+  joinedAt: string;
+  signInMethods: string[];
+  evidence: PersonAccountEvidence;
+  grants: PersonAccountGrant[];
+}
 
 export const rosterRouteMap = {
   roster: { method: "GET", path: "/api/events/:eventId/roster", module: "speakers", access: "organizer" },

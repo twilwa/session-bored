@@ -1,0 +1,62 @@
+/* ABOUTME: Styles the organizer People surface using the shared workspace table idiom. */
+/* ABOUTME: Keeps evidence, access, and actions readable side by side and stacked at 375px. */
+.people-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 16px;
+  margin: 26px 0;
+}
+.people-toolbar .field { margin-bottom: 0; }
+.people-toolbar .field:first-child { flex: 1 1 240px; }
+.people-notify {
+  min-height: 46px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid var(--ink);
+  background: var(--white);
+  padding: 10px 14px;
+  font-size: 0.86rem;
+}
+.people-notify input { accent-color: var(--blue); }
+
+.people-card { margin-top: 30px; }
+.people-card__head { display: grid; gap: 4px; margin-bottom: 18px; }
+.people-card__head p { margin: 0; color: var(--muted); font-size: 0.9rem; }
+
+.people-list, .people-invite-list { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--ink); }
+.people-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.1fr);
+  gap: 18px;
+  align-items: start;
+  padding: 18px 0;
+  border-bottom: 1px solid var(--line);
+}
+.people-row > div { min-width: 0; display: grid; gap: 5px; align-content: start; }
+.people-row strong { font-size: 1.02rem; }
+.people-row a { color: var(--blue); overflow-wrap: anywhere; font-size: 0.88rem; }
+.people-row small { color: var(--muted); font-size: 0.78rem; overflow-wrap: anywhere; }
+.people-row__evidence .status-chip, .people-row__access .status-chip { justify-self: start; }
+.people-row__access .status-chip { text-transform: capitalize; }
+.people-row__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.people-row__actions .button { min-height: 38px; padding: 6px 12px; font-size: 0.82rem; }
+
+.people-invite { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 14px; margin-bottom: 18px; }
+.people-invite .field { flex: 1 1 260px; margin-bottom: 0; }
+.people-invite-list li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 15px 0;
+  border-bottom: 1px solid var(--line);
+}
+.people-invite-list div { display: grid; gap: 3px; min-width: 0; }
+.people-invite-list small { color: var(--muted); font-size: 0.78rem; }
+
+@media (max-width: 900px) {
+  .people-row { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+}
