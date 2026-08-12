@@ -1,10 +1,12 @@
 // ABOUTME: Specifies server-side upload validation and storage-key shape for portal files.
 // ABOUTME: Protects the size and type limits enforced independently of any browser-side check.
 import { describe, expect, it } from "vitest";
+import { fileRequestKindOf, pictureRequestFileTypes } from "../../shared/api.ts";
 import {
   buildStorageKey,
   defaultDeliverableLimits,
   headshotLimits,
+  isPictureRequest,
   limitsForTask,
   validateUpload,
 } from "../../worker/storage/files.ts";
@@ -78,6 +80,57 @@ describe("task upload limits", () => {
       limits,
     );
     expect(result).toMatchObject({ error: "unsupported_file_type" });
+  });
+});
+
+describe("picture file requests", () => {
+  const pictureRequest = { acceptedFileTypes: pictureRequestFileTypes, maximumFileBytes: null };
+
+  it("offers exactly the images the headshot picker takes", () => {
+    expect(pictureRequestFileTypes).toEqual(Object.keys(headshotLimits.mimeTypeByExtension));
+  });
+
+  it("accepts a png and applies the image ceiling rather than the office-document one", () => {
+    const limits = limitsForTask(pictureRequest);
+    expect(limits.maxBytes).toBe(headshotLimits.maxBytes);
+    expect(validateUpload({ name: "priya.png", type: "image/png", size: 1024 }, limits)).toBeNull();
+  });
+
+  it("still refuses the documents a picture request never asked for", () => {
+    const result = validateUpload(
+      { name: "slides.pdf", type: "application/pdf", size: 10 },
+      limitsForTask(pictureRequest),
+    );
+    expect(result).toMatchObject({ error: "unsupported_file_type", acceptedExtensions: pictureRequestFileTypes });
+  });
+
+  it("rejects HTML bytes disguised as a picture, the stored-XSS payload this widening could have let back in", () => {
+    // Extension and content type must BOTH match: "payload.png" declaring text/html is the
+    // exact upload that once reached an unauthenticated, inline-served endpoint.
+    const result = validateUpload(
+      { name: "payload.png", type: "text/html", size: 42 },
+      limitsForTask(pictureRequest),
+    );
+    expect(result).toMatchObject({ error: "unsupported_file_type" });
+  });
+
+  it("drops a type it does not know rather than trusting the name a request supplied", () => {
+    const limits = limitsForTask({ acceptedFileTypes: ["png", "svg"], maximumFileBytes: null });
+    expect(Object.keys(limits.mimeTypeByExtension)).toEqual(["png"]);
+    expect(validateUpload({ name: "payload.svg", type: "image/svg+xml", size: 10 }, limits))
+      .toMatchObject({ error: "unsupported_file_type" });
+  });
+
+  it("reads a mixed or document request as a document request", () => {
+    expect(isPictureRequest(pictureRequest)).toBe(true);
+    expect(isPictureRequest({ acceptedFileTypes: ["png", "pdf"], maximumFileBytes: null })).toBe(false);
+    expect(isPictureRequest({ acceptedFileTypes: null, maximumFileBytes: null })).toBe(false);
+    expect(fileRequestKindOf(null)).toBe("document");
+    expect(fileRequestKindOf(["PNG"])).toBe("picture");
+  });
+
+  it("honors a request's own byte ceiling over the image default", () => {
+    expect(limitsForTask({ acceptedFileTypes: ["png"], maximumFileBytes: 2048 }).maxBytes).toBe(2048);
   });
 });
 

@@ -41,15 +41,13 @@ function initials(name: string): string {
   return parts.slice(0, 2).map((part) => part[0]?.toUpperCase() ?? "").join("");
 }
 
+// The server resolves what a request accepts and answers with it, so the hint a speaker
+// reads is the same list the upload is judged against.
 function uploadRules(task: PortalTask): string | null {
-  const types = task.acceptedFileTypes === null || task.acceptedFileTypes.length === 0
-    ? null
-    : `Accepted: ${task.acceptedFileTypes.join(", ")}`;
-  const size = task.maximumFileBytes === null
-    ? null
-    : `up to ${formatFileSize(task.maximumFileBytes)}`;
-  const stated = [types ?? "Accepted: pdf, ppt, pptx, doc, docx, zip, key", size ?? "up to 25.0 MB"];
-  return task.taskType === "file_request" ? stated.join(" · ") : null;
+  if (task.taskType !== "file_request" || task.acceptedFileTypes === null || task.maximumFileBytes === null) {
+    return null;
+  }
+  return `Accepted: ${task.acceptedFileTypes.join(", ")} · up to ${formatFileSize(task.maximumFileBytes)}`;
 }
 
 function TaskRow({ task, onComplete, onUpload, busy }: {

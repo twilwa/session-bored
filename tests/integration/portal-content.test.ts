@@ -2,6 +2,7 @@
 // ABOUTME: Covers headshot and file upload retrieval, task completion, versioning, and server-side limits.
 import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
+import { pictureRequestFileTypes } from "../../shared/api.ts";
 import worker from "../../worker/index.ts";
 
 async function request(path: string, init?: RequestInit): Promise<Response> {
@@ -161,6 +162,114 @@ describe("speaker portal content", () => {
     expect(wrongTypeBody.error).toBe("unsupported_file_type");
     expect(wrongTypeBody.message.length).toBeGreaterThan(0);
     await env.DB.prepare("update task set accepted_file_types = NULL where id = ?").bind("tsk_fixture_3").run();
+  });
+
+  it("satisfies an organizer's picture request with a png, states that request's own accepted types, and makes it the speaker's headshot", async () => {
+    const organizerCookie = await signIn(organizerCredentials.email, organizerCredentials.password);
+    const created = await request("/api/events/evt_devflow_conf_2027/tasks", {
+      method: "POST",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({
+        taskType: "file_request",
+        acceptedFileTypes: pictureRequestFileTypes,
+        title: "Send us a speaker picture",
+        speakerIds: ["spk_priya_devflow_2027"],
+      }),
+    });
+    expect(created.status).toBe(201);
+    const { id: pictureTaskId } = await created.json<{ id: string }>();
+    await env.DB.prepare("update person set headshot_url = null where id = ?").bind("psn_priya_raman").run();
+
+    const before = await request("/api/speaker/content", { headers: { cookie: priyaCookie } });
+    const beforeBody = await before.json<{
+      tasks: Array<{ id: string; acceptedFileTypes: string[] | null; maximumFileBytes: number | null }>;
+    }>();
+    const pictureTask = beforeBody.tasks.find((task) => task.id === pictureTaskId);
+    // The speaker is told what this request takes, not what documents another request takes.
+    expect(pictureTask?.acceptedFileTypes).toEqual(pictureRequestFileTypes);
+    expect(pictureTask?.maximumFileBytes).toBe(5 * 1024 * 1024);
+
+    const upload = await request(`/api/portal/tasks/${pictureTaskId}/files`, {
+      method: "POST",
+      headers: { cookie: priyaCookie },
+      body: fileUpload("priya.png", "image/png", [137, 80, 78, 71]),
+    });
+    expect(upload.status).toBe(201);
+    const uploadBody = await upload.json<{ fileId: string; status: string; headshotUrl: string | null }>();
+    expect(uploadBody.status).toBe("completed");
+    expect(uploadBody.headshotUrl).toBe("/api/public/portal/speakers/spk_priya_devflow_2027/headshot");
+
+    const after = await request("/api/speaker/content", { headers: { cookie: priyaCookie } });
+    const afterBody = await after.json<{
+      profile: { headshotUrl: string | null };
+      tasks: Array<{ id: string; status: string; file: { displayName: string } | null }>;
+    }>();
+    // Asking for a headshot through a task lands the same place the headshot picker does.
+    expect(afterBody.profile.headshotUrl).toBe(uploadBody.headshotUrl);
+    const satisfied = afterBody.tasks.find((task) => task.id === pictureTaskId);
+    expect(satisfied?.status).toBe("completed");
+    expect(satisfied?.file?.displayName).toBe("priya.png");
+
+    const publicHeadshot = await request(uploadBody.headshotUrl ?? "");
+    expect(publicHeadshot.status).toBe(200);
+    expect(publicHeadshot.headers.get("content-type")).toBe("image/png");
+
+    // Widening what a request accepts never widens who can read the deliverable itself.
+    const unauthenticated = await request(`/api/portal/files/${uploadBody.fileId}`);
+    expect(unauthenticated.status).toBe(401);
+  });
+
+  it("rejects HTML disguised as a picture on a picture request, the stored-XSS payload this widening could have let back in", async () => {
+    const organizerCookie = await signIn(organizerCredentials.email, organizerCredentials.password);
+    const created = await request("/api/events/evt_devflow_conf_2027/tasks", {
+      method: "POST",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({
+        taskType: "file_request",
+        acceptedFileTypes: pictureRequestFileTypes,
+        title: "Send us a conference picture",
+        speakerIds: ["spk_priya_devflow_2027"],
+      }),
+    });
+    const { id: pictureTaskId } = await created.json<{ id: string }>();
+
+    const malicious = await request(`/api/portal/tasks/${pictureTaskId}/files`, {
+      method: "POST",
+      headers: { cookie: priyaCookie },
+      body: fileUpload("payload.png", "text/html", Array.from(new TextEncoder().encode("<script>evil()</script>"))),
+    });
+    expect(malicious.status).toBe(415);
+    await expect(malicious.json()).resolves.toMatchObject({ error: "unsupported_file_type" });
+
+    const assignee = await env.DB.prepare(
+      "select status from task_assignee where task_id = ? and speaker_id = ?",
+    ).bind(pictureTaskId, "spk_priya_devflow_2027").first<{ status: string }>();
+    expect(assignee?.status).not.toBe("completed");
+    const stored = await env.DB.prepare("select count(*) as total from file where task_id = ?")
+      .bind(pictureTaskId)
+      .first<{ total: number }>();
+    expect(stored?.total).toBe(0);
+  });
+
+  it("keeps a request that declares nothing a document request, naming its real types when it refuses a picture", async () => {
+    const content = await request("/api/speaker/content", { headers: { cookie: priyaCookie } });
+    const contentBody = await content.json<{
+      tasks: Array<{ id: string; acceptedFileTypes: string[] | null; maximumFileBytes: number | null }>;
+    }>();
+    const documentTask = contentBody.tasks.find((task) => task.id === "tsk_fixture_3");
+    expect(documentTask?.acceptedFileTypes).toEqual(["pdf", "ppt", "pptx", "doc", "docx", "zip", "key"]);
+    expect(documentTask?.maximumFileBytes).toBe(25 * 1024 * 1024);
+
+    const refused = await request("/api/portal/tasks/tsk_fixture_3/files", {
+      method: "POST",
+      headers: { cookie: priyaCookie },
+      body: fileUpload("priya.png", "image/png", [137, 80, 78, 71]),
+    });
+    expect(refused.status).toBe(415);
+    await expect(refused.json()).resolves.toMatchObject({
+      error: "unsupported_file_type",
+      acceptedExtensions: ["pdf", "ppt", "pptx", "doc", "docx", "zip", "key"],
+    });
   });
 
   it("rejects a file upload against a general (non file-request) task", async () => {
