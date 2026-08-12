@@ -1,0 +1,14 @@
+/* ABOUTME: Styles compact attributed file discussions shared by organizer and speaker content views. */
+/* ABOUTME: Keeps long names, messages, and controls contained at phone widths. */
+.file-comments { width: 100%; min-width: 0; margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px; }
+.file-comments summary { width: fit-content; cursor: pointer; font-size: 0.82rem; font-weight: 800; text-decoration: underline; text-underline-offset: 3px; }
+.file-comments__body { display: grid; min-width: 0; gap: 14px; margin-top: 14px; }
+.file-comments__thread { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.file-comments__thread li { min-width: 0; padding: 12px; border: 1px solid var(--line); background: var(--white); }
+.file-comments__thread li > div { display: flex; min-width: 0; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+.file-comments__thread span { color: var(--muted); font: 0.65rem monospace; font-weight: 800; text-transform: uppercase; }
+.file-comments__thread p { margin: 8px 0; overflow-wrap: anywhere; line-height: 1.45; }
+.file-comments__thread small { color: var(--muted); font: 0.68rem monospace; }
+.file-comments__form { display: grid; min-width: 0; gap: 10px; }
+.file-comments__form .button { justify-self: start; }
+.file-comments__error { margin: 0; color: #9b1c1c; }

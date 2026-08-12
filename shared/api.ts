@@ -121,6 +121,24 @@ export const routeMap = {
     module: "files",
     access: "authenticated",
   },
+  deliverables: {
+    method: "GET",
+    path: "/api/events/:eventId/deliverables",
+    module: "files",
+    access: "organizer",
+  },
+  fileComments: {
+    method: "GET",
+    path: "/api/content/files/:fileId/comments",
+    module: "files",
+    access: "authenticated",
+  },
+  createFileComment: {
+    method: "POST",
+    path: "/api/content/files/:fileId/comments",
+    module: "files",
+    access: "authenticated",
+  },
   publicHeadshot: {
     method: "GET",
     path: "/api/public/portal/speakers/:speakerId/headshot",
@@ -507,6 +525,56 @@ export interface PortalFile {
   archived: boolean;
   downloadUrl: string;
   versions: PortalFileVersion[];
+}
+
+export interface ContentComment {
+  id: `cmt_${string}`;
+  body: string;
+  createdAt: string;
+  author: { name: string; role: Role };
+}
+
+export type DeliverableStatus = "requested" | "overdue" | "delivered";
+
+export interface DeliverableItem {
+  assignmentId: `tassn_${string}`;
+  taskId: `tsk_${string}`;
+  speaker: { id: `spk_${string}`; name: string; email: string };
+  task: { title: string; instructions: string | null; dueAt: string | null };
+  assignment: {
+    status: "assigned" | "in_progress" | "completed";
+    completedAt: string | null;
+  };
+  status: DeliverableStatus;
+  file: null | {
+    id: `fil_${string}`;
+    displayName: string;
+    version: number;
+    mimeType: string;
+    sizeBytes: number;
+    uploadedAt: string;
+    downloadUrl: string;
+  };
+}
+
+export interface SessionAwaitingApproval {
+  id: `ses_${string}`;
+  title: string | null;
+  contentStatus: "in_review";
+  speakers: Array<{ id: `spk_${string}`; name: string }>;
+}
+
+export interface DeliverablesPayload {
+  generatedAt: string;
+  metrics: {
+    total: number;
+    requested: number;
+    overdue: number;
+    delivered: number;
+    awaitingApproval: number;
+  };
+  items: DeliverableItem[];
+  sessionsAwaitingApproval: SessionAwaitingApproval[];
 }
 
 export type PortalTaskAssigneeStatus = "assigned" | "in_progress" | "completed";

@@ -46,6 +46,9 @@ describe("typed route map", () => {
     expect(routeMap.speakerContent.access).toBe("speaker");
     expect(routeMap.submitterSubmissions.access).toBe("authenticated");
     expect(routeMap.events.access).toBe("organizer");
+    expect(routeMap.deliverables).toMatchObject({ method: "GET", module: "files", access: "organizer" });
+    expect(routeMap.fileComments).toMatchObject({ method: "GET", module: "files", access: "authenticated" });
+    expect(routeMap.createFileComment).toMatchObject({ method: "POST", module: "files", access: "authenticated" });
   });
 
   it("publishes the complete organizer communication-template contract", () => {

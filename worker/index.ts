@@ -45,6 +45,7 @@ import dispositionRoutes from "./routes/disposition.ts";
 import rosterRoutes from "./routes/roster.ts";
 import agendaRoutes from "./routes/agenda.ts";
 import exportRoutes from "./routes/exports.ts";
+import contentRoutes from "./routes/content.ts";
 
 type SessionUser = AuthSession["user"];
 type AppEnvironment = {
@@ -141,6 +142,7 @@ app.route("/", rosterRoutes);
 app.route("/", agendaRoutes);
 app.route("/", exportRoutes);
 app.route("/", commsRoutes);
+app.route("/", contentRoutes);
 app.on(["GET", "POST"], "/api/auth/*", (context) => createAuth(context.env).handler(context.req.raw));
 app.route("/api/public/cfp", cfpRoutes);
 app.route("/api/cfp-builder", cfpBuilderRoutes);
