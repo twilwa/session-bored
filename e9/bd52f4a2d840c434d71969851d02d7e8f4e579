@@ -1,0 +1,25 @@
+worker/routes/comms.ts
+  s_671043d2480275::t_c53e66eefe3f32 7,77-118
+tests/integration/disposition.test.ts
+  s_671043d2480275::t_190fe9a7337f54 257-260,272-303,316-320
+client/pages/comms/CommsPage.tsx
+  s_671043d2480275::t_c53e66eefe3f32 503
+tests/e2e/comms.spec.ts
+  s_671043d2480275::t_190fe9a7337f54 75-107
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "e9bd52f4a2d840c434d71969851d02d7e8f4e579",
+  "prompts": {},
+  "sessions": {
+    "s_671043d2480275": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ff361-238b-79c2-984a-ad68971c6fab",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
