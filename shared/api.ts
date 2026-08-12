@@ -173,6 +173,9 @@ export const routeMap = {
       access: "organizer",
     },
   embeds: { method: "GET", path: "/api/events/:eventId/embeds", module: "embeds", access: "organizer" },
+  createEmbed: { method: "POST", path: "/api/events/:eventId/embeds", module: "embeds", access: "organizer" },
+  updateEmbed: { method: "PATCH", path: "/api/events/:eventId/embeds/:embedId", module: "embeds", access: "organizer" },
+  removeEmbed: { method: "DELETE", path: "/api/events/:eventId/embeds/:embedId", module: "embeds", access: "organizer" },
   publicCfp: { method: "GET", path: "/api/public/cfp/:slug", module: "public", access: "public" },
   publicSessions: {
     method: "GET",
@@ -1089,7 +1092,40 @@ export interface PublicSessionCard {
   startsAt: number | null;
   endsAt: number | null;
   scheduleStatus: string;
+  icsUid?: string;
+  icsSequence?: number;
   speakers: PublicSpeakerRef[];
+}
+
+export type EmbedWidgetType = "sessions" | "speakers" | "agenda" | "itinerary" | "gallery";
+export type EmbedStatus = "draft" | "published";
+
+export interface EmbedConfig {
+  track?: string;
+}
+
+export interface EmbedSummary {
+  id: string;
+  eventId: string;
+  widgetType: EmbedWidgetType;
+  name: string;
+  config: EmbedConfig | null;
+  publicToken: string;
+  status: EmbedStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface EmbedListResponse {
+  items: EmbedSummary[];
+}
+
+export interface PublicEmbedResponse {
+  embed: EmbedSummary;
+  items: Array<PublicSessionCard | PublicSpeakerCard>;
+  total: number;
+  filtered: number;
+  facets: PublicEventFacets;
 }
 
 export interface PublicSpeakerCard {

@@ -22,6 +22,8 @@ import { PortalPage } from "./pages/portal/PortalPage.tsx";
 import { formatFullDateTime } from "./pages/public/shared.ts";
 import { ExportsPage } from "./pages/exports/ExportsPage.tsx";
 import { ContentPage } from "./pages/content/ContentPage.tsx";
+import { EmbedsPage } from "./pages/embeds/EmbedsPage.tsx";
+import { EmbedFramePage } from "./pages/embeds/EmbedFramePage.tsx";
 
 type Role = "organizer" | "reviewer" | "speaker";
 interface SessionPayload {
@@ -175,6 +177,7 @@ function RoleShell({ role, children }: { role: Role; children: ReactNode }) {
       ["Agenda", "/organizer/agenda"],
       ["Communications", "/organizer/comms"],
       ["Exports", "/organizer/exports"],
+      ["Embeds", "/organizer/embeds"],
     ]
     : role === "reviewer"
       ? [["Assignments", "/reviewer"]]
@@ -334,6 +337,7 @@ function RoutedPage({ path }: { path: string }) {
   if (path === "/organizer/agenda") return <RoleShell role="organizer"><AgendaPage /></RoleShell>;
   if (path === "/organizer/comms") return <RoleShell role="organizer"><CommsPage /></RoleShell>;
   if (path === "/organizer/exports") return <RoleShell role="organizer"><ExportsPage /></RoleShell>;
+  if (path === "/organizer/embeds") return <RoleShell role="organizer"><EmbedsPage /></RoleShell>;
   if (path === "/organizer/content") return <RoleShell role="organizer"><ContentPage /></RoleShell>;
   if (path === "/organizer/review" || hasOnePathSegment(path, "/organizer/review/submissions/")) {
     return <RoleShell role="organizer"><OrganizerReviewPage path={path} /></RoleShell>;
@@ -359,6 +363,7 @@ function RoutedPage({ path }: { path: string }) {
   if (path === "/gallery") return <SpeakerGalleryPage />;
   if (path === "/agenda") return <PublicAgendaPage />;
   if (path === "/schedule") return <ItineraryPage />;
+  if (hasOnePathSegment(path, "/embed/")) return <EmbedFramePage publicToken={path.split("/")[2] ?? ""} />;
   if (path === "/speaker") return <RoleShell role="speaker"><PortalPage /></RoleShell>;
   if (path.startsWith("/speaker/")) return <WorkspaceNotFoundPage role="speaker" />;
   if (path === "/submitter") return <SubmitterDashboardPage />;
