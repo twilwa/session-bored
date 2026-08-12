@@ -18,6 +18,7 @@ import {
   type Role,
 } from "../../db/schema.ts";
 import type { AuthSession } from "../auth.ts";
+import { livingSessionSpeakers } from "../speaker-access.ts";
 import { filenameForVersion } from "../storage/file-versions.ts";
 import {
   buildStorageKey,
@@ -301,7 +302,7 @@ portalRoutes.patch("/portal/sessions/:sessionId", requireSpeaker, async (context
   const [owned] = await database
     .select({ id: sessions.id, contentStatus: sessions.contentStatus })
     .from(sessions)
-    .innerJoin(sessionSpeakers, eq(sessionSpeakers.sessionId, sessions.id))
+    .innerJoin(sessionSpeakers, livingSessionSpeakers())
     .where(and(eq(sessions.id, sessionId), eq(sessionSpeakers.speakerId, profile.speakerId)));
   if (owned === undefined) {
     return context.json({ error: "forbidden" }, 403);

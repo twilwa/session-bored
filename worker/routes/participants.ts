@@ -14,7 +14,7 @@ import {
   submissionSpeakers,
   type Role,
 } from "../../db/schema.ts";
-import { carryParticipantIntoSession } from "../submission-decision.ts";
+import { carryParticipantIntoSession, releaseParticipantFromSession } from "../submission-decision.ts";
 
 type ParticipantEnvironment = {
   Bindings: CloudflareBindings;
@@ -280,19 +280,7 @@ participantRoutes.delete(
       .set({ deletedAt: new Date() })
       .where(eq(submissionSpeakers.id, participant.id));
     if (scope.sessionId !== null) {
-      const [speaker] = await database
-        .select({ id: speakers.id })
-        .from(speakers)
-        .where(and(eq(speakers.personId, participant.personId), eq(speakers.eventId, eventId)));
-      if (speaker !== undefined) {
-        await database
-          .update(sessionSpeakers)
-          .set({ deletedAt: new Date() })
-          .where(and(
-            eq(sessionSpeakers.sessionId, scope.sessionId),
-            eq(sessionSpeakers.speakerId, speaker.id),
-          ));
-      }
+      await releaseParticipantFromSession(context.env.DB, eventId, scope.sessionId, participant.personId);
     }
     return context.json(
       await participantsResponse(database, eventId, submissionId, scope.submission.submitterPersonId, scope.sessionId),

@@ -1,6 +1,6 @@
 // ABOUTME: Serves the public CFP lifecycle from call details through author-owned edits.
 // ABOUTME: Keeps incomplete drafts writable while enforcing form rules and deadlines on the server.
-import { and, asc, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, isNotNull, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { Hono } from "hono";
 import {
@@ -12,6 +12,8 @@ import {
   formats,
   forms,
   people,
+  sessions,
+  sessionSpeakers,
   speakers,
   submissionAuthorAccess,
   submissionSpeakers,
@@ -21,6 +23,7 @@ import {
   tracks,
 } from "../../db/schema.ts";
 import { sendSubmissionConfirmationEmail } from "../email/submission-confirmation.ts";
+import { carryParticipantIntoSession, releaseParticipantFromSession } from "../submission-decision.ts";
 
 export interface CfpAvailability {
   canWrite: boolean;
@@ -510,9 +513,16 @@ async function findOrCreateCollaboratorPerson(
  * author always first. A participant the author drops is archived rather than erased so a
  * restored collaborator keeps the same `submission_speaker` row, and so an already-accepted
  * proposal never loses the history behind its session.
+ *
+ * Once the proposal has a session, dropping somebody has to reach it too: the author's door and
+ * the organizer's remove the same participant, so they must revoke the same access. Naming a
+ * dropped collaborator again restores exactly what the drop archived. A collaborator the author
+ * names for the first time after acceptance still reaches the session only when an organizer
+ * admits them, which is the door that has always admitted people to the programme.
  */
 async function replaceParticipants(
   database: CfpDatabase,
+  binding: D1Database,
   submissionId: string,
   authorPersonId: string,
   input: CfpSubmissionInput,
@@ -537,6 +547,10 @@ async function replaceParticipants(
     .from(submissionSpeakers)
     .where(eq(submissionSpeakers.submissionId, submissionId));
   const existingByPerson = new Map(existing.map((row) => [row.personId, row.id]));
+  const [session] = await database
+    .select({ id: sessions.id, eventId: sessions.eventId })
+    .from(sessions)
+    .where(eq(sessions.submissionId, submissionId));
   for (const participant of desired) {
     const rowId = existingByPerson.get(participant.personId);
     if (rowId === undefined) {
@@ -553,6 +567,9 @@ async function replaceParticipants(
       .update(submissionSpeakers)
       .set({ roleLabel: participant.roleLabel, sortOrder: participant.sortOrder, deletedAt: null })
       .where(eq(submissionSpeakers.id, rowId));
+    if (session !== undefined && await wasReleasedFromSession(database, session, participant.personId)) {
+      await carryParticipantIntoSession(binding, session.eventId, session.id, participant);
+    }
   }
   const keptPersonIds = new Set(desired.map((participant) => participant.personId));
   for (const row of existing) {
@@ -561,8 +578,33 @@ async function replaceParticipants(
         .update(submissionSpeakers)
         .set({ deletedAt: new Date() })
         .where(eq(submissionSpeakers.id, row.id));
+      if (session !== undefined) {
+        await releaseParticipantFromSession(binding, session.eventId, session.id, row.personId);
+      }
     }
   }
+}
+
+/**
+ * Whether this person is on the session only as an archived link, which is what a previous drop
+ * leaves behind. Naming them again restores that link; it never admits somebody new.
+ */
+async function wasReleasedFromSession(
+  database: CfpDatabase,
+  session: { id: string; eventId: string },
+  personId: string,
+): Promise<boolean> {
+  const [released] = await database
+    .select({ id: sessionSpeakers.id })
+    .from(sessionSpeakers)
+    .innerJoin(speakers, eq(speakers.id, sessionSpeakers.speakerId))
+    .where(and(
+      eq(sessionSpeakers.sessionId, session.id),
+      eq(speakers.personId, personId),
+      eq(speakers.eventId, session.eventId),
+      isNotNull(sessionSpeakers.deletedAt),
+    ));
+  return released !== undefined;
 }
 
 async function readParticipants(
@@ -793,7 +835,7 @@ cfpRoutes.post("/:slug/submissions", async (context) => {
   if (access !== null) {
     await database.insert(submissionAuthorAccess).values({ submissionId, authorKeyHash: access.hash });
   }
-  await replaceParticipants(database, submissionId, author.personId, input);
+  await replaceParticipants(database, context.env.DB, submissionId, author.personId, input);
   await replaceProposalRelations(database, submissionId, cfp.fields, input, taxonomy.trackId);
   const submission = await readSubmission(database, cfp, submissionId);
   if (input.intent === "submit") {
@@ -935,7 +977,7 @@ cfpRoutes.patch("/:slug/submissions/:submissionId", async (context) => {
       submittedAt: becomesSubmitted ? new Date() : undefined,
     })
     .where(eq(submissions.id, submissionId));
-  await replaceParticipants(database, submissionId, existing.speaker.id, input);
+  await replaceParticipants(database, context.env.DB, submissionId, existing.speaker.id, input);
   await replaceProposalRelations(database, submissionId, cfp.fields, input, taxonomy.trackId);
   const submission = await readSubmission(database, cfp, submissionId);
   if (becomesSubmitted) {

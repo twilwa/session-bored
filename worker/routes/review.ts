@@ -1,6 +1,6 @@
 // ABOUTME: Serves Greenroom's scoped committee review queues and submission permalinks.
 // ABOUTME: Keeps discourse available by remit while reserving organizer-only review controls.
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { Hono } from "hono";
 import { createMiddleware } from "hono/factory";
@@ -341,7 +341,9 @@ reviewRoutes.get("/review/submissions/:submissionId", async (context) => {
       })
       .from(submissionSpeakers)
       .innerJoin(people, eq(submissionSpeakers.personId, people.id))
-      .where(eq(submissionSpeakers.submissionId, submissionId));
+      // A reviewer declares a conflict of interest against this list, so it has to be the
+      // proposal's live one. Somebody the program team removed is nobody's conflict.
+      .where(and(eq(submissionSpeakers.submissionId, submissionId), isNull(submissionSpeakers.deletedAt)));
 
   return context.json({
     id: submission.id,

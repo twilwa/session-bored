@@ -1,6 +1,6 @@
 // ABOUTME: Lets organizers edit, version, publish, and inspect CFP form contracts.
 // ABOUTME: Preserves immutable field snapshots so historical submission answers retain their meaning.
-import { and, asc, desc, eq, notInArray } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, notInArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { Hono } from "hono";
 import {
@@ -394,7 +394,7 @@ async function renderSubmission(database: BuilderDatabase, submissionId: string)
       .select({ id: speakers.id })
       .from(submissionSpeakers)
       .innerJoin(speakers, eq(submissionSpeakers.personId, speakers.personId))
-      .where(eq(submissionSpeakers.submissionId, submissionId)),
+      .where(and(eq(submissionSpeakers.submissionId, submissionId), isNull(submissionSpeakers.deletedAt))),
   ]);
   const answers = new Map(values.map((value) => [value.key, value.value]));
   const valueForKey = (key: string) => {

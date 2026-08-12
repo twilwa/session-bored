@@ -26,12 +26,23 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   one list: the CFP write path rewrites it from the author's `collaborators`
   input, and organizers amend the same rows through `worker/routes/participants.ts`.
   Removal archives the link so a restored participant keeps their row and their
-  completion history. `worker/submission-decision.ts#carryParticipantIntoSession`
-  is the single participant handoff — acceptance runs it per participant, and a
-  late organizer addition runs it once — so it also promotes an `invited` speaker
-  to `onboarding`. Without that promotion the CFP author, who already had an
+  completion history, and archived means gone: every reader of `submission_speaker`
+  and `session_speaker` outside those two write paths filters `deleted_at`, or a
+  removed participant keeps the access, the committee listing, and the agenda
+  lineup that removal claims to take away. Join through
+  `worker/speaker-access.ts` in the speaker lane rather than restating it.
+  `worker/submission-decision.ts#carryParticipantIntoSession` is the single
+  participant handoff — acceptance runs it per participant, and a late organizer
+  addition runs it once — so it also promotes an `invited` speaker to
+  `onboarding`. Without that promotion the CFP author, who already had an
   `invited` row from their first draft, is the one name missing from the roster's
-  onboarding work and from every public surface. A collaborator is named, not
+  onboarding work and from every public surface. `releaseParticipantFromSession`
+  beside it is its exact inverse: both removal doors call it, and it archives the
+  session link plus the onboarding work the handoff created once the person speaks
+  nowhere else at the event. It reports `speaksElsewhereAtEvent` because whether
+  removal should also withdraw the event `speaker` row — which is what drives the
+  public speaker directory, the roster row, and mail eligibility — is an open
+  programme decision (issue #127). A collaborator is named, not
   admitted: naming somebody mints no author key, grants no dashboard, and never
   overwrites the profile an existing person already has.
 - A sessionless task with no `task_scope` row is an event-wide onboarding
@@ -214,9 +225,6 @@ lifecycle and relationships are fixed as follows:
 - Each save rewrites the whole participant list from `collaborators`, author
   first. A blank collaborator row is an unused slot, not an error. The form
   version's `minimumSpeakers`/`maximumSpeakers` are enforced on submit only.
-  `worker/routes/review.ts` still reads `submission_speaker` without filtering
-  `deleted_at`, so its detail sidebar can show a participant an organizer has
-  removed; that filter belongs to the review lane.
 - `formId` and `formVersion` freeze the form contract. `formatId`,
   `submissionTracks`, and `submissionValues` carry taxonomy and answers; built-in
   title, abstract, audience, and reviewer-note columns remain the list/detail
