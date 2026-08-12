@@ -1,0 +1,70 @@
+worker/index.ts
+  s_a24ea4104e4f25::t_9bb8a842520bb2 353
+  s_a24ea4104e4f25::t_a3076a80bbcbe6 43
+  s_a24ea4104e4f25::t_4580976e7b5bef 317
+  s_a24ea4104e4f25::t_4230ac4308585e 364
+worker/routes/participants.ts
+  s_a24ea4104e4f25::t_75fc766bd9bf2a 17
+  s_a24ea4104e4f25::t_7036835cd7e694 283
+worker/routes/cfp-builder.ts
+  s_a24ea4104e4f25::t_a987862a5b1d17 3
+  s_a24ea4104e4f25::t_04d8d190c981e5 397
+worker/routes/portal.ts
+  s_a24ea4104e4f25::t_9dcff4d5c35855 21
+  s_a24ea4104e4f25::t_7c98be71316dc8 305
+worker/routes/cfp.ts
+  s_a24ea4104e4f25::t_93a447b010ec71 838,980
+  s_a24ea4104e4f25::t_3b5fe306de320c 15-16
+  s_a24ea4104e4f25::t_6679bb5b5e7fed 26
+  s_a24ea4104e4f25::t_e5a5bb4dfeab0d 3
+  s_a24ea4104e4f25::t_59d7850a624481 516-521,525
+  s_a24ea4104e4f25::t_c9f1db7caf2940 608-609
+  s_a24ea4104e4f25::t_0a1d18e91d6414 550-553,570-572,581-583,588-607
+worker/routes/review.ts
+  s_a24ea4104e4f25::t_2e7ec8d0af8210 344-346
+  s_a24ea4104e4f25::t_21ebbf6f64abdd 3
+worker/routes/agenda.ts
+  s_a24ea4104e4f25::t_ee6cb25f2566ff 191-193,197
+  s_a24ea4104e4f25::t_692f663ceff9c7 194-196,198
+worker/speaker-access.ts
+  s_a24ea4104e4f25::t_2bd4acf556cbd3 1-20
+AGENTS.md
+  s_a24ea4104e4f25::t_40d4b9dade179f 29-36
+  s_a24ea4104e4f25::t_8f8aa9cd26255c 37,39-45
+worker/routes/ai-review.ts
+  s_a24ea4104e4f25::t_21ebbf6f64abdd 3
+  s_a24ea4104e4f25::t_2e7ec8d0af8210 190
+tests/integration/participant-revocation.test.ts
+  s_a24ea4104e4f25::t_a33619954ec0b9 4-5,7-9
+  s_a24ea4104e4f25::t_7b6351621d4602 326-383
+  s_a24ea4104e4f25::t_5d825e2031d8d4 384-432
+  s_a24ea4104e4f25::t_e6a0eb7e7df1de 48-53,56,65,77,81,100-107,117-118,137-139,159-168,171-172,185-187,191,194-196,199,201,204-205,208-209,213,217,226-227,229-236,240-248,251-257,261-267,272,276-281,285,289-293,295,300,303,307-315,433-434,440,442-445,448
+  s_a24ea4104e4f25::t_2e2abb87d210f2 140-151
+  s_a24ea4104e4f25::t_fec344647ba1a4 1-3,6,10-47,54-55,57-64,66-76,78-80,82-99,108-116,119-136,152-158,169-170,173-184,188-190,192-193,197-198,200,202-203,206-207,210-212,214-216,218-225,228,237-239,249-250,258-260,268-271,273-275,282-284,286-288,294,296-299,301-302,304-306,316-325,435-439,441,446-447,449-451
+worker/routes/roster.ts
+  s_a24ea4104e4f25::t_692f663ceff9c7 81-84,731-734
+worker/email/calendar-invite.ts
+  s_a24ea4104e4f25::t_692f663ceff9c7 3
+  s_a24ea4104e4f25::t_cf7fdcc4ac5f86 70
+worker/submission-decision.ts
+  s_a24ea4104e4f25::t_3fb389969d8843 214-237,243-244,255-260,262-267,269-289,291-292,302,304-305
+  s_a24ea4104e4f25::t_7b02a8715777cc 238-242,245-254,261,268
+  s_a24ea4104e4f25::t_e921b32d6248bc 3
+  s_a24ea4104e4f25::t_8b3923245ad634 290,293-301,303
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "08f8408a3d06a21a1d10d8377b9424e83754bd55",
+  "prompts": {},
+  "sessions": {
+    "s_a24ea4104e4f25": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8ea1e433-65c2-491a-bd82-a3357e332c72",
+        "model": "claude-opus-5"
+      },
+      "human_author": null
+    }
+  }
+}
