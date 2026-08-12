@@ -1,0 +1,20 @@
+tests/e2e/agenda.spec.ts
+  s_4f51c4607aa205::t_700413061a9df7 11,28
+  s_4f51c4607aa205::t_9ce4e975e96910 12-22,29-30,34-40
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "6edaa739ed003bbd39a559bdce4d7c234e2d8fcb",
+  "prompts": {},
+  "sessions": {
+    "s_4f51c4607aa205": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ff412-33ba-7792-a502-de1a7ba3ac74",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
