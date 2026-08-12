@@ -1,0 +1,45 @@
+AGENTS.md
+  s_768007cd4a3f5a::t_309ff5e0b8bf6c 324-338
+tests/unit/portal-uploads.test.ts
+  s_768007cd4a3f5a::t_b6e28828689a5c 14-21
+  s_768007cd4a3f5a::t_def588cccc2da0 24,28,37,44,51-69,73,82,107,123,130,141,170
+  s_768007cd4a3f5a::t_5a65b1a6bfff51 146-166
+worker/routes/portal.ts
+  s_768007cd4a3f5a::t_fe99aca3456f4b 249
+  s_768007cd4a3f5a::t_eb7cb234aa04b6 450
+  s_768007cd4a3f5a::t_0b564f625f8c41 263
+  s_768007cd4a3f5a::t_1ac3d20b1ba50c 286-287,291
+  s_768007cd4a3f5a::t_3bd53a6937a7ee 144
+  s_768007cd4a3f5a::t_655aeba35f837e 461
+  s_768007cd4a3f5a::t_9c6d26f5906583 508
+  s_768007cd4a3f5a::t_11185f6d7badff 540-542
+  s_768007cd4a3f5a::t_b7ba9a8dbd0a13 109
+  s_768007cd4a3f5a::t_c8d3c602521ea8 434-435
+worker/seed.ts
+  s_768007cd4a3f5a::t_bc49ceb7e91ac2 6
+  s_768007cd4a3f5a::t_88a0afb27fdb14 520,526,528-531
+tests/integration/portal-content.test.ts
+  s_768007cd4a3f5a::t_3b5e3b16856dfb 280-379
+  s_768007cd4a3f5a::t_05a64e532cfbae 28-53,100,117,221,392
+worker/storage/files.ts
+  s_768007cd4a3f5a::t_2df9b2216acc65 54-88,92,105-109,116
+  s_768007cd4a3f5a::t_f05ef333602d6d 111-115
+tests/integration/content-management.test.ts
+  s_768007cd4a3f5a::t_62739b5eb34833 30-32
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "8fba7345a06e5d1ddd767047d52ba7eeeba01444",
+  "prompts": {},
+  "sessions": {
+    "s_768007cd4a3f5a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7b552959-2d17-47c6-8916-2cfc29063016",
+        "model": "claude-opus-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
