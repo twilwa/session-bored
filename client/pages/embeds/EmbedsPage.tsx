@@ -209,11 +209,15 @@ export function EmbedsPage() {
       },
     };
   }, [selected]);
+  const deliveryFormats: DeliveryFormat[] = selected?.widgetType === "speakers" || selected?.widgetType === "gallery"
+    ? ["script", "iframe", "json"]
+    : ["script", "iframe", "json", "ical"];
+  const selectedFormat = deliveryFormats.includes(format) ? format : "script";
 
   async function copyOutput(): Promise<void> {
     if (delivery === null) return;
     try {
-      await navigator.clipboard.writeText(delivery.values[format]);
+      await navigator.clipboard.writeText(delivery.values[selectedFormat]);
       setMessage("Copied to clipboard.");
     } catch {
       setMessage("Copy was unavailable. Select the output and copy it manually.");
@@ -346,13 +350,13 @@ export function EmbedsPage() {
               </StatusChip>
             </div>
             <div className="embed-format-tabs" role="tablist" aria-label="Embed delivery format">
-              {(["script", "iframe", "json", "ical"] as const).map((value) => (
-                <button aria-selected={format === value} key={value} onClick={() => setFormat(value)} role="tab" type="button">
+              {deliveryFormats.map((value) => (
+                <button aria-selected={selectedFormat === value} key={value} onClick={() => setFormat(value)} role="tab" type="button">
                   {{ script: "Script tag", iframe: "iframe", json: "JSON", ical: "iCal" }[value]}
                 </button>
               ))}
             </div>
-            <pre className="embed-code"><code>{delivery.values[format]}</code></pre>
+            <pre className="embed-code"><code>{delivery.values[selectedFormat]}</code></pre>
             <div className="embed-output__actions">
               <Button onClick={() => void copyOutput()} tone="signal">Copy</Button>
               <a className="button button--quiet" href={delivery.scriptUrl} rel="noreferrer" target="_blank">Open script</a>

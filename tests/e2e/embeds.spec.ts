@@ -113,3 +113,16 @@ test("embed builder remains usable at phone width", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Save embed" })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
 });
+
+test("speaker widgets offer only delivery formats that represent speakers", async ({ page }) => {
+  await signInAsOrganizer(page);
+  await page.goto("/organizer/embeds");
+
+  await page.getByLabel("Name").fill(`Speaker directory ${Date.now()}`);
+  await page.locator(".embed-type").filter({ hasText: "Speakers list" }).click();
+  await page.getByLabel("Status").selectOption("published");
+  await page.getByRole("button", { name: "Save embed" }).click();
+
+  await expect(page.getByRole("heading", { name: "Copy your snippet" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "iCal" })).toHaveCount(0);
+});
