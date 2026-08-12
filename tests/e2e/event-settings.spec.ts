@@ -1,13 +1,21 @@
 // ABOUTME: Exercises organizer room and track management through the real Worker and browser UI.
 // ABOUTME: Covers safe removal messaging and the bounded management modal at desktop and phone widths.
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
-async function signInAsOrganizer(page: import("@playwright/test").Page): Promise<void> {
+async function signInAsOrganizer(page: Page): Promise<void> {
   await page.goto("/login");
   await page.getByLabel("Email").fill("sbek-organizer@example.com");
   await page.getByLabel("Password").fill("SbekTest!2027-org");
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page).toHaveURL(/\/organizer$/);
+}
+
+async function expandSettingsItem(dialog: Locator, itemName: string): Promise<void> {
+  const showDetails = dialog.getByRole("button", { name: `Show details for ${itemName}` });
+  const hideDetails = dialog.getByRole("button", { name: `Hide details for ${itemName}` });
+  await expect(showDetails.or(hideDetails)).toBeVisible();
+  if (await showDetails.isVisible()) await showDetails.click();
+  await expect(hideDetails).toBeVisible();
 }
 
 test("organizer creates, renames, and removes a room from the agenda", async ({ page }, testInfo) => {
@@ -28,7 +36,7 @@ test("organizer creates, renames, and removes a room from the agenda", async ({ 
   await expect(page.locator(".agenda-room-heading").getByText(roomName, { exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Manage rooms and tracks" }).click();
-  await dialog.getByRole("button", { name: `Show details for ${roomName}` }).click();
+  await expandSettingsItem(dialog, roomName);
   await dialog.getByRole("button", { name: `Edit ${roomName}` }).click();
   await dialog.getByLabel("Room name").fill(renamedRoomName);
   await dialog.getByRole("button", { name: "Save room" }).click();
@@ -36,7 +44,7 @@ test("organizer creates, renames, and removes a room from the agenda", async ({ 
   await expect(page.locator(".agenda-room-heading").getByText(renamedRoomName, { exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Manage rooms and tracks" }).click();
-  await dialog.getByRole("button", { name: `Show details for ${renamedRoomName}` }).click();
+  await expandSettingsItem(dialog, renamedRoomName);
   await dialog.getByRole("button", { name: `Remove ${renamedRoomName}` }).click();
   await dialog.getByRole("button", { name: "Remove room" }).click();
   await expect(dialog.getByText(renamedRoomName, { exact: true })).toHaveCount(0);
@@ -65,7 +73,7 @@ test("organizer manages CFP tracks and gets reference-safe removal guidance", as
 
   await page.goto("/organizer/agenda");
   await page.getByRole("button", { name: "Manage rooms and tracks" }).click();
-  await dialog.getByRole("button", { name: `Show details for ${trackName}` }).click();
+  await expandSettingsItem(dialog, trackName);
   await dialog.getByRole("button", { name: `Edit ${trackName}` }).click();
   await dialog.getByLabel("Track name").fill(renamedTrackName);
   await dialog.getByRole("button", { name: "Save track" }).click();
@@ -76,7 +84,7 @@ test("organizer manages CFP tracks and gets reference-safe removal guidance", as
 
   await page.goto("/organizer/agenda");
   await page.getByRole("button", { name: "Manage rooms and tracks" }).click();
-  await dialog.getByRole("button", { name: `Show details for ${renamedTrackName}` }).click();
+  await expandSettingsItem(dialog, renamedTrackName);
   await dialog.getByRole("button", { name: `Remove ${renamedTrackName}` }).click();
   await expect(dialog).toContainText("stops offering it on the CFP");
   await dialog.getByRole("button", { name: "Remove track" }).click();
@@ -136,14 +144,14 @@ test("organizer manages CFP tracks and gets reference-safe removal guidance", as
   }
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 
-  await dialog.getByRole("button", { name: "Show details for Main Stage" }).click();
+  await expandSettingsItem(dialog, "Main Stage");
   await dialog.getByRole("button", { name: "Remove Main Stage" }).click();
   await dialog.getByRole("button", { name: "Remove room" }).click();
   await expect(dialog.getByRole("alert")).toContainText("still has 3 sessions assigned");
   await expect(dialog.getByRole("alert")).toContainText("another room or TBD");
   await dialog.getByRole("button", { name: "Back" }).click();
 
-  await dialog.getByRole("button", { name: "Show details for Platform & Infra" }).click();
+  await expandSettingsItem(dialog, "Platform & Infra");
   await dialog.getByRole("button", { name: "Remove Platform & Infra" }).click();
   await dialog.getByRole("button", { name: "Remove track" }).click();
   await expect(dialog.getByRole("alert")).toContainText("Platform & Infra is used by");
