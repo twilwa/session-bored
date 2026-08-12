@@ -324,6 +324,20 @@ reason - tests inject a fake one instead of touching the network.
   included when known) and sends it - a deliberate action at
   `POST /api/events/:eventId/sessions/:sessionId/calendar-invite`, not
   triggered by scheduling itself.
+- Whether a sender exists is deployment state, never page copy. Organizer
+  surfaces read `GET /api/email-sender` (organizer-only, in `worker/routes/comms.ts`)
+  for `connected` plus the names of the missing secrets, and render both the
+  connected and the unconnected-with-recourse states through the single
+  `client/components/email-sender.tsx`. Its recourse text points at README's
+  "Connecting an email sender"; keep the two in step.
+- A `decision_notice` stays `queued` until it actually reaches the provider, and
+  `worker/routes/comms.ts` projects those queued rows into the Communications
+  dispatch log so a recorded decision stays visible without inventing an
+  `email_dispatch` attempt. Both the batch dispatch route and
+  `retryDecisionNotice` send anything still `queued`; only a `sent` notice is
+  refused, and that refusal - not the insert - is what prevents a double send.
+  So the promise that a waiting letter goes out once a sender is connected is
+  real, and the organizer sends it from Communications.
 - The one real, network-touching test is opt-in:
   `RUN_REAL_EMAIL_TEST=1 RESEND_API_KEY=... RESEND_FROM_ADDRESS=... npx vitest run tests/unit/email-live.test.ts`,
   sending to Resend's documented safe address `delivered@resend.dev`.

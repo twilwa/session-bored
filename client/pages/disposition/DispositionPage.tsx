@@ -6,6 +6,7 @@ import type {
   DecisionStatus,
   DispositionSummary,
 } from "../../../shared/api.ts";
+import { EmailSenderChip, EmailSenderNotice, useEmailSenderStatus } from "../../components/email-sender.tsx";
 import { Button, LoadingState, StatusChip, Toast } from "../../components/ui.tsx";
 import { requestJson } from "../../lib.tsx";
 import "./disposition.css";
@@ -40,6 +41,7 @@ export function DispositionPage() {
   const [preview, setPreview] = useState<DecisionBatchPreview | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const senderStatus = useEmailSenderStatus();
 
   async function load(): Promise<void> {
     const payload = await readJson<{ items: DispositionSummary[] }>(
@@ -115,7 +117,7 @@ export function DispositionPage() {
     if (preview === null) return;
     setBusy(true);
     try {
-      const result = await readJson<{ queuedCount: number; skippedCount: number }>(
+      const result = await readJson<{ queuedCount: number; skippedCount: number; message: string }>(
         `/api/events/${eventId}/decision-batches/${preview.id}/dispatch`,
         { method: "POST" },
         decisionDispatchTimeoutMs,
@@ -123,7 +125,7 @@ export function DispositionPage() {
       setPreview({ ...preview, status: "queued" });
       await load();
       setMessage(
-        `${result.queuedCount} notice${result.queuedCount === 1 ? "" : "s"} queued; ${result.skippedCount} already queued. No email provider is connected.`,
+        `${result.queuedCount} notice${result.queuedCount === 1 ? "" : "s"} queued; ${result.skippedCount} already queued. ${result.message}`,
       );
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Batch dispatch failed.");
@@ -140,8 +142,10 @@ export function DispositionPage() {
           <h1>Decide quietly.<br />Tell deliberately.</h1>
           <p>Status changes never notify speakers. Letters enter the queue only from a reviewed batch.</p>
         </div>
-        <StatusChip tone="signal">Email sender not connected</StatusChip>
+        <EmailSenderChip status={senderStatus} />
       </header>
+
+      <EmailSenderNotice status={senderStatus} />
 
       <section className="disposition-rule" aria-label="Decision safety rule">
         <strong>Silent means silent.</strong>

@@ -5,6 +5,7 @@ import { drizzle } from "drizzle-orm/d1";
 import { Hono } from "hono";
 import { createMiddleware } from "hono/factory";
 import { decisionBatches, decisionNotices, emailDispatches, type Role } from "../../db/schema.ts";
+import { isEmailConfigured, missingEmailSenderSecrets } from "../email.ts";
 import { sendSessionCalendarInvite } from "../email/calendar-invite.ts";
 import { discardDraftDispatch, sendQueuedDispatch, updateDraftDispatch } from "../email/dispatch-queue.ts";
 import { retryDecisionNotice } from "../email/decision-notices.ts";
@@ -66,11 +67,22 @@ const requireOrganizer = createMiddleware<CommsEnvironment>(async (context, next
   await next();
 });
 
+commsRoutes.use("/api/email-sender", requireOrganizer);
 commsRoutes.use("/api/events/:eventId/email-dispatches", requireOrganizer);
 commsRoutes.use("/api/events/:eventId/email-dispatches/*", requireOrganizer);
 commsRoutes.use("/api/events/:eventId/decision-notices/*", requireOrganizer);
 commsRoutes.use("/api/events/:eventId/comms/*", requireOrganizer);
 commsRoutes.use("/api/events/:eventId/sessions/:sessionId/calendar-invite", requireOrganizer);
+
+// Whether this deployment can send at all, and which Worker secrets it still
+// needs. Organizer surfaces read it so their alert can name what is missing
+// instead of asserting a disconnected sender from hard-coded copy.
+commsRoutes.get("/api/email-sender", (context) =>
+  context.json({
+    connected: isEmailConfigured(context.env),
+    missingSecrets: missingEmailSenderSecrets(context.env),
+  })
+);
 
 commsRoutes.get("/api/events/:eventId/email-dispatches", async (context) => {
   const database = drizzle(context.env.DB);
@@ -98,6 +110,9 @@ commsRoutes.get("/api/events/:eventId/email-dispatches", async (context) => {
         eq(decisionNotices.deliveryStatus, "queued"),
       )),
   ]);
+  const pendingReason = isEmailConfigured(context.env)
+    ? "Recorded and waiting to send. No delivery has been attempted yet."
+    : "No email sender is connected, so delivery was not attempted.";
   const queuedItems = queuedDecisionNotices.map((notice) => ({
     id: `eml_decision_${notice.id}`,
     eventId,
@@ -107,7 +122,7 @@ commsRoutes.get("/api/events/:eventId/email-dispatches", async (context) => {
     recipients: [{ email: notice.recipientEmail, name: notice.recipientName }],
     status: "queued" as const,
     providerMessageIds: null,
-    failureReason: "Email sender is not connected, so delivery was not attempted.",
+    failureReason: pendingReason,
     sentAt: null,
     createdByUserId: null,
     createdAt: notice.queuedAt,

@@ -11,7 +11,13 @@ test("organizer decides silently and reviews a queue-only batch", async ({ page 
 
   await expect(page.getByRole("heading", { name: /Decide quietly/ })).toBeVisible();
   await expect(page.getByText("Status changes never notify speakers.")).toBeVisible();
-  await expect(page.getByText("Email sender not connected")).toBeVisible();
+  const deliveryStatus = page.getByRole("region", { name: "Email delivery status" });
+  await expect(deliveryStatus).toContainText("Email sender not connected");
+  await expect(deliveryStatus).toContainText("RESEND_API_KEY");
+  await expect(deliveryStatus).toContainText("RESEND_FROM_ADDRESS");
+  await expect(deliveryStatus).toContainText("Whoever deploys this Greenroom");
+  await expect(deliveryStatus).toContainText("npx wrangler secret put RESEND_API_KEY");
+  await expect(deliveryStatus.getByRole("link", { name: "Connecting an email sender" })).toBeVisible();
 
   const previewButton = page.getByRole("button", { name: "Preview decision batch" });
   const applyButton = page.getByRole("button", { name: "Apply silently" });
@@ -52,10 +58,14 @@ test("organizer decides silently and reviews a queue-only batch", async ({ page 
 
   await heldDispatch?.fulfill({
     contentType: "application/json",
-    json: { queuedCount: 1, skippedCount: 0 },
+    json: {
+      queuedCount: 1,
+      skippedCount: 0,
+      message: "Decision notices are recorded in Greenroom and waiting to send. No email sender is connected, so nothing was attempted.",
+    },
     status: 200,
   });
-  await expect(page.getByText("1 notice queued; 0 already queued. No email provider is connected.")).toBeVisible();
+  await expect(page.getByText(/1 notice queued; 0 already queued\. Decision notices are recorded in Greenroom and waiting to send\./)).toBeVisible();
 });
 
 test("contains the wide decision table at phone width", async ({ page }) => {

@@ -86,9 +86,37 @@ npm run db:migrate:remote && npm run deploy
 ```
 
 R2 is intentionally not bound in M0. The configuration carries a TODO to add
-the `FILES` binding when wave-2 file uploads land. Email delivery likewise has
-a typed provider-neutral boundary that visibly reports `provider_not_configured`
-until the communications lane supplies Resend.
+the `FILES` binding when wave-2 file uploads land.
+
+## Connecting an email sender
+
+Greenroom sends no email until a sender is connected, and says so on the
+Disposition and Communications pages. Until then it drafts, previews, and
+records everything normally: a dispatched decision letter is kept, shown in
+Communications as waiting to send, and delivered once a sender is connected.
+
+Delivery goes through [Resend](https://resend.com), and its credentials are
+**Cloudflare Worker secrets set at deploy time, not settings inside the app**.
+An organizer cannot enter them from a Greenroom page. Whoever operates the
+deployment sets both secrets against the Worker and redeploys:
+
+```sh
+printf '%s' 're_your_api_key' | npx wrangler secret put RESEND_API_KEY
+printf '%s' 'Greenroom <program@your-verified-domain.example>' | npx wrangler secret put RESEND_FROM_ADDRESS
+npm run deploy
+```
+
+`RESEND_FROM_ADDRESS` must use a domain already verified in the Resend account,
+otherwise Resend rejects every send. Greenroom treats the sender as connected
+only when both secrets are present; either one alone keeps it unconfigured.
+
+For local development, set the same two names in `.dev.vars`. Leave them unset
+to keep local runs, CI, and the test suites in the network-free unconfigured
+state, which is the default.
+
+Once a sender is connected, an organizer sends the letters that were waiting
+from **Communications → decision letters that have not gone out**. A letter
+already delivered is never re-sent.
 
 ## Architecture and contracts
 

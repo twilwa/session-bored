@@ -6,6 +6,7 @@ import type {
   DispositionSummary,
   EmailDispatchSummary,
 } from "../../../shared/api.ts";
+import { EmailSenderNotice, useEmailSenderStatus } from "../../components/email-sender.tsx";
 import { Button, DataTable, LoadingState, StatusChip, TextField, Toast } from "../../components/ui.tsx";
 import "./comms.css";
 
@@ -40,6 +41,11 @@ function requestErrorMessage(status: number, payload: unknown): string {
     if (error === "email_not_configured") {
       return "No email sender is configured, so nothing was sent. The draft remains ready for review.";
     }
+    // A send the provider rejected answers 502 and names its own reason, which is
+    // the only thing that tells an organizer what to fix.
+    if ("status" in payload && payload.status === "failed") {
+      return `The email sender rejected this message: ${"error" in payload && typeof payload.error === "string" ? payload.error : "no reason given"}`;
+    }
   }
   return `Communications request failed (${status}).`;
 }
@@ -61,7 +67,7 @@ function statusTone(status: string): "neutral" | "good" | "signal" {
 
 export function CommsPage() {
   const [dispatches, setDispatches] = useState<EmailDispatchSummary[] | null>(null);
-  const [failedNotices, setFailedNotices] = useState<DispositionSummary[]>([]);
+  const [undeliveredNotices, setUndeliveredNotices] = useState<DispositionSummary[]>([]);
   const [templates, setTemplates] = useState<CommsTemplateDescriptor[]>([]);
   const [recipients, setRecipients] = useState<CommunicationRecipient[]>([]);
   const [previewKey, setPreviewKey] = useState<string>("");
@@ -72,6 +78,7 @@ export function CommsPage() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [edits, setEdits] = useState<Record<string, { subject: string; body: string }>>({});
+  const senderStatus = useEmailSenderStatus();
 
   async function load(): Promise<void> {
     const [dispatchPayload, dispositionPayload, templatePayload, recipientPayload] = await Promise.all([
@@ -81,7 +88,9 @@ export function CommsPage() {
       readJson<{ items: CommunicationRecipient[] }>(`/api/events/${eventId}/comms/recipients`),
     ]);
     setDispatches(dispatchPayload.items);
-    setFailedNotices(dispositionPayload.items.filter((item) => item.notice?.deliveryStatus === "failed"));
+    setUndeliveredNotices(dispositionPayload.items.filter((item) =>
+      item.notice !== null && item.notice.deliveryStatus !== "sent"
+    ));
     setTemplates(templatePayload.items);
     setRecipients(recipientPayload.items);
     if (previewKey === "" && templatePayload.items[0] !== undefined) {
@@ -234,15 +243,17 @@ export function CommsPage() {
     }
   }
 
-  async function retryNotice(submissionId: string): Promise<void> {
+  async function sendNotice(submissionId: string): Promise<void> {
     setBusy(true);
     try {
       await readJson(`/api/events/${eventId}/decision-notices/${submissionId}/retry`, { method: "POST" });
-      await load();
-      setMessage("Retry attempted.");
+      setMessage("Decision letter sent.");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Retry failed.");
+      setMessage(error instanceof Error ? error.message : "Sending the decision letter failed.");
     } finally {
+      // A rejected attempt still changes the letter's recorded state, so reload either way
+      // rather than leaving the page showing a letter as untried.
+      await load().catch(() => undefined);
       setBusy(false);
     }
   }
@@ -307,23 +318,31 @@ export function CommsPage() {
         <Button disabled={busy} onClick={() => void draftReminders()} tone="signal">Draft reminders for overdue tasks</Button>
       </header>
 
-      <section aria-label="Email delivery status" className="comms-delivery-status">
-        <span aria-hidden="true" className="comms-delivery-status__mark">!</span>
-        <div>
-          <strong>Email sender not connected</strong>
-          <p>You can draft, edit, and preview messages. Nothing will send until an email sender is configured.</p>
-        </div>
-      </section>
+      <EmailSenderNotice status={senderStatus} />
 
-      {failedNotices.length === 0 ? null : (
-        <section className="workspace-section comms-failed" aria-label="Failed decision letters">
-          <div className="section-heading"><div><p className="section-label">NEEDS ATTENTION</p><h2>{failedNotices.length} decision letter{failedNotices.length === 1 ? "" : "s"} failed to send</h2></div></div>
+      {undeliveredNotices.length === 0 ? null : (
+        <section className="workspace-section comms-undelivered" aria-label="Decision letters not yet delivered">
+          <div className="section-heading"><div><p className="section-label">NEEDS ATTENTION</p><h2>{undeliveredNotices.length} decision letter{undeliveredNotices.length === 1 ? "" : "s"} {undeliveredNotices.length === 1 ? "has" : "have"} not gone out</h2></div></div>
           <div className="comms-draft-list">
-            {failedNotices.map((item) => (
+            {undeliveredNotices.map((item) => (
               <article className="comms-draft" key={item.id}>
                 <p><strong>{item.recipientName}</strong> &lt;{item.recipientEmail}&gt;</p>
                 <p className="quiet-copy">{item.title ?? "Untitled proposal"} · {item.notice?.outcome}</p>
-                <Button disabled={busy} onClick={() => void retryNotice(item.id)} tone="signal">Retry send</Button>
+                <p className="comms-undelivered-state">
+                  {item.notice?.deliveryStatus === "failed"
+                    ? "Send failed"
+                    : "Waiting to send — no delivery has been attempted"}
+                </p>
+                {item.notice?.deliveryStatus === "failed"
+                  ? <p className="comms-undelivered-reason">{item.notice.failureReason ?? "The sender recorded no reason."}</p>
+                  : null}
+                {senderStatus?.connected === false
+                  ? <p className="comms-undelivered-blocked">It will go out once an email sender is connected. See the delivery status above.</p>
+                  : (
+                    <Button disabled={busy || senderStatus === null} onClick={() => void sendNotice(item.id)} tone="signal">
+                      Send now
+                    </Button>
+                  )}
               </article>
             ))}
           </div>

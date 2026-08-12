@@ -165,6 +165,12 @@ export const routeMap = {
     module: "communications",
     access: "organizer",
   },
+  emailSender: {
+    method: "GET",
+    path: "/api/email-sender",
+    module: "communications",
+    access: "organizer",
+  },
     agenda: { method: "GET", path: "/api/events/:eventId/agenda", module: "agenda", access: "organizer" },
     updateAgendaSession: {
       method: "PATCH",
@@ -1004,6 +1010,18 @@ export interface DecisionNoticeSummary {
   outcome: DecisionStatus;
   deliveryStatus: "queued" | "sent" | "failed";
   queuedAt: string;
+  failureReason: string | null;
+}
+
+/**
+ * Whether this deployment can send email, and the Worker secrets it still
+ * needs. `RESEND_API_KEY` and `RESEND_FROM_ADDRESS` are set at deploy time by
+ * whoever operates the Worker, so an organizer reading this may not be able to
+ * supply them - surfaces that report it must say who can.
+ */
+export interface EmailSenderStatus {
+  connected: boolean;
+  missingSecrets: string[];
 }
 
 export interface DispositionSummary {
