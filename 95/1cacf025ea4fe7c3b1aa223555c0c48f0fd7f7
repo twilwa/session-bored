@@ -1,0 +1,44 @@
+tests/unit/email-delivery.test.ts
+  s_2505ea6d6c2689::t_b597db18e5fe1a 60,79,94,108
+worker/email/send.ts
+  s_2505ea6d6c2689::t_72d5466c4ca917 39-43
+  s_2505ea6d6c2689::t_e6522e37d6f416 38
+AGENTS.md
+  s_2505ea6d6c2689::t_bfeeb7b0a4f8ca 281-294
+worker/email/resend.ts
+  s_2505ea6d6c2689::t_a68e758707457d 4
+  s_2505ea6d6c2689::t_ef6d7f2bcd470f 30-36
+worker/email/reserved-domains.ts
+  s_2505ea6d6c2689::t_44f6c87d55e780 1-2,4-60
+  s_2505ea6d6c2689::t_423350fa379975 3
+  s_2505ea6d6c2689::t_1c7f9e523edf19 61-83
+worker/email.ts
+  s_2505ea6d6c2689::t_79f593894c11df 73-75
+  s_2505ea6d6c2689::t_33917fff7a5a75 49-51
+  s_2505ea6d6c2689::t_7502523bad8bec 3
+tests/unit/email-reserved-domains.test.ts
+  s_2505ea6d6c2689::t_1096bb23e7e719 107-113
+  s_2505ea6d6c2689::t_149407a6c92336 1-9,11-106,114-118
+  s_2505ea6d6c2689::t_770d99a062c431 10
+tests/integration/email-sending.test.ts
+  s_2505ea6d6c2689::t_46321e15c05535 7
+  s_2505ea6d6c2689::t_fd485c2980ad3e 22-24
+  s_2505ea6d6c2689::t_6a8e39feb66175 423-464
+  s_2505ea6d6c2689::t_55b0701ec3dfdd 226-227,236-248,251,253
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "951cacf025ea4fe7c3b1aa223555c0c48f0fd7f7",
+  "prompts": {},
+  "sessions": {
+    "s_2505ea6d6c2689": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "852cd28a-c5dd-43dc-b784-62c522cb49aa",
+        "model": "claude-opus-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
