@@ -100,6 +100,36 @@ test("organizer sees sessionless onboarding assignments in the chase list", asyn
   }
 });
 
+test("organizer can edit a speaker without replacing or silently removing their stored headshot", async ({ page }) => {
+  await signInAsOrganizer(page);
+  await page.goto("/organizer/roster");
+
+  const rosterBeforeResponse = await page.request.get("/api/events/evt_devflow_conf_2027/roster");
+  const rosterBefore = await rosterBeforeResponse.json() as {
+    items: Array<{ id: string; headshotUrl: string | null }>;
+  };
+  const storedHeadshotUrl = rosterBefore.items.find(
+    (speaker) => speaker.id === "spk_priya_devflow_2027",
+  )?.headshotUrl;
+  expect(storedHeadshotUrl).toMatch(/^\//);
+
+  const speakerCard = page.locator(".speaker-record").filter({ hasText: "Priya Raman" });
+  await clickSpeakerAction(speakerCard, "Priya Raman", "Edit");
+  const dialog = page.getByRole("dialog", { name: "Edit Priya Raman" });
+  await expect(dialog.getByLabel("Replacement headshot URL")).toHaveValue("");
+  await expect(dialog).toContainText("Leave this blank to keep the stored headshot");
+  await expect(dialog.getByRole("checkbox", { name: "Remove stored headshot" })).not.toBeChecked();
+
+  await dialog.getByLabel("Organization").fill("Latticework Systems, Inc.");
+  await dialog.getByRole("button", { name: "Save speaker" }).click();
+  await expect(speakerCard).toContainText("Latticework Systems, Inc.");
+
+  const rosterResponse = await page.request.get("/api/events/evt_devflow_conf_2027/roster");
+  const roster = await rosterResponse.json() as { items: Array<{ id: string; headshotUrl: string | null }> };
+  expect(roster.items.find((speaker) => speaker.id === "spk_priya_devflow_2027")?.headshotUrl)
+    .toBe(storedHeadshotUrl);
+});
+
 test("task ledger keeps assignees collapsed behind truthful progress summaries", async ({ page }) => {
   await signInAsOrganizer(page);
   await page.goto("/organizer/roster/tasks");

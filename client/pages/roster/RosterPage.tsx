@@ -276,12 +276,23 @@ function SpeakerFormModal({
   onSaved: (message: string) => Promise<void>;
 }) {
   const [busy, setBusy] = useState(false);
+  const hasStoredHeadshot = speaker?.headshotUrl !== null && speaker?.headshotUrl !== undefined &&
+    speaker.headshotUrl.trim().length > 0;
 
   async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     setBusy(true);
     const data = new FormData(event.currentTarget);
-    const payload = Object.fromEntries(data.entries());
+    const payload: Record<string, FormDataEntryValue | null> = Object.fromEntries(data.entries());
+    const removeStoredHeadshot = data.get("removeStoredHeadshot") === "on";
+    delete payload.removeStoredHeadshot;
+    if (speaker !== undefined && speaker !== null) {
+      if (removeStoredHeadshot) {
+        payload.headshotUrl = null;
+      } else if (typeof payload.headshotUrl === "string" && payload.headshotUrl.trim().length === 0) {
+        delete payload.headshotUrl;
+      }
+    }
     try {
       const result = speaker === undefined || speaker === null
         ? await requestJson<{ adoptedExistingPerson: boolean; createdSpeaker: boolean; name: string }>(`/api/events/${eventId}/speakers`, {
@@ -307,7 +318,21 @@ function SpeakerFormModal({
         <TextField defaultValue={speaker?.jobTitle ?? ""} label="Job title" name="jobTitle" />
         <TextField defaultValue={speaker?.organization ?? ""} label="Organization" name="organization" />
         <label className="field" htmlFor="speaker-bio"><span className="field__label">Bio</span><textarea className="field__control roster-textarea" defaultValue={speaker?.bio ?? ""} id="speaker-bio" name="bio" /></label>
-        <TextField defaultValue={speaker?.headshotUrl ?? ""} label="Headshot URL" name="headshotUrl" type="url" />
+        <TextField
+          defaultValue=""
+          hint={hasStoredHeadshot
+            ? "Leave this blank to keep the stored headshot, or enter a full URL including https:// to replace it."
+            : "Enter a full URL including https://."}
+          label={hasStoredHeadshot ? "Replacement headshot URL" : "Headshot URL"}
+          name="headshotUrl"
+          type="url"
+        />
+        {hasStoredHeadshot ? (
+          <label className="field" htmlFor="remove-stored-headshot">
+            <span><input id="remove-stored-headshot" name="removeStoredHeadshot" type="checkbox" /> Remove stored headshot</span>
+            <span className="field__hint">Select this only if the speaker should no longer have a headshot.</span>
+          </label>
+        ) : null}
         <SelectField defaultValue={speaker?.status ?? "invited"} label="Workflow status" name="status">
           {workflowStatuses.map((value) => <option key={value} value={value}>{formatStatus(value)}</option>)}
         </SelectField>
