@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import type {
   AIReviewAssistance,
   ReviewCriterion,
+  ReviewRecusalResult,
   ReviewSubmissionDetail,
 } from "../../../shared/api.ts";
 import { Button, LoadingState, StatusChip, Toast } from "../../components/ui.tsx";
@@ -92,6 +93,8 @@ export function SubmissionReviewPage({
   const [message, setMessage] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [scorecardError, setScorecardError] = useState<string | null>(null);
+  const [confirmingRecusal, setConfirmingRecusal] = useState(false);
+  const [recusalPending, setRecusalPending] = useState(false);
   const scorecardRef = useRef<HTMLFormElement>(null);
 
   async function load({
@@ -211,7 +214,26 @@ export function SubmissionReviewPage({
     }
   }
 
+  async function recuse(): Promise<void> {
+    if (detail?.round === null || detail?.round === undefined) return;
+    setRecusalPending(true);
+    try {
+      await reviewRequest<ReviewRecusalResult>(
+        `/api/review/submissions/${submissionId}/recusal`,
+        { method: "POST", body: JSON.stringify({ roundId: detail.round.id }) },
+      );
+      setConfirmingRecusal(false);
+      setMessage("Recused. The committee sees this assignment as recused, and no score was recorded.");
+      await load({ hydrateScorecard: true });
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "The recusal could not be recorded.");
+    } finally {
+      setRecusalPending(false);
+    }
+  }
+
   const backHref = role === "organizer" ? "/organizer/review" : "/reviewer";
+  const recused = detail?.assignmentStatus === "recused";
   if (detail === null) {
     if (loadError !== null) {
       return (
@@ -247,7 +269,7 @@ export function SubmissionReviewPage({
 
       <div className="review-detail__grid">
         <div>
-          {role === "reviewer" && assistance?.status === "available" ? (
+          {role === "reviewer" && !recused && assistance?.status === "available" ? (
             <section className="ai-review-assistance" aria-labelledby="ai-assistance-heading">
               <p className="section-label">OPTIONAL AI READING AID</p>
               <h2 id="ai-assistance-heading">Ask for a faster first read.</h2>
@@ -262,7 +284,7 @@ export function SubmissionReviewPage({
               <small>No proposal content is sent until you choose to generate.</small>
             </section>
           ) : null}
-          {role === "reviewer" && assistance?.status === "ready" ? (
+          {role === "reviewer" && !recused && assistance?.status === "ready" ? (
             <section className="ai-review-assistance" aria-labelledby="ai-assistance-heading">
               <div className="ai-review-assistance__heading">
                 <div>
@@ -300,7 +322,7 @@ export function SubmissionReviewPage({
               <small>{assistance.attribution}. Change or explicitly confirm each suggested value before submitting.</small>
             </section>
           ) : null}
-          {role === "reviewer" && assistance?.status === "unavailable" ? (
+          {role === "reviewer" && !recused && assistance?.status === "unavailable" ? (
             <section className="ai-review-assistance ai-review-assistance--unavailable" aria-labelledby="ai-assistance-heading">
               <p className="section-label">AI-GENERATED READING AID</p>
               <h2 id="ai-assistance-heading">Unavailable right now.</h2>
@@ -367,7 +389,17 @@ export function SubmissionReviewPage({
                 </div>
               ))}
           </section>
-          {role === "reviewer" && detail.round !== null ? (
+          {role === "reviewer" && recused ? (
+            <section className="scorecard scorecard--recused" aria-label="Your recusal">
+              <p className="section-label">RECUSED</p>
+              <h2>You stepped back from this proposal.</h2>
+              <p>
+                The committee sees this assignment as recused. No score, no decision, and no
+                message went out, and it no longer counts against your outstanding reads.
+              </p>
+            </section>
+          ) : null}
+          {role === "reviewer" && !recused && detail.round !== null ? (
             <form className="scorecard" onSubmit={(event) => void submitScorecard(event)} ref={scorecardRef}>
               <div>
                 <p className="section-label">LIGHTWEIGHT SCORECARD</p>
@@ -411,6 +443,45 @@ export function SubmissionReviewPage({
               <label className="review-field"><span>Scorecard note</span><textarea onChange={(event) => setReviewComment(event.target.value)} rows={3} value={reviewComment} /></label>
               <Button type="submit">{detail.reviews.length === 0 ? "Save scorecard" : "Update scorecard"}</Button>
             </form>
+          ) : null}
+          {role === "reviewer" && !recused && detail.round !== null ? (
+            <section className="recusal-panel" aria-labelledby="recusal-heading">
+              <p className="section-label">CONFLICT OF INTEREST</p>
+              <h2 id="recusal-heading">Can’t judge this one fairly?</h2>
+              {detail.reviews.length > 0 ? (
+                <p>
+                  You’ve already saved a scorecard here. Ask an organizer to withdraw it before
+                  recusing, so the committee never keeps a score from a recused reviewer.
+                </p>
+              ) : confirmingRecusal ? (
+                <>
+                  <p>
+                    Recusing leaves this proposal in your remit to read, but takes it out of your
+                    outstanding reads and shows the committee that you stepped back. It records no
+                    score, no decision, and sends nothing to the speaker.
+                  </p>
+                  <div className="recusal-panel__actions">
+                    <Button disabled={recusalPending} onClick={() => void recuse()} type="button">
+                      {recusalPending ? "Recording recusal…" : "Confirm recusal"}
+                    </Button>
+                    <Button
+                      disabled={recusalPending}
+                      onClick={() => setConfirmingRecusal(false)}
+                      type="button"
+                    >
+                      Keep this assignment
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p>Step back from scoring this proposal and show the committee that you did.</p>
+                  <Button onClick={() => setConfirmingRecusal(true)} type="button">
+                    Recuse myself
+                  </Button>
+                </>
+              )}
+            </section>
           ) : null}
           {role === "organizer" ? (
             <section className="recorded-reviews">

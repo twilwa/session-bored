@@ -278,3 +278,58 @@ test("organizer edits and removes a scorecard criterion", async ({ page }) => {
   await updatedRow.getByRole("button", { name: "Remove criterion" }).click();
   await expect(page.getByText(updatedLabel, { exact: true })).toHaveCount(0);
 });
+
+test("a reviewer recuses themselves and the committee sees the recusal", async ({ page, browser }) => {
+  const unique = Date.now();
+  const email = `recusing-reviewer-${unique}@example.com`;
+  const password = "ReviewTalks!2027";
+  const name = `Recusing Reviewer ${unique}`;
+  await signIn(page, "sbek-organizer@example.com", "SbekTest!2027-org");
+  await expect(page).toHaveURL(/\/organizer/);
+  const provision = await page.request.post("/api/review/events/evt_devflow_conf_2027/reviewers", {
+    data: { name, email, password, trackIds: [] },
+  });
+  expect(provision.status()).toBe(201);
+  const reviewerUserId = (await provision.json()).reviewer.id;
+  const assign = await page.request.post("/api/review/rounds/rnd_initial_review/assignments", {
+    data: { reviewerUserId, submissionIds: ["sub_ci_monorepo", "sub_ai_verification"] },
+  });
+  expect(assign.status()).toBe(201);
+
+  const reviewerContext = await browser.newContext();
+  const reviewerPage = await reviewerContext.newPage();
+  await signIn(reviewerPage, email, password);
+  await expect(reviewerPage.getByText("2 proposals in remit", { exact: true })).toBeVisible();
+  await reviewerPage.getByRole("link", { name: /Taming 40-Minute CI/ }).click();
+  await expect(reviewerPage).toHaveURL(/\/reviewer\/submissions\/sub_ci_monorepo/);
+
+  await reviewerPage.getByRole("button", { name: "Recuse myself" }).click();
+  await expect(reviewerPage.getByText("It records no score, no decision, and sends nothing to the speaker.", { exact: false })).toBeVisible();
+  await reviewerPage.getByRole("button", { name: "Confirm recusal" }).click();
+
+  await expect(reviewerPage.getByRole("heading", { name: "You stepped back from this proposal." })).toBeVisible();
+  await expect(reviewerPage.getByRole("button", { name: /Save scorecard|Update scorecard/ })).toHaveCount(0);
+  await expect(reviewerPage.getByRole("button", { name: "Recuse myself" })).toHaveCount(0);
+  await expect(reviewerPage.getByText("RECORDED SCORECARDS", { exact: true })).toHaveCount(0);
+
+  await reviewerPage.getByRole("link", { name: "← Back to review" }).click();
+  await expect(reviewerPage.getByText("1 assigned proposal", { exact: true })).toBeVisible();
+  await expect(
+    reviewerPage.getByRole("region", { name: "Your review queue" })
+      .getByRole("link", { name: /Taming 40-Minute CI/ }),
+  ).toHaveCount(0);
+  const recusedList = reviewerPage.getByRole("region", {
+    name: "Proposals you recused yourself from",
+  });
+  await expect(recusedList.getByRole("link", { name: /Taming 40-Minute CI/ })).toBeVisible();
+  const coverage = reviewerPage.locator(".coverage-dial");
+  await expect(coverage.getByText("0%", { exact: true })).toBeVisible();
+  await expect(coverage.getByText("0 of 1 scorecards", { exact: true })).toBeVisible();
+
+  await page.getByRole("link", { name: "Review", exact: true }).click();
+  await page.getByText("Committee setup", { exact: true }).click();
+  const reviewerCard = page.locator(".reviewer-progress-list article").filter({ hasText: name });
+  await expect(reviewerCard.getByText("0 / 1", { exact: true })).toBeVisible();
+  await expect(reviewerCard.getByText("1 recused", { exact: false })).toBeVisible();
+  await reviewerContext.close();
+});
