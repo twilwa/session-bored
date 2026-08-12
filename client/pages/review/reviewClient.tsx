@@ -4,7 +4,15 @@ import type { MouseEvent, ReactNode } from "react";
 
 const reviewErrorMessages: Record<string, string> = {
   forbidden: "This proposal is not in your current assignment or review round.",
+  human_score_choice_required: "Change or confirm each AI-suggested score before saving.",
 };
+
+export const humanScoreChoiceMessage = reviewErrorMessages.human_score_choice_required!;
+
+export function reviewErrorMessage(errorKey: string, status: number): string {
+  const fallback = errorKey.replaceAll("_", " ");
+  return reviewErrorMessages[errorKey] ?? (fallback === "" ? `Request failed (${status})` : fallback);
+}
 
 export async function reviewRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
@@ -23,7 +31,7 @@ export async function reviewRequest<T>(path: string, init?: RequestInit): Promis
     throw new Error(
       errorKey === undefined
         ? `Request failed (${response.status})`
-        : reviewErrorMessages[errorKey] ?? errorKey.replaceAll("_", " "),
+        : reviewErrorMessage(errorKey, response.status),
     );
   }
   return response.json<T>();

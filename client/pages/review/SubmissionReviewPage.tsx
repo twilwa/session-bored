@@ -1,13 +1,13 @@
 // ABOUTME: Renders a proposal permalink with committee discussion and lightweight scoring.
 // ABOUTME: Hides speaker identity during blind rounds while preserving organizer visibility.
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import type {
   AIReviewAssistance,
   ReviewCriterion,
   ReviewSubmissionDetail,
 } from "../../../shared/api.ts";
 import { Button, LoadingState, StatusChip, Toast } from "../../components/ui.tsx";
-import { ReviewLink, reviewRequest } from "./reviewClient.tsx";
+import { humanScoreChoiceMessage, ReviewLink, reviewRequest } from "./reviewClient.tsx";
 
 function displayAnswer(value: ReviewSubmissionDetail["answers"][number]["value"]): string {
   if (Array.isArray(value)) return value.join(", ");
@@ -90,6 +90,8 @@ export function SubmissionReviewPage({
   const [reviewComment, setReviewComment] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [scorecardError, setScorecardError] = useState<string | null>(null);
+  const scorecardRef = useRef<HTMLFormElement>(null);
 
   async function load({
     hydrateScorecard = false,
@@ -176,6 +178,7 @@ export function SubmissionReviewPage({
   async function submitScorecard(event: FormEvent): Promise<void> {
     event.preventDefault();
     if (detail?.round === null || detail?.round === undefined) return;
+    setScorecardError(null);
     try {
       await reviewRequest(`/api/review/submissions/${submissionId}/reviews`, {
         method: "POST",
@@ -189,10 +192,21 @@ export function SubmissionReviewPage({
       });
       setAIStartingPointId(null);
       setConfirmedAiScoreCriterionIds(new Set());
+      setScorecardError(null);
       setMessage("Scorecard saved. Your discussion stays separate and editable.");
       await load({ hydrateScorecard: true });
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "The scorecard could not be saved.");
+      const errorMessage = error instanceof Error ? error.message : "The scorecard could not be saved.";
+      if (errorMessage === humanScoreChoiceMessage) {
+        setScorecardError(errorMessage);
+        requestAnimationFrame(() => {
+          scorecardRef.current
+            ?.querySelector<HTMLInputElement>(".ai-score-confirmation input:not(:checked)")
+            ?.focus();
+        });
+      } else {
+        setMessage(errorMessage);
+      }
     }
   }
 
@@ -349,7 +363,7 @@ export function SubmissionReviewPage({
             ))}
           </section>
           {role === "reviewer" && detail.round !== null ? (
-            <form className="scorecard" onSubmit={(event) => void submitScorecard(event)}>
+            <form className="scorecard" onSubmit={(event) => void submitScorecard(event)} ref={scorecardRef}>
               <div>
                 <p className="section-label">LIGHTWEIGHT SCORECARD</p>
                 <h2>{detail.round.name}</h2>
@@ -357,6 +371,7 @@ export function SubmissionReviewPage({
                   ? <p>Conversation comes first. Ratings help order the meeting.</p>
                   : <p className="scorecard__state">Editing saved scorecard</p>}
               </div>
+              {scorecardError === null ? null : <p className="scorecard__state" role="alert">{scorecardError}</p>}
               {detail.criteria.map((criterion) => {
                 const suggestion = assistance?.status === "ready"
                   ? assistance.suggestedScores[criterion.id]

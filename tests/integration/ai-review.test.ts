@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import type { Role } from "../../db/schema.ts";
 import type { ReviewAssistant, ReviewAssistanceInput } from "../../worker/ai/review-assistance.ts";
 import type { AuthSession } from "../../worker/auth.ts";
+import { reviewErrorMessage } from "../../client/pages/review/reviewClient.tsx";
 import worker from "../../worker/index.ts";
 import { createAIReviewRoutes } from "../../worker/routes/ai-review.ts";
 import reviewRoutes from "../../worker/routes/review.ts";
@@ -453,9 +454,13 @@ describe("AI-assisted review", () => {
       env,
     );
     expect(unchangedResponse.status).toBe(422);
-    await expect(unchangedResponse.json()).resolves.toEqual({
+    const unchangedPayload = await unchangedResponse.json<{ error: string }>();
+    expect(unchangedPayload).toEqual({
       error: "human_score_choice_required",
     });
+    expect(reviewErrorMessage(unchangedPayload.error, unchangedResponse.status)).toBe(
+      "Change or confirm each AI-suggested score before saving.",
+    );
 
     const confirmedResponse = await injectedApp.request(
       reviewUrl,
