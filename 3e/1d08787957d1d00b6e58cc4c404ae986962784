@@ -1,0 +1,64 @@
+tests/e2e/review.spec.ts
+  s_b9c76a1f451456::t_169127ec146978 325-327
+  s_b9c76a1f451456::t_87792072374041 281-324,328-335
+client/pages/review/ReviewerReviewPage.tsx
+  s_b9c76a1f451456::t_541e9363988146 51,54,69-81
+  s_b9c76a1f451456::t_2c936b42daedff 4,12
+  s_b9c76a1f451456::t_7a3c6f5353ee44 38-42
+  s_63577f17a1c450::t_2f3f44b3bec902 82-83
+worker/routes/review.ts
+  s_b9c76a1f451456::t_05a7b284eb5280 558-560,562
+  s_b9c76a1f451456::t_6ba15aca03f01a 1219-1228,1234-1237,1239-1245,1247-1277,1279-1288,1290-1300
+  s_b9c76a1f451456::t_af13a2c85f38ca 358
+  s_b9c76a1f451456::t_2c936b42daedff 27,70
+  s_b9c76a1f451456::t_d2d0e886d4b067 1104-1106
+  s_b9c76a1f451456::t_e5ef0fc1622f61 1229-1233,1238,1246,1278,1289
+client/pages/review/SubmissionReviewPage.tsx
+  s_b9c76a1f451456::t_c07e45d9a33549 235,271,286,324
+  s_b9c76a1f451456::t_3cbd912bbd5b03 442-472,474-480
+  s_b9c76a1f451456::t_44851f58ce39dc 7
+  s_b9c76a1f451456::t_3d9c3d880a7eb1 95-96
+  s_b9c76a1f451456::t_8ec374cf302cc0 473
+  s_b9c76a1f451456::t_22fc7f0090607f 387-397
+  s_b9c76a1f451456::t_49ae29eb57ded9 216-233
+shared/api.ts
+  s_b9c76a1f451456::t_bbf93ce21f2937 1114-1115
+  s_b9c76a1f451456::t_14946e79c14e48 1056-1071
+  s_b9c76a1f451456::t_b0a87836a09d62 976-981
+tests/unit/route-map.test.ts
+  s_b9c76a1f451456::t_64291889c8696e 4,103-111
+  s_b9c76a1f451456::t_9b4ae05d77a049 112
+AGENTS.md
+  s_b9c76a1f451456::t_d115a99fff56dc 59-66
+client/pages/review/OrganizerReviewPage.tsx
+  s_b9c76a1f451456::t_3246cadaa7ec05 19,373
+client/pages/review/review.css
+  s_b9c76a1f451456::t_3e010043e3baa4 156-163
+tests/integration/review-engine.test.ts
+  s_b9c76a1f451456::t_fc425b45141c15 953-1112,1114-1135,1138-1173,1188-1194,1196-1217
+  s_b9c76a1f451456::t_fa0936bc82fc85 1113,1136-1137,1174-1187,1195
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "3e1d08787957d1d00b6e58cc4c404ae986962784",
+  "prompts": {},
+  "sessions": {
+    "s_63577f17a1c450": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1945680f-c91d-49fa-82f8-7360cc77669d",
+        "model": "claude-opus-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    },
+    "s_b9c76a1f451456": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e59a5726-3efd-4144-be9e-7d0123fc1d16",
+        "model": "claude-opus-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
