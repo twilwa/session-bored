@@ -1,0 +1,29 @@
+tests/e2e/roster.spec.ts
+  s_79788dc0c5fdab::t_bce1eb1d75cc1c 103-106,116-129,131-132
+  s_79788dc0c5fdab::t_950c8c53fc2aae 107-115,130
+client/pages/roster/RosterPage.tsx
+  s_79788dc0c5fdab::t_fe685091e8ae13 279-280,286-295,321-335
+tests/integration/roster.test.ts
+  s_79788dc0c5fdab::t_5f4cfd99dadd2f 420-430
+  s_79788dc0c5fdab::t_c26f50afb626fb 382-392,404-408
+  s_79788dc0c5fdab::t_f4e91a1490e86c 393-403
+  s_79788dc0c5fdab::t_fe685091e8ae13 409-419,431-432
+worker/routes/roster.ts
+  s_79788dc0c5fdab::t_3633bea9f54634 263-265
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "aacfd78614a6d5c0a70e980ea9144e0ce914846f",
+  "prompts": {},
+  "sessions": {
+    "s_79788dc0c5fdab": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ff3f8-3f0d-7ff1-9f54-f15321d25925",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
