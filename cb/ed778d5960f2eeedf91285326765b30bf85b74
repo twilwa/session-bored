@@ -1,0 +1,89 @@
+worker/email/decision-notices.ts
+  s_4b2e6e369285d3::t_ced486cee9167c 129
+  s_4b2e6e369285d3::t_ac9691a6164da7 100-105
+  s_4b2e6e369285d3::t_fcd469e9561634 2
+  s_4b2e6e369285d3::t_26fb3d792fe9e6 60-70
+  s_4b2e6e369285d3::t_7750d52f2cfe95 21-22,81,87,90
+AGENTS.md
+  s_4b2e6e369285d3::t_97b9dd7a0fd460 308-321
+README.md
+  s_4b2e6e369285d3::t_78958edb41b1a1 89-119
+tests/integration/disposition.test.ts
+  s_4b2e6e369285d3::t_9d71d139913f28 296,301
+tests/e2e/disposition.spec.ts
+  s_4b2e6e369285d3::t_a2b2bd97ec5ec1 14-20,61-65,68
+tests/e2e/comms.spec.ts
+  s_4b2e6e369285d3::t_01731fab32d300 110
+  s_4b2e6e369285d3::t_92e86a03fa5cd9 16-23
+  s_4b2e6e369285d3::t_0e25fa305281c1 115-120,122,136,139,141-145
+  s_4b2e6e369285d3::t_178ac5402bf7d9 121,123-135,137-138,140
+client/pages/comms/CommsPage.tsx
+  s_4b2e6e369285d3::t_ab33c9d3bf69e1 254-256
+  s_4b2e6e369285d3::t_231bc2e0758702 91-93
+  s_4b2e6e369285d3::t_f65ee85b0bf76b 44-48
+  s_4b2e6e369285d3::t_cf041622e009cc 70
+  s_4b2e6e369285d3::t_c8a98a4edccd15 246,250,252
+  s_4b2e6e369285d3::t_a929c1828db8cc 9
+  s_4b2e6e369285d3::t_5bbcfdf8140c03 321,323-325,327,331-332,334-335,339-345
+  s_4b2e6e369285d3::t_84b215f31f9a0c 333,336-338
+  s_4b2e6e369285d3::t_9f1e3d5d90b30b 81
+client/pages/disposition/DispositionPage.tsx
+  s_4b2e6e369285d3::t_ce0697efde5f94 120,128
+  s_4b2e6e369285d3::t_59a9f70eab3959 9,145,148
+  s_4b2e6e369285d3::t_12b24d3f119be6 44
+  s_4b2e6e369285d3::t_d37f8f76184640 149
+tests/integration/email-sending.test.ts
+  s_4b2e6e369285d3::t_6ccb5634cfb323 219,221-227,231-236,239-248,250-251,262-263,269-295,298-312,314,325-329,331-336,338-340,342-361,366-384,387-395,397-404,406-410,412-417,420-423,425-428
+  s_4b2e6e369285d3::t_bebac451ea4a5c 220,228-230,237-238,249,252-261,264-268,296-297,313,315-324,330,337,341,362-365,385-386,396,405,411,418-419,424,429
+  s_4b2e6e369285d3::t_7750d52f2cfe95 160
+  s_4b2e6e369285d3::t_dcdc38b2ffc791 6
+  s_4b2e6e369285d3::t_a13a4792625d8a 20-48
+worker/routes/comms.ts
+  s_4b2e6e369285d3::t_5f1b69df92e8dd 77-86
+  s_4b2e6e369285d3::t_b0e1b0e15278e6 125
+  s_4b2e6e369285d3::t_a6ad6e6ede2b7b 70
+  s_4b2e6e369285d3::t_066fae3c610969 8
+  s_4b2e6e369285d3::t_db3e3833436463 113-115
+client/pages/comms/comms.css
+  s_4b2e6e369285d3::t_75f139746c2346 4-5,7
+  s_4b2e6e369285d3::t_46b9aa383e321e 6
+worker/routes/disposition.ts
+  s_4b2e6e369285d3::t_49ec62e37ff03f 96
+  s_4b2e6e369285d3::t_52a21840f11240 136
+  s_4b2e6e369285d3::t_f67bde996a1cd4 118
+  s_4b2e6e369285d3::t_74e5e13e7cba4a 308-310,315-316,319
+  s_4b2e6e369285d3::t_d7db88db95b388 285-300,305,321
+  s_4b2e6e369285d3::t_5909283c44ecaf 20
+client/components/email-sender.tsx
+  s_4b2e6e369285d3::t_463fb252ea3216 102
+  s_4b2e6e369285d3::t_67122e33e91681 1-40,53-91,93-101,103-110
+  s_4b2e6e369285d3::t_ca7a5920cfb37d 92
+  s_4b2e6e369285d3::t_4e1dc0dcc52605 41-52
+client/styles.css
+  s_4b2e6e369285d3::t_dfc657ce308395 135-144
+worker/email.ts
+  s_4b2e6e369285d3::t_abcf1d2ecb063f 54-65
+shared/api.ts
+  s_4b2e6e369285d3::t_65d9334c0ef9db 986-997
+  s_4b2e6e369285d3::t_0ffc7ea5fcdf03 168-172
+  s_4b2e6e369285d3::t_d271771b3ab6c3 167
+tests/unit/email-delivery.test.ts
+  s_4b2e6e369285d3::t_3abcfea9b3cb00 4
+  s_4b2e6e369285d3::t_c8af99d3aa3d8c 34-44
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "cbed778d5960f2eeedf91285326765b30bf85b74",
+  "prompts": {},
+  "sessions": {
+    "s_4b2e6e369285d3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "66521012-c0f6-44c0-aefa-9b0ff4d39acb",
+        "model": "claude-opus-5"
+      },
+      "human_author": null
+    }
+  }
+}
