@@ -41,6 +41,13 @@ test("organizer review makes the coverage and decision sorts primary", async ({ 
     await expect(page.getByLabel("Enable optional AI reading aids")).not.toBeChecked();
   }
   await expect(page.getByText("AI never records a score or decision.", { exact: true })).toBeVisible();
+  await expect(page.getByText(
+    "No track remit is the default. Select each track this reviewer should be able to see.",
+    { exact: true },
+  )).toBeVisible();
+  await expect(page.getByRole("group", {
+    name: "Track remit · none selected means assigned proposals only",
+  })).toBeVisible();
 
   await page.getByRole("link", { name: /Taming 40-Minute CI/ }).click();
   await expect(page).toHaveURL(/\/organizer\/review\/submissions\/sub_ci_monorepo/);

@@ -325,11 +325,11 @@ function OrganizerReviewWorklist() {
             </section>
 
             <form className="setup-card setup-form" onSubmit={(event) => void provisionReviewer(event)}>
-              <p className="section-label">ADD REVIEWER</p><h2>Usable access, now.</h2><p>All submissions is the default. Select tracks only to narrow the remit.</p>
+              <p className="section-label">ADD REVIEWER</p><h2>Usable access, now.</h2><p>No track remit is the default. Select each track this reviewer should be able to see.</p>
               <label className="review-field"><span>Name</span><input autoComplete="name" name="name" required /></label>
               <label className="review-field"><span>Email</span><input autoComplete="email" name="email" required type="email" /></label>
               <label className="review-field"><span>Temporary password</span><input autoComplete="new-password" minLength={8} name="password" required type="password" /></label>
-              <fieldset className="track-checks"><legend>Track remit · none selected means all</legend>{config.tracks.map((track) => <label key={track.id}><input checked={reviewerTrackIds.includes(track.id)} onChange={(event) => setReviewerTrackIds((current) => event.target.checked ? [...current, track.id] : current.filter((id) => id !== track.id))} type="checkbox" />{track.name}</label>)}</fieldset>
+              <fieldset className="track-checks"><legend>Track remit · none selected means assigned proposals only</legend>{config.tracks.map((track) => <label key={track.id}><input checked={reviewerTrackIds.includes(track.id)} onChange={(event) => setReviewerTrackIds((current) => event.target.checked ? [...current, track.id] : current.filter((id) => id !== track.id))} type="checkbox" />{track.name}</label>)}</fieldset>
               <fieldset className="track-checks"><legend>Review pool · none selected means the first open round</legend>{config.rounds.filter((round) => round.status === "open").map((round) => <label key={round.id}><input checked={reviewerRoundIds.includes(round.id)} onChange={(event) => setReviewerRoundIds((current) => event.target.checked ? [...current, round.id] : current.filter((id) => id !== round.id))} type="checkbox" />{round.name}</label>)}</fieldset>
               <Button type="submit">Add reviewer</Button>
             </form>
