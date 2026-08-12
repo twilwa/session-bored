@@ -57,7 +57,7 @@ describe("createResendEmailDelivery", () => {
     const delivery = createResendEmailDelivery({ apiKey: "key", fromAddress: "Greenroom <a@b.com>" });
     await delivery.send({
       eventId: "evt_devflow_conf_2027",
-      recipient: "speaker@example.com",
+      recipient: "speaker@greenroom-mail.dev",
       subject: "Hi",
       html: "<p>Hi</p>",
       text: "Hi",
@@ -76,7 +76,7 @@ describe("createResendEmailDelivery", () => {
     const delivery = createResendEmailDelivery({ apiKey: "key", fromAddress: "Greenroom <a@b.com>" });
     await expect(delivery.send({
       eventId: "evt_devflow_conf_2027",
-      recipient: "speaker@example.com",
+      recipient: "speaker@greenroom-mail.dev",
       subject: "Hi",
       html: "<p>Hi</p>",
       text: "Hi",
@@ -91,7 +91,7 @@ describe("createResendEmailDelivery", () => {
     const delivery = createResendEmailDelivery({ apiKey: "key", fromAddress: "Greenroom <a@b.com>" });
     const result = await delivery.send({
       eventId: "evt_devflow_conf_2027",
-      recipient: "speaker@example.com",
+      recipient: "speaker@greenroom-mail.dev",
       subject: "Hi",
       html: "<p>Hi</p>",
       text: "Hi",
@@ -105,7 +105,7 @@ describe("createResendEmailDelivery", () => {
     const delivery = createResendEmailDelivery({ apiKey: "key", fromAddress: "Greenroom <a@b.com>" });
     const result = await delivery.send({
       eventId: "evt_devflow_conf_2027",
-      recipient: "speaker@example.com",
+      recipient: "speaker@greenroom-mail.dev",
       subject: "Hi",
       html: "<p>Hi</p>",
       text: "Hi",

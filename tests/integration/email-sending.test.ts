@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { env } from "cloudflare:workers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { decisionNotices, emailDispatches, sessions, speakers, tasks, taskAssignees } from "../../db/schema.ts";
+import { decisionNotices, emailDispatches, people, sessions, speakers, submissions, tasks, taskAssignees } from "../../db/schema.ts";
 import type { EmailDelivery, EmailDeliveryResult } from "../../worker/email.ts";
 import { dispatchDecisionNoticeEmails, retryDecisionNotice } from "../../worker/email/decision-notices.ts";
 import { sendQueuedDispatch } from "../../worker/email/dispatch-queue.ts";
@@ -18,6 +18,9 @@ async function request(path: string, init?: RequestInit): Promise<Response> {
 }
 
 const senderSecrets = { RESEND_API_KEY: "re_test_key", RESEND_FROM_ADDRESS: "Greenroom <program@example.test>" };
+
+/** An address at a registrable domain, so the reserved-domain guard lets it through. */
+const deliverableRecipient = "docs-retrieval-speaker@greenroom-mail.dev";
 
 /**
  * The same Worker with the two sender secrets present, so a route resolves the
@@ -220,6 +223,8 @@ describe("a decision recorded while no sender is connected", () => {
   const submissionId = "sub_docs_retrieval";
   let cookie: string;
   let database: ReturnType<typeof drizzle>;
+  let submitterPersonId: string;
+  let seededSubmitterEmail: string;
 
   beforeEach(async () => {
     await request("/api/health");
@@ -228,10 +233,24 @@ describe("a decision recorded while no sender is connected", () => {
     // Storage carries across tests in this file, so start each one from a
     // proposal that has never had a decision letter.
     await database.delete(decisionNotices).where(eq(decisionNotices.submissionId, submissionId));
+    // These tests are about whether a connected sender really delivers, and the
+    // seeded submitter is at example.com, which Greenroom now refuses to send
+    // to at all. Give this one proposal an address that could actually receive
+    // mail, and put the fixture back afterwards so nothing leaks into the
+    // reminder and invitation tests that read the seeded addresses.
+    const [submission] = await database
+      .select({ personId: submissions.submitterPersonId })
+      .from(submissions)
+      .where(eq(submissions.id, submissionId));
+    submitterPersonId = submission!.personId!;
+    const [person] = await database.select({ email: people.email }).from(people).where(eq(people.id, submitterPersonId));
+    seededSubmitterEmail = person!.email;
+    await database.update(people).set({ email: deliverableRecipient }).where(eq(people.id, submitterPersonId));
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     vi.unstubAllGlobals();
+    await database.update(people).set({ email: seededSubmitterEmail }).where(eq(people.id, submitterPersonId));
   });
 
   /** Decides the proposal and builds a reviewed batch, stopping short of dispatch. */
@@ -399,6 +418,48 @@ describe("a decision recorded while no sender is connected", () => {
     expect(resend.calls).toHaveLength(1);
     const [notice] = await database.select().from(decisionNotices).where(eq(decisionNotices.batchId, batchId));
     expect(notice?.deliveryStatus).toBe("sent");
+  });
+
+  it("refuses a letter addressed to a reserved domain instead of bouncing off it", async () => {
+    // The production shape of this: a letter queued to a fixture address, a
+    // sender connected, and an organizer one click from a guaranteed hard
+    // bounce against a freshly verified sending domain.
+    const reservedRecipient = "qa-journey-2026@example.com";
+    await database.update(people).set({ email: reservedRecipient }).where(eq(people.id, submitterPersonId));
+
+    const batchId = await buildBatch();
+    const resend = interceptResend({ ok: true, id: "resend_should_never_happen" });
+    const dispatched = await requestWithSenderConnected(`/api/events/${eventId}/decision-batches/${batchId}/dispatch`, {
+      method: "POST",
+      headers: { cookie },
+    });
+
+    // Nothing reached the provider, so the sending domain's reputation is untouched.
+    expect(resend.calls).toHaveLength(0);
+    await expect(dispatched.json()).resolves.toMatchObject({ sent: [], failed: [submissionId] });
+
+    // The letter is recorded as failed with a reason the organizer can act on,
+    // never as sent, and it does not quietly disappear.
+    const [notice] = await database.select().from(decisionNotices).where(eq(decisionNotices.batchId, batchId));
+    expect(notice?.deliveryStatus).toBe("failed");
+    expect(notice?.providerMessageId).toBeNull();
+    expect(notice?.failureReason).toContain(reservedRecipient);
+    expect(notice?.failureReason).toContain("can never receive mail");
+
+    // It reads the same way in the shared Communications dispatch log.
+    const logged = await readLetterLog(reservedRecipient);
+    expect(logged.some((row) => row.status === "sent")).toBe(false);
+    expect(logged.some((row) => row.status === "failed" && row.failureReason?.includes("can never receive mail") === true))
+      .toBe(true);
+
+    // Clicking "Send now" again says the same thing rather than trying again.
+    const retried = await requestWithSenderConnected(
+      `/api/events/${eventId}/decision-notices/${submissionId}/retry`,
+      { method: "POST", headers: { cookie } },
+    );
+    expect(retried.status).toBe(502);
+    await expect(retried.json()).resolves.toMatchObject({ status: "failed" });
+    expect(resend.calls).toHaveLength(0);
   });
 
   it("records a provider rejection as failed and keeps it visible for a retry", async () => {

@@ -1,5 +1,6 @@
 // ABOUTME: Defines Greenroom's provider-neutral transactional email boundary.
 // ABOUTME: Reports provider_not_configured until Wrangler secrets supply a real Resend key.
+import { refuseUndeliverableRecipients } from "./email/reserved-domains.ts";
 import { createResendEmailDelivery } from "./email/resend.ts";
 
 export interface EmailAttachment {
@@ -50,7 +51,9 @@ export interface EmailEnvironment {
  * visibly-unconfigured stub otherwise. Every send site should resolve delivery
  * through this function rather than importing `emailDelivery` directly, so that
  * running without secrets configured (local dev, CI, this repo's own tests)
- * degrades to the same safe, network-free behavior everywhere.
+ * degrades to the same safe, network-free behavior everywhere. The real sender
+ * is wrapped so a recipient at a reserved, undeliverable domain is refused
+ * before the provider is called - see `email/reserved-domains.ts`.
  */
 export function isEmailConfigured(env: EmailEnvironment): boolean {
   return Boolean(env.RESEND_API_KEY && env.RESEND_FROM_ADDRESS);
@@ -72,5 +75,7 @@ export function resolveEmailDelivery(env: EmailEnvironment): EmailDelivery {
   if (!isEmailConfigured(env)) {
     return emailDelivery;
   }
-  return createResendEmailDelivery({ apiKey: env.RESEND_API_KEY!, fromAddress: env.RESEND_FROM_ADDRESS! });
+  return refuseUndeliverableRecipients(
+    createResendEmailDelivery({ apiKey: env.RESEND_API_KEY!, fromAddress: env.RESEND_FROM_ADDRESS! }),
+  );
 }

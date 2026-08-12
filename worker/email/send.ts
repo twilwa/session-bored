@@ -35,6 +35,12 @@ export interface SendTrackedEmailInput {
  * recipients who were silently never told without duplicating queued rows.
  * Nothing is logged when delivery reports `provider_not_configured`, since no
  * attempt to reach the recipient actually happened.
+ *
+ * A recipient at a reserved domain is refused inside the resolved delivery
+ * (`worker/email/reserved-domains.ts`) before any provider call, and comes back
+ * as an ordinary `failed` result. It therefore lands on the same dispatch row,
+ * with the same reason field, as any other rejection - nothing here needs to
+ * know about it, and no send site can route around it.
  */
 export function logEmailSendOutcome(params: {
   templateKey: string;

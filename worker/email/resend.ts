@@ -1,6 +1,7 @@
 // ABOUTME: Sends transactional email through the Resend HTTP API.
 // ABOUTME: Never throws across the delivery boundary; network and API failures resolve to a failed result.
 import type { EmailAttachment, EmailDelivery, EmailDeliveryResult, EmailMessage } from "../email.ts";
+import { isUndeliverableRecipient, undeliverableRecipientReason } from "./reserved-domains.ts";
 
 export interface ResendConfig {
   apiKey: string;
@@ -26,6 +27,13 @@ export function createResendEmailDelivery(config: ResendConfig): EmailDelivery {
   const endpoint = config.endpoint ?? "https://api.resend.com/emails";
   return {
     async send(message: EmailMessage): Promise<EmailDeliveryResult> {
+      // The backstop for the one thing a retry can never repair: a hard bounce
+      // off a reserved domain. `sendTrackedEmail` already refuses these, and
+      // this refuses them again so no future send site can reach Resend by
+      // taking a different route to a delivery.
+      if (isUndeliverableRecipient(message.recipient)) {
+        return { status: "failed", error: undeliverableRecipientReason(message.recipient) };
+      }
       let response: Response;
       try {
         response = await fetch(endpoint, {
