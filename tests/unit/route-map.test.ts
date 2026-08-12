@@ -52,6 +52,12 @@ describe("typed route map", () => {
     expect(routeMap.embeds).toMatchObject({ method: "GET", module: "embeds", access: "organizer" });
     expect(routeMap.createEmbed).toMatchObject({ method: "POST", module: "embeds", access: "organizer" });
     expect(routeMap.publicEmbed).toMatchObject({ method: "GET", module: "public", access: "public" });
+    expect(routeMap.updateAgendaSessionContent).toMatchObject({
+      method: "PATCH",
+      path: "/api/events/:eventId/agenda/sessions/:sessionId/content",
+      module: "agenda",
+      access: "organizer",
+    });
   });
 
   it("publishes the complete organizer communication-template contract", () => {

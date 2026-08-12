@@ -1,0 +1,1 @@
+ALTER TABLE `program_session` ADD `approved_content` text;

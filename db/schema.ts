@@ -431,6 +431,8 @@ export const sessions = sqliteTable(
     roomId: text("room_id").references(() => rooms.id),
     title: text("title"),
     abstract: text("abstract"),
+    approvedContent: text("approved_content", { mode: "json" })
+      .$type<{ title: string | null; abstract: string | null }>(),
     contentStatus: text("content_status", { enum: sessionContentStatuses })
       .$type<SessionContentStatus>()
       .notNull()

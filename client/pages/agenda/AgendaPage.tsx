@@ -2,7 +2,7 @@
 // ABOUTME: Keeps placement non-blocking and every verb on the card it acts on.
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent } from "react";
 import type { AgendaConflict, AgendaPlacement, AgendaSession, AgendaState } from "../../../shared/api.ts";
-import { Button, LoadingState, SelectField, StatusChip } from "../../components/ui.tsx";
+import { Button, LoadingState, SelectField, StatusChip, TextField } from "../../components/ui.tsx";
 import {
   nearestFreeStart,
   overlapColumns,
@@ -160,6 +160,7 @@ function SessionCard({
       <div className="agenda-session-card__marks">
         {conflicting ? <span className="agenda-mark agenda-mark--clash">⚠ Clash</span> : null}
         <span className={`agenda-mark agenda-mark--${session.contentStatus}`}>{contentLabel(session)}</span>
+        {session.editedSinceApproval ? <span className="agenda-mark agenda-mark--edited">Edited after approval</span> : null}
         {session.publishedAt === null ? null : <span className="agenda-mark agenda-mark--published">● Public</span>}
       </div>
     </article>
@@ -183,6 +184,8 @@ export function AgendaPage() {
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<BoardToast | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [contentTitle, setContentTitle] = useState("");
+  const [contentAbstract, setContentAbstract] = useState("");
   const clashesRef = useRef<HTMLElement | null>(null);
 
   async function refreshAgenda(): Promise<void> {
@@ -238,6 +241,11 @@ export function AgendaPage() {
   const placed = agenda?.sessions.filter((session) => session.scheduleStatus === "placed") ?? [];
   const selectedSession = agenda?.sessions.find((session) => session.id === selectedSessionId) ?? null;
   const draggingSession = draggingSessionId === null ? null : sessionsById.get(draggingSessionId) ?? null;
+
+  useEffect(() => {
+    setContentTitle(selectedSession?.title ?? "");
+    setContentAbstract(selectedSession?.abstract ?? "");
+  }, [selectedSession?.id, selectedSession?.title, selectedSession?.abstract]);
 
   function startDrag(event: DragEvent<HTMLElement>, sessionId: string): void {
     draggingSessionIdRef.current = sessionId;
@@ -362,6 +370,39 @@ export function AgendaPage() {
       });
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Session content could not be approved.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveContent(sessionId: string): Promise<void> {
+    const session = sessionsById.get(sessionId);
+    if (session === undefined) return;
+    setBusy(true);
+    setError(null);
+    setCardMenu(null);
+    try {
+      const nextAgenda = await agendaRequest<AgendaState>(
+        `/api/events/${eventId}/agenda/sessions/${sessionId}/content`,
+        {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ title: contentTitle, abstract: contentAbstract }),
+        },
+      );
+      setAgenda(nextAgenda);
+      setToast({
+        message: `${shortTitle(contentTitle)} content saved.`,
+        detail: session.contentStatus === "approved"
+          ? "Approval and publication stayed in place. Publishing remains a separate organizer action."
+          : null,
+        clashes: 0,
+        undo: null,
+        undoSessionId: null,
+        publicationCleared: false,
+      });
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Session content could not be saved.");
     } finally {
       setBusy(false);
     }
@@ -810,6 +851,9 @@ export function AgendaPage() {
                   <StatusChip tone={selectedSession.contentStatus === "approved" ? "good" : selectedSession.contentStatus === "in_review" ? "signal" : "neutral"}>
                     {contentLabel(selectedSession)}
                   </StatusChip>
+                  {selectedSession.editedSinceApproval
+                    ? <StatusChip tone="signal">Edited since approval</StatusChip>
+                    : null}
                   <Button disabled={busy || selectedSession.contentStatus === "approved"} onClick={() => void approveContent(selectedSession.id)}>
                     {selectedSession.contentStatus === "approved" ? "Content approved" : "Approve content"}
                   </Button>
@@ -824,6 +868,69 @@ export function AgendaPage() {
                 </div>
               )}
             </div>
+            {selectedSession?.contentStatus === "approved" && selectedSession.approvedContent === null ? (
+              <p className="agenda-approval-unavailable">
+                Approved comparison unavailable for approvals created before comparison tracking.
+              </p>
+            ) : null}
+            {selectedSession?.editedSinceApproval && selectedSession.approvedContent !== null ? (
+              <section aria-label="Approval comparison" className="agenda-content-comparison">
+                <header>
+                  <div>
+                    <p className="section-label">Edited since approval</p>
+                    <h3>Approved copy compared with current</h3>
+                  </div>
+                  <small>Net difference from the last approval · not a full edit history</small>
+                </header>
+                {selectedSession.title === selectedSession.approvedContent.title ? null : (
+                  <article>
+                    <span>Title changed</span>
+                    <div><strong>Approved</strong><p>{selectedSession.approvedContent.title ?? "Untitled session"}</p></div>
+                    <div className="agenda-content-comparison__current"><strong>Current</strong><p>{selectedSession.title}</p></div>
+                  </article>
+                )}
+                {selectedSession.abstract === selectedSession.approvedContent.abstract ? null : (
+                  <article>
+                    <span>Abstract changed</span>
+                    <div><strong>Approved</strong><p>{selectedSession.approvedContent.abstract ?? "No abstract"}</p></div>
+                    <div className="agenda-content-comparison__current"><strong>Current</strong><p>{selectedSession.abstract ?? "No abstract"}</p></div>
+                  </article>
+                )}
+              </section>
+            ) : null}
+            {selectedSession === null ? null : (
+              <details className="agenda-content-editor">
+                <summary>Edit session content</summary>
+                <form onSubmit={(event) => { event.preventDefault(); void saveContent(selectedSession.id); }}>
+                  <TextField
+                    disabled={busy}
+                    label="Session title"
+                    name="agenda-session-title"
+                    onChange={(event) => setContentTitle(event.target.value)}
+                    required
+                    value={contentTitle}
+                  />
+                  <label className="field" htmlFor="agenda-session-abstract">
+                    <span className="field__label">Abstract</span>
+                    <textarea
+                      className="field__control"
+                      disabled={busy}
+                      id="agenda-session-abstract"
+                      onChange={(event) => setContentAbstract(event.target.value)}
+                      required
+                      rows={5}
+                      value={contentAbstract}
+                    />
+                  </label>
+                  <div className="agenda-content-editor__actions">
+                    <Button disabled={busy || contentTitle.trim() === "" || contentAbstract.trim() === ""} type="submit">
+                      Save content
+                    </Button>
+                    <small>Organizer edits keep approval and publication in place.</small>
+                  </div>
+                </form>
+              </details>
+            )}
             <details className="agenda-console">
               <summary>Place without dragging (keyboard-safe)</summary>
               <div className="agenda-console__fields">
