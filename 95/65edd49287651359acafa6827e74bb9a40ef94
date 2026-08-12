@@ -1,0 +1,56 @@
+client/pages/embeds/embeds.css
+  s_ca17aadd7ec4c5::t_a2ac92c7221ef7 53
+  s_ca17aadd7ec4c5::t_80060bf636d807 8-9,19-21
+tests/e2e/embeds.spec.ts
+  s_ca17aadd7ec4c5::t_f3f4202ab8a759 13-14,16-32,49,54,57,61-62,69-71,74,76-77,79,88-89,91-95,97-98,100-104
+  s_ca17aadd7ec4c5::t_19dbfa24409e0c 42,73
+  s_ca17aadd7ec4c5::t_ccbbe86ac0a254 33,82-83,87
+  s_ca17aadd7ec4c5::t_d1fefa90f453ad 15
+  s_ca17aadd7ec4c5::t_af7f983805f32e 34-36,44,59-60,66,72,75,78,90,96,99
+  s_ca17aadd7ec4c5::t_3077773d74cffa 80-81
+  s_ca17aadd7ec4c5::t_0aad8d74d21d33 84-86
+  s_d484b657a227b0::t_d805e40617b4eb 58
+tests/e2e/public-schedule.spec.ts
+  s_ca17aadd7ec4c5::t_6d4100976424cd 85
+client/styles.css
+  s_ca17aadd7ec4c5::t_547c2bbfd32c5d 364
+client/pages/embeds/EmbedFramePage.tsx
+  s_ca17aadd7ec4c5::t_a2ac92c7221ef7 82-86
+  s_ca17aadd7ec4c5::t_3e5e362eb5a91f 121,124-125,128
+client/pages/embeds/EmbedsPage.tsx
+  s_ca17aadd7ec4c5::t_d1fefa90f453ad 241,248
+  s_ca17aadd7ec4c5::t_0a0d77ebf4e8a9 11,25,47-49,74-141,147-159,165-168,170,172-177,179-184,243,252,256,265-275,286-289,311-322,332-335,375-398
+  s_ca17aadd7ec4c5::t_3e5e362eb5a91f 366-370
+  s_ca17aadd7ec4c5::t_80060bf636d807 142-146
+  s_d484b657a227b0::t_b1cb4b6fe9416a 399
+client/pages/public/AgendaPage.tsx
+  s_ca17aadd7ec4c5::t_547c2bbfd32c5d 8,15
+tests/integration/embeds.test.ts
+  s_ca17aadd7ec4c5::t_d1fefa90f453ad 43
+  s_ca17aadd7ec4c5::t_a221de844d5b8a 265-284
+  s_ca17aadd7ec4c5::t_06695bef27b115 41-42,44-56,106,109,114-115,134-160,167
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "9565edd49287651359acafa6827e74bb9a40ef94",
+  "prompts": {},
+  "sessions": {
+    "s_ca17aadd7ec4c5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ff431-4620-7153-b6c9-409811744015",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    },
+    "s_d484b657a227b0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ff437-ab70-7221-94b8-0e1ba87a5994",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
