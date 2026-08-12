@@ -329,10 +329,21 @@ enriched `tasks` (`taskType`, `instructions`, `acceptedFileTypes`,
   task file behind the same authentication as any other; only the headshot serves
   publicly, from the extension-derived content type.
 - Upload validation is AND-style across extension and declared content type
-  (`validateUpload`). `payload.png` claiming `text/html` must stay rejected -
-  that pairing was a stored XSS (PR #14). Never accept a file because one half
-  matches, and keep the regression tests in `tests/unit/portal-uploads.test.ts`
-  and `tests/integration/portal-content.test.ts` alive when widening types.
+  (`validateUpload`), and an image must additionally start with its format's
+  signature. `payload.png` claiming `text/html` must stay rejected - that pairing
+  was a stored XSS (PR #14) - and so must `payload.png` claiming *nothing*: the
+  declared type is caller-supplied, so an absent, empty, or malformed one names
+  no type and is a refusal, not a pass on the extension alone. Never accept a
+  file because one half matches. `validateUpload` takes the bytes as a required
+  argument so a new upload route cannot silently skip the signature check, and
+  the two speaker upload routes in `worker/routes/portal.ts` are the only callers
+  - the headshot picker and the file request, which is a picture request or a
+  document request depending only on its `acceptedFileTypes`. Both serving
+  routes answer `X-Content-Type-Options: nosniff`, so the public headshot's
+  extension-derived type is enforced rather than hoped for. Keep the regression
+  tests in `tests/unit/portal-uploads.test.ts` and
+  `tests/integration/portal-content.test.ts` alive when widening types, and give
+  any test fixture claiming to be an image a real signature.
 
 ## Communications
 

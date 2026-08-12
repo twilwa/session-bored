@@ -25,6 +25,32 @@ function fileUpload(name: string, type: string, bytes: number[]): FormData {
   return formData;
 }
 
+/** A real PNG signature, so an upload that claims to be a png can actually be one. */
+const pngSignature = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00];
+
+/**
+ * A multipart body written by hand, because `FormData` always supplies a part content type
+ * and the case worth testing is a caller that supplies none. Pass `null` to omit the part's
+ * `Content-Type` header entirely; pass a string to send exactly that value.
+ */
+function rawFileUpload(
+  name: string,
+  type: string | null,
+  bytes: number[],
+): { body: ArrayBuffer; contentType: string } {
+  const boundary = "----greenroomtestboundary";
+  const typeHeader = type === null ? "" : `Content-Type: ${type}\r\n`;
+  const head = new TextEncoder().encode(
+    `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${name}"\r\n${typeHeader}\r\n`,
+  );
+  const tail = new TextEncoder().encode(`\r\n--${boundary}--\r\n`);
+  const body = new Uint8Array(head.length + bytes.length + tail.length);
+  body.set(head, 0);
+  body.set(new Uint8Array(bytes), head.length);
+  body.set(tail, head.length + bytes.length);
+  return { body: body.buffer, contentType: `multipart/form-data; boundary=${boundary}` };
+}
+
 function pdfUpload(name: string): FormData {
   return fileUpload(name, "application/pdf", [1, 2, 3, 4]);
 }
@@ -71,7 +97,7 @@ describe("speaker portal content", () => {
     const upload = await request("/api/portal/profile/headshot", {
       method: "POST",
       headers: { cookie: priyaCookie },
-      body: fileUpload("priya.png", "image/png", [137, 80, 78, 71]),
+      body: fileUpload("priya.png", "image/png", pngSignature),
     });
     expect(upload.status).toBe(201);
     const uploadBody = await upload.json<{ fileId: string; version: number; headshotUrl: string }>();
@@ -88,7 +114,7 @@ describe("speaker portal content", () => {
     const publicResponse = await request(uploadBody.headshotUrl);
     expect(publicResponse.status).toBe(200);
     expect(publicResponse.headers.get("content-type")).toBe("image/png");
-    expect([...new Uint8Array(await publicResponse.arrayBuffer())]).toEqual([137, 80, 78, 71]);
+    expect([...new Uint8Array(await publicResponse.arrayBuffer())]).toEqual(pngSignature);
 
     const privateDownload = await request(`/api/portal/files/${uploadBody.fileId}`, {
       headers: { cookie: priyaCookie },
@@ -192,7 +218,7 @@ describe("speaker portal content", () => {
     const upload = await request(`/api/portal/tasks/${pictureTaskId}/files`, {
       method: "POST",
       headers: { cookie: priyaCookie },
-      body: fileUpload("priya.png", "image/png", [137, 80, 78, 71]),
+      body: fileUpload("priya.png", "image/png", pngSignature),
     });
     expect(upload.status).toBe(201);
     const uploadBody = await upload.json<{ fileId: string; status: string; headshotUrl: string | null }>();
@@ -251,6 +277,106 @@ describe("speaker portal content", () => {
     expect(stored?.total).toBe(0);
   });
 
+  it("refuses a picture upload that declares no content type, on both doors and at every step of the public path", async () => {
+    const organizerCookie = await signIn(organizerCredentials.email, organizerCredentials.password);
+    const created = await request("/api/events/evt_devflow_conf_2027/tasks", {
+      method: "POST",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({
+        taskType: "file_request",
+        acceptedFileTypes: pictureRequestFileTypes,
+        title: "Send us an undeclared picture",
+        speakerIds: ["spk_priya_devflow_2027"],
+      }),
+    });
+    const { id: pictureTaskId } = await created.json<{ id: string }>();
+    await env.DB.prepare("update person set headshot_url = null where id = ?").bind("psn_priya_raman").run();
+    const html = Array.from(new TextEncoder().encode("<html><script>evil()</script></html>"));
+
+    // A caller controls the declared content type, so declining to declare one has to cost
+    // exactly what lying about it costs. Both doors a picture can arrive through, and every
+    // shape an absent declaration takes.
+    const undeclared: Array<[string, string | null]> = [
+      ["header omitted entirely", null],
+      ["header present but empty", ""],
+      ["header whitespace only", "   "],
+      ["header not a mime type", "png"],
+    ];
+    for (const [why, declaredType] of undeclared) {
+      for (const path of [`/api/portal/tasks/${pictureTaskId}/files`, "/api/portal/profile/headshot"]) {
+        const { body, contentType } = rawFileUpload("payload.png", declaredType, html);
+        const response = await request(path, {
+          method: "POST",
+          headers: { cookie: priyaCookie, "content-type": contentType },
+          body,
+        });
+        expect(response.status, `${path} with ${why}`).toBe(415);
+        await expect(response.json()).resolves.toMatchObject({ error: "unsupported_file_type" });
+      }
+    }
+
+    const assignee = await env.DB.prepare(
+      "select status from task_assignee where task_id = ? and speaker_id = ?",
+    ).bind(pictureTaskId, "spk_priya_devflow_2027").first<{ status: string }>();
+    expect(assignee?.status).not.toBe("completed");
+    const stored = await env.DB.prepare("select count(*) as total from file where task_id = ?")
+      .bind(pictureTaskId)
+      .first<{ total: number }>();
+    expect(stored?.total).toBe(0);
+    // Nothing reached the unauthenticated endpoint the original stored XSS was served from.
+    const headshot = await env.DB.prepare("select headshot_url from person where id = ?")
+      .bind("psn_priya_raman")
+      .first<{ headshot_url: string | null }>();
+    expect(headshot?.headshot_url).toBeNull();
+
+    // And the same refusal for bytes that are not the image both halves truthfully claim.
+    const { body, contentType } = rawFileUpload("payload.png", "image/png", html);
+    const lyingBytes = await request(`/api/portal/tasks/${pictureTaskId}/files`, {
+      method: "POST",
+      headers: { cookie: priyaCookie, "content-type": contentType },
+      body,
+    });
+    expect(lyingBytes.status).toBe(415);
+  });
+
+  it("serves a public headshot with nosniff, so the declared type is enforced rather than hoped for", async () => {
+    const upload = await request("/api/portal/profile/headshot", {
+      method: "POST",
+      headers: { cookie: priyaCookie },
+      body: fileUpload("priya.png", "image/png", pngSignature),
+    });
+    expect(upload.status).toBe(201);
+    const { headshotUrl } = await upload.json<{ headshotUrl: string }>();
+
+    const served = await request(headshotUrl);
+    expect(served.status).toBe(200);
+    expect(served.headers.get("content-type")).toBe("image/png");
+    expect(served.headers.get("x-content-type-options")).toBe("nosniff");
+  });
+
+  it("lets the seeded headshot request take a headshot on a freshly seeded deployment", async () => {
+    // The sample event ships the bug report's own task. It has to demonstrate the
+    // capability rather than refuse the file its title asks for.
+    const content = await request("/api/speaker/content", { headers: { cookie: priyaCookie } });
+    const { tasks } = await content.json<{
+      tasks: Array<{ id: string; title: string; acceptedFileTypes: string[] | null; maximumFileBytes: number | null }>;
+    }>();
+    const seededHeadshotTask = tasks.find((task) => task.title === "Upload headshot");
+    expect(seededHeadshotTask?.acceptedFileTypes).toEqual(pictureRequestFileTypes);
+    expect(seededHeadshotTask?.maximumFileBytes).toBe(5 * 1024 * 1024);
+
+    const upload = await request(`/api/portal/tasks/${seededHeadshotTask?.id}/files`, {
+      method: "POST",
+      headers: { cookie: priyaCookie },
+      body: fileUpload("priya.png", "image/png", pngSignature),
+    });
+    expect(upload.status).toBe(201);
+    await expect(upload.json()).resolves.toMatchObject({
+      status: "completed",
+      headshotUrl: "/api/public/portal/speakers/spk_priya_devflow_2027/headshot",
+    });
+  });
+
   it("keeps a request that declares nothing a document request, naming its real types when it refuses a picture", async () => {
     const content = await request("/api/speaker/content", { headers: { cookie: priyaCookie } });
     const contentBody = await content.json<{
@@ -263,7 +389,7 @@ describe("speaker portal content", () => {
     const refused = await request("/api/portal/tasks/tsk_fixture_3/files", {
       method: "POST",
       headers: { cookie: priyaCookie },
-      body: fileUpload("priya.png", "image/png", [137, 80, 78, 71]),
+      body: fileUpload("priya.png", "image/png", pngSignature),
     });
     expect(refused.status).toBe(415);
     await expect(refused.json()).resolves.toMatchObject({

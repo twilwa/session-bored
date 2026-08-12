@@ -3,6 +3,7 @@
 import { and, eq, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import fixture from "../fixtures/sample-data.json";
+import { pictureRequestFileTypes } from "../shared/api.ts";
 import {
   events,
   formFields,
@@ -516,13 +517,18 @@ export async function ensureSeeded(env: CloudflareBindings): Promise<void> {
 
   for (const [index, title] of fixture.tasks_for_speakers.entries()) {
     const taskId = `tsk_fixture_${index}`;
+    const isFileRequest = title.includes("Upload");
     await database
       .insert(tasks)
       .values({
         id: taskId,
         eventId: fixtureIds.event,
-        taskType: title.includes("Upload") ? "file_request" : "general",
+        taskType: isFileRequest ? "file_request" : "general",
         title,
+        // A request that declares nothing asks for a document, so the sample event's
+        // headshot request has to say it wants a picture or it refuses the very file
+        // its title asks for. The slides request stays a document request.
+        acceptedFileTypes: isFileRequest && /headshot/i.test(title) ? pictureRequestFileTypes : null,
         dueAt: title.includes("2027-05-01") ? new Date("2027-05-01T23:59:59Z") : null,
         status: "active",
       })

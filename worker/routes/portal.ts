@@ -107,6 +107,7 @@ async function recordFileVersion(
     taskId: string | null;
     kind: FileKind;
     file: File;
+    bytes: ArrayBuffer;
     uploadedByUserId: string;
   },
 ): Promise<{ fileId: string; version: number }> {
@@ -141,7 +142,7 @@ async function recordFileVersion(
     filename: params.file.name,
   });
   const contentType = params.file.type.length > 0 ? params.file.type : "application/octet-stream";
-  await putFileObject(env.FILES, storageKey, await params.file.arrayBuffer(), contentType);
+  await putFileObject(env.FILES, storageKey, params.bytes, contentType);
 
   if (priorVersions.length > 0) {
     await database.update(fileVersions).set({ latest: false }).where(eq(fileVersions.fileId, fileId));
@@ -246,6 +247,7 @@ async function storeSpeakerHeadshot(
   database: ReturnType<typeof drizzle>,
   profile: SpeakerProfile,
   file: File,
+  bytes: ArrayBuffer,
   uploadedByUserId: string,
 ): Promise<{ fileId: string; version: number; headshotUrl: string }> {
   const [existing] = await database
@@ -259,6 +261,7 @@ async function storeSpeakerHeadshot(
     taskId: null,
     kind: "headshot",
     file,
+    bytes,
     uploadedByUserId,
   });
   const headshotUrl = `/api/public/portal/speakers/${profile.speakerId}/headshot`;
@@ -281,11 +284,12 @@ portalRoutes.post("/portal/profile/headshot", requireSpeaker, async (context) =>
   if (file === null) {
     return context.json({ error: "file_required", message: "Choose a file to upload." }, 400);
   }
-  const validationError = validateUpload(file, headshotLimits);
+  const bytes = await file.arrayBuffer();
+  const validationError = validateUpload(file, headshotLimits, bytes);
   if (validationError !== null) {
     return context.json(validationError, validationErrorStatus(validationError.error));
   }
-  return context.json(await storeSpeakerHeadshot(context.env, database, profile, file, user.id), 201);
+  return context.json(await storeSpeakerHeadshot(context.env, database, profile, file, bytes, user.id), 201);
 });
 
 portalRoutes.patch("/portal/sessions/:sessionId", requireSpeaker, async (context) => {
@@ -428,7 +432,8 @@ portalRoutes.post("/portal/tasks/:taskId/files", requireSpeaker, async (context)
     return context.json({ error: "file_required", message: "Choose a file to upload." }, 400);
   }
   const limits: UploadLimits = limitsForTask(assignment);
-  const validationError = validateUpload(file, limits);
+  const bytes = await file.arrayBuffer();
+  const validationError = validateUpload(file, limits, bytes);
   if (validationError !== null) {
     return context.json(validationError, validationErrorStatus(validationError.error));
   }
@@ -443,6 +448,7 @@ portalRoutes.post("/portal/tasks/:taskId/files", requireSpeaker, async (context)
     taskId,
     kind: "deliverable",
     file,
+    bytes,
     uploadedByUserId: user.id,
   });
   await database
@@ -453,7 +459,7 @@ portalRoutes.post("/portal/tasks/:taskId/files", requireSpeaker, async (context)
   // upload also becomes their profile photo. The deliverable itself stays a task file
   // behind the same authentication as every other one; only the headshot serves publicly.
   const headshotUrl = isPictureRequest(assignment)
-    ? (await storeSpeakerHeadshot(context.env, database, profile, file, user.id)).headshotUrl
+    ? (await storeSpeakerHeadshot(context.env, database, profile, file, bytes, user.id)).headshotUrl
     : null;
   return context.json({ fileId, version, taskId, status: "completed", headshotUrl }, 201);
 });
@@ -500,6 +506,7 @@ portalRoutes.get("/portal/files/:fileId", async (context) => {
   return new Response(object.body, {
     headers: {
       "content-type": version.mimeType,
+      "x-content-type-options": "nosniff",
       "content-disposition": `attachment; filename="${downloadName.replaceAll('"', "")}"`,
       "content-length": String(version.sizeBytes),
     },
@@ -531,6 +538,9 @@ portalRoutes.get("/public/portal/speakers/:speakerId/headshot", async (context) 
       // Never trust the stored/caller-supplied mime type for a publicly, unauthenticated,
       // inline-served response — derive it independently from the validated extension.
       "content-type": imageContentTypeForFilename(file.displayName),
+      // The served type is a stated fact, not a hint: a browser must not sniff its way to
+      // treating these bytes as anything else.
+      "x-content-type-options": "nosniff",
       "cache-control": "public, max-age=300",
     },
   });

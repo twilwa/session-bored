@@ -27,7 +27,9 @@ function pdfUpload(name: string): FormData {
 
 function imageUpload(name: string): FormData {
   const formData = new FormData();
-  formData.append("file", new File([new Uint8Array([1, 2, 3, 4])], name, { type: "image/png" }));
+  // A real PNG signature: the server checks that an image is the format it claims to be.
+  const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00]);
+  formData.append("file", new File([png], name, { type: "image/png" }));
   return formData;
 }
 
