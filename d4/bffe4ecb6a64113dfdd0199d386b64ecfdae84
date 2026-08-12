@@ -1,0 +1,19 @@
+tests/integration/exports.test.ts
+  s_4295b1625f02e7::t_2c47566ba11321 261-265,268,279
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "d4bffe4ecb6a64113dfdd0199d386b64ecfdae84",
+  "prompts": {},
+  "sessions": {
+    "s_4295b1625f02e7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ff7a7-d911-7370-88a3-3e114519b6f2",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
