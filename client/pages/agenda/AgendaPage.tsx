@@ -1,7 +1,7 @@
 // ABOUTME: Renders the organizer scheduling board: grid first, live drop feedback, clashes, undo.
 // ABOUTME: Keeps placement non-blocking and every verb on the card it acts on.
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent } from "react";
-import type { AgendaConflict, AgendaPlacement, AgendaSession, AgendaState } from "../../../shared/api.ts";
+import type { AgendaConflict, AgendaPlacement, AgendaPublishResult, AgendaSession, AgendaState } from "../../../shared/api.ts";
 import { Button, LoadingState, SelectField, StatusChip, TextField } from "../../components/ui.tsx";
 import {
   nearestFreeStart,
@@ -32,6 +32,9 @@ interface CardMenu {
 interface BoardToast {
   message: string;
   detail: string | null;
+  /* One line per session the action did not act on, named and explained. A toast carrying these
+     stays until it is dismissed, because it is the only place the organizer is told. */
+  notes: string[];
   clashes: number;
   undo: AgendaPlacement | null;
   undoSessionId: string | null;
@@ -203,7 +206,7 @@ export function AgendaPage() {
   useEffect(() => { void refreshAgenda(); }, []);
 
   useEffect(() => {
-    if (toast === null) return;
+    if (toast === null || toast.notes.length > 0) return;
     const timer = setTimeout(() => setToast(null), 10_000);
     return () => clearTimeout(timer);
   }, [toast]);
@@ -295,6 +298,7 @@ export function AgendaPage() {
       setToast({
         message: confirmation,
         detail: options.detail ?? null,
+        notes: [],
         clashes: options.clashes ?? 0,
         undo: options.undoable === false ? null : previous,
         undoSessionId: sessionId,
@@ -363,6 +367,7 @@ export function AgendaPage() {
       setToast({
         message: `${shortTitle(session.title)} content approved.`,
         detail: "Speaker edits are locked. Publish the agenda when its placement is ready.",
+        notes: [],
         clashes: 0,
         undo: null,
         undoSessionId: null,
@@ -396,6 +401,7 @@ export function AgendaPage() {
         detail: session.contentStatus === "approved"
           ? "Approval and publication stayed in place. Publishing remains a separate organizer action."
           : null,
+        notes: [],
         clashes: 0,
         undo: null,
         undoSessionId: null,
@@ -422,6 +428,7 @@ export function AgendaPage() {
       setToast({
         message: `Calendar invite sent to ${result.sentCount} speaker${result.sentCount === 1 ? "" : "s"}.`,
         detail: `Calendar update ${result.sequence}.`,
+        notes: [],
         clashes: 0,
         undo: null,
         undoSessionId: null,
@@ -505,10 +512,20 @@ export function AgendaPage() {
     setBusy(true);
     setError(null);
     try {
-      const result = await agendaRequest<{ message: string }>(`/api/events/${eventId}/agenda/publish`, { method: "POST" });
+      const result = await agendaRequest<AgendaPublishResult>(`/api/events/${eventId}/agenda/publish`, { method: "POST" });
       const refreshed = await agendaRequest<AgendaState>(`/api/events/${eventId}/agenda`);
       setAgenda(refreshed);
-      setToast({ message: result.message, detail: null, clashes: 0, undo: null, undoSessionId: null, publicationCleared: false });
+      setToast({
+        message: result.message,
+        detail: result.skipped.length === 0
+          ? null
+          : "Only approved, scheduled sessions go public. The rest stayed private:",
+        notes: result.notes,
+        clashes: 0,
+        undo: null,
+        undoSessionId: null,
+        publicationCleared: false,
+      });
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Agenda could not be published.");
     } finally {
@@ -972,6 +989,11 @@ export function AgendaPage() {
           <>
             <strong>{toast.message}</strong>
             {toast.detail === null ? null : <small>{toast.detail}</small>}
+            {toast.notes.length === 0 ? null : (
+              <ul className="agenda-toast__notes">
+                {toast.notes.map((note) => <li key={note}>{note}</li>)}
+              </ul>
+            )}
             {toast.publicationCleared && toast.undo !== null
               ? <small>Publication cleared — publish agenda again to make this change public.</small>
               : null}

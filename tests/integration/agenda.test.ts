@@ -2,7 +2,7 @@
 // ABOUTME: Covers accepted-session reads, persistent placement, conflicts, TBD, and publishing.
 import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
-import type { AgendaState } from "../../shared/api.ts";
+import type { AgendaPublishResult, AgendaState } from "../../shared/api.ts";
 import worker from "../../worker/index.ts";
 
 const eventId = "evt_devflow_conf_2027";
@@ -471,7 +471,8 @@ describe("agenda builder", () => {
     await expect(publishResponse.json()).resolves.toMatchObject({
       status: "published",
       publishedCount: 1,
-      message: "1 approved agenda session published.",
+      newlyPublishedCount: 1,
+      published: [{ id: "ses_docs_retrieval" }],
     });
 
     const publishedAgenda = await readAgenda(organizerCookie);
@@ -492,6 +493,64 @@ describe("agenda builder", () => {
           room: "Room 2A",
         }),
       ],
+    });
+  });
+
+  it("names every session publishing skipped and why", async () => {
+    await accept(["sub_docs_retrieval", "sub_ci_monorepo", "sub_ai_verification"], organizerCookie);
+    const agenda = await readAgenda(organizerCookie);
+    const placedDraft = agenda.sessions.find((item) => item.title.startsWith("Taming 40-Minute CI"));
+    const unplacedDraft = agenda.sessions.find((item) => item.title.startsWith("Your AI Pair Programmer"));
+    expect(placedDraft).toMatchObject({ contentStatus: "draft" });
+    expect(unplacedDraft).toMatchObject({ contentStatus: "draft" });
+    if (placedDraft === undefined || unplacedDraft === undefined) return;
+
+    await place("ses_docs_retrieval", organizerCookie, {
+      scheduleStatus: "placed",
+      scheduledDate: "2027-05-13",
+      roomId: "rm_room_2a",
+      startsAt: Date.parse("2027-05-13T17:00:00Z"),
+    });
+    await place(placedDraft.id, organizerCookie, {
+      scheduleStatus: "placed",
+      scheduledDate: "2027-05-13",
+      roomId: "rm_room_2b",
+      startsAt: Date.parse("2027-05-13T18:00:00Z"),
+    });
+
+    const publishResponse = await request(`/api/events/${eventId}/agenda/publish`, {
+      method: "POST",
+      headers: { cookie: organizerCookie },
+    });
+    expect(publishResponse.status).toBe(200);
+    const result = await publishResponse.json<AgendaPublishResult>();
+    expect(result).toMatchObject({
+      publishedCount: 1,
+      newlyPublishedCount: 1,
+      alreadyPublicCount: 0,
+      published: [{ id: "ses_docs_retrieval" }],
+      message: "1 session published · 2 sessions skipped.",
+    });
+    expect(result.skipped).toEqual([
+      { id: unplacedDraft.id, title: unplacedDraft.title, reasons: ["content_not_approved", "not_placed"] },
+      { id: placedDraft.id, title: placedDraft.title, reasons: ["content_not_approved"] },
+    ]);
+    expect(result.notes).toEqual([
+      `Skipped “${unplacedDraft.title}” — its content is not approved yet and it is not on the schedule yet.`,
+      `Skipped “${placedDraft.title}” — its content is not approved yet.`,
+    ]);
+
+    // The report is honest about the gate because the gate still holds.
+    expect(await publicSessionIds()).toEqual(["ses_docs_retrieval"]);
+
+    const republish = await request(`/api/events/${eventId}/agenda/publish`, {
+      method: "POST",
+      headers: { cookie: organizerCookie },
+    });
+    await expect(republish.json()).resolves.toMatchObject({
+      newlyPublishedCount: 0,
+      alreadyPublicCount: 1,
+      message: "1 session already public · 2 sessions skipped.",
     });
   });
 

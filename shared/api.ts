@@ -494,6 +494,29 @@ export interface AgendaState {
   metrics: { unplaced: number; conflicts: number; tbd: number };
 }
 
+export type AgendaPublishSkipReason = "content_not_approved" | "not_placed";
+
+export interface AgendaPublishSession {
+  id: `ses_${string}`;
+  title: string;
+}
+
+export interface AgendaPublishSkip extends AgendaPublishSession {
+  reasons: AgendaPublishSkipReason[];
+}
+
+export interface AgendaPublishResult {
+  status: "published";
+  publishedAt: number;
+  publishedCount: number;
+  newlyPublishedCount: number;
+  alreadyPublicCount: number;
+  published: AgendaPublishSession[];
+  skipped: AgendaPublishSkip[];
+  message: string;
+  notes: string[];
+}
+
 export interface PortalProfile {
   speakerId: `spk_${string}`;
   personId: `psn_${string}`;

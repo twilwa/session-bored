@@ -223,8 +223,15 @@ test("organizer drags a session, sees a clash before dropping, undoes, resolves,
     await expect(page.getByRole("tab", { name: view, exact: true })).toHaveAttribute("aria-selected", "true");
   }
 
+  // Publishing reports what it skipped, by name and by reason, not only its successes.
   await page.getByRole("button", { name: "Publish agenda" }).click();
-  await expect(page.getByText("2 approved agenda sessions published.")).toBeVisible();
+  const publishToast = page.getByRole("status");
+  await expect(publishToast).toContainText("2 sessions published · 1 session skipped.");
+  await expect(publishToast).toContainText(
+    "Skipped “Your AI Pair Programmer Is Lying to You: Verification Patterns That Scale” — its content is not approved yet.",
+  );
+  await expect(page.getByText("2/3 current")).toBeVisible();
+  await publishToast.getByRole("button", { name: "Dismiss" }).click();
 
   await page.goto("/program");
   await expect(page.getByRole("link", { name: "Docs That Answer Back", exact: false }))
@@ -244,7 +251,9 @@ test("organizer drags a session, sees a clash before dropping, undoes, resolves,
   await expect(page.getByRole("link", { name: "Taming 40-Minute CI", exact: false })).toHaveCount(0);
   await page.goto("/organizer/agenda");
   await page.getByRole("button", { name: "Publish agenda" }).click();
-  await expect(page.getByText("2 approved agenda sessions published.")).toBeVisible();
+  await expect(page.getByRole("status"))
+    .toContainText("1 session published · 1 session already public · 1 session skipped.");
+  await page.getByRole("status").getByRole("button", { name: "Dismiss" }).click();
   await page.goto("/program");
   await expect(page.getByRole("link", { name: "Taming 40-Minute CI", exact: false })).toBeVisible();
 
