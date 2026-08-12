@@ -40,6 +40,19 @@ interface AIReviewConfig {
   enabled: boolean;
 }
 
+interface ReviewerScopeResult {
+  remit: { mode: "no_tracks" | "all_submissions" | "tracks"; trackIds: string[] };
+  roundIds: string[];
+  removedTrackIds: string[];
+  removedRoundIds: string[];
+  retainedAssignments: Array<{ submissionId: string; title: string | null; roundId: string }>;
+}
+
+function remitLabel(trackCount: number, totalTracks: number): string {
+  if (trackCount === 0) return "Assigned proposals only";
+  return trackCount === totalTracks ? "All submissions" : `${trackCount} track remit`;
+}
+
 interface WorklistPayload {
   sort: ReviewSort;
   progress: ReviewProgress;
@@ -144,6 +157,35 @@ function OrganizerReviewWorklist() {
       await loadConfig();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "The reviewer could not be added.");
+    }
+  }
+
+  async function saveReviewerScope(
+    event: FormEvent<HTMLFormElement>,
+    reviewer: ReviewerSummary,
+  ): Promise<void> {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    try {
+      const saved = await reviewRequest<ReviewerScopeResult>(
+        `/api/review/events/${eventId}/reviewers/${reviewer.id}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            trackIds: form.getAll("trackIds").map(String),
+            roundIds: form.getAll("roundIds").map(String),
+          }),
+        },
+      );
+      const narrowed = saved.removedTrackIds.length + saved.removedRoundIds.length;
+      setMessage(saved.retainedAssignments.length === 0
+        ? `${reviewer.name}’s remit saved${narrowed === 0 ? "." : ` — ${narrowed} removed. They lose that access immediately.`}`
+        : `${reviewer.name}’s remit saved. They can still read ${
+          saved.retainedAssignments.map((item) => item.title ?? item.submissionId).join(", ")
+        } through an explicit assignment.`);
+      await loadConfig();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "The remit could not be saved.");
     }
   }
 
@@ -316,10 +358,44 @@ function OrganizerReviewWorklist() {
             </section>
             <section className="setup-card setup-card--wide">
               <div className="setup-heading"><div><p className="section-label">LIVE PROGRESS</p><h2>Committee coverage</h2></div><StatusChip tone="signal">{config.reviewers.length} reviewers</StatusChip></div>
+              <p className="criterion-policy">A remit can be narrowed as well as widened. Unticking a track takes that reading access away the moment you save.</p>
               <div className="reviewer-progress-list">
                 {config.reviewers.map((reviewer) => {
                   const reviewerPercent = percent(reviewer.completedCount, reviewer.assignedCount);
-                  return <article key={reviewer.id}><div><strong>{reviewer.name}</strong><span>{reviewer.completedCount} / {reviewer.assignedCount}</span></div><div><span style={{ width: `${reviewerPercent}%` }} /></div><small>{reviewer.trackIds.length === config.tracks.length ? "All submissions" : `${reviewer.trackIds.length} track remit`}</small></article>;
+                  const reviewerRoundIds = config.rounds
+                    .filter((round) => round.reviewerPool.some((member) => member.id === reviewer.id))
+                    .map((round) => round.id);
+                  return (
+                    <article key={reviewer.id}>
+                      <div><strong>{reviewer.name}</strong><span>{reviewer.completedCount} / {reviewer.assignedCount}</span></div>
+                      <div><span style={{ width: `${reviewerPercent}%` }} /></div>
+                      <small>{remitLabel(reviewer.trackIds.length, config.tracks.length)}</small>
+                      <details className="reviewer-scope">
+                        <summary>Edit remit</summary>
+                        <form onSubmit={(event) => void saveReviewerScope(event, reviewer)}>
+                          <fieldset className="track-checks">
+                            <legend>Track remit · unticking every track leaves assigned proposals only</legend>
+                            {config.tracks.map((track) => (
+                              <label key={track.id}>
+                                <input defaultChecked={reviewer.trackIds.includes(track.id)} name="trackIds" type="checkbox" value={track.id} />
+                                {track.name}
+                              </label>
+                            ))}
+                          </fieldset>
+                          <fieldset className="track-checks">
+                            <legend>Review pool · unticking every round removes them from the committee</legend>
+                            {config.rounds.map((round) => (
+                              <label key={round.id}>
+                                <input defaultChecked={reviewerRoundIds.includes(round.id)} name="roundIds" type="checkbox" value={round.id} />
+                                {round.name}
+                              </label>
+                            ))}
+                          </fieldset>
+                          <Button type="submit">Save remit</Button>
+                        </form>
+                      </details>
+                    </article>
+                  );
                 })}
               </div>
             </section>

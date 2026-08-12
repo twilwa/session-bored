@@ -489,7 +489,7 @@ reviewRoutes.get(
   async (context) => {
     const database = drizzle(context.env.DB);
     const eventId = context.req.param("eventId");
-    const [eventTracks, roundRows, eventReviewers, submissionRows] = await Promise.all([
+    const [eventTracks, roundRows, trackReviewers, submissionRows] = await Promise.all([
       database
         .select({ id: tracks.id, name: tracks.name })
         .from(tracks)
@@ -511,6 +511,17 @@ reviewRoutes.get(
         .where(and(eq(submissions.eventId, eventId), eq(submissions.isDraft, false))),
     ]);
     const roundIds = roundRows.map((round) => round.id);
+    // A reviewer narrowed to no tracks still belongs to the committee through their round pool.
+    const poolReviewers = roundIds.length === 0
+      ? []
+      : await database
+        .selectDistinct({ id: users.id, name: users.name, email: users.email })
+        .from(reviewerRoundPools)
+        .innerJoin(users, eq(reviewerRoundPools.reviewerUserId, users.id))
+        .where(inArray(reviewerRoundPools.roundId, roundIds));
+    const eventReviewers = [...new Map(
+      [...trackReviewers, ...poolReviewers].map((reviewer) => [reviewer.id, reviewer]),
+    ).values()];
     const [criteriaRows, poolRows, reviewerTrackRows] = roundIds.length === 0
       ? [[], [], []]
       : await Promise.all([
@@ -653,14 +664,152 @@ reviewRoutes.post(
         name: authResult.user.name,
         email: authResult.user.email,
       },
-      remit: {
-        mode: trackIds.length === 0
-          ? "no_tracks"
-          : trackIds.length === availableTrackIds.size ? "all_submissions" : "tracks",
-        trackIds,
-      },
+      remit: { mode: remitMode(trackIds, availableTrackIds.size), trackIds },
       roundIds,
     }, 201);
+  },
+);
+
+function remitMode(trackIds: string[], availableTrackCount: number): "no_tracks" | "all_submissions" | "tracks" {
+  if (trackIds.length === 0) return "no_tracks";
+  return trackIds.length === availableTrackCount ? "all_submissions" : "tracks";
+}
+
+reviewRoutes.patch(
+  "/review/events/:eventId/reviewers/:reviewerUserId",
+  requireRole("organizer"),
+  async (context) => {
+    const payload = await context.req.json<{ trackIds?: unknown; roundIds?: unknown }>();
+    const readIdList = (value: unknown): string[] | undefined =>
+      Array.isArray(value)
+        ? [...new Set(value.filter((id): id is string => typeof id === "string"))]
+        : undefined;
+    const requestedTrackIds = readIdList(payload.trackIds);
+    const requestedRoundIds = readIdList(payload.roundIds);
+    if (requestedTrackIds === undefined && requestedRoundIds === undefined) {
+      return context.json({ error: "invalid_reviewer_scope" }, 400);
+    }
+    const database = drizzle(context.env.DB);
+    const eventId = context.req.param("eventId");
+    const reviewerUserId = context.req.param("reviewerUserId");
+    const [eventTracks, eventRounds, reviewer] = await Promise.all([
+      database
+        .select({ id: tracks.id })
+        .from(tracks)
+        .where(eq(tracks.eventId, eventId))
+        .orderBy(asc(tracks.sortOrder)),
+      database
+        .select({ id: reviewRounds.id })
+        .from(reviewRounds)
+        .where(eq(reviewRounds.eventId, eventId))
+        .orderBy(asc(reviewRounds.sortOrder)),
+      database
+        .select({ id: users.id, name: users.name, email: users.email, role: users.role })
+        .from(users)
+        .where(eq(users.id, reviewerUserId))
+        .then((rows) => rows[0]),
+    ]);
+    if (reviewer === undefined || reviewer.role !== "reviewer") {
+      return context.json({ error: "not_found" }, 404);
+    }
+    const eventRoundIds = eventRounds.map((round) => round.id);
+    const [currentTrackRows, currentPoolRows] = await Promise.all([
+      database
+        .select({ id: reviewerTracks.id, trackId: reviewerTracks.trackId })
+        .from(reviewerTracks)
+        .where(
+          and(eq(reviewerTracks.eventId, eventId), eq(reviewerTracks.reviewerUserId, reviewerUserId)),
+        ),
+      eventRoundIds.length === 0
+        ? Promise.resolve([])
+        : database
+          .select({ id: reviewerRoundPools.id, roundId: reviewerRoundPools.roundId })
+          .from(reviewerRoundPools)
+          .where(
+            and(
+              eq(reviewerRoundPools.reviewerUserId, reviewerUserId),
+              inArray(reviewerRoundPools.roundId, eventRoundIds),
+            ),
+          ),
+    ]);
+    const availableTrackIds = new Set(eventTracks.map((track) => track.id));
+    const trackIds = requestedTrackIds ?? currentTrackRows.map((row) => row.trackId);
+    if (trackIds.some((trackId) => !availableTrackIds.has(trackId))) {
+      return context.json({ error: "invalid_reviewer_tracks" }, 400);
+    }
+    const availableRoundIds = new Set(eventRoundIds);
+    const roundIds = requestedRoundIds ?? currentPoolRows.map((row) => row.roundId);
+    if (roundIds.some((roundId) => !availableRoundIds.has(roundId))) {
+      return context.json({ error: "invalid_reviewer_rounds" }, 400);
+    }
+
+    const keptTrackIds = new Set(trackIds);
+    const removedTrackRows = currentTrackRows.filter((row) => !keptTrackIds.has(row.trackId));
+    if (removedTrackRows.length > 0) {
+      await database
+        .delete(reviewerTracks)
+        .where(inArray(reviewerTracks.id, removedTrackRows.map((row) => row.id)));
+    }
+    const heldTrackIds = new Set(currentTrackRows.map((row) => row.trackId));
+    for (const trackId of trackIds.filter((trackId) => !heldTrackIds.has(trackId))) {
+      await database.insert(reviewerTracks).values({
+        id: createPublicId("rtrk"),
+        eventId,
+        reviewerUserId,
+        trackId,
+      });
+    }
+
+    const keptRoundIds = new Set(roundIds);
+    const removedPoolRows = currentPoolRows.filter((row) => !keptRoundIds.has(row.roundId));
+    if (removedPoolRows.length > 0) {
+      await database
+        .delete(reviewerRoundPools)
+        .where(inArray(reviewerRoundPools.id, removedPoolRows.map((row) => row.id)));
+    }
+    const heldRoundIds = new Set(currentPoolRows.map((row) => row.roundId));
+    for (const roundId of roundIds.filter((roundId) => !heldRoundIds.has(roundId))) {
+      await database.insert(reviewerRoundPools).values({
+        id: createPublicId("rpool"),
+        roundId,
+        reviewerUserId,
+      });
+    }
+
+    const queue = (await reviewerQueue(database, reviewerUserId))
+      .filter((item) => item.eventId === eventId);
+    const readableTrackSubmissionIds = new Set(
+      trackIds.length === 0
+        ? []
+        : (await database
+          .selectDistinct({ submissionId: submissions.id })
+          .from(submissions)
+          .innerJoin(submissionTracks, eq(submissionTracks.submissionId, submissions.id))
+          .where(
+            and(
+              eq(submissions.eventId, eventId),
+              eq(submissions.isDraft, false),
+              inArray(submissionTracks.trackId, trackIds),
+            ),
+          )).map((row) => row.submissionId),
+    );
+
+    return context.json({
+      reviewer: { id: reviewer.id, name: reviewer.name, email: reviewer.email },
+      remit: { mode: remitMode(trackIds, availableTrackIds.size), trackIds },
+      roundIds,
+      removedTrackIds: removedTrackRows.map((row) => row.trackId),
+      removedRoundIds: removedPoolRows.map((row) => row.roundId),
+      retainedAssignments: queue
+        .filter((item) =>
+          item.assignmentId !== null && !readableTrackSubmissionIds.has(item.submissionId)
+        )
+        .map((item) => ({
+          submissionId: item.submissionId,
+          title: item.title,
+          roundId: item.roundId,
+        })),
+    });
   },
 );
 
