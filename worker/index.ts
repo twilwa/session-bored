@@ -47,6 +47,7 @@ import agendaRoutes from "./routes/agenda.ts";
 import exportRoutes from "./routes/exports.ts";
 import contentRoutes from "./routes/content.ts";
 import embedRoutes from "./routes/embeds.ts";
+import eventSettingsRoutes from "./routes/event-settings.ts";
 
 type SessionUser = AuthSession["user"];
 type AppEnvironment = {
@@ -145,6 +146,7 @@ app.route("/", exportRoutes);
 app.route("/", commsRoutes);
 app.route("/", contentRoutes);
 app.route("/", embedRoutes);
+app.route("/", eventSettingsRoutes);
 app.on(["GET", "POST"], "/api/auth/*", (context) => createAuth(context.env).handler(context.req.raw));
 app.route("/api/public/cfp", cfpRoutes);
 app.route("/api/cfp-builder", cfpBuilderRoutes);

@@ -148,6 +148,144 @@ describe("agenda builder", () => {
     expect(agenda.metrics).toEqual({ unplaced: 1, conflicts: 0, tbd: 0 });
   });
 
+  it("creates, renames, and removes an unused room from the agenda", async () => {
+    const createdResponse = await request(`/api/events/${eventId}/rooms`, {
+      method: "POST",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({ name: "Studio C" }),
+    });
+    expect(createdResponse.status).toBe(201);
+    const created = await createdResponse.json<{ id: string; name: string }>();
+    expect(created.name).toBe("Studio C");
+    await expect(readAgenda(organizerCookie)).resolves.toMatchObject({
+      rooms: expect.arrayContaining([{ id: created.id, name: "Studio C" }]),
+    });
+
+    const renamedResponse = await request(`/api/events/${eventId}/rooms/${created.id}`, {
+      method: "PATCH",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({ name: "Studio Three" }),
+    });
+    expect(renamedResponse.status).toBe(200);
+    await expect(renamedResponse.json()).resolves.toMatchObject({ id: created.id, name: "Studio Three" });
+    await expect(readAgenda(organizerCookie)).resolves.toMatchObject({
+      rooms: expect.arrayContaining([{ id: created.id, name: "Studio Three" }]),
+    });
+
+    const removedResponse = await request(`/api/events/${eventId}/rooms/${created.id}`, {
+      method: "DELETE",
+      headers: { cookie: organizerCookie },
+    });
+    expect(removedResponse.status).toBe(204);
+    expect((await readAgenda(organizerCookie)).rooms).not.toContainEqual(
+      expect.objectContaining({ id: created.id }),
+    );
+  });
+
+  it("keeps a room and its schedule intact when a session is assigned to it", async () => {
+    await accept(["sub_docs_retrieval"], organizerCookie);
+    await place("ses_docs_retrieval", organizerCookie, {
+      scheduleStatus: "placed",
+      scheduledDate: "2027-05-12",
+      roomId: "rm_main_stage",
+      startsAt: Date.parse("2027-05-12T16:00:00Z"),
+    });
+    const approval = await request(
+      `/api/events/${eventId}/agenda/sessions/ses_docs_retrieval/content`,
+      {
+        method: "PATCH",
+        headers: { cookie: organizerCookie, "content-type": "application/json" },
+        body: JSON.stringify({ contentStatus: "approved" }),
+      },
+    );
+    expect(approval.status).toBe(200);
+    const publish = await request(`/api/events/${eventId}/agenda/publish`, {
+      method: "POST",
+      headers: { cookie: organizerCookie },
+    });
+    expect(publish.status).toBe(200);
+    const publicBefore = await publicSessionIds();
+
+    const removal = await request(`/api/events/${eventId}/rooms/rm_main_stage`, {
+      method: "DELETE",
+      headers: { cookie: organizerCookie },
+    });
+    expect(removal.status).toBe(409);
+    await expect(removal.json()).resolves.toEqual({
+      error: "room_in_use",
+      message: "Main Stage still has 1 session assigned. Move it to another room or TBD before removing this room.",
+    });
+    const agenda = await readAgenda(organizerCookie);
+    expect(agenda.rooms).toContainEqual({ id: "rm_main_stage", name: "Main Stage" });
+    expect(agenda.sessions.find((session) => session.id === "ses_docs_retrieval")).toMatchObject({
+      scheduleStatus: "placed",
+      room: { id: "rm_main_stage", name: "Main Stage" },
+    });
+    expect(await publicSessionIds()).toEqual(publicBefore);
+  });
+
+  it("creates, renames, and removes an unused track from the agenda and CFP", async () => {
+    const createdResponse = await request(`/api/events/${eventId}/tracks`, {
+      method: "POST",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({ name: "Web Performance" }),
+    });
+    expect(createdResponse.status).toBe(201);
+    const created = await createdResponse.json<{ id: string; name: string }>();
+    expect(created.name).toBe("Web Performance");
+    expect((await readAgenda(organizerCookie)).tracks).toContainEqual(
+      expect.objectContaining({ id: created.id, name: "Web Performance" }),
+    );
+    const cfpAfterCreate = await request("/api/public/cfp/devflow-conf-2027");
+    expect(cfpAfterCreate.status).toBe(200);
+    expect((await cfpAfterCreate.json<{ tracks: string[] }>()).tracks).toContain("Web Performance");
+
+    const renamedResponse = await request(`/api/events/${eventId}/tracks/${created.id}`, {
+      method: "PATCH",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({ name: "Fast Web" }),
+    });
+    expect(renamedResponse.status).toBe(200);
+    expect((await readAgenda(organizerCookie)).tracks).toContainEqual(
+      expect.objectContaining({ id: created.id, name: "Fast Web" }),
+    );
+    const cfpAfterRename = await request("/api/public/cfp/devflow-conf-2027");
+    expect((await cfpAfterRename.json<{ tracks: string[] }>()).tracks).toContain("Fast Web");
+
+    const removedResponse = await request(`/api/events/${eventId}/tracks/${created.id}`, {
+      method: "DELETE",
+      headers: { cookie: organizerCookie },
+    });
+    expect(removedResponse.status).toBe(204);
+    expect((await readAgenda(organizerCookie)).tracks).not.toContainEqual(
+      expect.objectContaining({ id: created.id }),
+    );
+    const cfpAfterRemove = await request("/api/public/cfp/devflow-conf-2027");
+    expect((await cfpAfterRemove.json<{ tracks: string[] }>()).tracks).not.toContain("Fast Web");
+  });
+
+  it("keeps a track and its routing intact while proposals or reviewer remits use it", async () => {
+    const cfpBeforeResponse = await request("/api/public/cfp/devflow-conf-2027");
+    const cfpBefore = await cfpBeforeResponse.json<{ tracks: string[] }>();
+    const publicBefore = await publicSessionIds();
+
+    const removal = await request(`/api/events/${eventId}/tracks/trk_platform_infra`, {
+      method: "DELETE",
+      headers: { cookie: organizerCookie },
+    });
+    expect(removal.status).toBe(409);
+    await expect(removal.json()).resolves.toEqual({
+      error: "track_in_use",
+      message: "Platform & Infra is used by 1 proposal and 1 reviewer remit. Reassign them before removing this track.",
+    });
+    expect((await readAgenda(organizerCookie)).tracks).toContainEqual(
+      expect.objectContaining({ id: "trk_platform_infra", name: "Platform & Infra" }),
+    );
+    const cfpAfterResponse = await request("/api/public/cfp/devflow-conf-2027");
+    expect((await cfpAfterResponse.json<{ tracks: string[] }>()).tracks).toEqual(cfpBefore.tracks);
+    expect(await publicSessionIds()).toEqual(publicBefore);
+  });
+
   it("persists a placed day, time, and room across a fresh read", async () => {
     await accept(["sub_docs_retrieval"], organizerCookie);
     const startsAt = Date.parse("2027-05-12T16:00:00Z");
