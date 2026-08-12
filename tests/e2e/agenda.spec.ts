@@ -8,24 +8,36 @@ test.skip(({ isMobile }) => isMobile === true, "Dragging needs a pointer; the co
 
 async function dispatchDrag(page: Page, source: Locator, target: Locator): Promise<void> {
   const dataTransfer = await page.evaluateHandle(() => new DataTransfer());
-  await source.dispatchEvent("dragstart", { dataTransfer });
-  await target.dispatchEvent("dragenter", { dataTransfer });
-  await target.dispatchEvent("dragover", { dataTransfer });
-  await target.dispatchEvent("drop", { dataTransfer });
-  await source.dispatchEvent("dragend", { dataTransfer });
-  await dataTransfer.dispose();
+  // Dragend belongs to the element that began the gesture, even when drop moves it elsewhere.
+  const draggedCard = await source.elementHandle();
+  try {
+    await draggedCard.dispatchEvent("dragstart", { dataTransfer });
+    await target.dispatchEvent("dragenter", { dataTransfer });
+    await target.dispatchEvent("dragover", { dataTransfer });
+    await target.dispatchEvent("drop", { dataTransfer });
+    await draggedCard.dispatchEvent("dragend", { dataTransfer });
+  } finally {
+    await draggedCard.dispose();
+    await dataTransfer.dispose();
+  }
 }
 
 /** Holds a card over a slot without releasing it, so the drop feedback can be read. */
 async function hoverDrag(page: Page, source: Locator, target: Locator): Promise<() => Promise<void>> {
   const dataTransfer = await page.evaluateHandle(() => new DataTransfer());
-  await source.dispatchEvent("dragstart", { dataTransfer });
+  // Keep the gesture's source stable while the caller inspects pre-drop feedback.
+  const draggedCard = await source.elementHandle();
+  await draggedCard.dispatchEvent("dragstart", { dataTransfer });
   await target.dispatchEvent("dragenter", { dataTransfer });
   await target.dispatchEvent("dragover", { dataTransfer });
   return async () => {
-    await target.dispatchEvent("drop", { dataTransfer });
-    await source.dispatchEvent("dragend", { dataTransfer });
-    await dataTransfer.dispose();
+    try {
+      await target.dispatchEvent("drop", { dataTransfer });
+      await draggedCard.dispatchEvent("dragend", { dataTransfer });
+    } finally {
+      await draggedCard.dispose();
+      await dataTransfer.dispose();
+    }
   };
 }
 
