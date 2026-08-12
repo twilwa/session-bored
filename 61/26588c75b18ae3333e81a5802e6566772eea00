@@ -1,0 +1,19 @@
+worker/index.ts
+  s_2edd279e5a8041::t_74cb6db811c9ec 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "6126588c75b18ae3333e81a5802e6566772eea00",
+  "prompts": {},
+  "sessions": {
+    "s_2edd279e5a8041": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a32ebebc-b913-4012-b0f8-13c6d9d6c1dd",
+        "model": "claude-opus-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
