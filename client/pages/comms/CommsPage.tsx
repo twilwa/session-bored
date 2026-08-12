@@ -500,7 +500,7 @@ export function CommsPage() {
               { key: "recipient", label: "Recipient", render: (row) => row.recipients.map((recipient) => recipient.email).join(", ") },
               { key: "subject", label: "Subject", render: (row) => row.subject },
               { key: "status", label: "Status", render: (row) => <StatusChip tone={statusTone(row.status)}>{row.status}</StatusChip> },
-              { key: "outcome", label: "Detail", render: (row) => row.status === "failed" ? row.failureReason ?? "" : row.sentAt ?? "" },
+              { key: "outcome", label: "Detail", render: (row) => row.status === "failed" || row.status === "queued" ? row.failureReason ?? "" : row.sentAt ?? "" },
             ]}
             rows={sentLog}
           />

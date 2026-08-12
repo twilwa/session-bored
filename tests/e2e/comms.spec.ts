@@ -72,3 +72,36 @@ test("organizer authors, previews, and queues a template without leaving Communi
   await expect(page.getByRole("status")).toContainText("No email sender is configured, so nothing was sent.");
   await expect(draftedMessage).toBeVisible();
 });
+
+test("a queued decision notice stays visible when no sender is connected", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto("/login");
+  await page.getByLabel("Email").fill("sbek-organizer@example.com");
+  await page.getByLabel("Password").fill("SbekTest!2027-org");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page).toHaveURL(/\/organizer$/);
+
+  const decisionResponse = await page.request.patch("/api/events/evt_devflow_conf_2027/disposition", {
+    data: { submissionIds: ["sub_ai_verification"], status: "accepted" },
+  });
+  expect(decisionResponse.status()).toBe(200);
+  const batchResponse = await page.request.post("/api/events/evt_devflow_conf_2027/decision-batches", {
+    data: { submissionIds: ["sub_ai_verification"] },
+  });
+  expect(batchResponse.status()).toBe(201);
+  const batch = await batchResponse.json() as { id: string };
+  const dispatchResponse = await page.request.post(
+    `/api/events/evt_devflow_conf_2027/decision-batches/${batch.id}/dispatch`,
+  );
+  expect(dispatchResponse.status()).toBe(200);
+  await expect(dispatchResponse.json()).resolves.toMatchObject({ emailDelivery: "not_configured" });
+
+  await page.goto("/organizer/comms");
+  const log = page.getByRole("region", { name: "Dispatch log" });
+  const notice = log.getByRole("row").filter({ hasText: "Your talk has been accepted to DevFlow Conf 2027" });
+  await expect(notice).toContainText("queued");
+  await expect(notice).toContainText("Email sender is not connected, so delivery was not attempted.");
+  await expect(notice.getByText("sent", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Email delivery status" })).toContainText("Email sender not connected");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
+});
