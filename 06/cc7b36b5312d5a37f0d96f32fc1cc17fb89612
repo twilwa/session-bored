@@ -1,0 +1,20 @@
+tests/e2e/public-schedule.spec.ts
+  s_542f34e0618d51::t_af9b86714bc563 208
+  s_542f34e0618d51::t_8dcc2dee6d4305 225
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "06cc7b36b5312d5a37f0d96f32fc1cc17fb89612",
+  "prompts": {},
+  "sessions": {
+    "s_542f34e0618d51": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e27ae1d9-74d4-4efe-8758-f53940787b05",
+        "model": "claude-opus-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
