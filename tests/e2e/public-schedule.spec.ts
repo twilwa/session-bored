@@ -129,6 +129,39 @@ test("itinerary lists a real placement chronologically with track, title, descri
   await expect(item).toContainText("Main Stage");
 });
 
+test("an attendee can save a personal schedule, keep it across reloads, copy its feed, and remove a pick", async ({ page }) => {
+  await placeDocsSession(page, {
+    scheduleStatus: "placed",
+    scheduledDate: PLACED_DAY,
+    roomId: MAIN_STAGE_ROOM_ID,
+    startsAt: new Date(PLACED_STARTS_AT_ISO).getTime(),
+  });
+  await page.goto("/schedule");
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await selectPlacedDay(page);
+
+  await page.getByRole("button", { name: /Save Docs That Answer Back.*to my schedule/ }).click();
+  await expect(page.getByRole("button", { name: /Saved Docs That Answer Back.*to my schedule/ })).toBeVisible();
+  await page.reload();
+  await selectPlacedDay(page);
+  await expect(page.getByRole("button", { name: /Saved Docs That Answer Back.*to my schedule/ })).toBeVisible();
+
+  await page.getByRole("link", { name: "My schedule 1" }).click();
+  await expect(page).toHaveURL(/\/schedule\/mine$/);
+  await expect(page.getByRole("heading", { name: "1 pick", exact: true })).toBeVisible();
+  await expect(page.locator(".itinerary-item", { hasText: "Docs That Answer Back" })).toBeVisible();
+  const calendarLink = page.getByRole("link", { name: "Add to calendar (.ics)" });
+  await expect(calendarLink).toHaveAttribute("href", /schedule\.ics\?sessions=ses_docs_retrieval/);
+
+  await page.getByRole("button", { name: "Copy subscribe link" }).click();
+  await expect(page.getByRole("status")).toHaveText("Subscribe link copied.");
+
+  await page.getByRole("button", { name: /Remove Docs That Answer Back.*from my schedule/ }).click();
+  await expect(page.getByRole("heading", { name: "No picks", exact: true })).toBeVisible();
+  await expect(page.getByText("Nothing saved yet")).toBeVisible();
+});
+
 test("speaker gallery is alphabetized by surname, searches, and opens a speaker detail", async ({ page }) => {
   await page.goto("/gallery");
 

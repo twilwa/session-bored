@@ -12,6 +12,7 @@ import { ReviewerReviewPage } from "./pages/review/ReviewerReviewPage.tsx";
 import { Link, PublicHeader, getJson, navigate } from "./lib.tsx";
 import { AgendaPage as PublicAgendaPage } from "./pages/public/AgendaPage.tsx";
 import { ItineraryPage } from "./pages/public/ItineraryPage.tsx";
+import { PersonalSchedulePage } from "./pages/public/PersonalSchedulePage.tsx";
 import { ProgramPage } from "./pages/public/ProgramPage.tsx";
 import { SpeakerDetailPage } from "./pages/public/SpeakerDetailPage.tsx";
 import { SpeakerGalleryPage } from "./pages/public/SpeakerGalleryPage.tsx";
@@ -362,6 +363,7 @@ function RoutedPage({ path }: { path: string }) {
   }
   if (path === "/gallery") return <SpeakerGalleryPage />;
   if (path === "/agenda") return <PublicAgendaPage />;
+  if (path === "/schedule/mine") return <PersonalSchedulePage />;
   if (path === "/schedule") return <ItineraryPage />;
   if (hasOnePathSegment(path, "/embed/")) return <EmbedFramePage publicToken={path.split("/")[2] ?? ""} />;
   if (path === "/speaker") return <RoleShell role="speaker"><PortalPage /></RoleShell>;

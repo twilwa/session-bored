@@ -308,6 +308,60 @@ describe("Public audience surfaces", () => {
     expect(docs?.speakers.map((speaker) => speaker.name)).toContain("Marcus Okafor");
   });
 
+  it("exports only selected sessions that have passed the public gate", async () => {
+    await request("/api/health");
+    await env.DB.batch([
+      env.DB
+        .prepare(
+          "INSERT INTO program_session (id, event_id, title, content_status, schedule_status, ics_uid, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(
+          "ses_calendar_draft_secret",
+          EVENT_ID,
+          "Calendar draft secret",
+          "draft",
+          "tbd",
+          "ses_calendar_draft_secret@session-bored",
+          Date.now(),
+          Date.now(),
+        ),
+      env.DB
+        .prepare(
+          "INSERT INTO program_session (id, event_id, title, content_status, schedule_status, ics_uid, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(
+          "ses_calendar_review_secret",
+          EVENT_ID,
+          "Calendar review secret",
+          "in_review",
+          "tbd",
+          "ses_calendar_review_secret@session-bored",
+          Date.now(),
+          Date.now(),
+        ),
+    ]);
+    await env.DB
+      .prepare("UPDATE program_session SET starts_at = ?, ends_at = ? WHERE id = ?")
+      .bind(
+        new Date("2027-05-13T17:00:00Z").getTime(),
+        new Date("2027-05-13T17:10:00Z").getTime(),
+        "ses_docs_retrieval",
+      )
+      .run();
+
+    const response = await request(
+      `/api/public/events/${EVENT_ID}/schedule.ics?sessions=ses_docs_retrieval,ses_calendar_draft_secret,ses_calendar_review_secret`,
+    );
+    const calendar = await response.text();
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/calendar");
+    expect(calendar).toContain("SUMMARY:Docs That Answer Back");
+    expect(calendar).not.toContain("Calendar draft secret");
+    expect(calendar).not.toContain("Calendar review secret");
+    expect(calendar.match(/BEGIN:VEVENT/g)).toHaveLength(1);
+  });
+
   it("stays populated when a session is approved and published but its submission's decision was never synced (the production defect)", async () => {
     await request("/api/health");
     const db = env.DB;

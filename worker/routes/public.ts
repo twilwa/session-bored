@@ -4,6 +4,7 @@ import { and, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { Hono } from "hono";
 import { events, formFields, forms, formats, tracks } from "../../db/schema.ts";
+import { buildScheduleIcs } from "../email/ics.ts";
 import {
   countPublicSpeakers,
   countPublicSessions,
@@ -111,4 +112,54 @@ publicRoutes.get("/events/:eventId/agenda", async (context) => {
     day: undefined,
   });
   return context.json({ items });
+});
+publicRoutes.get("/events/:eventId/schedule.ics", async (context) => {
+  const eventId = context.req.param("eventId");
+  const selectedIds = [...new Set((context.req.query("sessions") ?? "").split(",").filter(Boolean))].slice(0, 100);
+  const database = drizzle(context.env.DB);
+  const [publicItems, facets] = await Promise.all([
+    fetchPublicSessions(database, eventId, {
+      q: undefined,
+      track: undefined,
+      format: undefined,
+      room: undefined,
+      day: undefined,
+    }),
+    fetchPublicEventFacets(database, eventId),
+  ]);
+  if (facets === null) {
+    return context.json({ error: "not_found" }, 404);
+  }
+
+  const selected = publicItems
+    .filter((session) => selectedIds.includes(session.id))
+    .filter((session) => session.startsAt !== null && session.endsAt !== null)
+    .sort((left, right) => (left.startsAt ?? 0) - (right.startsAt ?? 0));
+  const calendar = buildScheduleIcs({
+    calendarName: `${facets.event.name} personal schedule`,
+    organizer: { name: facets.event.name, email: "calendar@greenroom.invalid" },
+    dtstamp: new Date(),
+    sessions: selected.flatMap((session) => {
+      if (session.startsAt === null || session.endsAt === null) {
+        return [];
+      }
+      return [{
+        icsUid: session.icsUid,
+        sequence: session.icsSequence,
+        title: session.title ?? "Untitled session",
+        description: session.abstract,
+        startsAt: new Date(session.startsAt),
+        endsAt: new Date(session.endsAt),
+        room: session.room,
+      }];
+    }),
+  });
+
+  return new Response(calendar, {
+    headers: {
+      "cache-control": "no-cache",
+      "content-disposition": 'attachment; filename="my-schedule.ics"',
+      "content-type": "text/calendar; charset=utf-8",
+    },
+  });
 });
