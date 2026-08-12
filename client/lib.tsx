@@ -2,7 +2,7 @@
 // ABOUTME: Single source of truth so public pages and the app shell interoperate without drift.
 import { type FormEvent, type ReactNode, useEffect, useState } from "react";
 
-type Role = "organizer" | "reviewer" | "speaker";
+type Role = "organizer" | "reviewer" | "speaker" | "attendee";
 
 export interface SessionUser {
   id: string;
@@ -24,6 +24,8 @@ const roleAreas: Record<Role, AccountArea> = {
   organizer: { href: "/organizer", label: "Organizer area" },
   reviewer: { href: "/reviewer", label: "Reviewer area" },
   speaker: { href: "/speaker", label: "Speaker area" },
+  // An attendee has no workspace. Their own schedule is the thing an account gets them.
+  attendee: { href: "/schedule/mine", label: "My schedule" },
 };
 
 const publicSessionEvent = "greenroom:public-session";
@@ -38,6 +40,13 @@ export function observePublicSession(listener: (user: SessionUser | null) => voi
   return () => window.removeEventListener(publicSessionEvent, handleSession);
 }
 
+/**
+ * An attendee always lands on their own schedule, whether or not they happen to own
+ * proposals. A destination that moves with state the person cannot see is a surprise, and
+ * reaching a schedule should cost nothing while reaching proposals is worth a deliberate
+ * step. A speaker with proposals and no portal work still lands on their submitter
+ * dashboard, which is the work their account is actually for.
+ */
 export function accountAreaFor(role: Role, hasPortalWork: boolean, hasProposals: boolean): AccountArea {
   if (role === "speaker" && !hasPortalWork && hasProposals) {
     return { href: "/submitter", label: "Submitter area" };
@@ -46,7 +55,9 @@ export function accountAreaFor(role: Role, hasPortalWork: boolean, hasProposals:
 }
 
 async function loadAccountArea(session: SessionPayload): Promise<AccountArea> {
-  if (session.user.role !== "speaker") return accountAreaFor(session.user.role, false, false);
+  if (session.user.role !== "speaker") {
+    return accountAreaFor(session.user.role, false, false);
+  }
 
   const [speakerResponse, submissionResponse] = await Promise.all([
     fetch("/api/speaker/content", { credentials: "same-origin" }),
@@ -213,7 +224,10 @@ export function PublicHeader({
         <Link ariaLabel={navigationLinkPrefix === undefined ? undefined : `${navigationLinkPrefix} Speakers`} href="/speakers">Speakers</Link>
         <Link ariaLabel={navigationLinkPrefix === undefined ? undefined : `${navigationLinkPrefix} Gallery`} href="/gallery">Gallery</Link>
         {account === null ? (
-          <Link className="nav-signin" href="/login">Sign in</Link>
+          <>
+            <Link href="/signup">Sign up</Link>
+            <Link className="nav-signin" href="/login">Sign in</Link>
+          </>
         ) : (
           <>
             <span className="nav-identity">{account.session.user.name}</span>

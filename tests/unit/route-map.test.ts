@@ -1,11 +1,13 @@
 // ABOUTME: Specifies the shared typed route catalog consumed by independent feature lanes.
 // ABOUTME: Ensures every PRD module declares its method, path, and access requirement.
 import { describe, expect, it } from "vitest";
-import { reviewRouteMap, routeMap } from "../../shared/api.ts";
+import { peopleRouteMap, reviewRouteMap, routeMap } from "../../shared/api.ts";
 
 describe("typed route map", () => {
   it("covers every planned product module", () => {
-    const modules = new Set(Object.values(routeMap).map((route) => route.module));
+    const modules = new Set(
+      [...Object.values(routeMap), ...Object.values(peopleRouteMap)].map((route) => route.module),
+    );
     expect(modules).toEqual(
       new Set([
         "agenda",
@@ -16,6 +18,7 @@ describe("typed route map", () => {
         "exports",
         "files",
         "forms",
+        "people",
         "public",
         "reviews",
         "sessions",

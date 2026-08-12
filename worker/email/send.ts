@@ -39,7 +39,7 @@ export interface SendTrackedEmailInput {
 export function logEmailSendOutcome(params: {
   templateKey: string;
   recipient: string;
-  eventId: `evt_${string}`;
+  eventId: `evt_${string}` | "platform";
   result: EmailDeliveryResult;
 }): void {
   console.log(JSON.stringify({

@@ -60,6 +60,19 @@ Public CFP, program, speaker, agenda, and embed endpoints do not require an
 account. Protected browser and API routes enforce organizer, reviewer, and
 speaker boundaries with deny-by-default middleware.
 
+## Accounts and roles
+
+Anyone can create an account at `/signup`. New accounts are **attendees**: they
+keep their own schedule and their own proposals, and reach no speaker, reviewer,
+or organizer area. Only an organizer opens those, from **People** in the
+organizer workspace, where each grant records who made it and can be taken back.
+
+An organizer can also invite a reviewer by email. The invitation becomes reviewer
+access only once that person confirms the address, so knowing an invited address
+is never enough to claim it. Confirmation mail needs an email sender; until one
+is connected, invitations simply stay pending and organizers can grant directly
+from People instead.
+
 ## Commands
 
 The standard project commands cover database evolution, verification, and

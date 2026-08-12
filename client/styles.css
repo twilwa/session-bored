@@ -87,6 +87,10 @@ a { color: inherit; text-decoration: none; }
 .login-form h2 { margin-top: 0; font: 2.4rem Georgia, serif; }
 .login-form .button { width: 100%; margin-top: 8px; }
 .login-form__note { font-size: 0.78rem; color: var(--muted); text-align: center; }
+.login-form__note a { color: var(--blue); text-decoration: underline; text-underline-offset: 3px; }
+.login-intro__alt { font-size: 0.95rem; }
+.login-intro__alt a { text-decoration: underline; text-underline-offset: 4px; }
+.signup-outcome { margin: 4px 0 0; border: 1px dashed var(--ink); background: #ecfbd0; padding: 11px 13px; font: 0.72rem "SFMono-Regular", Consolas, monospace; line-height: 1.6; text-transform: uppercase; letter-spacing: 0.04em; }
 .field { display: grid; gap: 7px; margin-bottom: 18px; }
 .field__label { font: 0.72rem monospace; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
 .field__control { min-width: 0; min-height: 46px; border: 1px solid var(--ink); border-radius: 0; background: var(--white); padding: 10px 12px; }

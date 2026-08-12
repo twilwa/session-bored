@@ -28,6 +28,8 @@ import type { ReviewAssignmentStatus } from "../../shared/api.ts";
 import type { AuthSession } from "../auth.ts";
 import { createAuth } from "../auth.ts";
 import { reviewProposalAnswers } from "../review-answers.ts";
+import { grantRole, hasLiveGrant } from "../roles.ts";
+import { applyReviewerRemit } from "../reviewer-invites.ts";
 import { changeSubmissionStatuses } from "../submission-decision.ts";
 
 type ReviewEnvironment = {
@@ -644,25 +646,22 @@ reviewRoutes.post(
     } catch {
       return context.json({ error: "reviewer_account_unavailable" }, 409);
     }
-    await database
-      .update(users)
-      .set({ role: "reviewer" })
-      .where(eq(users.id, authResult.user.id));
-    for (const trackId of trackIds) {
-      await database.insert(reviewerTracks).values({
-        id: createPublicId("rtrk"),
-        eventId,
-        reviewerUserId: authResult.user.id,
-        trackId,
-      });
-    }
-    for (const roundId of roundIds) {
-      await database.insert(reviewerRoundPools).values({
-        id: createPublicId("rpool"),
-        roundId,
-        reviewerUserId: authResult.user.id,
-      });
-    }
+    // The organizer set this account's password themselves, so the account is theirs to
+    // vouch for and the grant lands immediately. An invitation, where the organizer never
+    // sees the password, has to wait for the address to be confirmed instead.
+    await grantRole(database, {
+      userId: authResult.user.id,
+      role: "reviewer",
+      source: "organizer",
+      grantedByUserId: context.get("authUser")?.id ?? null,
+      note: "Added to the review committee.",
+    });
+    await applyReviewerRemit(database, {
+      eventId,
+      reviewerUserId: authResult.user.id,
+      trackIds,
+      roundIds,
+    });
     return context.json({
       reviewer: {
         id: authResult.user.id,
@@ -709,12 +708,12 @@ reviewRoutes.patch(
         .where(eq(reviewRounds.eventId, eventId))
         .orderBy(asc(reviewRounds.sortOrder)),
       database
-        .select({ id: users.id, name: users.name, email: users.email, role: users.role })
+        .select({ id: users.id, name: users.name, email: users.email })
         .from(users)
         .where(eq(users.id, reviewerUserId))
         .then((rows) => rows[0]),
     ]);
-    if (reviewer === undefined || reviewer.role !== "reviewer") {
+    if (reviewer === undefined || !(await hasLiveGrant(database, reviewerUserId, "reviewer"))) {
       return context.json({ error: "not_found" }, 404);
     }
     const eventRoundIds = eventRounds.map((round) => round.id);
@@ -1003,7 +1002,7 @@ reviewRoutes.post(
         .where(eq(reviewRounds.id, roundId))
         .then((rows) => rows[0]),
       database
-        .select({ id: users.id, role: users.role })
+        .select({ id: users.id })
         .from(users)
         .where(eq(users.id, payload.reviewerUserId))
         .then((rows) => rows[0]),
@@ -1022,7 +1021,12 @@ reviewRoutes.post(
         .from(submissions)
         .where(and(inArray(submissions.id, submissionIds), eq(submissions.isDraft, false))),
     ]);
-    if (round === undefined || reviewer?.role !== "reviewer" || pool === undefined) {
+    if (
+      round === undefined ||
+      reviewer === undefined ||
+      pool === undefined ||
+      !(await hasLiveGrant(database, payload.reviewerUserId, "reviewer"))
+    ) {
       return context.json({ error: "assignment_scope_invalid" }, 400);
     }
     if (

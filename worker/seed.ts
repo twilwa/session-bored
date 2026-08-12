@@ -28,9 +28,10 @@ import {
   tasks,
   tracks,
   users,
-  type Role,
+  type GrantableRole,
 } from "../db/schema.ts";
 import { createAuth } from "./auth.ts";
+import { grantRole } from "./roles.ts";
 
 export const fixtureIds = {
   event: "evt_devflow_conf_2027",
@@ -60,7 +61,7 @@ interface SeedIdentity {
 async function ensureIdentity(
   env: CloudflareBindings,
   identity: SeedIdentity,
-  role: Role,
+  role: GrantableRole,
 ): Promise<string> {
   const database = drizzle(env.DB);
   const [existing] = await database.select({ id: users.id }).from(users).where(eq(users.email, identity.email));
@@ -73,11 +74,18 @@ async function ensureIdentity(
       },
     });
   }
-  await database.update(users).set({ role }).where(eq(users.email, identity.email));
   const [seeded] = await database.select({ id: users.id }).from(users).where(eq(users.email, identity.email));
   if (seeded === undefined) {
     throw new Error(`Identity was not created for ${identity.email}`);
   }
+  // The fixture crew are granted their roles the same way a real organizer would grant them,
+  // so the seeded app exercises the live path rather than a shortcut around it.
+  await grantRole(database, {
+    userId: seeded.id,
+    role,
+    source: "organizer",
+    note: "Seeded fixture identity.",
+  });
   return seeded.id;
 }
 

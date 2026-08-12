@@ -19,6 +19,7 @@ import {
   users,
 } from "../../db/schema.ts";
 import type { AuthSession } from "../auth.ts";
+import { resolveEffectiveRoles } from "../roles.ts";
 import { filenameForVersion } from "../storage/file-versions.ts";
 
 type ContentEnvironment = {
@@ -250,19 +251,23 @@ contentRoutes.get("/api/content/files/:fileId/comments", async (context) => {
       id: comments.id,
       body: comments.body,
       createdAt: comments.createdAt,
+      authorUserId: comments.authorUserId,
       authorName: users.name,
-      authorRole: users.role,
     })
     .from(comments)
     .innerJoin(users, eq(comments.authorUserId, users.id))
     .where(and(eq(comments.fileId, context.req.param("fileId")), isNull(comments.deletedAt)))
     .orderBy(asc(comments.createdAt));
+  const authorRoles = await resolveEffectiveRoles(
+    database,
+    items.map((item) => item.authorUserId),
+  );
   return context.json({
     items: items.map((item) => ({
       id: item.id,
       body: item.body,
       createdAt: item.createdAt,
-      author: { name: item.authorName, role: item.authorRole },
+      author: { name: item.authorName, role: authorRoles.get(item.authorUserId) ?? "attendee" },
     })),
   });
 });

@@ -31,7 +31,7 @@ export const speakerStatuses = [
 ] as const;
 export const sessionContentStatuses = ["draft", "in_review", "approved"] as const;
 export const scheduleStatuses = ["unplaced", "tbd", "placed"] as const;
-export const roles = ["organizer", "reviewer", "speaker"] as const;
+export const roles = ["organizer", "reviewer", "speaker", "attendee"] as const;
 
 export type SubmissionStatus = (typeof submissionStatuses)[number];
 export type SpeakerStatus = (typeof speakerStatuses)[number];
@@ -100,7 +100,13 @@ export const users = sqliteTable(
     email: text("email").notNull(),
     emailVerified: integer("email_verified", { mode: "boolean" }).notNull().default(false),
     image: text("image"),
-    role: text("role", { enum: roles }).$type<Role>().notNull().default("speaker"),
+    /**
+     * Not the authorization source. `role_grant` decides what an account may reach, and an
+     * account with no live grant is an attendee. This column keeps its original three-value
+     * CHECK because D1 refuses the table rebuild that changing it would need: `user` has ten
+     * inbound foreign keys and does not honour `PRAGMA foreign_keys=OFF`. Nothing reads it.
+     */
+    role: text("role").notNull().default("speaker"),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -758,6 +764,7 @@ export const domainTables = {
   embeds,
 } as const;
 
+export * from "./schema/access.ts";
 export * from "./schema/cfp.ts";
 export * from "./schema/disposition.ts";
 export * from "./schema/cfp-builder.ts";

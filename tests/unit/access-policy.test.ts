@@ -27,4 +27,15 @@ describe("access policy", () => {
     });
     expect(authorizeAccess({ role: "reviewer" }, "reviewer", true)).toEqual({ allowed: true });
   });
+
+  it("refuses an attendee every role-scoped area", () => {
+    for (const area of ["organizer", "reviewer", "speaker"] as const) {
+      expect(authorizeAccess({ role: "attendee" }, area)).toEqual({ allowed: false, status: 403 });
+    }
+  });
+
+  it("counts an attendee as signed in, so their own records stay reachable", () => {
+    expect(authorizeAccess({ role: "attendee" }, "authenticated")).toEqual({ allowed: true });
+    expect(authorizeAccess({ role: "attendee" }, "public")).toEqual({ allowed: true });
+  });
 });

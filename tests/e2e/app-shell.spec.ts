@@ -244,7 +244,7 @@ test("every organizer destination fits in the workspace navigation at phone widt
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
 });
 
-test("speaker account with proposals and no portal profile links to the submitter area", async ({ page }) => {
+test("an attendee who owns proposals still lands on their schedule, and reaches proposals deliberately", async ({ page }) => {
   const unique = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   const email = `header-submitter-${unique}@example.com`;
   const signUpResponse = await page.request.post("/api/auth/sign-up/email", {
@@ -264,7 +264,16 @@ test("speaker account with proposals and no portal profile links to the submitte
   await openMobileNavigation(page);
   const nav = page.getByRole("navigation", { name: "Public navigation" });
   await expect(nav.getByText("Casey Submitter", { exact: true })).toBeVisible();
-  await expect(nav.getByRole("link", { name: "Submitter area" })).toHaveAttribute("href", "/submitter");
+  // Owning a proposal does not move where this account lands. A destination that shifts with
+  // state the person cannot see is the surprise being avoided.
+  await expect(nav.locator(".nav-signin")).toHaveText("My schedule");
+  await expect(nav.locator(".nav-signin")).toHaveAttribute("href", "/schedule/mine");
+  await expect(nav.getByRole("link", { name: "Submitter area" })).toHaveCount(0);
+
+  // The proposals are still theirs, one deliberate step away.
+  await page.goto("/submitter");
+  await expect(page.getByRole("heading", { name: /Your proposals/ })).toBeVisible();
+  await expect(page.getByRole("link", { name: "A tracked draft" })).toBeVisible();
 });
 
 test("reviewer sees their review queue and no organizer navigation", async ({ page }) => {

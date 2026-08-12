@@ -1,11 +1,19 @@
 // ABOUTME: Configures Better Auth password sessions against the shared Drizzle D1 schema.
-// ABOUTME: Exposes the authenticated role field used by Hono authorization middleware.
+// ABOUTME: Confirms addresses at sign-up, which is what lets a reviewer invitation be redeemed.
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { betterAuth } from "better-auth/minimal";
 import { drizzle } from "drizzle-orm/d1";
 import * as schema from "../db/schema.ts";
+import type { EmailDelivery } from "./email.ts";
+import { sendAddressConfirmationEmail } from "./email/address-confirmation.ts";
+import { redeemReviewerInvitesFor } from "./reviewer-invites.ts";
 
-export function createAuth(env: CloudflareBindings) {
+/**
+ * `delivery` follows the same convention as every other sending site in `worker/email/*`:
+ * tests inject a fake one so the confirmation link can be followed without touching the
+ * network. Left out, it resolves from the environment and stays unconfigured until secrets exist.
+ */
+export function createAuth(env: CloudflareBindings, delivery?: EmailDelivery) {
   const database = drizzle(env.DB, { schema });
 
   return betterAuth({
@@ -30,14 +38,17 @@ export function createAuth(env: CloudflareBindings) {
       minPasswordLength: 8,
       maxPasswordLength: 128,
     },
-    user: {
-      additionalFields: {
-        role: {
-          type: "string",
-          required: false,
-          defaultValue: "speaker",
-          input: false,
-        },
+    emailVerification: {
+      // Confirming the address is what makes a reviewer invitation safe to redeem, so the
+      // mail goes out at sign-up. It never gates signing in: an unconfirmed account is a
+      // perfectly good attendee, and `requireEmailVerification` stays off.
+      sendOnSignUp: true,
+      autoSignInAfterVerification: true,
+      sendVerificationEmail: async ({ user, url }) => {
+        await sendAddressConfirmationEmail(env, { name: user.name, email: user.email }, url, delivery);
+      },
+      afterEmailVerification: async (user) => {
+        await redeemReviewerInvitesFor(env, { id: user.id, email: user.email });
       },
     },
   });

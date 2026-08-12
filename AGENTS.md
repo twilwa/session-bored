@@ -113,6 +113,62 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   explicit reviewer request, and `worker/routes/review.ts` rejects an unchanged
   AI score starting point. The Worker secret is `ANTHROPIC_API_KEY`.
 
+## Accounts and access
+
+`role_grant` decides what an account may reach, and **an account with no live
+grant is an attendee** - `attendee` is never a stored value. `worker/roles.ts`
+is the only reader: `resolveEffectiveRole` answers with the widest live grant
+(organizer > reviewer > speaker), `grantRole` and `revokeRole` are the only
+writers, and revoking sets `revoked_at` rather than deleting, so who decided
+what survives. Never read `user.role`: it keeps its original three-value CHECK
+because D1 refuses the rebuild that changing it needs (`user` has ten inbound
+foreign keys and does not honour `PRAGMA foreign_keys=OFF`), and Better Auth no
+longer projects it into the session at all.
+
+- Sign-up is a public front door at `/signup`, and it writes no grant. That is
+  the whole guarantee: no self-service path can yield more than an attendee,
+  because no self-service path touches `role_grant`. An attendee lands on
+  `/schedule/mine`, keeps `/submitter` (gated on `authenticated` and scoped by
+  `person.user_id`, so they see only their own proposals), and is refused every
+  role-scoped area.
+- `worker/routes/people.ts` is the organizer's gate at `/organizer/people`. It
+  shows each account's **evidence** - programmed, proposal only, or no records -
+  because a `speaker` row is minted at first CFP draft, not at acceptance, so a
+  speaker record alone is not evidence of presenting. Granting is attributed and
+  silent; the notify checkbox defaults to off.
+- **A reviewer invitation is redeemed only by confirming the address.** Signing
+  up as an invited address grants nothing. `worker/reviewer-invites.ts#redeemReviewerInvites`
+  runs from Better Auth's `afterEmailVerification` and nowhere else; redeeming at
+  sign-up would hand reviewer access to anyone who guessed an invited address.
+  `tests/integration/account-access.test.ts` runs that exact attack - keep it.
+- `emailVerification.sendOnSignUp` is on and never blocks signing in. Account
+  mail carries `eventId: "platform"` and goes straight to the delivery rather
+  than `sendTrackedEmail`, because `email_dispatch.event_id` references a real
+  event and an account confirmation belongs to none.
+- Roles are platform-wide for now and the People surface says so. Scoping a
+  grant to an event is issue #120: add `event_id` to `role_grant`, widen
+  `role_grant_live_unique`, and thread the filter through `worker/roles.ts`.
+  Nothing should assume one grant per account.
+
+## Running the browser tests locally
+
+`npm run test:e2e` runs against the **persistent** local D1 in
+`.wrangler/state/v3/d1`, not a fresh one. Specs that accept a proposal create a
+`program_session` that survives the run - `submission-participants.spec.ts`
+leaves one titled `What a panel owes its audience <timestamp>` every time - and
+`agenda.spec.ts` asserts exact counts (`3 unplaced`). So the suite passes the
+first time and then fails on a second local run with a count that keeps climbing
+(`5 unplaced`, then 7). **This is accumulated local state, not a regression and
+not an environment quirk**; it has been misdiagnosed as one before. Reset and
+re-run:
+
+```sh
+rm -rf .wrangler/state/v3/d1 && npm run db:migrate:local && npm run test:e2e
+```
+
+CI never sees this because each job starts from an empty database. Playwright
+also defaults to port 8787; pass `PLAYWRIGHT_PORT` to run somewhere else.
+
 ## CI
 
 Every pull request runs typechecking, unit tests, Workers integration tests, and
