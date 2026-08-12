@@ -100,6 +100,38 @@ describe("organizer speaker roster", () => {
     });
   });
 
+  it("includes the complete speaker profile content organizers need to review", async () => {
+    const response = await request("/api/events/evt_devflow_conf_2027/roster", {
+      headers: { cookie: organizerCookie },
+    });
+    expect(response.status).toBe(200);
+    const payload = await response.json<{
+      items: Array<{
+        id: string;
+        bio: string | null;
+        headshotUrl: string | null;
+        jobTitle: string | null;
+        organization: string | null;
+        twitter: string | null;
+        linkedin: string | null;
+        socialLinks: Record<string, string> | null;
+      }>;
+    }>();
+
+    expect(payload.items.find((speaker) => speaker.id === "spk_priya_devflow_2027")).toMatchObject({
+      bio: "Priya Raman is a Principal Engineer at Latticework Systems where she leads the build-tooling platform team. She previously maintained the open-source task runner 'gantry' and has spoken at over a dozen developer conferences on build systems, CI reliability, and developer productivity metrics.",
+      headshotUrl: "/headshots/priya-raman.jpg",
+      jobTitle: "Principal Engineer",
+      organization: "Latticework Systems",
+      twitter: "@priyabuilds",
+      linkedin: "https://www.linkedin.com/in/priya-raman-example",
+      socialLinks: {
+        twitter: "@priyabuilds",
+        linkedin: "https://www.linkedin.com/in/priya-raman-example",
+      },
+    });
+  });
+
   it("does not count paused onboarding tasks as open work", async () => {
     await env.DB.prepare(
       "update task set status = 'draft' where id in (select task_id from task_assignee where speaker_id = ?)",

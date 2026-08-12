@@ -84,6 +84,35 @@ function dueLabel(item: MissingInformationItem["missing"][number]): string {
   return `Due ${new Date(item.dueAt).toLocaleDateString()}`;
 }
 
+function socialLabel(key: string): string {
+  return key
+    .replaceAll(/[-_]+/g, " ")
+    .replaceAll(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function speakerSocialLinks(speaker: RosterSpeakerSummary): Array<{ href: string; label: string; value: string }> {
+  const links: Array<{ href: string; label: string; value: string }> = [];
+  if (speaker.twitter !== null && speaker.twitter.trim().length > 0) {
+    const value = speaker.twitter.trim();
+    links.push({
+      href: value.startsWith("@") ? `https://x.com/${value.slice(1)}` : value,
+      label: "Twitter",
+      value,
+    });
+  }
+  if (speaker.linkedin !== null && speaker.linkedin.trim().length > 0) {
+    const value = speaker.linkedin.trim();
+    links.push({ href: value, label: "LinkedIn", value });
+  }
+  for (const [key, rawValue] of Object.entries(speaker.socialLinks ?? {})) {
+    const value = rawValue.trim();
+    if (value.length > 0 && key.toLowerCase() !== "twitter" && key.toLowerCase() !== "linkedin") {
+      links.push({ href: value, label: socialLabel(key), value });
+    }
+  }
+  return links;
+}
+
 function openWorkLabel(speaker: RosterSpeakerSummary): ReactNode {
   const { incomplete, total } = speaker.taskSummary;
   if (total === 0 && incomplete === 0) {
@@ -167,6 +196,7 @@ function RosterList() {
             <div className="speaker-record-list">
               {filtered.map((speaker) => {
                 const expanded = expandedSpeakerId === speaker.id;
+                const socialLinks = speakerSocialLinks(speaker);
                 return (
                   <article className="speaker-record" key={speaker.id}>
                     <div className="speaker-record__summary">
@@ -208,8 +238,28 @@ function RosterList() {
                       <div className="speaker-record__details">
                         <p className="section-label">Speaker details</p>
                         <div>
+                          <span>
+                            <small>Current headshot</small>
+                            {speaker.headshotUrl === null ? <strong>No headshot supplied</strong> : (
+                              <img
+                                alt={`${speaker.name} headshot`}
+                                className="speaker-avatar"
+                                src={speaker.headshotUrl}
+                                style={{ aspectRatio: "1", height: "auto", maxWidth: "160px", objectFit: "cover", width: "100%" }}
+                              />
+                            )}
+                          </span>
+                          <span><small>Bio</small><strong>{speaker.bio ?? "No bio supplied"}</strong></span>
                           <span><small>Role</small><strong>{speaker.jobTitle ?? "Role not set"}</strong></span>
                           <span><small>Organization</small><strong>{speaker.organization ?? "Organization not set"}</strong></span>
+                          {socialLinks.length === 0 ? (
+                            <span><small>Social links</small><strong>No social links supplied</strong></span>
+                          ) : socialLinks.map((link) => (
+                            <span key={`${link.label}-${link.value}`}>
+                              <small>{link.label}</small>
+                              <a href={link.href} rel="noreferrer" style={{ overflowWrap: "anywhere" }} target="_blank">{link.value}</a>
+                            </span>
+                          ))}
                           <span><small>Profile readiness</small><strong>{speaker.profile.bioComplete && speaker.profile.headshotComplete ? "Complete" : "Needs follow-up"}</strong></span>
                           <span>
                             <small>Open work</small>
