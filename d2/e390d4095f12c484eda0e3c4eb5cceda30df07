@@ -1,0 +1,46 @@
+client/styles.css
+  s_bdc23211aef0b3::t_f73797de7afa8e 234-258,440-441,443,447-448
+  s_bdc23211aef0b3::t_6ad45d4b7e235a 314-316,318,320,325-332,438,454-460,462-463,465
+  s_bdc23211aef0b3::t_028662d45dc1c8 442,444-446
+  s_bdc23211aef0b3::t_9af0d97e2a3820 272,282-285
+  s_bdc23211aef0b3::t_bb1f49a6b681af 287-302
+tests/e2e/roster.spec.ts
+  s_bdc23211aef0b3::t_3707d6940c06d6 270-271,275
+  s_bdc23211aef0b3::t_51bbc8b1f71ee3 46-58,198-230
+  s_bdc23211aef0b3::t_4a901d567aac9c 162-192,195-197,231-232
+  s_bdc23211aef0b3::t_665e8a66435e99 276
+  s_bdc23211aef0b3::t_9a26ea457d620c 127-130
+  s_bdc23211aef0b3::t_d97a80102d1f64 103-116,118-119,122-126,136,138-139
+  s_bdc23211aef0b3::t_a5de4408c38605 69,97,313-315,317-320,327,337-341,343-344,361-367,379,401,406
+  s_bdc23211aef0b3::t_df612573280545 193-194
+  s_bdc23211aef0b3::t_4bca61238fae13 265-269,272-274,278-288
+  s_bdc23211aef0b3::t_5cb3e087033c7a 34-45,369,382,402
+  s_bdc23211aef0b3::t_8ee2a7cfb34063 140-161
+  s_bdc23211aef0b3::t_32c05c0781dccb 277
+  s_bdc23211aef0b3::t_8accc2cf14e843 233-264
+  s_bdc23211aef0b3::t_8223cb3ae73e78 117,120-121,131-135,292,316,328
+  s_bdc23211aef0b3::t_a4c2039a3c9dde 137
+client/pages/roster/RosterPage.tsx
+  s_bdc23211aef0b3::t_f73797de7afa8e 103,161,164-213,219-226
+  s_bdc23211aef0b3::t_bb1f49a6b681af 328,367-387,396-421
+  s_bdc23211aef0b3::t_6ad45d4b7e235a 70-86,596-600,637-665,673-692,698-699,702-718,720-741
+  s_bdc23211aef0b3::t_32c05c0781dccb 389-395
+  s_bdc23211aef0b3::t_9af0d97e2a3820 323,366,424-435,440,442,485,488,490-492,496-503,506-509,515-534,543,545,549-550,552,554-561,563-572,575,580
+  s_bdc23211aef0b3::t_028662d45dc1c8 214-218
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "d2e390d4095f12c484eda0e3c4eb5cceda30df07",
+  "prompts": {},
+  "sessions": {
+    "s_bdc23211aef0b3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ff32d-2fa8-7ee2-9c63-c96e44868591",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
