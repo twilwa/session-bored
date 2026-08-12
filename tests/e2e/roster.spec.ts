@@ -31,6 +31,31 @@ async function signOut(page: import("@playwright/test").Page): Promise<void> {
   expect(status).toBe(200);
 }
 
+async function clickTaskAction(
+  taskCard: import("@playwright/test").Locator,
+  title: string,
+  action: "Edit" | "Remove",
+): Promise<void> {
+  const button = taskCard.getByRole("button", { name: `${action} ${title}` });
+  if (!await button.isVisible()) {
+    await taskCard.getByLabel(`More actions for ${title}`).click();
+  }
+  await button.click();
+}
+
+async function clickSpeakerAction(
+  speakerCard: import("@playwright/test").Locator,
+  name: string,
+  action: "Edit" | "Send invitation" | "Remove",
+): Promise<void> {
+  const buttonName = action === "Remove" ? `Remove ${name}` : action;
+  const button = speakerCard.getByRole("button", { name: buttonName, exact: true });
+  if (!await button.isVisible()) {
+    await speakerCard.getByLabel(`More actions for ${name}`).click();
+  }
+  await button.click();
+}
+
 test("organizer sees sessionless onboarding assignments in the chase list", async ({ page }) => {
   await signInAsOrganizer(page);
 
@@ -41,7 +66,7 @@ test("organizer sees sessionless onboarding assignments in the chase list", asyn
   };
   const priyaRoster = roster.items.find((speaker) => speaker.id === "spk_priya_devflow_2027");
   expect(priyaRoster).toBeDefined();
-  const priyaRosterRow = page.getByRole("row", { name: /Priya Raman/ });
+  const priyaRosterRow = page.locator(".speaker-record").filter({ hasText: "Priya Raman" });
   await expect(priyaRosterRow).toContainText(
     `${priyaRoster?.taskSummary.incomplete} open item${priyaRoster?.taskSummary.incomplete === 1 ? "" : "s"}`,
   );
@@ -69,14 +94,202 @@ test("organizer sees sessionless onboarding assignments in the chase list", asyn
   expect(missing.items.find((speaker) => speaker.speakerId === "spk_priya_devflow_2027")?.missingCount)
     .toBe(priyaRoster?.taskSummary.incomplete);
   const priyaChaseCard = page.locator(".chase-card").filter({ hasText: "Priya Raman" });
+  await priyaChaseCard.getByRole("button", { name: "Show all items for Priya Raman" }).click();
   for (const taskTitle of priyaTaskTitles) {
     await expect(priyaChaseCard).toContainText(taskTitle);
   }
 });
 
+test("task ledger keeps assignees collapsed behind truthful progress summaries", async ({ page }) => {
+  await signInAsOrganizer(page);
+  await page.goto("/organizer/roster/tasks");
+
+  const tasksResponse = await page.request.get("/api/events/evt_devflow_conf_2027/tasks");
+  const tasks = await tasksResponse.json() as {
+    items: Array<{
+      title: string;
+      assignees: Array<{ speakerName: string; status: string }>;
+    }>;
+  };
+
+  const taskCards = page.locator(".task-card");
+  await expect(taskCards).toHaveCount(tasks.items.length);
+  for (const [index, task] of tasks.items.entries()) {
+    const complete = task.assignees.filter((assignee) => assignee.status === "completed").length;
+    const open = task.assignees.length - complete;
+    const taskCard = taskCards.nth(index);
+    await expect(taskCard).toContainText(task.title);
+    await expect(taskCard).toContainText(`${open} open · ${complete} complete · ${task.assignees.length} assigned`);
+    await expect(taskCard.getByText(task.assignees[0]?.speakerName ?? "", { exact: true })).toHaveCount(0);
+  }
+
+  const firstTask = tasks.items[0];
+  const firstAssignee = firstTask?.assignees[0];
+  if (firstTask === undefined || firstAssignee === undefined) {
+    throw new Error("The seeded task ledger must include at least one assigned task.");
+  }
+  const firstTaskCard = taskCards.first();
+  await firstTaskCard.getByRole("button", { name: `Show assignees for ${firstTask.title}` }).click();
+  await expect(firstTaskCard.getByText(firstAssignee.speakerName, { exact: true })).toBeVisible();
+
+  await firstTaskCard.getByRole("button", { name: `Hide assignees for ${firstTask.title}` }).click();
+  const collapsedHeights = await taskCards.evaluateAll((cards) => cards.map((card) => card.getBoundingClientRect().height));
+  expect(Math.max(...collapsedHeights)).toBeLessThan(260);
+});
+
+test("task creation opens in a bounded modal with a searchable explicit audience", async ({ page }) => {
+  await signInAsOrganizer(page);
+  await page.goto("/organizer/roster/tasks");
+
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByLabel("Task title")).toHaveCount(0);
+  await page.getByRole("button", { name: "Create task" }).click();
+
+  const dialog = page.getByRole("dialog", { name: "Create onboarding task" });
+  await expect(dialog).toBeVisible();
+  await dialog.getByLabel("Search assigned speakers").fill("Marcus");
+  await expect(dialog.getByRole("checkbox", { name: /Marcus Okafor/ })).toBeVisible();
+  await expect(dialog.getByRole("checkbox", { name: /Priya Raman/ })).toHaveCount(0);
+  await expect(dialog.getByText("0 speakers selected", { exact: true })).toBeVisible();
+
+  await dialog.getByRole("button", { name: "Select all matching" }).click();
+  await expect(dialog.getByText("1 speaker selected", { exact: true })).toBeVisible();
+  await expect(dialog.getByRole("checkbox", { name: /Marcus Okafor/ })).toBeChecked();
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(dialog).toHaveCount(0);
+});
+
+test("phone roster cards keep disclosure beside aligned speaker text without horizontal scrolling", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await signInAsOrganizer(page);
+  await page.goto("/organizer/roster");
+
+  const rosterResponse = await page.request.get("/api/events/evt_devflow_conf_2027/roster");
+  const roster = await rosterResponse.json() as { items: Array<{ name: string }> };
+  const firstSpeaker = roster.items[0];
+  if (firstSpeaker === undefined) {
+    throw new Error("The seeded roster must include a speaker.");
+  }
+
+  const speakerCards = page.locator(".speaker-record");
+  await expect(speakerCards).toHaveCount(roster.items.length);
+  await expect(page.locator(".roster-table-card table")).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+
+  const firstCard = speakerCards.filter({ hasText: firstSpeaker.name });
+  const disclosure = firstCard.getByRole("button", { name: `Show details for ${firstSpeaker.name}` });
+  const name = firstCard.locator(".speaker-record__name");
+  const subheading = firstCard.locator(".speaker-record__subheading");
+  const [disclosureBox, nameBox, subheadingBox] = await Promise.all([
+    disclosure.boundingBox(),
+    name.boundingBox(),
+    subheading.boundingBox(),
+  ]);
+  expect(disclosureBox).not.toBeNull();
+  expect(nameBox).not.toBeNull();
+  expect(subheadingBox).not.toBeNull();
+  expect((disclosureBox?.x ?? 0) + (disclosureBox?.width ?? 0)).toBeLessThanOrEqual(nameBox?.x ?? 0);
+  expect(Math.abs((nameBox?.x ?? 0) - (subheadingBox?.x ?? 0))).toBeLessThanOrEqual(1);
+  const nameFontSize = await name.evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize));
+  expect(nameBox?.height ?? 0).toBeLessThanOrEqual(nameFontSize * 1.5);
+
+  await disclosure.click();
+  await expect(firstCard.getByText("Speaker details", { exact: true })).toBeVisible();
+});
+
+test("organizer can add, edit, invite, update, and remove a speaker from the roster card", async ({ page }) => {
+  await signInAsOrganizer(page);
+  await page.goto("/organizer/roster");
+
+  const suffix = Date.now().toString();
+  const name = `Roster Action ${suffix}`;
+  await page.getByRole("button", { name: "Add speaker" }).click();
+  const addDialog = page.getByRole("dialog", { name: "Add a speaker" });
+  await addDialog.getByLabel("Name").fill(name);
+  await addDialog.getByLabel("Email").fill(`roster-action-${suffix}@example.com`);
+  await addDialog.getByLabel("Job title").fill("Staff Engineer");
+  await addDialog.getByRole("button", { name: "Save speaker" }).click();
+
+  const speakerCard = page.locator(".speaker-record").filter({ hasText: name });
+  await expect(speakerCard).toBeVisible();
+  await clickSpeakerAction(speakerCard, name, "Edit");
+  const editDialog = page.getByRole("dialog", { name: `Edit ${name}` });
+  await editDialog.getByLabel("Organization").fill("Greenroom Verification Lab");
+  await editDialog.getByRole("button", { name: "Save speaker" }).click();
+  await expect(speakerCard).toContainText("Greenroom Verification Lab");
+
+  await speakerCard.getByLabel(`Workflow status for ${name}`).selectOption("onboarding");
+  await expect(page.getByRole("status")).toContainText("No message was sent");
+  await clickSpeakerAction(speakerCard, name, "Send invitation");
+  await expect(page.getByRole("status")).toContainText("no invitation was sent");
+
+  await clickSpeakerAction(speakerCard, name, "Remove");
+  const removeDialog = page.getByRole("dialog", { name: `Remove ${name}?` });
+  await expect(removeDialog).toContainText("event history remain intact");
+  await removeDialog.getByRole("button", { name: "Remove speaker" }).click();
+  await expect(speakerCard).toHaveCount(0);
+});
+
+test("chase list states its sort and filters collapsed speaker queues", async ({ page }) => {
+  await signInAsOrganizer(page);
+  await page.goto("/organizer/roster/missing");
+
+  const response = await page.request.get("/api/events/evt_devflow_conf_2027/missing-information");
+  const worklist = await response.json() as {
+    items: Array<{ name: string; missing: Array<{ label: string }> }>;
+  };
+  const firstSpeaker = worklist.items[0];
+  if (firstSpeaker === undefined) {
+    throw new Error("The seeded chase list must include a speaker.");
+  }
+
+  await expect(page.getByText("Sorted by most overdue, then nearest due, then undated.", { exact: true })).toBeVisible();
+  const chaseCards = page.locator(".chase-card");
+  await expect(chaseCards).toHaveCount(worklist.items.length);
+  const firstCard = chaseCards.filter({ hasText: firstSpeaker.name });
+  await expect(firstCard.locator(".missing-items")).toHaveCount(0);
+
+  await firstCard.getByRole("button", { name: `Show all items for ${firstSpeaker.name}` }).click();
+  await expect(firstCard.locator(".missing-item")).toHaveCount(firstSpeaker.missing.length);
+
+  await page.getByLabel("Search chase list").fill(firstSpeaker.name);
+  await expect(chaseCards).toHaveCount(1);
+  await page.getByLabel("Search chase list").fill("");
+  await page.getByLabel("Work type").selectOption("profile");
+  const speakersWithProfileGaps = worklist.items.filter((speaker) =>
+    speaker.missing.some((item) => item.label === "Bio" || item.label === "Headshot")
+  ).length;
+  await expect(chaseCards).toHaveCount(speakersWithProfileGaps);
+});
+
+test("phone task summaries and creation modal stay within the viewport", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await signInAsOrganizer(page);
+  await page.goto("/organizer/roster/tasks");
+
+  const firstTaskCard = page.locator(".task-card").first();
+  await expect(firstTaskCard).toBeVisible();
+  await expect(page.locator(".task-ledger table")).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  await expect(page.getByRole("button", { name: "Create task" })).toBeVisible();
+  const firstTaskTitle = await firstTaskCard.locator(".task-card__identity > strong").innerText();
+  await expect(firstTaskCard.getByLabel(`More actions for ${firstTaskTitle}`)).toBeVisible();
+  await expect(firstTaskCard.getByRole("button", { name: `Edit ${firstTaskTitle}` })).not.toBeVisible();
+
+  await page.getByRole("button", { name: "Create task" }).click();
+  const modal = page.getByRole("dialog", { name: "Create onboarding task" });
+  const modalBox = await modal.boundingBox();
+  expect(modalBox).not.toBeNull();
+  expect((modalBox?.x ?? 0) + (modalBox?.width ?? 0)).toBeLessThanOrEqual(390);
+  expect(await modal.evaluate((element) => element.scrollHeight)).toBeGreaterThan(
+    await modal.evaluate((element) => element.clientHeight),
+  );
+});
+
 test("organizer assigns a file request in bulk and sees who needs chasing", async ({ page }) => {
   await signInAsOrganizer(page);
   await expect(page.getByRole("heading", { name: "DevFlow Conf 2027" })).toBeVisible();
+  const title = `Upload accessibility-ready slides ${Date.now()}`;
 
   await page.goto("/organizer/disposition");
   const proposalRow = page.getByRole("row", { name: /Taming 40-Minute CI/ });
@@ -97,20 +310,22 @@ test("organizer assigns a file request in bulk and sees who needs chasing", asyn
 
   await page.getByRole("link", { name: "Tasks", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Onboarding." })).toBeVisible();
-  await page.getByLabel("Task kind").selectOption("file_request");
-  await page.getByLabel("Task title").fill("Upload accessibility-ready slides");
-  await page.getByLabel("Due date").fill("2026-01-15");
-  await page.getByRole("checkbox", { name: /Priya Raman/ }).check();
-  await page.getByRole("checkbox", { name: /Marcus Okafor/ }).check();
-  await page.getByRole("button", { name: "Assign to 2 speakers" }).click();
+  await page.getByRole("button", { name: "Create task" }).click();
+  const createDialog = page.getByRole("dialog", { name: "Create onboarding task" });
+  await createDialog.getByLabel("Task kind").selectOption("file_request");
+  await createDialog.getByLabel("Task title").fill(title);
+  await createDialog.getByLabel("Due date").fill("2026-01-15");
+  await createDialog.getByRole("checkbox", { name: /Priya Raman/ }).check();
+  await createDialog.getByRole("checkbox", { name: /Marcus Okafor/ }).check();
+  await createDialog.getByRole("button", { name: "Assign to 2 speakers" }).click();
   await expect(page.getByRole("status")).toContainText("assigned to 2 speakers");
 
   await page.getByRole("link", { name: "Missing info", exact: true }).first().click();
   await expect(page.getByRole("heading", { name: "Morning check." })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Who still owes us something?" })).toBeVisible();
   await expect(page.getByText("Priya Raman", { exact: true })).toBeVisible();
-  await expect(page.getByText("Headshot", { exact: true }).first()).toBeVisible();
-  await expect(page.getByText("Upload accessibility-ready slides", { exact: true }).first()).toBeVisible();
+  await page.getByRole("button", { name: "Show all items for Priya Raman" }).click();
+  await expect(page.getByText(title, { exact: true }).first()).toBeVisible();
   await expect(page.getByText(/days overdue/).first()).toBeVisible();
 });
 
@@ -119,11 +334,14 @@ test("organizer completes and reopens one speaker assignment", async ({ page }) 
   await page.goto("/organizer/roster/tasks");
 
   const title = `Confirm completion workflow ${Date.now()}`;
-  await page.getByLabel("Task title").fill(title);
-  await page.getByRole("checkbox", { name: /Priya Raman/ }).check();
-  await page.getByRole("button", { name: "Assign to 1 speaker" }).click();
+  await page.getByRole("button", { name: "Create task" }).click();
+  const createDialog = page.getByRole("dialog", { name: "Create onboarding task" });
+  await createDialog.getByLabel("Task title").fill(title);
+  await createDialog.getByRole("checkbox", { name: /Priya Raman/ }).check();
+  await createDialog.getByRole("button", { name: "Assign to 1 speaker" }).click();
 
-  const taskRow = page.getByRole("row", { name: new RegExp(title) });
+  const taskRow = page.locator(".task-card").filter({ hasText: title });
+  await taskRow.getByRole("button", { name: `Show assignees for ${title}` }).click();
   await taskRow.getByRole("button", { name: `Mark complete ${title} for Priya Raman` }).click();
   await expect(page.getByRole("status")).toContainText(`marked complete for Priya Raman`);
   await expect(taskRow).toContainText("Complete");
@@ -140,12 +358,15 @@ test("organizer edits, reassigns, and removes a task from the ledger", async ({ 
   const suffix = Date.now().toString();
   const originalTitle = `Confirm ledger workflow ${suffix}`;
   const updatedTitle = `Upload ledger workflow ${suffix}`;
-  await page.getByLabel("Task title").fill(originalTitle);
-  await page.getByRole("checkbox", { name: /Priya Raman/ }).check();
-  await page.getByRole("button", { name: "Assign to 1 speaker" }).click();
-  await expect(page.getByRole("row", { name: new RegExp(originalTitle) })).toBeVisible();
+  await page.getByRole("button", { name: "Create task" }).click();
+  const createDialog = page.getByRole("dialog", { name: "Create onboarding task" });
+  await createDialog.getByLabel("Task title").fill(originalTitle);
+  await createDialog.getByRole("checkbox", { name: /Priya Raman/ }).check();
+  await createDialog.getByRole("button", { name: "Assign to 1 speaker" }).click();
+  const originalCard = page.locator(".task-card").filter({ hasText: originalTitle });
+  await expect(originalCard).toBeVisible();
 
-  await page.getByRole("button", { name: `Edit ${originalTitle}` }).click();
+  await clickTaskAction(originalCard, originalTitle, "Edit");
   const editDialog = page.getByRole("dialog", { name: `Edit ${originalTitle}` });
   await editDialog.getByLabel("Task kind").selectOption("file_request");
   await editDialog.getByLabel("Task title").fill(updatedTitle);
@@ -155,10 +376,10 @@ test("organizer edits, reassigns, and removes a task from the ledger", async ({ 
   await editDialog.getByRole("checkbox", { name: /Marcus Okafor/ }).check();
   await editDialog.getByRole("button", { name: "Save task" }).click();
 
-  const updatedRow = page.getByRole("row", { name: new RegExp(updatedTitle) });
+  const updatedRow = page.locator(".task-card").filter({ hasText: updatedTitle });
   await expect(updatedRow).toContainText("file request");
   await expect(updatedRow).toContainText("1");
-  await page.getByRole("button", { name: `Edit ${updatedTitle}` }).click();
+  await clickTaskAction(updatedRow, updatedTitle, "Edit");
   const updatedDialog = page.getByRole("dialog", { name: `Edit ${updatedTitle}` });
   await expect(updatedDialog.getByRole("checkbox", { name: /Priya Raman/ })).not.toBeChecked();
   await expect(updatedDialog.getByRole("checkbox", { name: /Marcus Okafor/ })).toBeChecked();
@@ -177,11 +398,12 @@ test("organizer edits, reassigns, and removes a task from the ledger", async ({ 
   await signOut(page);
   await signInAsOrganizer(page);
   await page.goto("/organizer/roster/tasks");
-  await page.getByRole("button", { name: `Remove ${updatedTitle}` }).click();
+  const removableCard = page.locator(".task-card").filter({ hasText: updatedTitle });
+  await clickTaskAction(removableCard, updatedTitle, "Remove");
   const removeDialog = page.getByRole("dialog", { name: `Remove ${updatedTitle}?` });
   await expect(removeDialog).toContainText("retaining completed work and uploaded files");
   await removeDialog.getByRole("button", { name: "Remove task" }).click();
-  await expect(page.getByRole("row", { name: new RegExp(updatedTitle) })).toHaveCount(0);
+  await expect(page.locator(".task-card").filter({ hasText: updatedTitle })).toHaveCount(0);
   await expect(page.getByRole("status")).toContainText("Completed work and uploads were retained");
 
   await signOut(page);
