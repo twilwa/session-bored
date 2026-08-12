@@ -64,7 +64,7 @@ function FacetGroup({
   );
 }
 
-function SessionCard({
+export function SessionCard({
   session,
   index,
   filteredOut,
