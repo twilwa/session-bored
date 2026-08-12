@@ -89,8 +89,15 @@ export function SubmissionReviewPage({
   );
   const [reviewComment, setReviewComment] = useState("");
   const [message, setMessage] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  async function load({ hydrateScorecard = false }: { hydrateScorecard?: boolean } = {}): Promise<void> {
+  async function load({
+    hydrateScorecard = false,
+    showLoadError = false,
+  }: {
+    hydrateScorecard?: boolean;
+    showLoadError?: boolean;
+  } = {}): Promise<void> {
     try {
       const roundQuery = roundId === undefined ? "" : `?roundId=${encodeURIComponent(roundId)}`;
       const loadedDetail = await reviewRequest<ReviewSubmissionDetail>(
@@ -119,14 +126,18 @@ export function SubmissionReviewPage({
         setAssistance(null);
       }
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "The proposal could not be loaded.");
+      const errorMessage = error instanceof Error ? error.message : "The proposal could not be loaded.";
+      if (showLoadError) setLoadError(errorMessage);
+      else setMessage(errorMessage);
     }
   }
 
   useEffect(() => {
+    setDetail(null);
+    setLoadError(null);
     setAIStartingPointId(null);
     setConfirmedAiScoreCriterionIds(new Set());
-    void load({ hydrateScorecard: true });
+    void load({ hydrateScorecard: true, showLoadError: true });
   }, [submissionId, roundId]);
 
   async function requestAssistance(): Promise<void> {
@@ -187,6 +198,20 @@ export function SubmissionReviewPage({
 
   const backHref = role === "organizer" ? "/organizer/review" : "/reviewer";
   if (detail === null) {
+    if (loadError !== null) {
+      return (
+        <section className="review-detail">
+          <section className="state-card" role="alert">
+            <p className="eyebrow">PROPOSAL UNAVAILABLE</p>
+            <h1>This proposal isn’t available to you.</h1>
+            <p>{loadError}</p>
+            <ReviewLink className="button button--signal" href={backHref}>
+              Back to {role === "reviewer" ? "Assigned proposals" : "committee review"}
+            </ReviewLink>
+          </section>
+        </section>
+      );
+    }
     return <section className="review-detail"><ReviewLink href={backHref}>← Back to review</ReviewLink><LoadingState label="Loading proposal" /><Toast message={message} /></section>;
   }
 

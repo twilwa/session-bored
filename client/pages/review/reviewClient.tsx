@@ -2,6 +2,10 @@
 // ABOUTME: Keeps review pages fast without full document reloads or duplicated fetch handling.
 import type { MouseEvent, ReactNode } from "react";
 
+const reviewErrorMessages: Record<string, string> = {
+  forbidden: "This proposal is not in your current assignment or review round.",
+};
+
 export async function reviewRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
   if (init?.body !== undefined) {
@@ -15,7 +19,12 @@ export async function reviewRequest<T>(path: string, init?: RequestInit): Promis
   if (!response.ok) {
     const payload: { error?: string } = await response.json<{ error?: string }>()
       .catch(() => ({} as { error?: string }));
-    throw new Error(payload.error?.replaceAll("_", " ") ?? `Request failed (${response.status})`);
+    const errorKey = payload.error;
+    throw new Error(
+      errorKey === undefined
+        ? `Request failed (${response.status})`
+        : reviewErrorMessages[errorKey] ?? errorKey.replaceAll("_", " "),
+    );
   }
   return response.json<T>();
 }
