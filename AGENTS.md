@@ -141,11 +141,14 @@ revoking sets `revoked_at` rather than deleting, so who decided what survives.
 **What an account may reach is the union of its live grants, never one of
 them.** `resolveGrantedRoles` answers that union, widest first
 (organizer > reviewer > speaker); `prepareRequest` puts it in the `roles`
-context variable and every gate reads it through `holdsAccess` in
-`worker/access.ts`, so granting a second area really opens it and no role
-implies another. `resolveEffectiveRole` is that union's first entry and exists
-only to *describe* an account on screen - never gate on it. A test harness that
-injects a signed-in caller must set `roles`, not just `role`. Never read
+context variable and gates read it through `holdsAccess` in `worker/access.ts`,
+so granting a second area really opens it and no role implies another. Gates
+that still compare the single `role` are organizer-only, where the widest role
+and the union agree; **any gate on `reviewer` or `speaker` must read `roles`**,
+or the second grant is invisible again. `resolveEffectiveRole` is that union's
+first entry and exists only to *describe* an account on screen - never gate on
+it. A test harness that injects a signed-in caller must set `roles`, not just
+`role`. Never read
 `user.role`: it keeps its original three-value CHECK
 because D1 refuses the rebuild that changing it needs (`user` has ten inbound
 foreign keys and does not honour `PRAGMA foreign_keys=OFF`), and Better Auth no
