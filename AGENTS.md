@@ -43,10 +43,10 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   on **every** removal, because a later removal only ever looks at its own session
   and would strand work from a session left earlier; the event's sessionless,
   unscoped onboarding templates belong to the person, so they go back only once
-  they speak nowhere else at the event. It reports `speaksElsewhereAtEvent`
-  because removal deliberately does not withdraw the event `speaker` row — which
-  is what drives the public speaker directory, the roster row, and mail
-  eligibility (issue #127, settled: no automatic withdrawal). What removal owes
+  they speak nowhere else at the event, which is the only thing the release's
+  `speaksElsewhereAtEvent` decides. The event `speaker` row — which drives the
+  public speaker directory, the roster row, and mail eligibility — deliberately
+  stands after removal (issue #127, settled: no automatic withdrawal). What removal owes
   instead is candour: the DELETE answers with `ParticipantRemovalOutcome`, and
   the panel says the person remains an event speaker and points at the roster,
   which owns withdrawal. That outcome reads every fact from the event after the
