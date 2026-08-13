@@ -106,7 +106,13 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   `PATCH /review/events/:eventId/reviewers/:reviewerUserId` replaces that remit
   in both directions, so narrowing takes effect on the reviewer's next read. It
   reports `retainedAssignments` because an explicit assignment still grants
-  access outside the new track remit. The organizer config route lists a
+  access outside the new track remit — but never a recused one, which grants
+  nothing to retain: those answer separately as `recusedAssignments`, read from
+  the recused `review_assignment` rows themselves like the worklist and card
+  (never `reviewerQueue`), so a remit narrowed to nothing still reports the
+  recusals it preserves. `client/pages/review/reviewer-remit-copy.ts` writes
+  the removed, retained, and recused outcomes into the organizer's
+  confirmation message. The organizer config route lists a
   reviewer by track responsibility, round pool, **or a live reviewer
   `role_grant`** (`listAccountsHoldingRole` in `worker/roles.ts`), so a reviewer
   narrowed to zero tracks — and one granted from People, which resolves no remit
