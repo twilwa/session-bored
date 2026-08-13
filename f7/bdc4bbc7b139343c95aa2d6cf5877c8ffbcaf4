@@ -1,0 +1,22 @@
+client/styles.css
+  s_7bda8a26862c0e::t_d408dc998a481c 27
+  s_7bda8a26862c0e::t_152497decf1722 29
+  s_7bda8a26862c0e::t_c78d3fe3e19a88 28
+  s_7bda8a26862c0e::t_f0018307251dd1 149
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "f7bdc4bbc7b139343c95aa2d6cf5877c8ffbcaf4",
+  "prompts": {},
+  "sessions": {
+    "s_7bda8a26862c0e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ses_00649b6abffeL4WeOyZ3X3CkJC",
+        "model": "unknown"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
