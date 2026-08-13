@@ -1,0 +1,72 @@
+worker/routes/disposition.ts
+  s_9ca2d4fdbcfa56::t_cff6c0c6d94d24 20,29,49-50
+worker/routes/portal.ts
+  s_9ca2d4fdbcfa56::t_cff6c0c6d94d24 20,41,48-49,52,470,474,485-487
+worker/index.ts
+  s_9ca2d4fdbcfa56::t_cff6c0c6d94d24 31,62,73,75-76,78-79,86-87,105-106,125,164-166,168
+worker/access.ts
+  s_9ca2d4fdbcfa56::t_cff6c0c6d94d24 7-12,17-21,33
+worker/submission-decision.ts
+  s_9ca2d4fdbcfa56::t_cff6c0c6d94d24 3,215-216,218,222-238,246-247,292-308,323
+tests/unit/access-policy.test.ts
+  s_9ca2d4fdbcfa56::t_cff6c0c6d94d24 13,17,24,28,33,37-51,53-54
+worker/routes/comms.ts
+  s_9ca2d4fdbcfa56::t_cff6c0c6d94d24 8,32,62,64-65
+worker/routes/people.ts
+  s_9ca2d4fdbcfa56::t_cff6c0c6d94d24 3,13,15,18,20,24,35,42-43,46,72-75,79-80,83-88,264-281,289-290
+tests/integration/participant-revocation.test.ts
+  s_9ca2d4fdbcfa56::t_cff6c0c6d94d24 7,172-205,485-530
+  s_9ca2d4fdbcfa56::t_de9c73bac37560 531
+AGENTS.md
+  s_9ca2d4fdbcfa56::t_cff6c0c6d94d24 72-77,109-114,170-188,202-206
+worker/routes/roster.ts
+  s_9ca2d4fdbcfa56::t_cff6c0c6d94d24 20,27,38-39
+worker/routes/embeds.ts
+  s_9ca2d4fdbcfa56::t_cff6c0c6d94d24 8,23,36,38-39
+worker/routes/content.ts
+  s_9ca2d4fdbcfa56::t_cff6c0c6d94d24 21,31,38-39,42,52,61,64,238-239,243,278-279,283,308
+worker/routes/exports.ts
+  s_9ca2d4fdbcfa56::t_cff6c0c6d94d24 28,37,44-45
+worker/routes/review.ts
+  s_9ca2d4fdbcfa56::t_cff6c0c6d94d24 27,41,49-50,53,250-251,257-262,288-290,374,398-399,404-405,407
+tests/e2e/account-access.spec.ts
+  s_9ca2d4fdbcfa56::t_cff6c0c6d94d24 99-138
+worker/routes/agenda.ts
+  s_9ca2d4fdbcfa56::t_cff6c0c6d94d24 19,34,41-42
+tests/integration/account-access.test.ts
+  s_9ca2d4fdbcfa56::t_cff6c0c6d94d24 5,8-9,11,13,278-401
+tests/integration/people.test.ts
+  s_9ca2d4fdbcfa56::t_cff6c0c6d94d24 5,7,9,173-291
+worker/seed.ts
+  s_9ca2d4fdbcfa56::t_cff6c0c6d94d24 56-66,107,131-155,556,584-588
+worker/routes/participants.ts
+  s_9ca2d4fdbcfa56::t_cff6c0c6d94d24 17,24,31-32
+worker/routes/event-settings.ts
+  s_9ca2d4fdbcfa56::t_cff6c0c6d94d24 17,23,30-31
+tests/integration/ai-review.test.ts
+  s_9ca2d4fdbcfa56::t_cff6c0c6d94d24 33,52-53
+tests/integration/portal-content.test.ts
+  s_9ca2d4fdbcfa56::t_cff6c0c6d94d24 193-222
+worker/routes/ai-review.ts
+  s_9ca2d4fdbcfa56::t_cff6c0c6d94d24 18,37,53-54,57
+worker/routes/cfp-builder.ts
+  s_9ca2d4fdbcfa56::t_cff6c0c6d94d24 23,27,448-449
+worker/roles.ts
+  s_9ca2d4fdbcfa56::t_cff6c0c6d94d24 15-17,31-34,63-68,70-83,96
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "6a09a500c7e1d616609ac58dd43e380350185bdc",
+  "prompts": {},
+  "sessions": {
+    "s_9ca2d4fdbcfa56": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c4d3f422-a042-42f6-9009-091c49c9bc34",
+        "model": "claude-opus-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
