@@ -52,9 +52,13 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   which owns withdrawal. That outcome reads every fact from the event after the
   removal rather than from the release result, because a proposal with no session
   still has to report the programme its participant speaks on elsewhere. The
-  notice names only the access the person actually held, so the payload carries
-  `sessionContentStatus` beside `sessionId`: a proposal is read-only to a named
-  participant, and an `approved` session is read-only to its speakers too.
+  notice names only the access the person actually held: the outcome carries
+  `heldSessionAccess`, read from the live `session_speaker` row *before* removal
+  archives it, and the payload carries `sessionContentStatus` beside `sessionId`.
+  A proposal is read-only to a named participant; naming somebody on an accepted
+  proposal through the CFP edit never carries them onto its session, so a session
+  the person never reached was never theirs to lose; and an `approved` session is
+  read-only to the speakers who are on it.
   `PUBLIC_SPEAKER_STATUSES` in `worker/public-queries.ts`
   is the one rule for whether that speaker is publicly listed; read it rather
   than restating the statuses. A collaborator is named, not

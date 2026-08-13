@@ -74,16 +74,44 @@ async function readSubmissionContext(
 }
 
 /**
+ * Whether this person could actually reach the session, asked while the link is still live.
+ * A participant is named, not admitted: the public CFP edit adds a collaborator to the
+ * proposal without carrying them onto its session, so a session-bearing proposal can hold a
+ * participant who never had session access for removal to take away.
+ */
+async function holdsSessionAccess(
+  database: ParticipantDatabase,
+  eventId: string,
+  sessionId: string,
+  personId: string,
+): Promise<boolean> {
+  const [link] = await database
+    .select({ id: sessionSpeakers.id })
+    .from(sessionSpeakers)
+    .innerJoin(speakers, eq(sessionSpeakers.speakerId, speakers.id))
+    .where(and(
+      eq(sessionSpeakers.sessionId, sessionId),
+      eq(speakers.personId, personId),
+      eq(speakers.eventId, eventId),
+      isNull(sessionSpeakers.deletedAt),
+    ))
+    .limit(1);
+  return link !== undefined;
+}
+
+/**
  * Reads what removing this person leaves standing at the event. The event-scoped `speaker`
  * row is deliberately untouched by removal, so the organizer is told it is still there, and
  * whether it is still on the public directory, rather than assuming removal withdrew them.
  * Every fact is read from the event after the removal, so a proposal that never had a session
- * still reports the programme the person speaks on elsewhere.
+ * still reports the programme the person speaks on elsewhere. `heldSessionAccess` is the one
+ * exception, and has to be: the session link it speaks about is gone by the time this runs.
  */
 async function removalOutcome(
   database: ParticipantDatabase,
   eventId: string,
   personId: string,
+  heldSessionAccess: boolean,
 ): Promise<ParticipantRemovalOutcome> {
   const [person] = await database
     .select({ id: people.id, name: people.name })
@@ -104,6 +132,7 @@ async function removalOutcome(
     listedPublicly: remainsEventSpeaker
       && (PUBLIC_SPEAKER_STATUSES as readonly string[]).includes(speaker.status),
     speaksElsewhereAtEvent: stillSpeaking,
+    heldSessionAccess,
   };
 }
 
@@ -324,6 +353,8 @@ participantRoutes.delete(
     if (participant.personId === scope.submission.submitterPersonId) {
       return context.json({ error: "submitter_cannot_be_removed" }, 409);
     }
+    const heldSessionAccess = scope.sessionId !== null
+      && await holdsSessionAccess(database, eventId, scope.sessionId, participant.personId);
     await database
       .update(submissionSpeakers)
       .set({ deletedAt: new Date() })
@@ -333,7 +364,7 @@ participantRoutes.delete(
     }
     return context.json({
       ...await participantsResponse(database, eventId, submissionId, scope),
-      removal: await removalOutcome(database, eventId, participant.personId),
+      removal: await removalOutcome(database, eventId, participant.personId, heldSessionAccess),
     });
   },
 );

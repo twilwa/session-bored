@@ -475,6 +475,12 @@ export interface ParticipantRemovalOutcome {
   remainsEventSpeaker: boolean;
   listedPublicly: boolean;
   speaksElsewhereAtEvent: boolean;
+  /**
+   * Whether this person held a live `session_speaker` row when they were removed, read before
+   * the link was archived. Naming somebody on a proposal never carries them onto its session,
+   * so a proposal can hold a session this person could never reach.
+   */
+  heldSessionAccess: boolean;
 }
 
 export interface SubmissionParticipantsPayload {

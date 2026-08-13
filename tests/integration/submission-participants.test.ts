@@ -439,6 +439,8 @@ describe("the program team's own hold on the participant list", () => {
       // Acceptance promoted them to onboarding, which is a status the public directory lists.
       listedPublicly: true,
       speaksElsewhereAtEvent: false,
+      // Acceptance carried them onto the session, so removal really did take that access.
+      heldSessionAccess: true,
     });
     expect(afterRemove.removal.speakerId).not.toBeNull();
 
@@ -480,7 +482,51 @@ describe("the program team's own hold on the participant list", () => {
     expect(removed.status).toBe(200);
     await expect(removed.json()).resolves.toMatchObject({
       sessionContentStatus: "approved",
-      removal: { name: "Dev Malhotra", remainsEventSpeaker: true },
+      removal: { name: "Dev Malhotra", remainsEventSpeaker: true, heldSessionAccess: true },
+    });
+  });
+
+  it("takes no session access from a participant the session never carried", async () => {
+    const authorEmail = "rosa.late.named@example.test";
+    const created = await createPanel(authorEmail);
+    await request(`/api/events/${eventId}/disposition`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie: organizerCookie },
+      body: JSON.stringify({ submissionIds: [created.submission.id], status: "accepted" }),
+    });
+
+    // The author names somebody through the public CFP edit. Naming is not admitting, so this
+    // person joins the proposal without ever being carried onto its session.
+    const proposal = panelProposal(authorEmail, "submit");
+    const amended = await request(`${created.accessPath}?key=${encodeURIComponent(created.editKey)}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        ...proposal,
+        collaborators: [
+          ...proposal.collaborators,
+          { name: "Late Named", email: `late.${authorEmail}`, roleLabel: "co-speaker" },
+        ],
+      }),
+    });
+    expect(amended.status).toBe(200);
+
+    const path = `/api/events/${eventId}/submissions/${created.submission.id}/participants`;
+    const listed = await (await request(path, { headers: { cookie: organizerCookie } }))
+      .json<{ sessionId: string | null; participants: Array<Participant & { onSession: boolean }> }>();
+    expect(listed.sessionId).not.toBeNull();
+    const lateNamed = listed.participants.find((participant) => participant.name === "Late Named");
+    expect(lateNamed?.onSession).toBe(false);
+
+    const removed = await request(`${path}/${lateNamed?.id}`, {
+      method: "DELETE",
+      headers: { cookie: organizerCookie },
+    });
+    expect(removed.status).toBe(200);
+    // The proposal has a session, but this person never reached it, so removal took nothing there.
+    await expect(removed.json()).resolves.toMatchObject({
+      sessionContentStatus: "draft",
+      removal: { name: "Late Named", heldSessionAccess: false },
     });
   });
 
@@ -521,7 +567,12 @@ describe("the program team's own hold on the participant list", () => {
     expect(removed.status).toBe(200);
     // Removing them here touches nothing on the accepted proposal, and the notice must say so.
     await expect(removed.json()).resolves.toMatchObject({
-      removal: { name: "Two Stage", remainsEventSpeaker: true, speaksElsewhereAtEvent: true },
+      removal: {
+        name: "Two Stage",
+        remainsEventSpeaker: true,
+        speaksElsewhereAtEvent: true,
+        heldSessionAccess: false,
+      },
     });
   });
 

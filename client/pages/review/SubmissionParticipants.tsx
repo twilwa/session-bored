@@ -12,8 +12,9 @@ const emptyDraft = { name: "", email: "", roleLabel: "" };
  * the proposal by design: it never withdraws the event speaker, so the organizer is told that
  * outright and pointed at the roster, which is where withdrawing from the event happens.
  *
- * What it says was taken is only what the speaker actually held: a proposal is read-only to a
- * named participant, and an approved session is read-only to its speakers too.
+ * What it says was taken is only what this person actually held: a proposal is read-only to a
+ * named participant, a session they were never carried onto was never theirs to lose, and an
+ * approved session is read-only to the speakers who are on it.
  */
 export function RemovalNotice(
   { removal, sessionContentStatus }: {
@@ -35,7 +36,7 @@ export function RemovalNotice(
     "selectable as a recipient in Communications",
     removal.speaksElsewhereAtEvent ? "still on the programme for their other sessions here" : null,
   ].filter((entry): entry is string => entry !== null);
-  const lost = sessionContentStatus === null
+  const lost = !removal.heldSessionAccess
     ? "They lost read access to it."
     : sessionContentStatus === "approved"
     ? "They lost read access to it, and the read-only access they had to its approved session."
