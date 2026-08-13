@@ -57,7 +57,11 @@ interface ReviewerScopeResult {
   retainedAssignments: Array<{ submissionId: string; title: string | null; roundId: string }>;
 }
 
-function remitLabel(trackCount: number, totalTracks: number): string {
+function remitLabel(trackCount: number, totalTracks: number, roundCount: number): string {
+  // A queue is built from the reviewer's round pool, so no round means no work whatever their
+  // tracks say - whether they were narrowed out of every round or were granted reviewer from
+  // People and have never been in one. Either way the card below is where that is fixed.
+  if (roundCount === 0) return "In no review round · give them one below";
   if (trackCount === 0) return "Assigned proposals only";
   return trackCount === totalTracks ? "All submissions" : `${trackCount} track remit`;
 }
@@ -384,7 +388,7 @@ function OrganizerReviewWorklist() {
                       <div><strong>{reviewer.name}</strong><span>{reviewer.completedCount} / {reviewer.assignedCount}</span></div>
                       <div><span style={{ width: `${reviewerPercent}%` }} /></div>
                       <small>
-                        {remitLabel(reviewer.trackIds.length, config.tracks.length)}
+                        {remitLabel(reviewer.trackIds.length, config.tracks.length, reviewerRoundIds.length)}
                         {reviewer.recusals.length === 0 ? null : (
                           <>
                             {` · ${reviewer.recusals.length} recused: `}

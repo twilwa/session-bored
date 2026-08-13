@@ -1,6 +1,6 @@
 // ABOUTME: Applies submission status changes and their reversible downstream handoffs.
 // ABOUTME: Gives review and disposition routes one idempotent decision path.
-import { and, eq, inArray, isNull, ne } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, ne, type SQL } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import {
   createPublicId,
@@ -162,9 +162,17 @@ async function attachParticipant(
     .set({ roleLabel, sortOrder, deletedAt: null })
     .where(and(eq(sessionSpeakers.sessionId, sessionId), eq(sessionSpeakers.speakerId, speaker.id)));
   for (const task of participant.onboardingTasks) {
+    // Only an assignment this handoff actually creates records the session that granted it.
+    // Work the person already owed the event keeps whatever provenance it had, so restoring
+    // it here never turns somebody else's assignment into this session's to take back.
     await database
       .insert(taskAssignees)
-      .values({ id: createPublicId("tassn"), taskId: task.id, speakerId: speaker.id })
+      .values({
+        id: createPublicId("tassn"),
+        taskId: task.id,
+        speakerId: speaker.id,
+        grantedBySessionId: sessionId,
+      })
       .onConflictDoNothing();
     await database
       .update(taskAssignees)
@@ -230,8 +238,9 @@ async function sessionScopedTaskIds(
 /**
  * The event's configured onboarding templates - a headshot, a bio - which belong to the person
  * rather than to any one session, so they outlive leaving a session and are taken back only
- * once the person speaks nowhere at the event. Read-only, unlike `resolveOnboardingTasks`,
- * because taking work back from somebody must never seed the tasks it is about to archive.
+ * once the person speaks nowhere at the event, and then only for the assignments a session
+ * handoff created. Read-only, unlike `resolveOnboardingTasks`, because taking work back from
+ * somebody must never seed the tasks it is about to archive.
  */
 async function eventOnboardingTaskIds(
   database: DecisionDatabase,
@@ -276,16 +285,20 @@ export async function speaksElsewhereAtEvent(
  * Takes back what `carryParticipantIntoSession` gave, for somebody the program team or the
  * author has removed from the proposal. It archives the session link, and the onboarding work
  * that being carried onto a session created, so no speaker-facing read or write still answers
- * them. Their onboarding work survives while they still speak somewhere else at the event, and
- * everything archived here comes back untouched if they are named again — the speaker, the
- * session, the assignments, and their completion history are never erased.
+ * them. It takes back nothing else: an onboarding assignment the person already owed the event
+ * before this proposal named them records no granting session and survives, because a
+ * correction the organizer makes on one proposal must not empty somebody's whole checklist
+ * (issue #148). Their onboarding work also survives while they still speak somewhere else at
+ * the event, and everything archived here comes back untouched if they are named again — the
+ * speaker, the session, the assignments, and their completion history are never erased.
  *
  * The event-scoped `speaker` row deliberately stands after removal, even when this was their
  * last session (issue #127, settled: no automatic withdrawal). That row drives the public
  * speaker directory, the roster's own row, and mail eligibility, and withdrawing it is the
  * roster's action, never this one. What removal owes instead is candour, which the DELETE
  * route reports through `ParticipantRemovalOutcome`. `speaksElsewhereAtEvent` here decides
- * only how much onboarding work goes back.
+ * only whether the event's own onboarding is reached at all; the granting session recorded on
+ * each assignment decides which of it goes back.
  */
 export async function releaseParticipantFromSession(
   binding: D1Database,
@@ -309,7 +322,7 @@ export async function releaseParticipantFromSession(
       eq(sessionSpeakers.speakerId, speaker.id),
       isNull(sessionSpeakers.deletedAt),
     ));
-  const archiveAssignments = async (taskIds: readonly string[]) => {
+  const archiveAssignments = async (taskIds: readonly string[], ...only: SQL[]) => {
     if (taskIds.length === 0) {
       return;
     }
@@ -320,6 +333,7 @@ export async function releaseParticipantFromSession(
         eq(taskAssignees.speakerId, speaker.id),
         inArray(taskAssignees.taskId, [...taskIds]),
         isNull(taskAssignees.deletedAt),
+        ...only,
       ));
   };
   // This session's own work goes back every time, not only on the last removal. Deferring it
@@ -329,7 +343,13 @@ export async function releaseParticipantFromSession(
   if (await speaksElsewhereAtEvent(database, eventId, speaker.id)) {
     return;
   }
-  await archiveAssignments(await eventOnboardingTaskIds(database, eventId));
+  // Of the event's own onboarding, only the assignments a session handoff created. Work the
+  // person already owed the event, or that an organizer handed them from the roster, records
+  // no granting session and is not this removal's to take: they are still a speaker here.
+  await archiveAssignments(
+    await eventOnboardingTaskIds(database, eventId),
+    isNotNull(taskAssignees.grantedBySessionId),
+  );
 }
 
 async function ensureAcceptedHandoff(

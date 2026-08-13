@@ -538,10 +538,12 @@ rosterRoutes.patch("/api/events/:eventId/tasks/:taskId", async (context) => {
         .map((assignment) => context.env.DB.prepare(
           "update task_assignee set deleted_at = ?, updated_at = ? where id = ?",
         ).bind(changedAt, changedAt, assignment.id)),
+      // An organizer handing the work back makes it the speaker's own, whoever gave it to them
+      // first, so it stops being a session's to take back when they leave that session.
       ...existingAssignments
         .filter((assignment) => requested.has(assignment.speakerId) && assignment.deletedAt !== null)
         .map((assignment) => context.env.DB.prepare(
-          "update task_assignee set deleted_at = null, updated_at = ? where id = ?",
+          "update task_assignee set deleted_at = null, granted_by_session_id = null, updated_at = ? where id = ?",
         ).bind(changedAt, assignment.id)),
       ...requestedSpeakerIds
         .filter((speakerId) => !existingBySpeaker.has(speakerId))

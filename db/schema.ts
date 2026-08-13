@@ -612,6 +612,11 @@ export const taskAssignees = sqliteTable(
     id: publicId("tassn"),
     taskId: text("task_id").notNull().references(() => tasks.id),
     speakerId: text("speaker_id").notNull().references(() => speakers.id),
+    // The session whose participant handoff created this assignment, so removing the person
+    // from that session takes back the work it gave and only that. An assignment the person
+    // already owed the event, or that an organizer handed them from the roster, records no
+    // session and belongs to the person.
+    grantedBySessionId: text("granted_by_session_id").references(() => sessions.id),
     status: text("status", { enum: ["assigned", "in_progress", "completed"] })
       .notNull()
       .default("assigned"),

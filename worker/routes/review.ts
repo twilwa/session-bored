@@ -29,7 +29,7 @@ import type { ReviewAssignmentStatus } from "../../shared/api.ts";
 import type { AuthSession } from "../auth.ts";
 import { createAuth } from "../auth.ts";
 import { reviewProposalAnswers } from "../review-answers.ts";
-import { grantRole, hasLiveGrant } from "../roles.ts";
+import { grantRole, hasLiveGrant, listAccountsHoldingRole } from "../roles.ts";
 import { applyReviewerRemit } from "../reviewer-invites.ts";
 import { changeSubmissionStatuses } from "../submission-decision.ts";
 
@@ -551,8 +551,12 @@ reviewRoutes.get(
         .from(reviewerRoundPools)
         .innerJoin(users, eq(reviewerRoundPools.reviewerUserId, users.id))
         .where(inArray(reviewerRoundPools.roundId, roundIds));
+    // And a reviewer with neither still belongs here. Granting reviewer from People opens the
+    // area without writing a track or a round, so this is the only screen that can complete
+    // the grant - leaving them off it would ship a role no organizer can make work (#147).
+    const grantedReviewers = await listAccountsHoldingRole(database, "reviewer");
     const eventReviewers = [...new Map(
-      [...trackReviewers, ...poolReviewers].map((reviewer) => [reviewer.id, reviewer]),
+      [...trackReviewers, ...poolReviewers, ...grantedReviewers].map((reviewer) => [reviewer.id, reviewer]),
     ).values()];
     const [criteriaRows, poolRows, reviewerTrackRows] = roundIds.length === 0
       ? [[], [], []]

@@ -42,9 +42,15 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   work part company here. Work scoped to the session (`task.session_id`) goes back
   on **every** removal, because a later removal only ever looks at its own session
   and would strand work from a session left earlier; the event's sessionless,
-  unscoped onboarding templates belong to the person, so they go back only once
-  they speak nowhere else at the event, which is the only thing the release's
-  `speaksElsewhereAtEvent` decides. The event `speaker` row — which drives the
+  unscoped onboarding templates belong to the person, so an assignment goes back
+  only once they speak nowhere else at the event — which is the only thing the
+  release's `speaksElsewhereAtEvent` decides — **and** only if a handoff is what
+  created it. `task_assignee.granted_by_session_id` records that: the handoff
+  stamps it when it inserts a row and never when it restores one, so work the
+  person already owed the event, or that an organizer handed them from the roster
+  (which clears the stamp when it restores an assignment), survives a removal
+  intact. Without that, the smallest correction round-trip — name somebody, unname
+  them — emptied their whole event checklist (issue #148). The event `speaker` row — which drives the
   public speaker directory, the roster row, and mail eligibility — deliberately
   stands after removal (issue #127, settled: no automatic withdrawal). What removal owes
   instead is candour: the DELETE answers with `ParticipantRemovalOutcome`, and
@@ -101,8 +107,15 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   in both directions, so narrowing takes effect on the reviewer's next read. It
   reports `retainedAssignments` because an explicit assignment still grants
   access outside the new track remit. The organizer config route lists a
-  reviewer by track responsibility *or* round pool, so a reviewer narrowed to
-  zero tracks stays visible and editable.
+  reviewer by track responsibility, round pool, **or a live reviewer
+  `role_grant`** (`listAccountsHoldingRole` in `worker/roles.ts`), so a reviewer
+  narrowed to zero tracks — and one granted from People, which resolves no remit
+  at all — stays visible and editable. That third door is deliberately not given
+  a default remit: the grant is platform-wide (#120) and the default is
+  event-scoped, so refusing or guessing an event would make a role grant hostage
+  to one event's rounds. Committee setup completes it instead, and its card says
+  the reviewer is in no review round while their round pool is empty, because a
+  queue is built from that pool and tracks alone earn nothing (issue #147).
 - `POST /api/review/submissions/:submissionId/recusal` is the reviewer's own action
   and the only writer of `review_assignment.status = 'recused'`. It keeps the same
   assignment row, creating one first if the proposal was readable through track

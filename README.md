@@ -73,6 +73,11 @@ is never enough to claim it. Confirmation mail needs an email sender; until one
 is connected, invitations simply stay pending and organizers can grant directly
 from People instead.
 
+Granting reviewer opens the committee area; it does not decide what that reviewer
+may read. Give them tracks and a round from **Committee setup** in the review
+workspace, which lists every granted reviewer, including one who has no remit yet.
+Until they are in a round pool, their queue is empty.
+
 ## Commands
 
 The standard project commands cover database evolution, verification, and

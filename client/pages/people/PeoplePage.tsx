@@ -154,6 +154,11 @@ export function PeoplePage() {
         <div className="people-card__head">
           <h2>Accounts</h2>
           <p>A grant opens an area everywhere, for now. Removing one keeps its history.</p>
+          <p>
+            Reviewer opens the committee area but sets nobody's remit. Give them tracks and a
+            round on <a href="/organizer/review">Committee setup</a>, where every granted
+            reviewer is listed, or their queue stays empty.
+          </p>
         </div>
         {visible.length === 0 ? (
           <EmptyState title="Nobody here" description="No account matches this view." />
