@@ -7,6 +7,7 @@ import type {
   PublicSpeakerCard,
 } from "../../../shared/api.ts";
 import { EmptyState, LoadingState } from "../../components/ui.tsx";
+import { Headshot } from "../../components/Headshot.tsx";
 import { getJson } from "../../lib.tsx";
 import {
   agendaCellKey,
@@ -15,7 +16,6 @@ import {
   formatSpeakerLine,
   formatTimeRange,
   groupSessionsByDay,
-  initialsOf,
   sortSessionsChronologically,
 } from "../public/shared.ts";
 import "./embeds.css";
@@ -104,9 +104,7 @@ function SpeakerWidget({ items, gallery }: { items: PublicSpeakerCard[]; gallery
       {items.map((speaker) => (
         <li key={speaker.id}>
           {gallery ? (
-            speaker.headshotUrl === null
-              ? <span className="embed-speakers__initials" aria-hidden="true">{initialsOf(speaker.name)}</span>
-              : <img alt="" src={speaker.headshotUrl} />
+            <Headshot alt="" fallbackClassName="embed-speakers__initials" imageClassName="" name={speaker.name} url={speaker.headshotUrl} />
           ) : null}
           <div><h2>{speaker.name}</h2><p>{[speaker.jobTitle, speaker.organization].filter(Boolean).join(" · ") || "Speaker"}</p></div>
         </li>

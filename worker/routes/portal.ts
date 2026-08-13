@@ -167,6 +167,16 @@ function readUploadedFile(formData: FormData | null): File | null {
   return value instanceof File ? value : null;
 }
 
+// A `?version=` value is caller-supplied text; anything but a whole number names no
+// stored version, so it yields no filter rather than a query for NaN.
+function fileVersionFilter(requestedVersion: string | undefined) {
+  if (requestedVersion === undefined) {
+    return eq(fileVersions.latest, true);
+  }
+  const version = Number(requestedVersion);
+  return Number.isInteger(version) ? eq(fileVersions.version, version) : null;
+}
+
 function validationErrorStatus(error: "file_required" | "file_too_large" | "unsupported_file_type"): 400 | 413 | 415 {
   if (error === "file_too_large") return 413;
   if (error === "unsupported_file_type") return 415;
@@ -265,7 +275,7 @@ async function storeSpeakerHeadshot(
     bytes,
     uploadedByUserId,
   });
-  const headshotUrl = `/api/public/portal/speakers/${profile.speakerId}/headshot`;
+  const headshotUrl = `/api/public/portal/speakers/${profile.speakerId}/headshot?version=${version}`;
   await database.update(people).set({ headshotUrl }).where(eq(people.id, profile.personId));
   await completeMatchingTasks(database, profile.speakerId, /headshot/i);
   return { fileId, version, headshotUrl };
@@ -490,10 +500,10 @@ portalRoutes.get("/portal/files/:fileId", async (context) => {
       return context.json({ error: "forbidden" }, 403);
     }
   }
-  const requestedVersion = context.req.query("version");
-  const versionFilter = requestedVersion === undefined
-    ? eq(fileVersions.latest, true)
-    : eq(fileVersions.version, Number(requestedVersion));
+  const versionFilter = fileVersionFilter(context.req.query("version"));
+  if (versionFilter === null) {
+    return context.json({ error: "not_found" }, 404);
+  }
   const [version] = await database
     .select()
     .from(fileVersions)
@@ -525,10 +535,15 @@ portalRoutes.get("/public/portal/speakers/:speakerId/headshot", async (context) 
   if (file === undefined) {
     return context.json({ error: "not_found" }, 404);
   }
+  const requestedVersion = context.req.query("version");
+  const versionFilter = fileVersionFilter(requestedVersion);
+  if (versionFilter === null) {
+    return context.json({ error: "not_found" }, 404);
+  }
   const [version] = await database
-    .select({ storageKey: fileVersions.storageKey })
+    .select({ id: fileVersions.id, storageKey: fileVersions.storageKey })
     .from(fileVersions)
-    .where(and(eq(fileVersions.fileId, file.id), eq(fileVersions.latest, true)));
+    .where(and(eq(fileVersions.fileId, file.id), versionFilter));
   if (version === undefined) {
     return context.json({ error: "not_found" }, 404);
   }
@@ -539,12 +554,18 @@ portalRoutes.get("/public/portal/speakers/:speakerId/headshot", async (context) 
   return new Response(object.body, {
     headers: {
       // Never trust the stored/caller-supplied mime type for a publicly, unauthenticated,
-      // inline-served response — derive it independently from the validated extension.
-      "content-type": imageContentTypeForFilename(file.displayName),
+      // inline-served response — derive it independently from the validated extension,
+      // taken from the served version's own filename rather than the newest upload's.
+      "content-type": imageContentTypeForFilename(filenameForVersion(version, file.displayName)),
       // The served type is a stated fact, not a hint: a browser must not sniff its way to
       // treating these bytes as anything else.
       "x-content-type-options": "nosniff",
-      "cache-control": "public, max-age=300",
+      // A versioned URL names fixed bytes and may be cached forever; the unversioned
+      // form resolves the latest version, which a replacement changes, so it must
+      // keep revalidating.
+      "cache-control": requestedVersion === undefined
+        ? "public, max-age=300"
+        : "public, max-age=31536000, immutable",
     },
   });
 });

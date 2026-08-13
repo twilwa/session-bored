@@ -102,6 +102,7 @@ describe("speaker portal content", () => {
     expect(upload.status).toBe(201);
     const uploadBody = await upload.json<{ fileId: string; version: number; headshotUrl: string }>();
     expect(uploadBody.version).toBe(1);
+    expect(uploadBody.headshotUrl).toBe("/api/public/portal/speakers/spk_priya_devflow_2027/headshot?version=1");
 
     const after = await request("/api/speaker/content", { headers: { cookie: priyaCookie } });
     const afterBody = await after.json<{
@@ -253,7 +254,7 @@ describe("speaker portal content", () => {
     expect(upload.status).toBe(201);
     const uploadBody = await upload.json<{ fileId: string; status: string; headshotUrl: string | null }>();
     expect(uploadBody.status).toBe("completed");
-    expect(uploadBody.headshotUrl).toBe("/api/public/portal/speakers/spk_priya_devflow_2027/headshot");
+    expect(uploadBody.headshotUrl).toMatch(/^\/api\/public\/portal\/speakers\/spk_priya_devflow_2027\/headshot\?version=\d+$/);
 
     const after = await request("/api/speaker/content", { headers: { cookie: priyaCookie } });
     const afterBody = await after.json<{
@@ -382,6 +383,64 @@ describe("speaker portal content", () => {
     expect(served.status).toBe(200);
     expect(served.headers.get("content-type")).toBe("image/png");
     expect(served.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(served.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+
+    // The unversioned form resolves the latest version, so a cache must keep asking.
+    const latest = await request("/api/public/portal/speakers/spk_priya_devflow_2027/headshot");
+    expect(latest.status).toBe(200);
+    expect(latest.headers.get("cache-control")).toBe("public, max-age=300");
+  });
+
+  it("answers a malformed version query with not found on both headshot and file routes", async () => {
+    const upload = await request("/api/portal/profile/headshot", {
+      method: "POST",
+      headers: { cookie: priyaCookie },
+      body: fileUpload("priya.png", "image/png", pngSignature),
+    });
+    expect(upload.status).toBe(201);
+    const { fileId } = await upload.json<{ fileId: string }>();
+
+    const publicResponse = await request(
+      "/api/public/portal/speakers/spk_priya_devflow_2027/headshot?version=abc",
+    );
+    expect(publicResponse.status).toBe(404);
+
+    const privateResponse = await request(`/api/portal/files/${fileId}?version=abc`, {
+      headers: { cookie: priyaCookie },
+    });
+    expect(privateResponse.status).toBe(404);
+  });
+
+  it("gives a replacement its own public URL, so a fresh request cannot return the previous headshot bytes", async () => {
+    const first = await request("/api/portal/profile/headshot", {
+      method: "POST",
+      headers: { cookie: priyaCookie },
+      body: fileUpload("priya-first.png", "image/png", pngSignature),
+    });
+    expect(first.status).toBe(201);
+    const firstBody = await first.json<{ headshotUrl: string; version: number }>();
+
+    const replacementBytes = [0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10];
+    const second = await request("/api/portal/profile/headshot", {
+      method: "POST",
+      headers: { cookie: priyaCookie },
+      body: fileUpload("priya-second.jpg", "image/jpeg", replacementBytes),
+    });
+    expect(second.status).toBe(201);
+    const secondBody = await second.json<{ headshotUrl: string; version: number }>();
+
+    expect(secondBody.version).toBe(firstBody.version + 1);
+    expect(secondBody.headshotUrl).not.toBe(firstBody.headshotUrl);
+    const firstServed = await request(firstBody.headshotUrl);
+    // Each version serves under its own format, not the label of whatever replaced it.
+    expect(firstServed.headers.get("content-type")).toBe("image/png");
+    expect([...new Uint8Array(await firstServed.arrayBuffer())]).toEqual(pngSignature);
+    const secondServed = await request(secondBody.headshotUrl);
+    expect(secondServed.headers.get("content-type")).toBe("image/jpeg");
+    expect([...new Uint8Array(await secondServed.arrayBuffer())]).toEqual(replacementBytes);
+
+    const profile = await request("/api/speaker/content", { headers: { cookie: priyaCookie } });
+    await expect(profile.json()).resolves.toMatchObject({ profile: { headshotUrl: secondBody.headshotUrl } });
   });
 
   it("lets the seeded headshot request take a headshot on a freshly seeded deployment", async () => {
@@ -403,7 +462,7 @@ describe("speaker portal content", () => {
     expect(upload.status).toBe(201);
     await expect(upload.json()).resolves.toMatchObject({
       status: "completed",
-      headshotUrl: "/api/public/portal/speakers/spk_priya_devflow_2027/headshot",
+      headshotUrl: expect.stringMatching(/^\/api\/public\/portal\/speakers\/spk_priya_devflow_2027\/headshot\?version=\d+$/),
     });
   });
 

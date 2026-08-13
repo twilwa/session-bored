@@ -1,9 +1,11 @@
 // ABOUTME: Public speaker detail — bio, headshot (or graceful fallback), and approved sessions (F-10.5).
+// ABOUTME: Presents one confirmed speaker and their public programme without exposing private records.
 import { useEffect, useState } from "react";
+import { Headshot } from "../../components/Headshot.tsx";
 import { EmptyState, LoadingState, StatusChip } from "../../components/ui.tsx";
 import type { PublicSpeakerDetailResponse } from "../../../shared/api.ts";
 import { Link, PublicHeader, getJson } from "../../lib.tsx";
-import { DEVFLOW_EVENT_ID, formatDayLabel, formatSchedule, formatTime, initialsOf } from "./shared.ts";
+import { DEVFLOW_EVENT_ID, formatDayLabel, formatSchedule, formatTime } from "./shared.ts";
 
 export function SpeakerDetailPage({ speakerId }: { speakerId: string }) {
   const [data, setData] = useState<PublicSpeakerDetailResponse | null>(null);
@@ -53,17 +55,7 @@ export function SpeakerDetailPage({ speakerId }: { speakerId: string }) {
         {!loading && !error && speaker ? (
           <>
             <header className="speaker-detail__head">
-              {speaker.headshotUrl === null ? (
-                <span aria-hidden="true" className="speaker-card__avatar speaker-card__avatar--placeholder speaker-card__avatar--lg">
-                  {initialsOf(speaker.name)}
-                </span>
-              ) : (
-                <img
-                  alt={`Headshot of ${speaker.name}`}
-                  className="speaker-detail__avatar"
-                  src={speaker.headshotUrl}
-                />
-              )}
+              <Headshot alt={`Headshot of ${speaker.name}`} fallbackClassName="speaker-card__avatar speaker-card__avatar--placeholder speaker-card__avatar--lg" imageClassName="speaker-detail__avatar" name={speaker.name} url={speaker.headshotUrl} />
               <div className="speaker-detail__intro">
                 <p className="eyebrow">SPEAKER / {facets?.event.name ?? "DEVFLOW CONF 2027"}</p>
                 <h1>{speaker.name}</h1>

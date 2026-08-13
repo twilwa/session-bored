@@ -392,6 +392,11 @@ lifecycle and relationships are fixed as follows:
   consistency (title/time/room/track reading identically everywhere) breaks.
   `client/pages/public/ScheduleShared.tsx` holds the day-tab control and the
   session detail overlay shared by the agenda and itinerary.
+  `client/components/Headshot.tsx` is likewise the one headshot renderer —
+  roster row and expanded profile, public directory/detail/gallery, the
+  speaker-gallery embed, and the portal preview all render through it, so a
+  missing or broken image falls back to the same initials everywhere; render
+  through it rather than hand-rolling a headshot `<img>` (issue #133).
 - The shared `Modal` in `client/components/ui.tsx` caps height at `min(85vh, 680px)`
   with internal scroll; any modal with content that can grow long needs this, since
   the backdrop does not scroll on its own.
@@ -408,16 +413,20 @@ enriched `tasks` (`taskType`, `instructions`, `acceptedFileTypes`,
 
 - Uploads write through the existing `file`/`file_version` tables (R2 binding
   `FILES`) rather than a parallel model. `file.kind` (`headshot` | `deliverable`)
-  distinguishes a speaker's one profile headshot (`taskId` null, served
-  unauthenticated at `GET /api/public/portal/speakers/:speakerId/headshot`, and
-  mirrored onto `people.headshotUrl`) from a task-scoped deliverable
-  (`taskId` + `speakerId` locate the row). Re-uploading either kind adds a new
+  distinguishes a speaker's one profile headshot (`taskId` null) from a
+  task-scoped deliverable (`taskId` + `speakerId` locate the row). The headshot
+  serves unauthenticated at `GET /api/public/portal/speakers/:speakerId/headshot`,
+  which answers the whole-number `?version=` the URL names (404 otherwise),
+  resolves a version-less URL to the latest, and caches only a versioned
+  response immutably. `storeSpeakerHeadshot` mirrors the versioned URL onto
+  `people.headshotUrl`, so a replacement names new bytes and shows immediately
+  on every surface (issue #152). Re-uploading either kind adds a new
   `file_version` or flips `latest`; prior versions stay downloadable via
   `GET /api/portal/files/:fileId?version=N`, and each `files[].versions` entry in
   `GET /api/speaker/content` carries that link. `file.display_name` only tracks the
   newest upload, so a version's own filename comes from its storage key
-  (`worker/storage/file-versions.ts`) for both the history list and the download's
-  `Content-Disposition`.
+  (`worker/storage/file-versions.ts`) for the history list, the download's
+  `Content-Disposition`, and the public headshot's per-version content type.
 - A speaker never sees `submission.status`. Both speaker doors -
   `GET /api/speaker/content` and `GET /api/speaker/submissions/:submissionId` -
   answer with `speakerStatus` from `speakerFacingSubmissionStatus` in

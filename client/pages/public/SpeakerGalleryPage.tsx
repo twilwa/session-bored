@@ -1,26 +1,16 @@
 // ABOUTME: Public speaker gallery — photo grid alphabetized by surname with search (F-10.10).
 // ABOUTME: Reuses the merged public speakers endpoint, gating, and speaker detail page; degrades without a headshot.
 import { useEffect, useState } from "react";
+import { Headshot } from "../../components/Headshot.tsx";
 import { EmptyState, LoadingState } from "../../components/ui.tsx";
 import type { PublicSpeakersResponse } from "../../../shared/api.ts";
 import { Link, PublicHeader, getJson } from "../../lib.tsx";
-import { DEVFLOW_EVENT_ID, initialsOf } from "./shared.ts";
+import { DEVFLOW_EVENT_ID } from "./shared.ts";
 
 function GalleryCard({ speaker }: { speaker: PublicSpeakersResponse["items"][number] }) {
   return (
     <Link className="gallery-card" href={`/speakers/${speaker.id}`}>
-      {speaker.headshotUrl === null ? (
-        <span aria-hidden="true" className="gallery-card__photo gallery-card__photo--placeholder">
-          {initialsOf(speaker.name)}
-        </span>
-      ) : (
-        <img
-          alt={`Headshot of ${speaker.name}`}
-          className="gallery-card__photo"
-          loading="lazy"
-          src={speaker.headshotUrl}
-        />
-      )}
+      <Headshot alt={`Headshot of ${speaker.name}`} fallbackClassName="gallery-card__photo gallery-card__photo--placeholder" imageClassName="gallery-card__photo" loading="lazy" name={speaker.name} url={speaker.headshotUrl} />
       <div className="gallery-card__caption">
         <h2>{speaker.name}</h2>
         <p>
