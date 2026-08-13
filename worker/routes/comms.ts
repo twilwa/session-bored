@@ -262,6 +262,9 @@ commsRoutes.post("/api/events/:eventId/decision-notices/:submissionId/retry", as
   if (result.status === "provider_not_configured") {
     return context.json({ error: "email_not_configured" }, 409);
   }
+  if (result.status === "delivery_unconfirmed") {
+    return context.json({ error: "delivery_outcome_unconfirmed" }, 409);
+  }
   if (result.status === "failed") {
     return context.json({ status: "failed", error: result.error }, 502);
   }
@@ -273,20 +276,25 @@ commsRoutes.post("/api/events/:eventId/decision-notices/:submissionId/cancel", a
   if (user === null) {
     return context.json({ error: "authentication_required" }, 401);
   }
-  // An empty body is an ordinary cancellation with no reason and no address correction.
+  // Reason and address correction are optional; naming the letter is not. Retiring a letter the
+  // caller never reviewed is the same fault as sending one, so it is refused rather than resolved.
   const payload = await context.req
-    .json<{ reason?: unknown; recipientEmail?: unknown }>()
-    .catch(() => ({} as { reason?: unknown; recipientEmail?: unknown }));
+    .json<{ noticeId?: unknown; reason?: unknown; recipientEmail?: unknown }>()
+    .catch(() => ({} as { noticeId?: unknown; reason?: unknown; recipientEmail?: unknown }));
   if (
     (payload.reason !== undefined && typeof payload.reason !== "string") ||
     (payload.recipientEmail !== undefined && typeof payload.recipientEmail !== "string")
   ) {
     return context.json({ error: "invalid_cancellation" }, 400);
   }
+  if (typeof payload.noticeId !== "string" || payload.noticeId === "") {
+    return context.json({ error: "notice_id_required" }, 400);
+  }
   const result = await cancelDecisionNotice({
     database: drizzle(context.env.DB),
     eventId: context.req.param("eventId") as `evt_${string}`,
     submissionId: context.req.param("submissionId"),
+    noticeId: payload.noticeId,
     cancelledByUserId: user.id,
     reason: typeof payload.reason === "string" ? payload.reason : undefined,
     correctedRecipientEmail: typeof payload.recipientEmail === "string" ? payload.recipientEmail : undefined,
@@ -296,6 +304,9 @@ commsRoutes.post("/api/events/:eventId/decision-notices/:submissionId/cancel", a
   }
   if (result.status === "already_cancelled") {
     return context.json({ error: "notice_already_cancelled" }, 409);
+  }
+  if (result.status === "superseded") {
+    return context.json({ error: "notice_superseded" }, 409);
   }
   if (result.status === "not_cancellable") {
     return context.json({ error: "notice_not_cancellable", currentStatus: result.currentStatus }, 409);

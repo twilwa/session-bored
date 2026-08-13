@@ -82,6 +82,12 @@ export const decisionNotices = sqliteTable(
       .default("queued"),
     /** When the current `sending` claim was taken, so an abandoned one can be recognised. */
     sendingSince: integer("sending_since", { mode: "timestamp_ms" }),
+    /**
+     * Identifies who holds the current claim. A send conditions its final write on still holding
+     * the token it took, so a sender whose lease expired mid-flight cannot overwrite whoever
+     * legitimately took the letter over - including a cancellation.
+     */
+    sendingClaimToken: text("sending_claim_token"),
     sentAt: integer("sent_at", { mode: "timestamp_ms" }),
     providerMessageId: text("provider_message_id"),
     failureReason: text("failure_reason"),

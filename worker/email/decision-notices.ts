@@ -48,7 +48,10 @@ async function claimForSending(
   database: EmailDatabase,
   noticeId: string,
   now: Date,
-): Promise<{ claimed: true; previousStatus: "queued" | "failed" | "sending" } | { claimed: false }> {
+): Promise<
+  { claimed: true; token: string; previousStatus: "queued" | "failed" | "sending" } | { claimed: false }
+> {
+  const token = crypto.randomUUID();
   const cutoff = staleClaimCutoff(now);
   const [before] = await database
     .select({ deliveryStatus: decisionNotices.deliveryStatus })
@@ -56,7 +59,7 @@ async function claimForSending(
     .where(eq(decisionNotices.id, noticeId));
   const claimed = await database
     .update(decisionNotices)
-    .set({ deliveryStatus: "sending", sendingSince: now })
+    .set({ deliveryStatus: "sending", sendingSince: now, sendingClaimToken: token })
     .where(and(
       eq(decisionNotices.id, noticeId),
       isNull(decisionNotices.cancelledAt),
@@ -72,7 +75,11 @@ async function claimForSending(
     .returning({ id: decisionNotices.id });
   return claimed.length === 0
     ? { claimed: false }
-    : { claimed: true, previousStatus: (before?.deliveryStatus ?? "queued") as "queued" | "failed" | "sending" };
+    : {
+      claimed: true,
+      token,
+      previousStatus: (before?.deliveryStatus ?? "queued") as "queued" | "failed" | "sending",
+    };
 }
 
 async function deliverAndRecord(
@@ -81,7 +88,7 @@ async function deliverAndRecord(
   eventId: `evt_${string}`,
   notice: Pick<DecisionNoticeRow, "id" | "outcome" | "recipientEmail" | "subject" | "body">,
   now: Date = new Date(),
-): Promise<"sent" | "failed" | "provider_not_configured" | "not_claimable"> {
+): Promise<"sent" | "failed" | "provider_not_configured" | "not_claimable" | "lost_claim"> {
   const claim = await claimForSending(database, notice.id, now);
   if (!claim.claimed) {
     return "not_claimable";
@@ -96,28 +103,50 @@ async function deliverAndRecord(
     html: textToHtml(notice.body),
     text: notice.body,
   });
+  // Every write below is conditioned on still holding the token taken above. A provider call that
+  // outran the lease no longer owns the letter: somebody else may have legitimately reclaimed or
+  // cancelled it, and overwriting them would report a cancelled letter as sent.
+  const stillOurs = and(
+    eq(decisionNotices.id, notice.id),
+    eq(decisionNotices.sendingClaimToken, claim.token),
+  );
   if (result.status === "provider_not_configured") {
     // Nothing was attempted, so put the letter back exactly as it was rather than leaving it
     // claimed. An unconfigured deployment must stay silent and leave a queued letter queued.
     await database
       .update(decisionNotices)
-      .set({ deliveryStatus: claim.previousStatus === "sending" ? "queued" : claim.previousStatus, sendingSince: null })
-      .where(eq(decisionNotices.id, notice.id));
+      .set({
+        deliveryStatus: claim.previousStatus === "sending" ? "queued" : claim.previousStatus,
+        sendingSince: null,
+        sendingClaimToken: null,
+      })
+      .where(stillOurs);
     return "provider_not_configured";
   }
   const delivered = result.status === "sent";
-  // This send owns the claim, so recording its outcome needs no further condition: no cancellation
-  // could have landed while the claim was held.
-  await database
+  const recorded = await database
     .update(decisionNotices)
     .set({
       deliveryStatus: delivered ? "sent" : "failed",
       sendingSince: null,
+      sendingClaimToken: null,
       sentAt: delivered ? new Date() : null,
       providerMessageId: delivered ? result.providerMessageId ?? null : null,
       failureReason: delivered ? null : result.error ?? "send_failed",
     })
-    .where(eq(decisionNotices.id, notice.id));
+    .where(stillOurs)
+    .returning({ id: decisionNotices.id });
+  if (recorded.length === 0) {
+    // The attempt really happened and `email_dispatch` already records it, which is the durable
+    // account of what reached the provider. What cannot be done is restate it on a letter this
+    // send no longer owns, so the row is left to whoever holds it and the caller is told plainly.
+    console.log(JSON.stringify({
+      message: "decision_notice_claim_lost",
+      noticeId: notice.id,
+      attemptedStatus: result.status,
+    }));
+    return "lost_claim";
+  }
   return delivered ? "sent" : "failed";
 }
 
@@ -148,7 +177,7 @@ export async function dispatchDecisionNoticeEmails(
     const outcome = await deliverAndRecord(database, delivery, eventId, notice);
     // Cancelled or already being sent by somebody else between the caller's read and here.
     // Nothing was attempted for it, so nothing is claimed about it either.
-    if (outcome === "provider_not_configured" || outcome === "not_claimable") {
+    if (outcome === "provider_not_configured" || outcome === "not_claimable" || outcome === "lost_claim") {
       continue;
     }
     attempted = true;
@@ -161,6 +190,7 @@ export type RetryDecisionNoticeResult =
   | { status: "not_found" }
   | { status: "not_retryable"; currentStatus: string }
   | { status: "superseded" }
+  | { status: "delivery_unconfirmed" }
   | { status: "provider_not_configured" }
   | { status: "sent" }
   | { status: "failed"; error: string };
@@ -224,6 +254,10 @@ export async function retryDecisionNotice(
   if (outcome === "not_claimable") {
     return { status: "not_retryable", currentStatus: "sending" };
   }
+  // The attempt outlived its claim, so its outcome could not be recorded on the letter.
+  if (outcome === "lost_claim") {
+    return { status: "delivery_unconfirmed" };
+  }
   if (outcome === "sent") {
     return { status: "sent" };
   }
@@ -237,6 +271,7 @@ export async function retryDecisionNotice(
 export type CancelDecisionNoticeResult =
   | { status: "not_found" }
   | { status: "already_cancelled" }
+  | { status: "superseded" }
   | { status: "not_cancellable"; currentStatus: string }
   | { status: "invalid_recipient" }
   | { status: "recipient_taken" }
@@ -252,11 +287,17 @@ export type CancelDecisionNoticeResult =
  * address, the same field the roster already edits, which is what makes the replacement
  * letter come out right. The replacement is a fresh batch the organizer reviews and
  * dispatches, so the approval a letter carries always describes the letter that was sent.
+ *
+ * `noticeId` is required for the same reason it is on the send path. A modal left open for letter
+ * A, while somebody else cancels A and queues replacement B, would otherwise retire B - and apply
+ * an address correction typed while reading A. Retiring a letter nobody reviewed is the same fault
+ * as sending one.
  */
 export async function cancelDecisionNotice(params: {
   database: EmailDatabase;
   eventId: `evt_${string}`;
   submissionId: string;
+  noticeId: string;
   cancelledByUserId: string;
   reason?: string | undefined;
   correctedRecipientEmail?: string | undefined;
@@ -278,6 +319,9 @@ export async function cancelDecisionNotice(params: {
   const live = rows.find((row) => row.cancelledAt === null);
   if (live === undefined) {
     return { status: "already_cancelled" };
+  }
+  if (live.id !== params.noticeId) {
+    return { status: "superseded" };
   }
   const now = new Date();
   const cutoff = staleClaimCutoff(now);

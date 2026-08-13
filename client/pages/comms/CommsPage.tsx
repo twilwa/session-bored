@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type {
   CommsTemplateDescriptor,
+  DecisionNoticeSummary,
   DispositionSummary,
   EmailDispatchSummary,
 } from "../../../shared/api.ts";
@@ -30,6 +31,8 @@ interface TemplateEditor {
 /** A letter the organizer is retiring, and the correction that should replace it. */
 interface Cancellation {
   submissionId: string;
+  /** The letter being retired. Named, so a modal left open cannot retire its replacement. */
+  noticeId: string;
   recipientName: string;
   recipientEmail: string;
   /**
@@ -299,10 +302,11 @@ export function CommsPage() {
     }
   }
 
-  function startCancellation(item: DispositionSummary): void {
-    const prefilledEmail = item.notice?.recipientEmail ?? item.recipientEmail;
+  function startCancellation(item: DispositionSummary, notice: DecisionNoticeSummary): void {
+    const prefilledEmail = notice.recipientEmail;
     setCancellation({
       submissionId: item.id,
+      noticeId: notice.id,
       recipientName: item.recipientName,
       recipientEmail: prefilledEmail,
       prefilledEmail,
@@ -323,6 +327,7 @@ export function CommsPage() {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
+          noticeId: pending.noticeId,
           reason: pending.reason,
           ...(edited ? { recipientEmail: pending.recipientEmail } : {}),
         }),
@@ -437,7 +442,7 @@ export function CommsPage() {
                   )}
                   <Button
                     disabled={busy}
-                    onClick={() => startCancellation(item)}
+                    onClick={() => startCancellation(item, notice)}
                     tone="quiet"
                   >
                     Wrong recipient?

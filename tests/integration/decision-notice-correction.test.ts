@@ -79,11 +79,13 @@ describe("decision notice correction", () => {
     return { batchId: batch.id, recipientEmail: batch.items[0]!.recipientEmail };
   }
 
-  function cancel(body: Record<string, unknown> = {}): Promise<Response> {
+  /** Cancels the letter currently live for the submission, naming it as the UI does. */
+  async function cancel(body: Record<string, unknown> = {}): Promise<Response> {
+    const live = (await noticesFor(submissionId)).find((row) => row.cancelled_at === null);
     return request(`/api/events/${eventId}/decision-notices/${submissionId}/cancel`, {
       method: "POST",
       headers,
-      body: JSON.stringify(body),
+      body: JSON.stringify({ noticeId: live?.id ?? "eml_missing", ...body }),
     });
   }
 
@@ -362,6 +364,7 @@ describe("a letter cannot be cancelled and sent at the same time", () => {
       database,
       eventId: eventIdTyped,
       submissionId,
+      noticeId: (await noticesFor(submissionId)).find((row) => row.cancelled_at === null)!.id,
       cancelledByUserId: userId,
       reason: "Trying to cancel mid-flight.",
     });
@@ -385,6 +388,7 @@ describe("a letter cannot be cancelled and sent at the same time", () => {
       database,
       eventId: eventIdTyped,
       submissionId,
+      noticeId: (await noticesFor(submissionId)).find((row) => row.cancelled_at === null)!.id,
       cancelledByUserId: userId,
       reason: "Retired first.",
     });
@@ -429,6 +433,7 @@ describe("a letter cannot be cancelled and sent at the same time", () => {
       database,
       eventId: eventIdTyped,
       submissionId,
+      noticeId: (await noticesFor(submissionId)).find((row) => row.cancelled_at === null)!.id,
       cancelledByUserId: userId,
       correctedRecipientEmail: "replacement@greenroom-probe.dev",
     });
@@ -476,6 +481,7 @@ describe("a letter cannot be cancelled and sent at the same time", () => {
       database,
       eventId: eventIdTyped,
       submissionId,
+      noticeId: (await noticesFor(submissionId)).find((row) => row.cancelled_at === null)!.id,
       cancelledByUserId: userId,
       correctedRecipientEmail: "corrected@greenroom-probe.dev",
     });
@@ -510,6 +516,7 @@ describe("a letter cannot be cancelled and sent at the same time", () => {
       database,
       eventId: eventIdTyped,
       submissionId,
+      noticeId: (await noticesFor(submissionId)).find((row) => row.cancelled_at === null)!.id,
       cancelledByUserId: userId,
       reason: "Wrong letter, right person.",
     });
@@ -541,7 +548,7 @@ describe("a letter cannot be cancelled and sent at the same time", () => {
     const cancelledId = (await noticesFor(submissionId))[0]!.id;
     const cancelled = await request(
       `/api/events/${eventId}/decision-notices/${submissionId}/cancel`,
-      { method: "POST", headers, body: JSON.stringify({ reason: "Wrong address." }) },
+      { method: "POST", headers, body: JSON.stringify({ noticeId: cancelledId, reason: "Wrong address." }) },
     );
     expect(cancelled.status).toBe(200);
 
@@ -558,12 +565,120 @@ describe("a letter cannot be cancelled and sent at the same time", () => {
     expect(row!.cancelled_at).not.toBeNull();
   });
 
+  it("refuses a cancellation that names a letter already replaced", async () => {
+    await queue();
+    const database = drizzle(env.DB);
+    const userId = await organizerUserId();
+    const staleId = (await noticesFor(submissionId))[0]!.id;
+
+    // Somebody else retires A and queues B while this modal is still open on A.
+    await cancelDecisionNotice({
+      database, eventId: eventIdTyped, submissionId, noticeId: staleId,
+      cancelledByUserId: userId, correctedRecipientEmail: "b@greenroom-probe.dev",
+    });
+    await queue();
+    const live = (await noticesFor(submissionId)).find((row) => row.cancelled_at === null)!;
+    expect(live.id).not.toBe(staleId);
+
+    // The stale modal cancels A, and must not retire B - nor apply the address it typed for A.
+    const refused = await cancelDecisionNotice({
+      database, eventId: eventIdTyped, submissionId, noticeId: staleId,
+      cancelledByUserId: userId, correctedRecipientEmail: "typed-while-reading-a@greenroom-probe.dev",
+    });
+    expect(refused).toEqual({ status: "superseded" });
+    const after = (await noticesFor(submissionId)).find((row) => row.cancelled_at === null)!;
+    expect(after.id).toBe(live.id);
+    const person = await env.DB.prepare(
+      "select email from person where id = (select submitter_person_id from submission where id = ?)",
+    ).bind(submissionId).first<{ email: string }>();
+    expect(person!.email).toBe("b@greenroom-probe.dev");
+
+    const viaRoute = await request(
+      `/api/events/${eventId}/decision-notices/${submissionId}/cancel`,
+      { method: "POST", headers, body: JSON.stringify({ noticeId: staleId }) },
+    );
+    expect(viaRoute.status).toBe(409);
+    await expect(viaRoute.json()).resolves.toMatchObject({ error: "notice_superseded" });
+  });
+
+  it("refuses a cancellation that does not name a letter at all", async () => {
+    await queue();
+    for (const body of ["{}", JSON.stringify({ noticeId: "" }), JSON.stringify({ reason: "x" })]) {
+      const response = await request(
+        `/api/events/${eventId}/decision-notices/${submissionId}/cancel`,
+        { method: "POST", headers, body },
+      );
+      expect(response.status, `body: ${body}`).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({ error: "notice_id_required" });
+    }
+    const [row] = await noticesFor(submissionId);
+    expect(row!.cancelled_at).toBeNull();
+  });
+
+  it("does not let a send that outlived its claim overwrite whoever took the letter over", async () => {
+    await queue();
+    const database = drizzle(env.DB);
+    const userId = await organizerUserId();
+    const noticeId = (await noticesFor(submissionId))[0]!.id;
+
+    // A send claims the letter and parks in the provider call.
+    let release: () => void = () => {};
+    const parked = new Promise<void>((resolve) => { release = resolve; });
+    let calls = 0;
+    const slow: EmailDelivery = {
+      async send() { calls += 1; await parked; return { status: "sent", providerMessageId: "late" }; },
+    };
+    const sending = retryDecisionNotice(database, env, eventIdTyped, submissionId, noticeId, slow);
+    while (calls === 0) await new Promise((resolve) => setTimeout(resolve, 1));
+
+    // Its lease expires and somebody else legitimately takes the letter over and cancels it.
+    await env.DB.prepare(
+      "update decision_notice set sending_since = ?, sending_claim_token = 'someone-else' where id = ?",
+    ).bind(Date.now() - 60 * 60_000, noticeId).run();
+    const takenOver = await cancelDecisionNotice({
+      database, eventId: eventIdTyped, submissionId, noticeId,
+      cancelledByUserId: userId, reason: "Abandoned send, retired by hand.",
+    });
+    expect(takenOver.status).toBe("cancelled");
+
+    // The original send finishes. It must not restate itself over the cancellation.
+    release();
+    await expect(sending).resolves.toEqual({ status: "delivery_unconfirmed" });
+    const [row] = await noticesFor(submissionId);
+    expect(row!.cancelled_at).not.toBeNull();
+    expect(row!.delivery_status).not.toBe("sent");
+  });
+
+  it("lets only one of two concurrent dispatches of the same batch queue the letter", async () => {
+    await request(`/api/events/${eventId}/disposition`, {
+      method: "PATCH", headers,
+      body: JSON.stringify({ submissionIds: [submissionId], status: "declined" }),
+    });
+    const batch = await (await request(`/api/events/${eventId}/decision-batches`, {
+      method: "POST", headers, body: JSON.stringify({ submissionIds: [submissionId] }),
+    })).json<{ id: string }>();
+
+    // Claiming in the database rather than filtering rows read a moment ago is what makes this
+    // safe: both requests see an unspent item, and exactly one may take it.
+    const [first, second] = await Promise.all([
+      request(`/api/events/${eventId}/decision-batches/${batch.id}/dispatch`, {
+        method: "POST", headers: { cookie },
+      }).then((response) => response.json<{ queuedCount: number }>()),
+      request(`/api/events/${eventId}/decision-batches/${batch.id}/dispatch`, {
+        method: "POST", headers: { cookie },
+      }).then((response) => response.json<{ queuedCount: number }>()),
+    ]);
+    expect([first!.queuedCount, second!.queuedCount].sort()).toEqual([0, 1]);
+    expect(await noticesFor(submissionId)).toHaveLength(1);
+  });
+
   it("names who cancelled the letter in the communications history", async () => {
     await queue();
+    const liveId = (await noticesFor(submissionId))[0]!.id;
     await request(`/api/events/${eventId}/decision-notices/${submissionId}/cancel`, {
       method: "POST",
       headers,
-      body: JSON.stringify({ reason: "Queued to the wrong address." }),
+      body: JSON.stringify({ noticeId: liveId, reason: "Queued to the wrong address." }),
     });
     const log = await (await request(`/api/events/${eventId}/email-dispatches`, { headers: { cookie } }))
       .json<{ items: Array<{ status: string; failureReason: string | null }> }>();

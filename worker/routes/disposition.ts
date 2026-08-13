@@ -265,10 +265,22 @@ dispositionRoutes.post("/api/events/:eventId/decision-batches/:batchId/dispatch"
   //   - a cancellation superseded it, because its frozen recipient, outcome and copy predate the
   //     correction. Dispatching it would reinstate exactly what the organizer just retired.
   //
-  // Both are skipped rather than refused, so a batch that is partly spent still queues the rest
-  // and reports the difference.
-  const items = allItems.filter((item) => item.dispatchedAt === null && item.supersededAt === null);
+  // Claiming is the stamp itself, conditioned in the database, not a filter over rows read a
+  // moment ago: a cancellation landing between the read and the insert would leave an in-memory
+  // filter still holding the pre-cancellation row, and the insert would succeed because the
+  // cancellation had just released the partial unique index. Whatever this claim returns is what
+  // this request may queue, and nothing else. Spent items are skipped rather than refused, so a
+  // batch that is partly spent still queues the rest and reports the difference.
   const queuedAt = new Date();
+  const items = allItems.length === 0 ? [] : await database
+    .update(decisionBatchItems)
+    .set({ dispatchedAt: queuedAt })
+    .where(and(
+      eq(decisionBatchItems.batchId, batch.id),
+      isNull(decisionBatchItems.dispatchedAt),
+      isNull(decisionBatchItems.supersededAt),
+    ))
+    .returning();
   const inserted = items.length === 0
     ? []
     : await database
@@ -285,18 +297,6 @@ dispositionRoutes.post("/api/events/:eventId/decision-batches/:batchId/dispatch"
       })))
       .onConflictDoNothing()
       .returning();
-  if (inserted.length > 0) {
-    const insertedIds = inserted.map((item) => item.submissionId);
-    await database
-      .update(decisionBatchItems)
-      .set({ dispatchedAt: queuedAt })
-      .where(
-        and(
-          eq(decisionBatchItems.batchId, batch.id),
-          inArray(decisionBatchItems.submissionId, insertedIds),
-        ),
-      );
-  }
   await database
     .update(decisionBatches)
     .set({ status: "queued", dispatchedAt: batch.dispatchedAt ?? queuedAt })

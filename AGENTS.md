@@ -39,14 +39,21 @@ This file is the project's committed home for project-intrinsic agent knowledge:
     Cancelling a claimed letter is refused. A claim older than
     `staleSendClaimMs` is treated as abandoned and may be retaken, because a
     Worker that dies mid-send would otherwise strand the letter forever.
-  - *A stale page.* Send-now names the letter it displayed
-    (`retryDecisionNotice`'s `expectedNoticeId`); resolving by submission alone
-    would send a replacement under the retired letter's review.
+    A send also conditions its final write on the `sending_claim_token` it took,
+    so an attempt that outran its lease cannot restate itself over whoever
+    legitimately took the letter over. It answers `delivery_unconfirmed`;
+    `email_dispatch` remains the durable account of what reached the provider.
+  - *A stale page.* Both per-letter doors take a **required** notice id -
+    `retryDecisionNotice` and `cancelDecisionNotice` - and refuse when it is not
+    the live letter. Required, not optional: an opt-in guard silently falls back
+    to submission-scoped selection for any caller that forgets, and sending or
+    retiring a letter nobody reviewed is the fault this exists to stop.
   - *A stale preview.* Cancelling stamps `decision_batch_item.superseded_at` on
-    every outstanding item for that submission, and dispatch skips those along
-    with ones it already stamped `dispatched_at`. Stamped causally rather than
-    inferred by comparing timestamps, which cannot order two writes in the same
-    millisecond.
+    every outstanding item for that submission, and dispatch **claims** items
+    with a conditional update that returns what it won, rather than filtering
+    rows it read a moment earlier. A cancellation landing inside that gap would
+    otherwise leave the filter holding a pre-cancellation row while the released
+    partial index let the insert through.
 - Accepting adopts each `submission_speaker.person_id` into the event-scoped
   `speaker` row, creates one `program_session` per `submission_id`, links the
   same speakers through `session_speaker`, and assigns the event's configured
