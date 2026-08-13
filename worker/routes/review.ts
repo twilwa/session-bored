@@ -571,10 +571,16 @@ reviewRoutes.get(
         assignedCount: queue.filter((item) => item.assignmentStatus !== "recused").length,
         completedCount: queue.filter((item) => item.assignmentStatus === "completed").length,
         recusedCount: queue.filter((item) => item.assignmentStatus === "recused").length,
-        // The count is only useful if it names the proposals it stands for.
+        // The count is only useful if it names the proposals it stands for, and it counts
+        // assignments, so a proposal recused in two rounds keeps one entry per round.
         recusals: queue
           .filter((item) => item.assignmentStatus === "recused")
-          .map((item) => ({ submissionId: item.submissionId, title: item.title })),
+          .map((item) => ({
+            roundId: item.roundId,
+            roundName: item.roundName,
+            submissionId: item.submissionId,
+            title: item.title,
+          })),
       };
     }));
     return context.json({
@@ -1397,10 +1403,13 @@ reviewRoutes.get(
         averageScore: numericScores.length === 0
           ? null
           : numericScores.reduce((total, score) => total + score, 0) / numericScores.length,
-        recusedBy: recusalRows
-          .filter((recusal) => recusal.submissionId === submission.submissionId)
-          .map((recusal) => recusal.reviewerName)
-          .sort((left, right) => left.localeCompare(right)),
+        // The row speaks about the proposal, so it names each reviewer once however many
+        // rounds they stepped back in.
+        recusedBy: [...new Set(
+          recusalRows
+            .filter((recusal) => recusal.submissionId === submission.submissionId)
+            .map((recusal) => recusal.reviewerName),
+        )].sort((left, right) => left.localeCompare(right)),
       };
     });
     const sort = context.req.query("sort") === "score" ? "score" : "coverage";

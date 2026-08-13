@@ -1243,14 +1243,20 @@ export interface ReviewWorklistItem {
   ratingCount: number;
   averageScore: number | null;
   /**
-   * Reviewers who declared a conflict on this proposal. A recusal produces no rating, so
-   * without this a recused proposal reads exactly like one nobody has opened.
+   * Reviewers who declared a conflict on this proposal, each named once. A recusal produces no
+   * rating, so without this a recused proposal reads exactly like one nobody has opened.
    */
   recusedBy: string[];
 }
 
-/** One proposal a reviewer recused themselves from, named so the count can lead an organizer to it. */
+/**
+ * One proposal a reviewer recused themselves from, named so the count can lead an organizer to
+ * it. A recusal belongs to a round, and `recusedCount` counts assignments, so the same proposal
+ * appears once per round the reviewer stepped back in — each entry says which.
+ */
 export interface ReviewerRecusal {
+  roundId: string;
+  roundName: string;
   submissionId: string;
   title: string | null;
 }

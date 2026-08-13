@@ -1112,6 +1112,79 @@ describe("review engine", () => {
     expect(untouchedRow?.recusedBy).toEqual([]);
   });
 
+  it("keeps each round's recusal distinct when one reviewer recuses the same proposal twice", async () => {
+    await request("/api/health");
+    const organizerCookie = await signIn("sbek-organizer@example.com", "SbekTest!2027-org");
+    const organizerHeaders = { cookie: organizerCookie, "content-type": "application/json" };
+    const secondRound = await request("/api/review/events/evt_devflow_conf_2027/rounds", {
+      method: "POST",
+      headers: organizerHeaders,
+      body: JSON.stringify({ name: "Second pass", status: "open" }),
+    });
+    expect(secondRound.status).toBe(201);
+    const secondRoundId = (await secondRound.json<{ id: string }>()).id;
+
+    const provisioned = await (await request("/api/review/events/evt_devflow_conf_2027/reviewers", {
+      method: "POST",
+      headers: organizerHeaders,
+      body: JSON.stringify({
+        name: "Twice Recusing",
+        email: "twice-recusing@example.com",
+        password: "ReviewTalks!2027",
+        trackIds: [],
+        roundIds: ["rnd_initial_review", secondRoundId],
+      }),
+    })).json<{ reviewer: { id: string } }>();
+    for (const roundId of ["rnd_initial_review", secondRoundId]) {
+      const assigned = await request(`/api/review/rounds/${roundId}/assignments`, {
+        method: "POST",
+        headers: organizerHeaders,
+        body: JSON.stringify({ reviewerUserId: provisioned.reviewer.id, submissionIds: ["sub_ci_monorepo"] }),
+      });
+      expect(assigned.status).toBe(201);
+    }
+
+    const reviewerHeaders = {
+      cookie: await signIn("twice-recusing@example.com", "ReviewTalks!2027"),
+      "content-type": "application/json",
+    };
+    for (const roundId of ["rnd_initial_review", secondRoundId]) {
+      const recused = await request("/api/review/submissions/sub_ci_monorepo/recusal", {
+        method: "POST",
+        headers: reviewerHeaders,
+        body: JSON.stringify({ roundId }),
+      });
+      expect(recused.status).toBe(200);
+    }
+
+    const config = await (await request(
+      "/api/review/events/evt_devflow_conf_2027/config",
+      { headers: { cookie: organizerCookie } },
+    )).json<{
+      reviewers: Array<{
+        id: string;
+        recusedCount: number;
+        recusals: Array<{ roundId: string; roundName: string; submissionId: string; title: string | null }>;
+      }>;
+    }>();
+    const reviewer = config.reviewers.find((item) => item.id === provisioned.reviewer.id);
+    // Two rounds, two recusals: the count is per assignment, so each entry must name its own round.
+    expect(reviewer?.recusedCount).toBe(2);
+    expect(reviewer?.recusals.map((recusal) => [recusal.roundName, recusal.submissionId])).toEqual([
+      ["Initial review", "sub_ci_monorepo"],
+      ["Second pass", "sub_ci_monorepo"],
+    ]);
+    expect(new Set(reviewer?.recusals.map((recusal) => recusal.roundId)).size).toBe(2);
+
+    // The worklist row speaks about the proposal, so one reviewer is named once.
+    const worklist = await (await request(
+      "/api/review/events/evt_devflow_conf_2027/worklist",
+      { headers: { cookie: organizerCookie } },
+    )).json<{ items: Array<{ submissionId: string; recusedBy: string[] }> }>();
+    const recusedBy = worklist.items.find((item) => item.submissionId === "sub_ci_monorepo")?.recusedBy ?? [];
+    expect(recusedBy.filter((name) => name === "Twice Recusing")).toEqual(["Twice Recusing"]);
+  });
+
   it("refuses a recusal outside the reviewer's own remit and from every other role", async () => {
     await request("/api/health");
     const organizerCookie = await signIn("sbek-organizer@example.com", "SbekTest!2027-org");

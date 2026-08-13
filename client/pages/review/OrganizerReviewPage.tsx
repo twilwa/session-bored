@@ -389,11 +389,12 @@ function OrganizerReviewWorklist() {
                           <>
                             {` · ${reviewer.recusals.length} recused: `}
                             {reviewer.recusals.map((recusal, position) => (
-                              <span key={recusal.submissionId}>
+                              <span key={`${recusal.roundId}:${recusal.submissionId}`}>
                                 {position === 0 ? "" : ", "}
                                 <ReviewLink href={`/organizer/review/submissions/${recusal.submissionId}`}>
                                   {recusal.title ?? recusal.submissionId}
                                 </ReviewLink>
+                                {` (${recusal.roundName})`}
                               </span>
                             ))}
                           </>

@@ -49,7 +49,10 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   eligibility (issue #127, settled: no automatic withdrawal). What removal owes
   instead is candour: the DELETE answers with `ParticipantRemovalOutcome`, and
   the panel says the person remains an event speaker and points at the roster,
-  which owns withdrawal. `PUBLIC_SPEAKER_STATUSES` in `worker/public-queries.ts`
+  which owns withdrawal. That outcome reads every fact from the event after the
+  removal rather than from the release result, because a proposal with no session
+  still has to report the programme its participant speaks on elsewhere.
+  `PUBLIC_SPEAKER_STATUSES` in `worker/public-queries.ts`
   is the one rule for whether that speaker is publicly listed; read it rather
   than restating the statuses. A collaborator is named, not
   admitted: naming somebody mints no author key, grants no dashboard, and never
@@ -102,8 +105,11 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   separately as `recusedCount`. Because it produces no rating, the organizer's
   coverage worklist carries `recusedBy` and the row says so — a recused proposal
   must never read as one nobody has opened — and each reviewer card's count links
-  to the proposals it stands for (`recusals`). Surfacing the fact is the whole
-  feature: no reassignment prompt, no queue, nothing sent (issue #130).
+  to the proposals it stands for (`recusals`). A recusal belongs to a round, so
+  `recusedCount` and `recusals` stay per assignment and each entry names its round;
+  the worklist row speaks about the proposal and names each reviewer once.
+  Surfacing the fact is the whole feature: no reassignment prompt, no queue,
+  nothing sent (issue #130).
 - Review scores remain in `review.scores`; `review.aggregate_score` is the
   weighted mean of numeric criteria, and the organizer worklist averages those
   review aggregates per submission. Submission comments are one attributed,
