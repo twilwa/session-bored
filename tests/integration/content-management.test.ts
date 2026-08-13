@@ -22,6 +22,7 @@ async function signIn(email: string, password: string): Promise<string> {
 function pdfUpload(name: string): FormData {
   const formData = new FormData();
   formData.append("file", new File([new Uint8Array([1, 2, 3, 4])], name, { type: "application/pdf" }));
+  formData.append("displayedRequestKind", "document");
   return formData;
 }
 

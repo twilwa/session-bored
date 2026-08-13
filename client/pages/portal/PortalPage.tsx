@@ -23,9 +23,12 @@ async function readJson<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json<T>();
 }
 
-async function uploadFile<T = unknown>(path: string, file: File): Promise<T> {
+async function uploadFile<T = unknown>(path: string, file: File, fields?: Record<string, string>): Promise<T> {
   const formData = new FormData();
   formData.append("file", file);
+  for (const [name, value] of Object.entries(fields ?? {})) {
+    formData.append(name, value);
+  }
   const response = await fetch(path, { method: "POST", credentials: "same-origin", body: formData });
   if (!response.ok) {
     const body = await response.json<{ message?: string; error?: string }>().catch(() => null);
@@ -55,7 +58,7 @@ function appliesAsPublicHeadshot(task: PortalTask): boolean {
 function TaskRow({ task, onComplete, onUpload, busy }: {
   task: PortalTask;
   onComplete: (taskId: string) => void;
-  onUpload: (taskId: string, file: File) => void;
+  onUpload: (taskId: string, file: File, displayedRequestKind: "document" | "picture") => void;
   busy: boolean;
 }) {
   const done = task.status === "completed";
@@ -79,7 +82,7 @@ function TaskRow({ task, onComplete, onUpload, busy }: {
                 disabled={busy}
                 onChange={(event) => {
                   const file = event.target.files?.[0];
-                  if (file !== undefined) onUpload(task.id, file);
+                  if (file !== undefined) onUpload(task.id, file, appliesToHeadshot ? "picture" : "document");
                   event.target.value = "";
                 }}
                 type="file"
@@ -241,10 +244,16 @@ export function PortalPage() {
     }
   }
 
-  async function uploadTaskFile(taskId: string, file: File): Promise<void> {
+  async function uploadTaskFile(
+    taskId: string,
+    file: File,
+    displayedRequestKind: "document" | "picture",
+  ): Promise<void> {
     setBusy(true);
     try {
-      const result = await uploadFile<{ headshotUrl: string | null }>(`/api/portal/tasks/${taskId}/files`, file);
+      const result = await uploadFile<{ headshotUrl: string | null }>(`/api/portal/tasks/${taskId}/files`, file, {
+        displayedRequestKind,
+      });
       await load();
       setMessage(result.headshotUrl === null
         ? "File uploaded. Task marked complete."
@@ -352,7 +361,7 @@ export function PortalPage() {
           : (
             <ul className="task-list">
               {content.tasks.map((task) => (
-                <TaskRow busy={busy} key={task.id} onComplete={(taskId) => void completeTask(taskId)} onUpload={(taskId, file) => void uploadTaskFile(taskId, file)} task={task} />
+                <TaskRow busy={busy} key={task.id} onComplete={(taskId) => void completeTask(taskId)} onUpload={(taskId, file, displayedRequestKind) => void uploadTaskFile(taskId, file, displayedRequestKind)} task={task} />
               ))}
             </ul>
           )}

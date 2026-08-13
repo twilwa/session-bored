@@ -25,6 +25,23 @@ function fileUpload(name: string, type: string, bytes: number[]): FormData {
   return formData;
 }
 
+function taskFileUpload(
+  name: string,
+  type: string,
+  bytes: number[],
+  displayedRequestKind: "document" | "picture",
+): FormData {
+  const formData = displayedRequest(displayedRequestKind);
+  formData.append("file", new File([new Uint8Array(bytes)], name, { type }));
+  return formData;
+}
+
+function displayedRequest(kind: "document" | "picture"): FormData {
+  const formData = new FormData();
+  formData.append("displayedRequestKind", kind);
+  return formData;
+}
+
 /** A real PNG signature, so an upload that claims to be a png can actually be one. */
 const pngSignature = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00];
 
@@ -37,11 +54,15 @@ function rawFileUpload(
   name: string,
   type: string | null,
   bytes: number[],
+  displayedRequestKind?: "document" | "picture",
 ): { body: ArrayBuffer; contentType: string } {
   const boundary = "----greenroomtestboundary";
   const typeHeader = type === null ? "" : `Content-Type: ${type}\r\n`;
+  const requestKindPart = displayedRequestKind === undefined
+    ? ""
+    : `--${boundary}\r\nContent-Disposition: form-data; name="displayedRequestKind"\r\n\r\n${displayedRequestKind}\r\n`;
   const head = new TextEncoder().encode(
-    `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${name}"\r\n${typeHeader}\r\n`,
+    `${requestKindPart}--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${name}"\r\n${typeHeader}\r\n`,
   );
   const tail = new TextEncoder().encode(`\r\n--${boundary}--\r\n`);
   const body = new Uint8Array(head.length + bytes.length + tail.length);
@@ -52,7 +73,7 @@ function rawFileUpload(
 }
 
 function pdfUpload(name: string): FormData {
-  return fileUpload(name, "application/pdf", [1, 2, 3, 4]);
+  return taskFileUpload(name, "application/pdf", [1, 2, 3, 4], "document");
 }
 
 const priyaCredentials = { email: "sbek-speaker@example.com", password: "SbekTest!2027-spk" };
@@ -159,7 +180,7 @@ describe("speaker portal content", () => {
     const missing = await request("/api/portal/tasks/tsk_fixture_3/files", {
       method: "POST",
       headers: { cookie: priyaCookie },
-      body: new FormData(),
+      body: displayedRequest("document"),
     });
     expect(missing.status).toBe(400);
     await expect(missing.json()).resolves.toMatchObject({ error: "file_required" });
@@ -168,7 +189,7 @@ describe("speaker portal content", () => {
     const tooLarge = await request("/api/portal/tasks/tsk_fixture_3/files", {
       method: "POST",
       headers: { cookie: priyaCookie },
-      body: fileUpload("slides.pdf", "application/pdf", new Array(20).fill(1)),
+      body: taskFileUpload("slides.pdf", "application/pdf", new Array(20).fill(1), "document"),
     });
     expect(tooLarge.status).toBe(413);
     const tooLargeBody = await tooLarge.json<{ error: string; message: string; maxBytes: number }>();
@@ -182,7 +203,7 @@ describe("speaker portal content", () => {
     const wrongType = await request("/api/portal/tasks/tsk_fixture_3/files", {
       method: "POST",
       headers: { cookie: priyaCookie },
-      body: fileUpload("notes.exe", "application/x-msdownload", [1, 2, 3]),
+      body: taskFileUpload("notes.exe", "application/x-msdownload", [1, 2, 3], "document"),
     });
     expect(wrongType.status).toBe(415);
     const wrongTypeBody = await wrongType.json<{ error: string; message: string }>();
@@ -216,7 +237,7 @@ describe("speaker portal content", () => {
     const upload = await request("/api/portal/tasks/tsk_fixture_1/files", {
       method: "POST",
       headers: { cookie: priyaCookie },
-      body: fileUpload("seeded-headshot.png", "image/png", pngSignature),
+      body: taskFileUpload("seeded-headshot.png", "image/png", pngSignature, "picture"),
     });
     expect(upload.status).toBe(201);
   });
@@ -249,7 +270,7 @@ describe("speaker portal content", () => {
     const upload = await request(`/api/portal/tasks/${pictureTaskId}/files`, {
       method: "POST",
       headers: { cookie: priyaCookie },
-      body: fileUpload("priya.png", "image/png", pngSignature),
+      body: taskFileUpload("priya.png", "image/png", pngSignature, "picture"),
     });
     expect(upload.status).toBe(201);
     const uploadBody = await upload.json<{ fileId: string; status: string; headshotUrl: string | null }>();
@@ -276,6 +297,52 @@ describe("speaker portal content", () => {
     expect(unauthenticated.status).toBe(401);
   });
 
+  it("refuses an upload when the request became a public headshot request after the speaker viewed it", async () => {
+    const organizerCookie = await signIn(organizerCredentials.email, organizerCredentials.password);
+    const created = await request("/api/events/evt_devflow_conf_2027/tasks", {
+      method: "POST",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({
+        taskType: "file_request",
+        title: "Send us a conference picture",
+        speakerIds: ["spk_priya_devflow_2027"],
+      }),
+    });
+    const { id: taskId } = await created.json<{ id: string }>();
+    const before = await request("/api/speaker/content", { headers: { cookie: priyaCookie } });
+    const beforeBody = await before.json<{ tasks: Array<{ id: string; acceptedFileTypes: string[] | null }> }>();
+    expect(beforeBody.tasks.find((task) => task.id === taskId)?.acceptedFileTypes)
+      .toEqual(["pdf", "ppt", "pptx", "doc", "docx", "zip", "key"]);
+
+    const changed = await request(`/api/events/evt_devflow_conf_2027/tasks/${taskId}`, {
+      method: "PATCH",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({ acceptedFileTypes: pictureRequestFileTypes }),
+    });
+    expect(changed.status).toBe(200);
+    await env.DB.prepare("update person set headshot_url = null where id = ?").bind("psn_priya_raman").run();
+
+    const uploadBody = taskFileUpload("priya.png", "image/png", pngSignature, "document");
+    const upload = await request(`/api/portal/tasks/${taskId}/files`, {
+      method: "POST",
+      headers: { cookie: priyaCookie },
+      body: uploadBody,
+    });
+    expect(upload.status).toBe(409);
+    await expect(upload.json()).resolves.toEqual({
+      error: "request_changed",
+      message: "This request changed. Reload the portal to review how your file will be used before uploading.",
+    });
+    const stored = await env.DB.prepare("select count(*) as total from file where task_id = ?")
+      .bind(taskId)
+      .first<{ total: number }>();
+    expect(stored?.total).toBe(0);
+    const profile = await env.DB.prepare("select headshot_url from person where id = ?")
+      .bind("psn_priya_raman")
+      .first<{ headshot_url: string | null }>();
+    expect(profile?.headshot_url).toBeNull();
+  });
+
   it("rejects HTML disguised as a picture on a picture request, the stored-XSS payload this widening could have let back in", async () => {
     const organizerCookie = await signIn(organizerCredentials.email, organizerCredentials.password);
     const created = await request("/api/events/evt_devflow_conf_2027/tasks", {
@@ -293,7 +360,7 @@ describe("speaker portal content", () => {
     const malicious = await request(`/api/portal/tasks/${pictureTaskId}/files`, {
       method: "POST",
       headers: { cookie: priyaCookie },
-      body: fileUpload("payload.png", "text/html", Array.from(new TextEncoder().encode("<script>evil()</script>"))),
+      body: taskFileUpload("payload.png", "text/html", Array.from(new TextEncoder().encode("<script>evil()</script>")), "picture"),
     });
     expect(malicious.status).toBe(415);
     await expect(malicious.json()).resolves.toMatchObject({ error: "unsupported_file_type" });
@@ -335,7 +402,7 @@ describe("speaker portal content", () => {
     ];
     for (const [why, declaredType] of undeclared) {
       for (const path of [`/api/portal/tasks/${pictureTaskId}/files`, "/api/portal/profile/headshot"]) {
-        const { body, contentType } = rawFileUpload("payload.png", declaredType, html);
+        const { body, contentType } = rawFileUpload("payload.png", declaredType, html, "picture");
         const response = await request(path, {
           method: "POST",
           headers: { cookie: priyaCookie, "content-type": contentType },
@@ -361,7 +428,7 @@ describe("speaker portal content", () => {
     expect(headshot?.headshot_url).toBeNull();
 
     // And the same refusal for bytes that are not the image both halves truthfully claim.
-    const { body, contentType } = rawFileUpload("payload.png", "image/png", html);
+    const { body, contentType } = rawFileUpload("payload.png", "image/png", html, "picture");
     const lyingBytes = await request(`/api/portal/tasks/${pictureTaskId}/files`, {
       method: "POST",
       headers: { cookie: priyaCookie, "content-type": contentType },
@@ -457,7 +524,7 @@ describe("speaker portal content", () => {
     const upload = await request(`/api/portal/tasks/${seededHeadshotTask?.id}/files`, {
       method: "POST",
       headers: { cookie: priyaCookie },
-      body: fileUpload("priya.png", "image/png", pngSignature),
+      body: taskFileUpload("priya.png", "image/png", pngSignature, "picture"),
     });
     expect(upload.status).toBe(201);
     await expect(upload.json()).resolves.toMatchObject({
@@ -478,7 +545,7 @@ describe("speaker portal content", () => {
     const refused = await request("/api/portal/tasks/tsk_fixture_3/files", {
       method: "POST",
       headers: { cookie: priyaCookie },
-      body: fileUpload("priya.png", "image/png", pngSignature),
+      body: taskFileUpload("priya.png", "image/png", pngSignature, "document"),
     });
     expect(refused.status).toBe(415);
     await expect(refused.json()).resolves.toMatchObject({
@@ -557,7 +624,7 @@ describe("speaker portal content", () => {
     const replaced = await request("/api/portal/tasks/tsk_fixture_3/files", {
       method: "POST",
       headers: { cookie: priyaCookie },
-      body: fileUpload("qa-slides-v2.pdf", "application/pdf", [1, 2, 3, 4, 5, 6]),
+      body: taskFileUpload("qa-slides-v2.pdf", "application/pdf", [1, 2, 3, 4, 5, 6], "document"),
     });
     const { fileId } = await replaced.json<{ fileId: string }>();
 
