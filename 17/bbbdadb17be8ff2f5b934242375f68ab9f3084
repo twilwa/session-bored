@@ -1,0 +1,26 @@
+tests/integration/portal-content.test.ts
+  s_07f4b233d3cd1f::t_49ba8cbac1211a 193-197,200-222
+  s_07f4b233d3cd1f::t_7dc3e95cf0b75b 198-199
+worker/seed.ts
+  s_07f4b233d3cd1f::t_7c57b5ab5c22db 56-66,143-146,556
+  s_07f4b233d3cd1f::t_1a028148a1b545 131,135
+  s_07f4b233d3cd1f::t_0e4977f29ad11f 107,132-134,136-142,147-151
+  s_07f4b233d3cd1f::t_7dc3e95cf0b75b 584-588
+  s_07f4b233d3cd1f::t_a55a2fb15b725d 152-155
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "17bbbdadb17be8ff2f5b934242375f68ab9f3084",
+  "prompts": {},
+  "sessions": {
+    "s_07f4b233d3cd1f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6315adf8-c9f2-425f-943b-239e8e577741",
+        "model": "claude-opus-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
