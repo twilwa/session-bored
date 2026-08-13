@@ -1381,7 +1381,11 @@ reviewRoutes.get(
         .innerJoin(tracks, eq(submissionTracks.trackId, tracks.id)),
       // A recusal is the reason a proposal can sit at zero ratings, so the worklist carries it.
       database
-        .select({ submissionId: reviewAssignments.submissionId, reviewerName: users.name })
+        .select({
+          submissionId: reviewAssignments.submissionId,
+          reviewerUserId: reviewAssignments.reviewerUserId,
+          reviewerName: users.name,
+        })
         .from(reviewAssignments)
         .innerJoin(submissions, eq(reviewAssignments.submissionId, submissions.id))
         .innerJoin(users, eq(reviewAssignments.reviewerUserId, users.id))
@@ -1404,12 +1408,13 @@ reviewRoutes.get(
           ? null
           : numericScores.reduce((total, score) => total + score, 0) / numericScores.length,
         // The row speaks about the proposal, so it names each reviewer once however many
-        // rounds they stepped back in.
-        recusedBy: [...new Set(
+        // rounds they stepped back in. Two accounts can share a display name, so the one
+        // that identifies them is the account, and the name is only what it is shown as.
+        recusedBy: [...new Map(
           recusalRows
             .filter((recusal) => recusal.submissionId === submission.submissionId)
-            .map((recusal) => recusal.reviewerName),
-        )].sort((left, right) => left.localeCompare(right)),
+            .map((recusal) => [recusal.reviewerUserId, recusal.reviewerName]),
+        ).values()].sort((left, right) => left.localeCompare(right)),
       };
     });
     const sort = context.req.query("sort") === "score" ? "score" : "coverage";

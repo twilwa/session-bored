@@ -107,7 +107,9 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   must never read as one nobody has opened — and each reviewer card's count links
   to the proposals it stands for (`recusals`). A recusal belongs to a round, so
   `recusedCount` and `recusals` stay per assignment and each entry names its round;
-  the worklist row speaks about the proposal and names each reviewer once.
+  the worklist row speaks about the proposal and names each reviewer account once
+  — deduplicated on `reviewer_user_id`, never on the display name, because two
+  accounts may share one.
   Surfacing the fact is the whole feature: no reassignment prompt, no queue,
   nothing sent (issue #130).
 - Review scores remain in `review.scores`; `review.aggregate_score` is the

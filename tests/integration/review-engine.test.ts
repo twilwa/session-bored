@@ -1112,6 +1112,52 @@ describe("review engine", () => {
     expect(untouchedRow?.recusedBy).toEqual([]);
   });
 
+  it("counts two reviewers who share a display name as two recusals", async () => {
+    await request("/api/health");
+    const organizerCookie = await signIn("sbek-organizer@example.com", "SbekTest!2027-org");
+    const organizerHeaders = { cookie: organizerCookie, "content-type": "application/json" };
+    // Two accounts, one name: a display string is not an identity.
+    const namesakes = ["namesake-one@example.com", "namesake-two@example.com"];
+    for (const email of namesakes) {
+      const provisioned = await request("/api/review/events/evt_devflow_conf_2027/reviewers", {
+        method: "POST",
+        headers: organizerHeaders,
+        body: JSON.stringify({
+          name: "Alex Moreau",
+          email,
+          password: "ReviewTalks!2027",
+          trackIds: [],
+          roundIds: ["rnd_initial_review"],
+        }),
+      });
+      expect(provisioned.status).toBe(201);
+      const reviewerUserId = (await provisioned.json<{ reviewer: { id: string } }>()).reviewer.id;
+      const assigned = await request("/api/review/rounds/rnd_initial_review/assignments", {
+        method: "POST",
+        headers: organizerHeaders,
+        body: JSON.stringify({ reviewerUserId, submissionIds: ["sub_docs_retrieval"] }),
+      });
+      expect(assigned.status).toBe(201);
+      const recused = await request("/api/review/submissions/sub_docs_retrieval/recusal", {
+        method: "POST",
+        headers: {
+          cookie: await signIn(email, "ReviewTalks!2027"),
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ roundId: "rnd_initial_review" }),
+      });
+      expect(recused.status).toBe(200);
+    }
+
+    const worklist = await (await request(
+      "/api/review/events/evt_devflow_conf_2027/worklist",
+      { headers: { cookie: organizerCookie } },
+    )).json<{ items: Array<{ submissionId: string; recusedBy: string[] }> }>();
+    const recusedBy = worklist.items.find((item) => item.submissionId === "sub_docs_retrieval")?.recusedBy ?? [];
+    // Two people stepped back, so two reads will not arrive - however alike their names read.
+    expect(recusedBy.filter((name) => name === "Alex Moreau")).toEqual(["Alex Moreau", "Alex Moreau"]);
+  });
+
   it("keeps each round's recusal distinct when one reviewer recuses the same proposal twice", async () => {
     await request("/api/health");
     const organizerCookie = await signIn("sbek-organizer@example.com", "SbekTest!2027-org");
