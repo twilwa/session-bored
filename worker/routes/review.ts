@@ -824,6 +824,7 @@ reviewRoutes.patch(
           submissionId: submissions.id,
           title: submissions.title,
           roundId: reviewRounds.id,
+          roundName: reviewRounds.name,
         })
         .from(reviewAssignments)
         .innerJoin(reviewRounds, eq(reviewAssignments.roundId, reviewRounds.id))

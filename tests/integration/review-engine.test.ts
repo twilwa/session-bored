@@ -672,7 +672,7 @@ describe("review engine", () => {
       remit: { mode: string; trackIds: string[] };
       removedTrackIds: string[];
       retainedAssignments: Array<{ submissionId: string }>;
-      recusedAssignments: Array<{ submissionId: string }>;
+      recusedAssignments: Array<{ submissionId: string; roundName: string }>;
     }>();
     expect(narrowed.remit).toEqual({ mode: "no_tracks", trackIds: [] });
     expect(narrowed.removedTrackIds).toEqual(["trk_platform_infra"]);
@@ -1789,8 +1789,11 @@ describe("review engine", () => {
     expect(narrowed.retainedAssignments.map((item) => item.submissionId)).toEqual([
       "sub_ai_verification",
     ]);
-    expect(narrowed.recusedAssignments.map((item) => item.submissionId)).toEqual([
-      "sub_ci_monorepo",
+    expect(narrowed.recusedAssignments).toEqual([
+      expect.objectContaining({
+        submissionId: "sub_ci_monorepo",
+        roundName: "Initial review",
+      }),
     ]);
 
     const narrowedQueue = await (await request(

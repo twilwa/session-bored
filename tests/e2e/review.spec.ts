@@ -350,7 +350,8 @@ test("a reviewer recuses themselves and the committee sees the recusal", async (
     "1 removed. They lose that access immediately. " +
     "They can still read Your AI Pair Programmer Is Lying to You: Verification Patterns That Scale " +
     "through an explicit assignment. " +
-    "Their recusal from Taming 40-Minute CI: Incremental Builds at Monorepo Scale remains recorded.",
+    "Their recusal from Taming 40-Minute CI: Incremental Builds at Monorepo Scale " +
+    "(Initial review) remains recorded.",
     { exact: false },
   )).toBeVisible();
 
@@ -367,7 +368,8 @@ test("a reviewer recuses themselves and the committee sees the recusal", async (
   await reviewerCard.getByRole("button", { name: "Save remit" }).click();
   await expect(page.getByText(
     "1 removed. They lose that access immediately. " +
-    "Their recusal from Taming 40-Minute CI: Incremental Builds at Monorepo Scale remains recorded.",
+    "Their recusal from Taming 40-Minute CI: Incremental Builds at Monorepo Scale " +
+    "(Initial review) remains recorded.",
     { exact: false },
   )).toBeVisible();
   await expect(reviewerCard.getByText("1 recused", { exact: false })).toBeVisible();

@@ -4,7 +4,18 @@ export interface ReviewerRemitChange {
   removedTrackIds: string[];
   removedRoundIds: string[];
   retainedAssignments: Array<{ submissionId: string; title: string | null; roundId: string }>;
-  recusedAssignments: Array<{ submissionId: string; title: string | null; roundId: string }>;
+  recusedAssignments: Array<{
+    submissionId: string;
+    title: string | null;
+    roundId: string;
+    roundName: string;
+  }>;
+}
+
+function recusalNames(assignments: ReviewerRemitChange["recusedAssignments"]): string {
+  return assignments.map((item) =>
+    `${item.title ?? item.submissionId} (${item.roundName})`
+  ).join(", ");
 }
 
 function proposalNames(
@@ -32,10 +43,10 @@ export function reviewerRemitSummary(
     );
   }
   if (change.recusedAssignments.length > 0) {
-    const recusals = new Set(change.recusedAssignments.map((item) => item.submissionId)).size;
+    const recusals = change.recusedAssignments.length;
     sentences.push(
       `Their ${recusals === 1 ? "recusal" : "recusals"} from ${
-        proposalNames(change.recusedAssignments)
+        recusalNames(change.recusedAssignments)
       } ${recusals === 1 ? "remains" : "remain"} recorded.`,
     );
   }
