@@ -25,14 +25,6 @@ function pdfUpload(name: string): FormData {
   return formData;
 }
 
-function imageUpload(name: string): FormData {
-  const formData = new FormData();
-  // A real PNG signature: the server checks that an image is the format it claims to be.
-  const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00]);
-  formData.append("file", new File([png], name, { type: "image/png" }));
-  return formData;
-}
-
 const eventId = "evt_devflow_conf_2027";
 const organizerCredentials = { email: "sbek-organizer@example.com", password: "SbekTest!2027-org" };
 const priyaCredentials = { email: "sbek-speaker@example.com", password: "SbekTest!2027-spk" };
@@ -108,7 +100,7 @@ describe("content management", () => {
     });
   });
 
-  it("counts only file requests with an uploaded deliverable as delivered", async () => {
+  it("reports a fileless request completed by an organizer as complete rather than overdue", async () => {
     const beforeResponse = await request(`/api/events/${eventId}/deliverables`, {
       headers: { cookie: organizerCookie },
     });
@@ -138,12 +130,22 @@ describe("content management", () => {
     expect(deliveredRequestResponse.status).toBe(201);
     const deliveredRequest = await deliveredRequestResponse.json<{ id: string }>();
 
-    const headshot = await request("/api/portal/profile/headshot", {
-      method: "POST",
-      headers: { cookie: priyaCookie },
-      body: imageUpload("profile-headshot.png"),
+    const completedAssignment = await request(
+      `/api/events/${eventId}/tasks/${emptyRequest.id}/assignees/spk_priya_devflow_2027`,
+      {
+        method: "PATCH",
+        headers: { cookie: organizerCookie, "content-type": "application/json" },
+        body: JSON.stringify({ status: "completed" }),
+      },
+    );
+    expect(completedAssignment.status).toBe(200);
+
+    const overdueDeadline = await request(`/api/events/${eventId}/tasks/${emptyRequest.id}`, {
+      method: "PATCH",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({ dueAt: "2026-01-15T23:59:59.000Z" }),
     });
-    expect(headshot.status).toBe(201);
+    expect(overdueDeadline.status).toBe(200);
 
     const upload = await request(`/api/portal/tasks/${deliveredRequest.id}/files`, {
       method: "POST",
@@ -157,24 +159,25 @@ describe("content management", () => {
     });
     expect(response.status).toBe(200);
     const payload = await response.json<{
-      metrics: { total: number; requested: number; overdue: number; delivered: number };
+      metrics: { total: number; requested: number; overdue: number; completed: number; delivered: number };
       items: Array<{
         taskId: string;
         assignment: { status: string };
-        status: "requested" | "overdue" | "delivered";
+        status: "requested" | "overdue" | "completed" | "delivered";
         file: null | { displayName: string };
       }>;
     }>();
 
     expect(payload.metrics).toMatchObject({
       total: before.metrics.total + 2,
-      requested: before.metrics.requested + 1,
+      requested: before.metrics.requested,
       overdue: before.metrics.overdue,
+      completed: 1,
       delivered: before.metrics.delivered + 1,
     });
     expect(payload.items.find((item) => item.taskId === emptyRequest.id)).toMatchObject({
       assignment: { status: "completed" },
-      status: "requested",
+      status: "completed",
       file: null,
     });
     expect(payload.items.find((item) => item.taskId === deliveredRequest.id)).toMatchObject({

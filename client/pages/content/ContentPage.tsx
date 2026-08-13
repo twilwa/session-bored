@@ -25,7 +25,7 @@ function formatDate(value: string | null): string {
 }
 
 function statusTone(status: DeliverableStatus): "neutral" | "good" | "signal" {
-  if (status === "delivered") return "good";
+  if (status === "completed" || status === "delivered") return "good";
   if (status === "overdue") return "signal";
   return "neutral";
 }
@@ -61,6 +61,7 @@ export function ContentPage() {
     { key: "all", label: "All", count: data.metrics.total },
     { key: "requested", label: "Requested", count: data.metrics.requested },
     { key: "overdue", label: "Overdue", count: data.metrics.overdue },
+    { key: "completed", label: "Completed", count: data.metrics.completed },
     { key: "delivered", label: "Delivered", count: data.metrics.delivered },
   ];
 
@@ -132,7 +133,7 @@ export function ContentPage() {
                 {item.task.instructions === null ? null : <p className="deliverable-card__instructions">{item.task.instructions}</p>}
                 {item.file === null ? (
                   <p className="deliverable-card__empty">
-                    {item.status === "delivered" ? "Marked complete; no task file is attached." : "No uploaded file."}
+                    {item.status === "completed" ? "Marked complete; no task file is attached." : "No uploaded file."}
                   </p>
                 ) : (
                   <div className="deliverable-card__file">

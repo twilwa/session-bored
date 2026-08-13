@@ -117,11 +117,11 @@ function speakerSocialLinks(speaker: RosterSpeakerSummary): Array<{ href: string
 }
 
 function openWorkLabel(speaker: RosterSpeakerSummary): ReactNode {
-  const { incomplete, total } = speaker.taskSummary;
+  const { incomplete, total } = speaker.workSummary;
   if (total === 0 && incomplete === 0) {
-    return <><strong>No open work</strong><small>No onboarding tasks assigned</small></>;
+    return <><strong>No open work</strong><small>No work items tracked</small></>;
   }
-  return <><strong>{incomplete} open item{incomplete === 1 ? "" : "s"}</strong><small>{total === 0 ? "No onboarding tasks assigned" : `${total} task${total === 1 ? "" : "s"} assigned`}</small></>;
+  return <><strong>{incomplete} open item{incomplete === 1 ? "" : "s"}</strong><small>{total} work item{total === 1 ? "" : "s"} tracked</small></>;
 }
 
 // The name is already announced beside it, so the avatar stays decorative whether
@@ -297,8 +297,7 @@ function RosterList() {
                           <span><small>Profile readiness</small><strong>{speaker.profile.bioComplete && speaker.profile.headshotComplete ? "Complete" : "Needs follow-up"}</strong></span>
                           <span>
                             <small>Open work</small>
-                            <strong>{speaker.taskSummary.incomplete} open item{speaker.taskSummary.incomplete === 1 ? "" : "s"}</strong>
-                            <small>{speaker.taskSummary.total === 0 ? "No onboarding tasks assigned" : `${speaker.taskSummary.total} task${speaker.taskSummary.total === 1 ? "" : "s"} assigned`}</small>
+                            {openWorkLabel(speaker)}
                           </span>
                         </div>
                       </div>

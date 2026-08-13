@@ -19,6 +19,7 @@ import {
 } from "../../db/schema.ts";
 import { holdsAccess } from "../access.ts";
 import { sendPortalInvitationEmail } from "../email/portal-invitation.ts";
+import { deriveRosterWorkSummary } from "../roster-work.ts";
 
 type RosterEnvironment = {
   Bindings: CloudflareBindings;
@@ -110,22 +111,21 @@ rosterRoutes.get("/api/events/:eventId/roster", async (context) => {
   return context.json({
     items: items.map((item) => {
       const speakerAssignments = assignments.filter((assignment) => assignment.speakerId === item.id);
-      const incompleteTasks = speakerAssignments.filter((assignment) =>
-        assignment.assignmentStatus !== "completed" && assignment.taskStatus === "active"
-      ).length;
-      const incompleteProfileItems = acceptedSpeakerIds.has(item.id)
-        ? Number(item.bio === null || item.bio.trim().length === 0) + Number(item.headshotUrl === null || item.headshotUrl.trim().length === 0)
-        : 0;
+      const bioComplete = item.bio !== null && item.bio.trim().length > 0;
+      const headshotComplete = item.headshotUrl !== null && item.headshotUrl.trim().length > 0;
+      const workSummary = deriveRosterWorkSummary({
+        assignments: speakerAssignments,
+        bioComplete,
+        headshotComplete,
+        tracksProfile: acceptedSpeakerIds.has(item.id),
+      });
       return {
         ...item,
         profile: {
-          bioComplete: item.bio !== null && item.bio.trim().length > 0,
-          headshotComplete: item.headshotUrl !== null && item.headshotUrl.trim().length > 0,
+          bioComplete,
+          headshotComplete,
         },
-        taskSummary: {
-          total: speakerAssignments.length,
-          incomplete: incompleteTasks + incompleteProfileItems,
-        },
+        workSummary,
       };
     }),
   });
