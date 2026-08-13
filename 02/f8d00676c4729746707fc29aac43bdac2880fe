@@ -1,0 +1,39 @@
+tests/integration/review-engine.test.ts
+  s_73c89ac6eabd4c::t_2a91fc62b38b87 1115-1177,1186-1187
+  s_73c89ac6eabd4c::t_5a81eb3a36f7c8 1184-1185
+  s_73c89ac6eabd4c::t_d374c85d2e74ad 1178-1183
+worker/routes/review.ts
+  s_73c89ac6eabd4c::t_11172a48678bb4 574-575,578-583
+  s_73c89ac6eabd4c::t_32f39d0344de30 1406-1412
+tests/integration/submission-participants.test.ts
+  s_73c89ac6eabd4c::t_036c36dc2b21e3 453-492
+shared/api.ts
+  s_73c89ac6eabd4c::t_171cde611310f0 1246-1247
+  s_73c89ac6eabd4c::t_723f259205948f 1252-1256,1258-1259
+AGENTS.md
+  s_73c89ac6eabd4c::t_10bb5fe5098b94 108,110-112
+  s_73c89ac6eabd4c::t_039f892a933073 109
+worker/routes/participants.ts
+  s_73c89ac6eabd4c::t_3ace7e7d9e1009 70-71
+  s_73c89ac6eabd4c::t_1c888fd7fbe495 339
+  s_73c89ac6eabd4c::t_9f7d1399068be8 87-97,105
+  s_73c89ac6eabd4c::t_af3cfc1dc45ef6 328-330
+client/pages/review/OrganizerReviewPage.tsx
+  s_73c89ac6eabd4c::t_d59f0f6fc61381 392,397
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "02f8d00676c4729746707fc29aac43bdac2880fe",
+  "prompts": {},
+  "sessions": {
+    "s_73c89ac6eabd4c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99844b60-0fd2-4730-a694-03eb1f410c03",
+        "model": "claude-opus-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
