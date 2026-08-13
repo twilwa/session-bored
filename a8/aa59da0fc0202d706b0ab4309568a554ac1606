@@ -1,0 +1,66 @@
+migrations/meta/0017_snapshot.json
+  s_9ca2d4fdbcfa56::t_a050257ec86f4c 1-5196
+AGENTS.md
+  s_9ca2d4fdbcfa56::t_766cf2edd4d9b4 32-49
+worker/email/decision-notices.ts
+  s_9ca2d4fdbcfa56::t_fba2c298ee4769 27-77,83-88,100-105,109-110,115
+  s_9ca2d4fdbcfa56::t_45a7a0f49d9436 3
+  s_9ca2d4fdbcfa56::t_2314c045a18eee 149-151
+  s_9ca2d4fdbcfa56::t_50d0bfd2737dd1 220,359-366
+  s_9ca2d4fdbcfa56::t_9c317d08ead1e9 5,346-358
+  s_9ca2d4fdbcfa56::t_4da8e4eb569935 163,173-177,185
+  s_9ca2d4fdbcfa56::t_b3d88ccd545102 263,276-280,293-294,296,312,317-319,323,331-334
+  s_9ca2d4fdbcfa56::t_77890c8c06dd42 207-209,217-219
+  s_9ca2d4fdbcfa56::t_bda764c602a30b 320,327-330,335-345
+worker/routes/comms.ts
+  s_9ca2d4fdbcfa56::t_1a92742004c2b8 107,111
+  s_9ca2d4fdbcfa56::t_c3220afe0fec56 134-135,138-140
+  s_9ca2d4fdbcfa56::t_95c5d2a24441e1 235-239,245-246,251-252
+  s_9ca2d4fdbcfa56::t_860030ac85d70f 7
+  s_9ca2d4fdbcfa56::t_118a41f5c20a67 253
+tests/integration/decision-notice-correction.test.ts
+  s_9ca2d4fdbcfa56::t_8f24ad2a070bf9 4,7-8,288-527,529-530
+  s_9ca2d4fdbcfa56::t_a46a95af843ab3 528
+  s_9ca2d4fdbcfa56::t_de917ad9f66a83 531
+migrations/0018_crazy_jasper_sitwell.sql
+  s_9ca2d4fdbcfa56::t_a46a95af843ab3 1-4
+migrations/meta/0018_snapshot.json
+  s_9ca2d4fdbcfa56::t_9c317d08ead1e9 1-5203
+shared/api.ts
+  s_9ca2d4fdbcfa56::t_24686671bf629a 1065-1069,1071-1072
+worker/routes/disposition.ts
+  s_9ca2d4fdbcfa56::t_85c0874e6ceb73 260,262-263,266,268
+  s_9ca2d4fdbcfa56::t_24686671bf629a 93,140
+  s_9ca2d4fdbcfa56::t_5f7731cdbe24d3 261,264-265,267,269
+migrations/meta/_journal.json
+  s_9ca2d4fdbcfa56::t_9c317d08ead1e9 130-136
+  s_9ca2d4fdbcfa56::t_a050257ec86f4c 123-129
+db/schema/disposition.ts
+  s_9ca2d4fdbcfa56::t_e536add237ece9 75-84
+  s_9ca2d4fdbcfa56::t_8f6c19831edaed 48-54
+migrations/0017_simple_warpath.sql
+  s_9ca2d4fdbcfa56::t_2b3e202f60b485 1-7
+client/pages/comms/CommsPage.tsx
+  s_9ca2d4fdbcfa56::t_509d8f9ede322e 318,324
+  s_9ca2d4fdbcfa56::t_ce2bb6b8ff9a3f 72-74,278,281-287,426
+  s_9ca2d4fdbcfa56::t_21afe769af0ade 35-41
+  s_9ca2d4fdbcfa56::t_f89ba1d00e24da 300,304-305
+tests/e2e/comms.spec.ts
+  s_9ca2d4fdbcfa56::t_799d8833523feb 222-269
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "a8aa59da0fc0202d706b0ab4309568a554ac1606",
+  "prompts": {},
+  "sessions": {
+    "s_9ca2d4fdbcfa56": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c4d3f422-a042-42f6-9009-091c49c9bc34",
+        "model": "claude-opus-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
