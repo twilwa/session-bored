@@ -25,6 +25,7 @@ import {
   users,
   type Role,
 } from "../../db/schema.ts";
+import { holdsAccess } from "../access.ts";
 import { formVersionFields, formVersions } from "../../db/schema/cfp-builder.ts";
 import { buildScheduleIcs } from "../email/ics.ts";
 import { serializeCsv, type CsvCell } from "../exports/serialize.ts";
@@ -33,15 +34,15 @@ type ExportEnvironment = {
   Bindings: CloudflareBindings;
   Variables: {
     authUser: { id: string } | null;
-    role: Role | null;
+    roles: Role[] | null;
   };
 };
 
 const exportRoutes = new Hono<ExportEnvironment>();
 
 const requireOrganizer = createMiddleware<ExportEnvironment>(async (context, next) => {
-  if (context.get("role") !== "organizer") {
-    const status = context.get("role") === null ? 401 : 403;
+  if (!holdsAccess(context.get("roles") ?? [], "organizer")) {
+    const status = context.get("roles") === null ? 401 : 403;
     return context.json(
       { error: status === 401 ? "authentication_required" : "forbidden" },
       status,

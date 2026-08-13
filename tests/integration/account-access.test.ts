@@ -2,13 +2,15 @@
 // ABOUTME: Proves a reviewer invitation is only redeemed by someone who confirms the address.
 import { env } from "cloudflare:workers";
 import { drizzle } from "drizzle-orm/d1";
+import { Hono } from "hono";
 import { and, eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
-import { reviewerInvites, roleGrants, users } from "../../db/schema.ts";
-import { createAuth } from "../../worker/auth.ts";
+import { reviewerInvites, roleGrants, type Role, users } from "../../db/schema.ts";
+import { createAuth, type AuthSession } from "../../worker/auth.ts";
 import type { EmailDelivery, EmailMessage } from "../../worker/email.ts";
-import { redeemReviewerInvites } from "../../worker/reviewer-invites.ts";
+import { applyReviewerRemit, redeemReviewerInvites } from "../../worker/reviewer-invites.ts";
 import { resolveEffectiveRole } from "../../worker/roles.ts";
+import reviewRoutes from "../../worker/routes/review.ts";
 import worker from "../../worker/index.ts";
 
 async function request(path: string, init?: RequestInit): Promise<Response> {
@@ -272,5 +274,129 @@ describe("granting and revoking", () => {
       .set({ revokedAt: new Date(), revokedByUserId: organizerId })
       .where(and(eq(roleGrants.userId, userId), eq(roleGrants.role, "reviewer")));
     expect((await request("/api/reviewer/assignments", { headers: { cookie } })).status).toBe(403);
+  });
+
+  it("authorizes every review handler from `roles` alone, with no second role variable to fall behind", async () => {
+    // A request carries its grant union and nothing else. This mounts the review routes the
+    // way the contract says to - supplying `roles` - and walks the handlers that authorize
+    // inline. Any handler still reading a single display role refuses this caller outright,
+    // which is exactly how the two below were left behind when the rest were migrated.
+    await request("/api/health");
+    const [reviewer] = await drizzle(env.DB)
+      .select({ id: users.id, name: users.name, email: users.email })
+      .from(users)
+      .where(eq(users.email, "sbek-reviewer@example.com"));
+    expect(reviewer).toBeDefined();
+
+    const app = new Hono<{
+      Bindings: typeof env;
+      Variables: { authSession: null; authUser: AuthSession["user"]; roles: Role[] | null };
+    }>();
+    app.use("*", async (context, next) => {
+      context.set("authSession", null);
+      context.set("authUser", {
+        ...reviewer!,
+        emailVerified: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      } as AuthSession["user"]);
+      context.set("roles", ["reviewer"]);
+      await next();
+    });
+    app.route("/api", reviewRoutes);
+    const call = (path: string, init?: RequestInit) =>
+      app.request(`http://example.test${path}`, init, env);
+
+    expect((await call("/api/review/queue")).status).toBe(200);
+    expect((await call("/api/review/submissions/sub_ci_monorepo")).status).toBe(200);
+    expect((await call("/api/review/submissions/sub_ci_monorepo/comments", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ body: "Authorized from the union alone." }),
+    })).status).toBe(201);
+  });
+
+  it("reads and comments on a proposal through a grant union, not a single role", async () => {
+    // The two review handlers that authorize inline rather than through `requireRole`. They
+    // must answer the same grant union every other gate does - a caller carries `roles`, and
+    // there is no single display role for them to fall behind.
+    await request("/api/health");
+    const cookie = await signUp("Union Reader", "union-reader@example.com");
+    const database = drizzle(env.DB);
+    const userId = await userIdFor("union-reader@example.com");
+    const organizerId = await userIdFor("sbek-organizer@example.com");
+    const detailPath = "/api/review/submissions/sub_ci_monorepo";
+
+    expect((await request(detailPath, { headers: { cookie } })).status).toBe(403);
+
+    // Speaker first, so the narrower grant is the one already held when reviewer arrives.
+    for (const role of ["speaker", "reviewer"] as const) {
+      await database.insert(roleGrants).values({
+        userId,
+        role,
+        source: "organizer",
+        grantedByUserId: organizerId,
+        grantedAt: new Date(),
+      });
+    }
+    await applyReviewerRemit(database, {
+      eventId: "evt_devflow_conf_2027",
+      reviewerUserId: userId,
+      trackIds: ["trk_platform_infra"],
+      roundIds: ["rnd_initial_review"],
+    });
+
+    const detail = await request(detailPath, { headers: { cookie } });
+    expect(detail.status).toBe(200);
+    expect((await detail.json<{ id: string }>()).id).toBe("sub_ci_monorepo");
+
+    const comment = await request(`${detailPath}/comments`, {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ body: "Read through a grant union." }),
+    });
+    expect(comment.status).toBe(201);
+
+    // The union widens nothing it was not given: a proposal outside the remit stays shut.
+    expect((await request("/api/review/submissions/sub_ai_verification", { headers: { cookie } })).status)
+      .toBe(403);
+  });
+
+  it("opens both areas to an account holding two grants", async () => {
+    await request("/api/health");
+    const cookie = await signUp("Two Hats", "two-hats@example.com");
+    const database = drizzle(env.DB);
+    const userId = await userIdFor("two-hats@example.com");
+    const organizerId = await userIdFor("sbek-organizer@example.com");
+
+    for (const role of ["reviewer", "speaker"] as const) {
+      await database.insert(roleGrants).values({
+        userId,
+        role,
+        source: "organizer",
+        grantedByUserId: organizerId,
+        grantedAt: new Date(),
+      });
+    }
+
+    // The second grant has to actually open the second area. Resolving to a single widest
+    // role would answer `reviewer` here and refuse the speaker area it was just given.
+    expect((await request("/api/reviewer/assignments", { headers: { cookie } })).status).toBe(200);
+    expect((await request("/api/speaker/content", { headers: { cookie } })).status).toBe(200);
+    for (const path of ["/reviewer", "/speaker"]) {
+      expect((await request(path, { headers: { cookie, ...documentHeaders } })).status).not.toBe(403);
+    }
+
+    // And only the granted areas: nothing here confers organizer.
+    expect((await request("/api/events", { headers: { cookie } })).status).toBe(403);
+    expect((await request("/organizer", { headers: { cookie, ...documentHeaders } })).status).toBe(403);
+
+    // Revoking one leaves the other standing.
+    await database
+      .update(roleGrants)
+      .set({ revokedAt: new Date(), revokedByUserId: organizerId })
+      .where(and(eq(roleGrants.userId, userId), eq(roleGrants.role, "reviewer")));
+    expect((await request("/api/reviewer/assignments", { headers: { cookie } })).status).toBe(403);
+    expect((await request("/api/speaker/content", { headers: { cookie } })).status).toBe(200);
   });
 });

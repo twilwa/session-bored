@@ -17,6 +17,7 @@ import {
   tasks,
   type Role,
 } from "../../db/schema.ts";
+import { holdsAccess } from "../access.ts";
 import type { AuthSession } from "../auth.ts";
 import { livingSessionSpeakers } from "../speaker-access.ts";
 import { filenameForVersion } from "../storage/file-versions.ts";
@@ -37,18 +38,18 @@ type PortalEnvironment = {
   Variables: {
     authSession: AuthSession["session"] | null;
     authUser: AuthSession["user"] | null;
-    role: Role | null;
+    roles: Role[] | null;
   };
 };
 
 const portalRoutes = new Hono<PortalEnvironment>();
 
 const requireSpeaker = createMiddleware<PortalEnvironment>(async (context, next) => {
-  const role = context.get("role");
-  if (role === null) {
+  const roles = context.get("roles") ?? null;
+  if (roles === null) {
     return context.json({ error: "authentication_required" }, 401);
   }
-  if (role !== "speaker") {
+  if (!holdsAccess(roles, "speaker")) {
     return context.json({ error: "forbidden" }, 403);
   }
   await next();
@@ -466,11 +467,11 @@ portalRoutes.post("/portal/tasks/:taskId/files", requireSpeaker, async (context)
 
 portalRoutes.get("/portal/files/:fileId", async (context) => {
   const user = context.get("authUser");
-  const role = context.get("role");
+  const roles = context.get("roles") ?? [];
   if (user === null) {
     return context.json({ error: "authentication_required" }, 401);
   }
-  if (role !== "speaker" && role !== "organizer") {
+  if (!holdsAccess(roles, "speaker") && !holdsAccess(roles, "organizer")) {
     return context.json({ error: "forbidden" }, 403);
   }
   const database = drizzle(context.env.DB);
@@ -481,7 +482,9 @@ portalRoutes.get("/portal/files/:fileId", async (context) => {
   if (file === undefined) {
     return context.json({ error: "not_found" }, 404);
   }
-  if (role === "speaker") {
+  // An organizer reads any file; a speaker only their own, so a speaker who is also an
+  // organizer keeps the wider reach rather than being narrowed by the second grant.
+  if (!holdsAccess(roles, "organizer")) {
     const profile = await loadOwnSpeaker(database, user.id);
     if (profile === undefined || profile.speakerId !== file.speakerId) {
       return context.json({ error: "forbidden" }, 403);

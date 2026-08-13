@@ -30,7 +30,7 @@ type TestEnvironment = {
   Variables: {
     authSession: AuthSession["session"] | null;
     authUser: AuthSession["user"] | null;
-    role: Role | null;
+    roles: Role[] | null;
   };
 };
 
@@ -49,7 +49,8 @@ function createInjectedApp(
   app.use("*", async (context, next) => {
     context.set("authSession", null);
     context.set("authUser", authUser);
-    context.set("role", "reviewer");
+    // The whole contract: a caller carries its grant union and nothing else.
+    context.set("roles", ["reviewer"]);
     await next();
   });
   app.route("/api", createAIReviewRoutes(() => assistant));

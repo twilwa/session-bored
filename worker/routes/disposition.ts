@@ -17,6 +17,7 @@ import {
   tracks,
   type Role,
 } from "../../db/schema.ts";
+import { holdsAccess } from "../access.ts";
 import { isEmailConfigured } from "../email.ts";
 import { dispatchDecisionNoticeEmails } from "../email/decision-notices.ts";
 import { changeSubmissionStatuses } from "../submission-decision.ts";
@@ -25,7 +26,7 @@ type DispositionEnvironment = {
   Bindings: CloudflareBindings;
   Variables: {
     authUser: { id: string } | null;
-    role: Role | null;
+    roles: Role[] | null;
   };
 };
 
@@ -45,8 +46,8 @@ function isSubmissionIdList(value: unknown): value is string[] {
 const dispositionRoutes = new Hono<DispositionEnvironment>();
 
 const requireOrganizer = createMiddleware<DispositionEnvironment>(async (context, next) => {
-  if (context.get("role") !== "organizer") {
-    return context.json({ error: context.get("role") === null ? "authentication_required" : "forbidden" }, context.get("role") === null ? 401 : 403);
+  if (!holdsAccess(context.get("roles") ?? [], "organizer")) {
+    return context.json({ error: context.get("roles") === null ? "authentication_required" : "forbidden" }, context.get("roles") === null ? 401 : 403);
   }
   await next();
 });

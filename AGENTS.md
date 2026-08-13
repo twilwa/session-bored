@@ -38,8 +38,12 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   `invited` row from their first draft, is the one name missing from the roster's
   onboarding work and from every public surface. `releaseParticipantFromSession`
   beside it is its exact inverse: both removal doors call it, and it archives the
-  session link plus the onboarding work the handoff created once the person speaks
-  nowhere else at the event. It reports `speaksElsewhereAtEvent` because whether
+  session link plus the onboarding work the handoff created. Those two kinds of
+  work part company here. Work scoped to the session (`task.session_id`) goes back
+  on **every** removal, because a later removal only ever looks at its own session
+  and would strand work from a session left earlier; the event's sessionless,
+  unscoped onboarding templates belong to the person, so they go back only once
+  they speak nowhere else at the event. It reports `speaksElsewhereAtEvent` because whether
   removal should also withdraw the event `speaker` row — which is what drives the
   public speaker directory, the roster row, and mail eligibility — is an open
   programme decision (issue #127). A collaborator is named, not
@@ -71,8 +75,12 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   submitter, track links, and speaker role labels.
 - A reviewer's readable remit is the union of their event track responsibility
   and explicit per-submission assignments, limited to their per-round pool.
-  Provisioning defaults to every event track and the first open round; an empty
-  `trackIds` array means no tracks, never all of them.
+  Both doors into the committee - direct provisioning in `worker/routes/review.ts`
+  and an invitation in `worker/routes/people.ts` - resolve the same default when
+  the organizer names no remit: every event track and the first open round, and
+  no open round refuses with `open_round_required`. An *explicitly* empty
+  `trackIds` array means no tracks, never all of them. An invitation stores the
+  resolved ids, so redemption opens a queue with work in it.
   `PATCH /review/events/:eventId/reviewers/:reviewerUserId` replaces that remit
   in both directions, so narrowing takes effect on the reviewer's next read. It
   reports `retainedAssignments` because an explicit assignment still grants
@@ -128,10 +136,25 @@ This file is the project's committed home for project-intrinsic agent knowledge:
 
 `role_grant` decides what an account may reach, and **an account with no live
 grant is an attendee** - `attendee` is never a stored value. `worker/roles.ts`
-is the only reader: `resolveEffectiveRole` answers with the widest live grant
-(organizer > reviewer > speaker), `grantRole` and `revokeRole` are the only
-writers, and revoking sets `revoked_at` rather than deleting, so who decided
-what survives. Never read `user.role`: it keeps its original three-value CHECK
+is the only reader, `grantRole` and `revokeRole` are the only writers, and
+revoking sets `revoked_at` rather than deleting, so who decided what survives.
+**What an account may reach is the union of its live grants, never one of
+them.** `resolveGrantedRoles` answers that union, widest first
+(organizer > reviewer > speaker), and `prepareRequest` puts it in the `roles`
+context variable - **the only role state a request carries.** There is
+deliberately no single-role context variable beside it: one existed, half the
+gates were migrated off it and half were not, and the half left behind refused
+callers that carried only the union. Every gate, in a route file or a
+middleware, asks `holdsAccess` in `worker/access.ts`, so granting a second area
+really opens it and no role implies another. Where a handler branches on *how
+much* a caller may see - unscoped versus own-remit, identified versus blind -
+branch on `holdsAccess(roles, "organizer")`, never on which role happens to be
+widest. `describingRole` names the union's first entry for screens and for the
+landing area; it decides nothing, and a gate must never call it. A harness that
+mounts routes with an injected caller sets `roles` and nothing else -
+`tests/integration/account-access.test.ts` mounts the review routes that way on
+purpose, so a handler that reads anything else fails there. Never read
+`user.role`: it keeps its original three-value CHECK
 because D1 refuses the rebuild that changing it needs (`user` has ten inbound
 foreign keys and does not honour `PRAGMA foreign_keys=OFF`), and Better Auth no
 longer projects it into the session at all.
@@ -145,8 +168,11 @@ longer projects it into the session at all.
 - `worker/routes/people.ts` is the organizer's gate at `/organizer/people`. It
   shows each account's **evidence** - programmed, proposal only, or no records -
   because a `speaker` row is minted at first CFP draft, not at acceptance, so a
-  speaker record alone is not evidence of presenting. Granting is attributed and
-  silent; the notify checkbox defaults to off.
+  speaker record alone is not evidence of presenting. Neither is a live
+  `session_speaker` row: un-accepting keeps the session on purpose, so
+  *Programmed* counts a submission-backed session only while its submission is
+  still accepted, and a directly entered session (no `submission_id`) always.
+  Granting is attributed and silent; the notify checkbox defaults to off.
 - **A reviewer invitation is redeemed only by confirming the address.** Signing
   up as an invited address grants nothing. `worker/reviewer-invites.ts#redeemReviewerInvites`
   runs from Better Auth's `afterEmailVerification` and nowhere else; redeeming at

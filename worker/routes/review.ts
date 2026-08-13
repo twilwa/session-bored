@@ -24,6 +24,7 @@ import {
   type Role,
   users,
 } from "../../db/schema.ts";
+import { holdsAccess } from "../access.ts";
 import type { ReviewAssignmentStatus } from "../../shared/api.ts";
 import type { AuthSession } from "../auth.ts";
 import { createAuth } from "../auth.ts";
@@ -37,7 +38,7 @@ type ReviewEnvironment = {
   Variables: {
     authSession: AuthSession["session"] | null;
     authUser: AuthSession["user"] | null;
-    role: Role | null;
+    roles: Role[] | null;
   };
 };
 
@@ -45,11 +46,11 @@ const reviewRoutes = new Hono<ReviewEnvironment>();
 
 function requireRole(requiredRole: "organizer" | "reviewer") {
   return createMiddleware<ReviewEnvironment>(async (context, next) => {
-    const role = context.get("role");
-    if (role === null) {
+    const roles = context.get("roles") ?? null;
+    if (roles === null) {
       return context.json({ error: "authentication_required" }, 401);
     }
-    if (role !== requiredRole) {
+    if (!holdsAccess(roles, requiredRole)) {
       return context.json({ error: "forbidden" }, 403);
     }
     await next();
@@ -246,17 +247,19 @@ reviewRoutes.get("/review/submissions/:submissionId", async (context) => {
   if (user === null) {
     return context.json({ error: "authentication_required" }, 401);
   }
-  const role = context.get("role");
-  if (role !== "organizer" && role !== "reviewer") {
+  const roles = context.get("roles") ?? [];
+  if (!holdsAccess(roles, "organizer") && !holdsAccess(roles, "reviewer")) {
     return context.json({ error: "forbidden" }, 403);
   }
   const database = drizzle(context.env.DB);
   const submissionId = context.req.param("submissionId");
   const requestedRoundId = context.req.query("roundId");
-  const scopedItem = role === "reviewer"
-    ? await reviewerSubmission(database, user.id, submissionId, requestedRoundId)
-    : undefined;
-  if (role === "reviewer" && scopedItem === undefined) {
+  // An organizer reads any proposal; a reviewer only their own remit. Somebody granted both
+  // keeps the wider reach rather than being narrowed by the second grant.
+  const scopedItem = holdsAccess(roles, "organizer")
+    ? undefined
+    : await reviewerSubmission(database, user.id, submissionId, requestedRoundId);
+  if (!holdsAccess(roles, "organizer") && scopedItem === undefined) {
     return context.json({ error: "forbidden" }, 403);
   }
 
@@ -282,7 +285,9 @@ reviewRoutes.get("/review/submissions/:submissionId", async (context) => {
   }
 
   const roundId = scopedItem?.roundId ?? requestedRoundId;
-  const anonymized = role === "reviewer" && scopedItem?.anonymized === true;
+  // Blind review hides identities from the committee reading through a remit, never from an
+  // organizer - so somebody granted both reads it identified, as they did before.
+  const anonymized = !holdsAccess(roles, "organizer") && scopedItem?.anonymized === true;
   const [commentRows, trackRows, proposalAnswerRows, criteria, reviewRows] = await Promise.all([
     database
       .select({
@@ -366,7 +371,7 @@ reviewRoutes.get("/review/submissions/:submissionId", async (context) => {
     criteria,
     reviews: reviewRows
       .filter((review) => (roundId === undefined || review.roundId === roundId))
-      .filter((review) => role === "organizer" || review.authorId === user.id)
+      .filter((review) => holdsAccess(roles, "organizer") || review.authorId === user.id)
       .map((review) => ({
         id: review.id,
         scores: review.scores,
@@ -390,14 +395,16 @@ reviewRoutes.post("/review/submissions/:submissionId/comments", async (context) 
   if (user === null) {
     return context.json({ error: "authentication_required" }, 401);
   }
-  const role = context.get("role");
-  if (role !== "organizer" && role !== "reviewer") {
+  const roles = context.get("roles") ?? [];
+  if (!holdsAccess(roles, "organizer") && !holdsAccess(roles, "reviewer")) {
     return context.json({ error: "forbidden" }, 403);
   }
   const database = drizzle(context.env.DB);
   const submissionId = context.req.param("submissionId");
+  // Same reach as reading it: an organizer may comment on any proposal, a reviewer only on
+  // one inside their remit.
   if (
-    role === "reviewer" &&
+    !holdsAccess(roles, "organizer") &&
     (await reviewerSubmission(database, user.id, submissionId)) === undefined
   ) {
     return context.json({ error: "forbidden" }, 403);

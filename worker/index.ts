@@ -28,7 +28,7 @@ import {
 } from "../db/schema.ts";
 import { speakerFacingSubmissionStatus, type ApiAccess, type PortalFileVersion } from "../shared/api.ts";
 import { authorizeAccess } from "./access.ts";
-import { resolveEffectiveRole } from "./roles.ts";
+import { describingRole, resolveGrantedRoles } from "./roles.ts";
 import { accessDeniedDocument, prefersHtmlDocument } from "./access-page.ts";
 import { createAuth, type AuthSession } from "./auth.ts";
 import aiReviewRoutes from "./routes/ai-review.ts";
@@ -59,7 +59,7 @@ type AppEnvironment = {
   Variables: {
     authSession: AuthSession["session"] | null;
     authUser: SessionUser | null;
-    role: Role | null;
+    roles: Role[] | null;
   };
 };
 
@@ -70,20 +70,21 @@ const prepareRequest = createMiddleware<AppEnvironment>(async (context, next) =>
   const authSession = await createAuth(context.env).api.getSession({ headers: context.req.raw.headers });
   context.set("authSession", authSession?.session ?? null);
   context.set("authUser", authSession?.user ?? null);
-  // Role comes from the account's live grants, never from the session or the `user.role`
+  // Roles come from the account's live grants, never from the session or the `user.role`
   // column. Signing up therefore reaches nothing beyond a signed-in attendee until an
-  // organizer decides otherwise.
+  // organizer decides otherwise. This union is the only role state a request carries: there is
+  // no second, single-role variable for a gate to read instead, and so none to fall behind it.
   context.set(
-    "role",
-    authSession === null ? null : await resolveEffectiveRole(drizzle(context.env.DB), authSession.user.id),
+    "roles",
+    authSession === null ? null : await resolveGrantedRoles(drizzle(context.env.DB), authSession.user.id),
   );
   await next();
 });
 
 function requireAccess(access: ApiAccess) {
   return createMiddleware<AppEnvironment>(async (context, next) => {
-    const role = context.get("role");
-    const decision = authorizeAccess(role === null ? null : { role }, access);
+    const roles = context.get("roles") ?? null;
+    const decision = authorizeAccess(roles === null ? null : { roles }, access);
     if (!decision.allowed) {
       return context.json(
         { error: decision.status === 401 ? "authentication_required" : "forbidden" },
@@ -101,8 +102,8 @@ function requireAccess(access: ApiAccess) {
  */
 function requirePageAccess(access: ApiAccess) {
   return createMiddleware<AppEnvironment>(async (context, next) => {
-    const role = context.get("role");
-    const decision = authorizeAccess(role === null ? null : { role }, access);
+    const roles = context.get("roles") ?? null;
+    const decision = authorizeAccess(roles === null ? null : { roles }, access);
     if (decision.allowed) {
       await next();
       return;
@@ -121,7 +122,7 @@ function requirePageAccess(access: ApiAccess) {
         path: url.pathname,
         returnTo: `${url.pathname}${url.search}`,
         requiredAccess: access,
-        user: user === null ? null : { name: user.name, role },
+        user: user === null ? null : { name: user.name, role: describingRole(roles ?? []) },
       }),
       decision.status,
     );
@@ -160,10 +161,11 @@ app.get("/api/health", (context) =>
 
 app.get("/api/session", requireAccess("authenticated"), (context) => {
   const user = context.get("authUser");
-  // The role the client sees is the resolved one, so a signed-in attendee is described as an
-  // attendee rather than by the `user.role` column nothing reads any more.
+  // The role the client sees describes the account by its widest grant, so a signed-in
+  // attendee is described as an attendee rather than by the `user.role` column nothing reads
+  // any more. It chooses a landing area; it decides no access.
   return context.json({
-    user: user === null ? null : { ...user, role: context.get("role") ?? "attendee" },
+    user: user === null ? null : { ...user, role: describingRole(context.get("roles") ?? []) },
     session: context.get("authSession"),
   });
 });

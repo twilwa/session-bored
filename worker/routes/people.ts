@@ -1,6 +1,6 @@
 // ABOUTME: Serves the organizer's platform-wide view of who has an account and what it opens.
 // ABOUTME: Owns granting, revoking, and reviewer invitations, each attributed to the organizer who acted.
-import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { Hono } from "hono";
 import { createMiddleware } from "hono/factory";
@@ -10,13 +10,18 @@ import {
   grantableRoles,
   people,
   reviewerInvites,
+  reviewRounds,
   roleGrants,
+  sessions,
   sessionSpeakers,
   speakers,
+  submissions,
   submissionSpeakers,
+  tracks,
   users,
   type Role,
 } from "../../db/schema.ts";
+import { holdsAccess } from "../access.ts";
 import type { PersonAccountEvidence, PersonAccountSummary } from "../../shared/api.ts";
 import type { AuthSession } from "../auth.ts";
 import { sendRoleGrantEmail } from "../email/role-grant.ts";
@@ -27,18 +32,18 @@ type PeopleEnvironment = {
   Bindings: CloudflareBindings;
   Variables: {
     authUser: AuthSession["user"] | null;
-    role: Role | null;
+    roles: Role[] | null;
   };
 };
 
 const peopleRoutes = new Hono<PeopleEnvironment>();
 
 const requireOrganizer = createMiddleware<PeopleEnvironment>(async (context, next) => {
-  const role = context.get("role");
-  if (role === null) {
+  const roles = context.get("roles");
+  if (roles === null) {
     return context.json({ error: "authentication_required" }, 401);
   }
-  if (role !== "organizer") {
+  if (!holdsAccess(roles, "organizer")) {
     return context.json({ error: "forbidden" }, 403);
   }
   await next();
@@ -64,12 +69,23 @@ async function evidenceFor(
     return evidence;
   }
   const [programmed, proposals] = await Promise.all([
+    // Un-accepting keeps the session and its speaker links on purpose, so a live
+    // `session_speaker` row is not by itself evidence of being in the programme. A
+    // submission-backed session counts only while its submission is still accepted; a session
+    // an organizer entered directly answers to no submission and always counts.
     database
       .select({ userId: people.userId, count: sql<number>`count(*)` })
       .from(sessionSpeakers)
+      .innerJoin(sessions, eq(sessionSpeakers.sessionId, sessions.id))
+      .leftJoin(submissions, eq(sessions.submissionId, submissions.id))
       .innerJoin(speakers, eq(sessionSpeakers.speakerId, speakers.id))
       .innerJoin(people, eq(speakers.personId, people.id))
-      .where(and(inArray(people.userId, [...userIds]), isNull(sessionSpeakers.deletedAt)))
+      .where(and(
+        inArray(people.userId, [...userIds]),
+        isNull(sessionSpeakers.deletedAt),
+        isNull(sessions.deletedAt),
+        or(isNull(sessions.submissionId), eq(submissions.status, "accepted")),
+      ))
       .groupBy(people.userId),
     database
       .select({ userId: people.userId, count: sql<number>`count(*)` })
@@ -245,6 +261,24 @@ peopleRoutes.post("/api/events/:eventId/reviewer-invites", requireOrganizer, asy
   if (existing !== undefined) {
     return context.json({ error: "invite_already_open", inviteId: existing.id }, 409);
   }
+  // An invitation that names no remit carries the same default a directly provisioned
+  // reviewer gets - every event track and the first open round - so redemption opens a queue
+  // with work in it. Only an explicitly empty `trackIds` means no tracks.
+  const [eventTracks, openRounds] = await Promise.all([
+    database.select({ id: tracks.id }).from(tracks).where(eq(tracks.eventId, eventId)).orderBy(asc(tracks.sortOrder)),
+    database
+      .select({ id: reviewRounds.id })
+      .from(reviewRounds)
+      .where(and(eq(reviewRounds.eventId, eventId), eq(reviewRounds.status, "open")))
+      .orderBy(asc(reviewRounds.sortOrder)),
+  ]);
+  const defaultRound = openRounds[0];
+  if (defaultRound === undefined) {
+    return context.json({ error: "open_round_required" }, 409);
+  }
+  const requestedRoundIds = Array.isArray(payload.roundIds)
+    ? payload.roundIds.filter((id): id is string => typeof id === "string")
+    : [];
   const [invite] = await database
     .insert(reviewerInvites)
     .values({
@@ -252,10 +286,8 @@ peopleRoutes.post("/api/events/:eventId/reviewer-invites", requireOrganizer, asy
       eventId,
       trackIds: Array.isArray(payload.trackIds)
         ? payload.trackIds.filter((id): id is string => typeof id === "string")
-        : [],
-      roundIds: Array.isArray(payload.roundIds)
-        ? payload.roundIds.filter((id): id is string => typeof id === "string")
-        : [],
+        : eventTracks.map((track) => track.id),
+      roundIds: requestedRoundIds.length === 0 ? [defaultRound.id] : requestedRoundIds,
       invitedByUserId: organizer.id,
     })
     .returning({ id: reviewerInvites.id });

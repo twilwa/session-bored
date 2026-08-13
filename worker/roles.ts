@@ -12,8 +12,9 @@ import {
 type Database = ReturnType<typeof drizzle>;
 
 /**
- * Which grant wins when an account holds more than one. Access is a single role today, so the
- * widest reach answers, which keeps a granted organizer an organizer even if they also speak.
+ * The order roles are reported in, widest reach first, so the one role a surface can show
+ * describes the account by its furthest reach. It never narrows access: what an account may
+ * reach is the union of its live grants, which is what `resolveGrantedRoles` answers.
  */
 const rolePrecedence: readonly GrantableRole[] = ["organizer", "reviewer", "speaker"];
 
@@ -27,13 +28,10 @@ export interface LiveGrant {
   note: string | null;
 }
 
-function highestRole(grantedRoles: readonly GrantableRole[]): Role {
-  for (const role of rolePrecedence) {
-    if (grantedRoles.includes(role)) {
-      return role;
-    }
-  }
-  return "attendee";
+/** The roles these grants confer, widest first. No live grant means the account is an attendee. */
+function grantedRoles(liveGrants: readonly GrantableRole[]): Role[] {
+  const roles = rolePrecedence.filter((role) => liveGrants.includes(role));
+  return roles.length === 0 ? ["attendee"] : roles;
 }
 
 /**
@@ -62,10 +60,27 @@ export async function listLiveGrants(
     .orderBy(desc(roleGrants.grantedAt));
 }
 
-/** The role this account may act as. An account with no live grant is an attendee. */
-export async function resolveEffectiveRole(database: Database, userId: string): Promise<Role> {
+/**
+ * Every role this account may act as, widest first. Authorization reads this rather than one
+ * role, so a reviewer who is also granted speaker reaches both areas and neither grant hides
+ * the other. An account with no live grant is an attendee.
+ */
+export async function resolveGrantedRoles(database: Database, userId: string): Promise<Role[]> {
   const grants = await listLiveGrants(database, [userId]);
-  return highestRole(grants.map((grant) => grant.role));
+  return grantedRoles(grants.map((grant) => grant.role));
+}
+
+/**
+ * The one role that *describes* an account on screen - its widest live grant. Deciding access
+ * from this is the bug it exists to avoid: ask `holdsAccess` for that, always.
+ */
+export function describingRole(roles: readonly Role[]): Role {
+  return roles[0] ?? "attendee";
+}
+
+/** The widest role this account holds, for describing it. An account with no live grant is an attendee. */
+export async function resolveEffectiveRole(database: Database, userId: string): Promise<Role> {
+  return describingRole(await resolveGrantedRoles(database, userId));
 }
 
 /** The effective role of many accounts at once, keyed by user id. */
@@ -78,7 +93,7 @@ export async function resolveEffectiveRoles(
   for (const grant of grants) {
     byUser.set(grant.userId, [...(byUser.get(grant.userId) ?? []), grant.role]);
   }
-  return new Map(userIds.map((userId) => [userId, highestRole(byUser.get(userId) ?? [])]));
+  return new Map(userIds.map((userId) => [userId, grantedRoles(byUser.get(userId) ?? [])[0]!]));
 }
 
 export async function hasLiveGrant(

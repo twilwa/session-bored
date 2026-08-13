@@ -53,6 +53,17 @@ export const fixtureIds = {
   session: "ses_docs_retrieval",
 } as const;
 
+/** The sample event's speaker task ids, in the fixture order that mints them. */
+function fixtureTaskId(index: number): string {
+  return `tsk_fixture_${index}`;
+}
+
+/**
+ * The sample event's "Upload headshot" request. What a file request wants is its accepted
+ * type list, so the request that names a headshot is the one that has to declare pictures.
+ */
+const headshotRequestIndex = fixture.tasks_for_speakers.findIndex((title) => /headshot/i.test(title));
+
 interface SeedIdentity {
   name: string;
   email: string;
@@ -93,6 +104,7 @@ async function ensureIdentity(
 export async function ensureSeeded(env: CloudflareBindings): Promise<void> {
   const database = drizzle(env.DB);
   const headshotFixtureKey = "fixture.devflow-2027.headshots.v1";
+  const headshotRequestFixtureKey = "fixture.devflow-2027.headshot-request.v1";
   const [marker] = await database
     .select({ id: systemState.id })
     .from(systemState)
@@ -112,6 +124,31 @@ export async function ensureSeeded(env: CloudflareBindings): Promise<void> {
         .values({
           id: "sys_fixture_devflow_2027_headshots_v1",
           key: headshotFixtureKey,
+          value: { seeded: "true" },
+        })
+        .onConflictDoNothing();
+    }
+    const [headshotRequestMarker] = await database
+      .select({ id: systemState.id })
+      .from(systemState)
+      .where(eq(systemState.key, headshotRequestFixtureKey));
+    if (headshotRequestMarker === undefined && headshotRequestIndex >= 0) {
+      // A database seeded before the sample headshot request said what it wants still has it
+      // declaring nothing, which is a document request refusing the very picture its title
+      // asks for. Fresh inserts below already carry the types; this is for everything already
+      // out there.
+      await database
+        .update(tasks)
+        .set({ acceptedFileTypes: pictureRequestFileTypes })
+        .where(and(
+          eq(tasks.id, fixtureTaskId(headshotRequestIndex)),
+          isNull(tasks.acceptedFileTypes),
+        ));
+      await database
+        .insert(systemState)
+        .values({
+          id: "sys_fixture_devflow_2027_headshot_request_v1",
+          key: headshotRequestFixtureKey,
           value: { seeded: "true" },
         })
         .onConflictDoNothing();
@@ -516,7 +553,7 @@ export async function ensureSeeded(env: CloudflareBindings): Promise<void> {
     .onConflictDoNothing();
 
   for (const [index, title] of fixture.tasks_for_speakers.entries()) {
-    const taskId = `tsk_fixture_${index}`;
+    const taskId = fixtureTaskId(index);
     const isFileRequest = title.includes("Upload");
     await database
       .insert(tasks)
@@ -544,6 +581,11 @@ export async function ensureSeeded(env: CloudflareBindings): Promise<void> {
     .values([
       { id: "sys_fixture_devflow_2027_v1", key: "fixture.devflow-2027.v1", value: { seeded: "true" } },
       { id: "sys_fixture_devflow_2027_headshots_v1", key: headshotFixtureKey, value: { seeded: "true" } },
+      {
+        id: "sys_fixture_devflow_2027_headshot_request_v1",
+        key: headshotRequestFixtureKey,
+        value: { seeded: "true" },
+      },
     ])
     .onConflictDoNothing();
 }
