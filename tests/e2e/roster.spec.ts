@@ -410,7 +410,8 @@ test("organizer assigns a file request in bulk and sees who needs chasing", asyn
   await expect(page.getByText(/days overdue/).first()).toBeVisible();
 });
 
-test("picture requests disclose their public headshot effect before and after upload", async ({ page }) => {
+test("picture requests disclose their public headshot effect before and after upload", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "mobile", "Run the irreversible public-headshot journey once against the shared D1.");
   await signInAsOrganizer(page);
   await page.goto("/organizer/roster/tasks");
 
