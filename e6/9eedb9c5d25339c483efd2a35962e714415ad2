@@ -1,0 +1,19 @@
+tests/e2e/content-management.spec.ts
+  s_fd0bc42efdedeb::t_3ec7d5899716ee 58-59
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "e69eedb9c5d25339c483efd2a35962e714415ad2",
+  "prompts": {},
+  "sessions": {
+    "s_fd0bc42efdedeb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ff9b5-def8-78b1-8cbd-c4b3e0026c7e",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
