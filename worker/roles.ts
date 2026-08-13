@@ -7,6 +7,7 @@ import {
   type GrantableRole,
   type Role,
   roleGrants,
+  users,
 } from "../db/schema.ts";
 
 type Database = ReturnType<typeof drizzle>;
@@ -94,6 +95,30 @@ export async function resolveEffectiveRoles(
     byUser.set(grant.userId, [...(byUser.get(grant.userId) ?? []), grant.role]);
   }
   return new Map(userIds.map((userId) => [userId, grantedRoles(byUser.get(userId) ?? [])[0]!]));
+}
+
+export interface GrantedAccount {
+  id: string;
+  name: string;
+  email: string;
+}
+
+/**
+ * Every account holding a live grant of this role, with the identity a screen shows. Committee
+ * setup reads it so an account granted reviewer from People is listed and editable there even
+ * before it has a single track or round: a grant that no screen can complete is a role that
+ * cannot be made to work (issue #147). Grants are platform-wide for now, so this answers the
+ * same list for every event until #120 scopes them.
+ */
+export async function listAccountsHoldingRole(
+  database: Database,
+  role: GrantableRole,
+): Promise<GrantedAccount[]> {
+  return database
+    .selectDistinct({ id: users.id, name: users.name, email: users.email })
+    .from(roleGrants)
+    .innerJoin(users, eq(roleGrants.userId, users.id))
+    .where(and(eq(roleGrants.role, role), isNull(roleGrants.revokedAt)));
 }
 
 export async function hasLiveGrant(

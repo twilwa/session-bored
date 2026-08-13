@@ -107,8 +107,15 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   in both directions, so narrowing takes effect on the reviewer's next read. It
   reports `retainedAssignments` because an explicit assignment still grants
   access outside the new track remit. The organizer config route lists a
-  reviewer by track responsibility *or* round pool, so a reviewer narrowed to
-  zero tracks stays visible and editable.
+  reviewer by track responsibility, round pool, **or a live reviewer
+  `role_grant`** (`listAccountsHoldingRole` in `worker/roles.ts`), so a reviewer
+  narrowed to zero tracks — and one granted from People, which resolves no remit
+  at all — stays visible and editable. That third door is deliberately not given
+  a default remit: the grant is platform-wide (#120) and the default is
+  event-scoped, so refusing or guessing an event would make a role grant hostage
+  to one event's rounds. Committee setup completes it instead, and its card reads
+  `No remit yet` while the reviewer is in no round pool, because a queue is built
+  from the pool and tracks alone earn nothing (issue #147).
 - `POST /api/review/submissions/:submissionId/recusal` is the reviewer's own action
   and the only writer of `review_assignment.status = 'recused'`. It keeps the same
   assignment row, creating one first if the proposal was readable through track
