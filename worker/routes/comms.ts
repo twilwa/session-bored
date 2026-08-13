@@ -1,15 +1,15 @@
 // ABOUTME: Serves Greenroom's communications surface for event templates and reviewable dispatch drafts.
 // ABOUTME: Also exposes reminder drafting, decision-notice retry, and deliberate calendar-invite sends.
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNotNull, isNull, or } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { Hono } from "hono";
 import { createMiddleware } from "hono/factory";
-import { decisionBatches, decisionNotices, emailDispatches, type Role } from "../../db/schema.ts";
+import { decisionBatches, decisionNotices, emailDispatches, users, type Role } from "../../db/schema.ts";
 import { holdsAccess } from "../access.ts";
 import { isEmailConfigured, missingEmailSenderSecrets } from "../email.ts";
 import { sendSessionCalendarInvite } from "../email/calendar-invite.ts";
 import { discardDraftDispatch, sendQueuedDispatch, updateDraftDispatch } from "../email/dispatch-queue.ts";
-import { retryDecisionNotice } from "../email/decision-notices.ts";
+import { cancelDecisionNotice, retryDecisionNotice } from "../email/decision-notices.ts";
 import { draftOverdueTaskReminders } from "../email/reminders.ts";
 import {
   createEventTemplate,
@@ -103,12 +103,21 @@ commsRoutes.get("/api/events/:eventId/email-dispatches", async (context) => {
         subject: decisionNotices.subject,
         body: decisionNotices.body,
         queuedAt: decisionNotices.queuedAt,
+        cancelledAt: decisionNotices.cancelledAt,
+        cancellationReason: decisionNotices.cancellationReason,
+        cancelledByName: users.name,
       })
       .from(decisionNotices)
       .innerJoin(decisionBatches, eq(decisionNotices.batchId, decisionBatches.id))
+      .leftJoin(users, eq(decisionNotices.cancelledByUserId, users.id))
+      // A letter Greenroom queued belongs in this history whether it is still waiting or was
+      // retired, so cancelling is never a way to make a decision letter disappear.
       .where(and(
         eq(decisionBatches.eventId, eventId),
-        eq(decisionNotices.deliveryStatus, "queued"),
+        or(
+          eq(decisionNotices.deliveryStatus, "queued"),
+          isNotNull(decisionNotices.cancelledAt),
+        ),
       )),
   ]);
   const pendingReason = isEmailConfigured(context.env)
@@ -121,13 +130,19 @@ commsRoutes.get("/api/events/:eventId/email-dispatches", async (context) => {
     subject: notice.subject,
     body: notice.body,
     recipients: [{ email: notice.recipientEmail, name: notice.recipientName }],
-    status: "queued" as const,
+    status: notice.cancelledAt === null ? "queued" as const : "cancelled" as const,
     providerMessageIds: null,
-    failureReason: pendingReason,
+    // Cancelling is an attributed act, so the history says who did it. It reads as "somebody" only
+    // when that account is gone, never because the record was not kept.
+    failureReason: notice.cancelledAt === null
+      ? pendingReason
+      : `Cancelled before sending by ${notice.cancelledByName ?? "somebody no longer on this Greenroom"}. ${
+        notice.cancellationReason ?? "No reason was given."
+      }`,
     sentAt: null,
     createdByUserId: null,
     createdAt: notice.queuedAt,
-    updatedAt: notice.queuedAt,
+    updatedAt: notice.cancelledAt ?? notice.queuedAt,
     deletedAt: null,
   }));
   const items = [...dispatches, ...queuedItems]
@@ -218,14 +233,28 @@ commsRoutes.post("/api/events/:eventId/email-dispatches/reminders/draft", async 
 
 commsRoutes.post("/api/events/:eventId/decision-notices/:submissionId/retry", async (context) => {
   const database = drizzle(context.env.DB);
+  // The letter the caller was looking at, and it is required. A request that cannot say which
+  // letter it means is refused rather than falling back to submission-scoped selection: that
+  // fallback is precisely how a page loaded before a cancellation would send the replacement
+  // under the retired letter's review.
+  const payload = await context.req
+    .json<{ noticeId?: unknown }>()
+    .catch(() => ({} as { noticeId?: unknown }));
+  if (typeof payload.noticeId !== "string" || payload.noticeId === "") {
+    return context.json({ error: "notice_id_required" }, 400);
+  }
   const result = await retryDecisionNotice(
     database,
     context.env,
     context.req.param("eventId") as `evt_${string}`,
     context.req.param("submissionId"),
+    payload.noticeId,
   );
   if (result.status === "not_found") {
     return context.json({ error: "notice_not_found" }, 404);
+  }
+  if (result.status === "superseded") {
+    return context.json({ error: "notice_superseded" }, 409);
   }
   if (result.status === "not_retryable") {
     return context.json({ error: "notice_not_retryable", currentStatus: result.currentStatus }, 409);
@@ -233,10 +262,66 @@ commsRoutes.post("/api/events/:eventId/decision-notices/:submissionId/retry", as
   if (result.status === "provider_not_configured") {
     return context.json({ error: "email_not_configured" }, 409);
   }
+  if (result.status === "delivery_unconfirmed") {
+    return context.json({ error: "delivery_outcome_unconfirmed" }, 409);
+  }
   if (result.status === "failed") {
     return context.json({ status: "failed", error: result.error }, 502);
   }
   return context.json({ status: "sent" });
+});
+
+commsRoutes.post("/api/events/:eventId/decision-notices/:submissionId/cancel", async (context) => {
+  const user = context.get("authUser");
+  if (user === null) {
+    return context.json({ error: "authentication_required" }, 401);
+  }
+  // Reason and address correction are optional; naming the letter is not. Retiring a letter the
+  // caller never reviewed is the same fault as sending one, so it is refused rather than resolved.
+  const payload = await context.req
+    .json<{ noticeId?: unknown; reason?: unknown; recipientEmail?: unknown }>()
+    .catch(() => ({} as { noticeId?: unknown; reason?: unknown; recipientEmail?: unknown }));
+  if (
+    (payload.reason !== undefined && typeof payload.reason !== "string") ||
+    (payload.recipientEmail !== undefined && typeof payload.recipientEmail !== "string")
+  ) {
+    return context.json({ error: "invalid_cancellation" }, 400);
+  }
+  if (typeof payload.noticeId !== "string" || payload.noticeId === "") {
+    return context.json({ error: "notice_id_required" }, 400);
+  }
+  const result = await cancelDecisionNotice({
+    database: drizzle(context.env.DB),
+    eventId: context.req.param("eventId") as `evt_${string}`,
+    submissionId: context.req.param("submissionId"),
+    noticeId: payload.noticeId,
+    cancelledByUserId: user.id,
+    reason: typeof payload.reason === "string" ? payload.reason : undefined,
+    correctedRecipientEmail: typeof payload.recipientEmail === "string" ? payload.recipientEmail : undefined,
+  });
+  if (result.status === "not_found") {
+    return context.json({ error: "notice_not_found" }, 404);
+  }
+  if (result.status === "already_cancelled") {
+    return context.json({ error: "notice_already_cancelled" }, 409);
+  }
+  if (result.status === "superseded") {
+    return context.json({ error: "notice_superseded" }, 409);
+  }
+  if (result.status === "not_cancellable") {
+    return context.json({ error: "notice_not_cancellable", currentStatus: result.currentStatus }, 409);
+  }
+  if (result.status === "invalid_recipient") {
+    return context.json({ error: "invalid_recipient_email" }, 400);
+  }
+  if (result.status === "recipient_taken") {
+    return context.json({ error: "recipient_email_taken" }, 409);
+  }
+  return context.json({
+    status: "cancelled",
+    submissionId: result.submissionId,
+    recipientEmail: result.recipientEmail,
+  });
 });
 
 commsRoutes.get("/api/events/:eventId/comms/templates", async (context) => {

@@ -1,5 +1,6 @@
 // ABOUTME: Stores reviewable decision batches and the once-only queue log for disposition notices.
 // ABOUTME: Keeps committee decisions separate from deliberate communication dispatch records.
+import { sql } from "drizzle-orm";
 import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 const decisionOutcomes = ["accepted", "maybe", "declined"] as const;
@@ -44,6 +45,13 @@ export const decisionBatchItems = sqliteTable(
     subject: text("subject").notNull(),
     body: text("body").notNull(),
     dispatchedAt: integer("dispatched_at", { mode: "timestamp_ms" }),
+    /**
+     * Set when the letter this item would queue was retired. A preview rendered before a
+     * correction freezes the recipient and copy that the correction replaced, so dispatching it
+     * afterwards would silently reinstate them. Stamped by the cancellation itself rather than
+     * inferred by comparing timestamps, which cannot order two writes in the same millisecond.
+     */
+    supersededAt: integer("superseded_at", { mode: "timestamp_ms" }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -64,16 +72,39 @@ export const decisionNotices = sqliteTable(
     recipientEmail: text("recipient_email").notNull(),
     subject: text("subject").notNull(),
     body: text("body").notNull(),
-    deliveryStatus: text("delivery_status", { enum: ["queued", "sent", "failed"] }).notNull().default("queued"),
+    /**
+     * `sending` is a claim, taken atomically before the provider call and released by its
+     * outcome. It is what makes cancelling and sending mutually exclusive: whoever wins the
+     * claim owns the letter, and the loser is refused rather than acting on a stale read.
+     */
+    deliveryStatus: text("delivery_status", { enum: ["queued", "sending", "sent", "failed"] })
+      .notNull()
+      .default("queued"),
+    /** When the current `sending` claim was taken, so an abandoned one can be recognised. */
+    sendingSince: integer("sending_since", { mode: "timestamp_ms" }),
+    /**
+     * Identifies who holds the current claim. A send conditions its final write on still holding
+     * the token it took, so a sender whose lease expired mid-flight cannot overwrite whoever
+     * legitimately took the letter over - including a cancellation.
+     */
+    sendingClaimToken: text("sending_claim_token"),
     sentAt: integer("sent_at", { mode: "timestamp_ms" }),
     providerMessageId: text("provider_message_id"),
     failureReason: text("failure_reason"),
     queuedAt: integer("queued_at", { mode: "timestamp_ms" }).notNull(),
+    cancelledAt: integer("cancelled_at", { mode: "timestamp_ms" }),
+    cancelledByUserId: text("cancelled_by_user_id"),
+    cancellationReason: text("cancellation_reason"),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
   (table) => [
-    uniqueIndex("decision_notice_submission_unique").on(table.submissionId),
+    // One live letter per submission, which is what makes dispatch once-only. A cancelled
+    // letter stays for the record and releases the submission so a corrected letter can be
+    // reviewed and queued in its place.
+    uniqueIndex("decision_notice_submission_unique")
+      .on(table.submissionId)
+      .where(sql`${table.cancelledAt} is null`),
     index("decision_notice_batch_idx").on(table.batchId),
   ],
 );

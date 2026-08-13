@@ -41,6 +41,7 @@ export function DispositionPage() {
   const [preview, setPreview] = useState<DecisionBatchPreview | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [requeued, setRequeued] = useState(false);
   const senderStatus = useEmailSenderStatus();
 
   async function load(): Promise<void> {
@@ -51,10 +52,21 @@ export function DispositionPage() {
   }
 
   useEffect(() => {
-    void load().catch((error: unknown) => {
-      setMessage(error instanceof Error ? error.message : "Disposition could not be loaded.");
-      setItems([]);
-    });
+    void load()
+      .then(async () => {
+        // Arriving from a cancelled letter in Communications. Select that proposal and render
+        // its replacement, so the organizer lands on the letter rather than having to rebuild
+        // it. Rendering is not queueing: dispatch is still theirs to click.
+        const requeue = new URLSearchParams(window.location.search).get("requeue");
+        if (requeue === null) return;
+        setSelected(new Set([requeue]));
+        setRequeued(true);
+        await buildPreviewFor([requeue]);
+      })
+      .catch((error: unknown) => {
+        setMessage(error instanceof Error ? error.message : "Disposition could not be loaded.");
+        setItems([]);
+      });
   }, []);
 
   const selectedItems = useMemo(
@@ -92,8 +104,8 @@ export function DispositionPage() {
     }
   }
 
-  async function buildPreview(): Promise<void> {
-    if (selectedItems.length === 0) return;
+  async function buildPreviewFor(submissionIds: string[]): Promise<void> {
+    if (submissionIds.length === 0) return;
     setBusy(true);
     try {
       const batch = await readJson<DecisionBatchPreview>(
@@ -101,7 +113,7 @@ export function DispositionPage() {
         {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ submissionIds: selectedItems.map((item) => item.id) }),
+          body: JSON.stringify({ submissionIds }),
         },
       );
       setPreview(batch);
@@ -111,6 +123,10 @@ export function DispositionPage() {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function buildPreview(): Promise<void> {
+    await buildPreviewFor(selectedItems.map((item) => item.id));
   }
 
   async function dispatch(): Promise<void> {
@@ -146,6 +162,17 @@ export function DispositionPage() {
       </header>
 
       <EmailSenderNotice status={senderStatus} />
+
+      {requeued ? (
+        <section className="workspace-section disposition-requeued" aria-label="Replacement letter">
+          <p className="section-label">REPLACING A CANCELLED LETTER</p>
+          <p>
+            The previous letter was cancelled and has not been sent. Below is its replacement,
+            rendered fresh from the current recipient and the current decision.
+          </p>
+          <p><strong>Nothing is queued until you dispatch it.</strong></p>
+        </section>
+      ) : null}
 
       <section className="disposition-rule" aria-label="Decision safety rule">
         <strong>Silent means silent.</strong>

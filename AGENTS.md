@@ -12,10 +12,48 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   or `.beads/`; build directly against the authoritative PRD.
 - Disposition uses `submission.status` as the live committee decision. Status
   changes are always silent. `decision_batch` and `decision_batch_item` freeze
-  the reviewed preview, while the unique `decision_notice.submission_id` log
-  makes queue dispatch once-only and exposes later status divergence. Real
-  delivery of those letters is filled in by `worker/email/decision-notices.ts`
-  (see Communications below) without restructuring the dispatch route itself.
+  the reviewed preview, while the `decision_notice.submission_id` log makes
+  queue dispatch once-only and exposes later status divergence. That uniqueness
+  is partial (`where cancelled_at is null`), so it constrains the *live* letter:
+  one per submission. Real delivery of those letters is filled in by
+  `worker/email/decision-notices.ts` (see Communications below) without
+  restructuring the dispatch route itself.
+- **A queued letter is never edited; it is cancelled and replaced.**
+  `worker/email/decision-notices.ts#cancelDecisionNotice` retires a letter that
+  has not reached anyone, and the replacement is an ordinary new batch the
+  organizer reviews and dispatches, so the approval a letter carries always
+  describes the letter that was sent. What a cancellation may correct is the
+  *person's* address - the same field the roster edits - never the frozen letter.
+  A cancelled letter keeps its recipient, outcome, and copy, stays in the
+  Communications log marked `cancelled` with who retired it and why, and is
+  refused by every send door. Readers of `decision_notice` outside that write
+  path filter `cancelled_at`, or a retired letter keeps counting:
+  `worker/routes/disposition.ts` would list a submission once per letter it ever
+  had, and dispatch would send one nobody stands behind.
+- **Cancelling opens three windows in which the approved letter and the sent
+  letter could differ. All three are closed, and must stay closed** - that
+  difference is the exact thing cancel-and-replace exists to prevent.
+  - *A send in flight.* `delivery_status = 'sending'` is a claim taken
+    atomically before the provider call and released by its outcome, so a send
+    and a cancellation resolve to one winner instead of both proceeding.
+    Cancelling a claimed letter is refused. A claim older than
+    `staleSendClaimMs` is treated as abandoned and may be retaken, because a
+    Worker that dies mid-send would otherwise strand the letter forever.
+    A send also conditions its final write on the `sending_claim_token` it took,
+    so an attempt that outran its lease cannot restate itself over whoever
+    legitimately took the letter over. It answers `delivery_unconfirmed`;
+    `email_dispatch` remains the durable account of what reached the provider.
+  - *A stale page.* Both per-letter doors take a **required** notice id -
+    `retryDecisionNotice` and `cancelDecisionNotice` - and refuse when it is not
+    the live letter. Required, not optional: an opt-in guard silently falls back
+    to submission-scoped selection for any caller that forgets, and sending or
+    retiring a letter nobody reviewed is the fault this exists to stop.
+  - *A stale preview.* Cancelling stamps `decision_batch_item.superseded_at` on
+    every outstanding item for that submission, and dispatch **claims** items
+    with a conditional update that returns what it won, rather than filtering
+    rows it read a moment earlier. A cancellation landing inside that gap would
+    otherwise leave the filter holding a pre-cancellation row while the released
+    partial index let the insert through.
 - Accepting adopts each `submission_speaker.person_id` into the event-scoped
   `speaker` row, creates one `program_session` per `submission_id`, links the
   same speakers through `session_speaker`, and assigns the event's configured
@@ -380,12 +418,18 @@ enriched `tasks` (`taskType`, `instructions`, `acceptedFileTypes`,
   newest upload, so a version's own filename comes from its storage key
   (`worker/storage/file-versions.ts`) for both the history list and the download's
   `Content-Disposition`.
-- A speaker never sees `submission.status`. `GET /api/speaker/content` returns
-  `speakerStatus` from `speakerFacingSubmissionStatus` in `shared/api.ts`, which
-  reveals a decision only once it has been communicated - its `decision_notice`
-  was dispatched, or the acceptance already produced the session the speaker is
-  looking at - and reads as `in_review` otherwise. The submitter dashboard is the
-  deliberate exception: it shows the live silent status by design and by test.
+- A speaker never sees `submission.status`. Both speaker doors -
+  `GET /api/speaker/content` and `GET /api/speaker/submissions/:submissionId` -
+  answer with `speakerStatus` from `speakerFacingSubmissionStatus` in
+  `shared/api.ts`, and read `in_review` otherwise. **A decision is communicated by
+  the letter arriving, not by an organizer queueing one**: join the notice log
+  through `worker/speaker-access.ts#sentDecisionLetter`, which is `sent` and not
+  cancelled. A queued letter is organizer-only, a failed one reached nobody, and a
+  cancelled one never will; showing any of them tells the speaker an outcome the
+  product has not sent, which is the whole point of deciding freely and sending
+  once. An acceptance that already produced the speaker's own session still reads
+  as accepted - they are working on it. The submitter dashboard is the deliberate
+  exception: it shows the live silent status by design and by test.
 - Uploading to a `file_request` task marks that speaker's `task_assignee`
   row `completed` — this is the same row the organizer/roster side must read,
   so no separate completion signal exists. General tasks complete only through

@@ -1,6 +1,6 @@
 // ABOUTME: Changes submission decisions silently and exposes deliberate disposition operations.
 // ABOUTME: Keeps notification dispatch separate from reversible committee status changes.
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { Hono } from "hono";
 import { createMiddleware } from "hono/factory";
@@ -91,16 +91,23 @@ dispositionRoutes.get("/api/events/:eventId/disposition", async (context) => {
       recipientEmail: people.email,
       format: formats.name,
       sessionId: sessions.id,
+      noticeId: decisionNotices.id,
       noticeOutcome: decisionNotices.outcome,
       noticeDeliveryStatus: decisionNotices.deliveryStatus,
       noticeQueuedAt: decisionNotices.queuedAt,
       noticeFailureReason: decisionNotices.failureReason,
+      noticeRecipientEmail: decisionNotices.recipientEmail,
     })
     .from(submissions)
     .innerJoin(people, eq(submissions.submitterPersonId, people.id))
     .leftJoin(formats, eq(submissions.formatId, formats.id))
     .leftJoin(sessions, eq(submissions.id, sessions.submissionId))
-    .leftJoin(decisionNotices, eq(submissions.id, decisionNotices.submissionId))
+    // The live letter only. A submission whose letter was cancelled reads as unqueued again,
+    // and joining the cancelled ones would list the submission once per letter it ever had.
+    .leftJoin(
+      decisionNotices,
+      and(eq(submissions.id, decisionNotices.submissionId), isNull(decisionNotices.cancelledAt)),
+    )
     .where(eq(submissions.eventId, context.req.param("eventId")))
     .orderBy(submissions.createdAt);
   const trackRows = rows.length === 0 ? [] : await database
@@ -131,10 +138,12 @@ dispositionRoutes.get("/api/events/:eventId/disposition", async (context) => {
         retained: row.status !== "accepted",
       },
       notice: row.noticeOutcome === null ? null : {
+        id: row.noticeId,
         outcome: row.noticeOutcome,
         deliveryStatus: row.noticeDeliveryStatus,
         queuedAt: row.noticeQueuedAt,
         failureReason: row.noticeFailureReason,
+        recipientEmail: row.noticeRecipientEmail,
       },
       diverged: row.noticeOutcome !== null && row.noticeOutcome !== row.status,
     })),
@@ -245,11 +254,33 @@ dispositionRoutes.post("/api/events/:eventId/decision-batches/:batchId/dispatch"
   if (batch === undefined) {
     return context.json({ error: "batch_not_found" }, 404);
   }
-  const items = await database
+  const allItems = await database
     .select()
     .from(decisionBatchItems)
     .where(eq(decisionBatchItems.batchId, batch.id));
+  // A cancelled letter releases its submission, so uniqueness no longer decides what may be
+  // queued and this route has to. Two ways a batch item is spent:
+  //
+  //   - it was already handed to the queue, so dispatching again would re-queue the same letter;
+  //   - a cancellation superseded it, because its frozen recipient, outcome and copy predate the
+  //     correction. Dispatching it would reinstate exactly what the organizer just retired.
+  //
+  // Claiming is the stamp itself, conditioned in the database, not a filter over rows read a
+  // moment ago: a cancellation landing between the read and the insert would leave an in-memory
+  // filter still holding the pre-cancellation row, and the insert would succeed because the
+  // cancellation had just released the partial unique index. Whatever this claim returns is what
+  // this request may queue, and nothing else. Spent items are skipped rather than refused, so a
+  // batch that is partly spent still queues the rest and reports the difference.
   const queuedAt = new Date();
+  const items = allItems.length === 0 ? [] : await database
+    .update(decisionBatchItems)
+    .set({ dispatchedAt: queuedAt })
+    .where(and(
+      eq(decisionBatchItems.batchId, batch.id),
+      isNull(decisionBatchItems.dispatchedAt),
+      isNull(decisionBatchItems.supersededAt),
+    ))
+    .returning();
   const inserted = items.length === 0
     ? []
     : await database
@@ -266,18 +297,6 @@ dispositionRoutes.post("/api/events/:eventId/decision-batches/:batchId/dispatch"
       })))
       .onConflictDoNothing()
       .returning();
-  if (inserted.length > 0) {
-    const insertedIds = inserted.map((item) => item.submissionId);
-    await database
-      .update(decisionBatchItems)
-      .set({ dispatchedAt: queuedAt })
-      .where(
-        and(
-          eq(decisionBatchItems.batchId, batch.id),
-          inArray(decisionBatchItems.submissionId, insertedIds),
-        ),
-      );
-  }
   await database
     .update(decisionBatches)
     .set({ status: "queued", dispatchedAt: batch.dispatchedAt ?? queuedAt })
@@ -297,7 +316,11 @@ dispositionRoutes.post("/api/events/:eventId/decision-batches/:batchId/dispatch"
       body: decisionNotices.body,
     })
     .from(decisionNotices)
-    .where(and(eq(decisionNotices.batchId, batch.id), eq(decisionNotices.deliveryStatus, "queued")));
+    .where(and(
+      eq(decisionNotices.batchId, batch.id),
+      eq(decisionNotices.deliveryStatus, "queued"),
+      isNull(decisionNotices.cancelledAt),
+    ));
 
   const emailResult = await dispatchDecisionNoticeEmails(
     database,
@@ -312,7 +335,7 @@ dispositionRoutes.post("/api/events/:eventId/decision-batches/:batchId/dispatch"
   return context.json({
     status: "queued",
     queuedCount: inserted.length,
-    skippedCount: items.length - inserted.length,
+    skippedCount: allItems.length - inserted.length,
     pendingCount: connected ? 0 : pending.length,
     emailDelivery: connected ? "dispatched" : "not_configured",
     sent: emailResult.sent,

@@ -40,7 +40,7 @@ import { publicRoutes } from "./routes/public.ts";
 import reviewRoutes from "./routes/review.ts";
 import submitterRoutes from "./routes/submitter.ts";
 import { ensureSeeded, fixtureIds } from "./seed.ts";
-import { livingSessionSpeakers, livingSubmissionParticipants } from "./speaker-access.ts";
+import { livingSessionSpeakers, livingSubmissionParticipants, sentDecisionLetter } from "./speaker-access.ts";
 import { filenameForVersion } from "./storage/file-versions.ts";
 import { limitsForTask } from "./storage/files.ts";
 import dispositionRoutes from "./routes/disposition.ts";
@@ -314,13 +314,40 @@ app.get("/api/speaker/submissions/:submissionId", requireAccess("speaker"), asyn
   if (user === null) {
     return context.json({ error: "authentication_required" }, 401);
   }
-  const [item] = await drizzle(context.env.DB)
+  const database = drizzle(context.env.DB);
+  const submissionId = context.req.param("submissionId");
+  const [item] = await database
     .select({ id: submissions.id, title: submissions.title, abstract: submissions.abstract, status: submissions.status })
     .from(submissions)
     .innerJoin(submissionSpeakers, livingSubmissionParticipants())
     .innerJoin(people, eq(submissionSpeakers.personId, people.id))
-    .where(and(eq(people.userId, user.id), eq(submissions.id, context.req.param("submissionId"))));
-  return item === undefined ? context.json({ error: "forbidden" }, 403) : context.json(item);
+    .where(and(eq(people.userId, user.id), eq(submissions.id, submissionId)));
+  if (item === undefined) {
+    return context.json({ error: "forbidden" }, 403);
+  }
+  // The committee's live status is theirs, not the speaker's. This door answers with the same
+  // communicated-decision projection the portal uses, so neither one can reveal an outcome the
+  // speaker has not been told.
+  const [told] = await database
+    .select({ submissionId: decisionNotices.submissionId })
+    .from(decisionNotices)
+    .where(and(eq(decisionNotices.submissionId, submissionId), sentDecisionLetter()));
+  const [ownSession] = await database
+    .select({ id: sessions.id })
+    .from(sessions)
+    .innerJoin(sessionSpeakers, livingSessionSpeakers())
+    .innerJoin(speakers, eq(sessionSpeakers.speakerId, speakers.id))
+    .innerJoin(people, eq(speakers.personId, people.id))
+    .where(and(eq(sessions.submissionId, submissionId), eq(people.userId, user.id)));
+  const { status, ...proposal } = item;
+  return context.json({
+    ...proposal,
+    speakerStatus: speakerFacingSubmissionStatus({
+      status,
+      decisionNotified: told !== undefined,
+      hasOwnSession: ownSession !== undefined,
+    }),
+  });
 });
 
 app.get("/api/speaker/content", requireAccess("speaker"), async (context) => {
@@ -430,11 +457,14 @@ app.get("/api/speaker/content", requireAccess("speaker"), async (context) => {
     .from(fileVersions)
     .where(inArray(fileVersions.fileId, ownFileIds));
   // Decisions stay silent until they are communicated, so the speaker's own list reads
-  // from the dispatched notice log and their own sessions, never from the live committee status.
+  // from the sent letters and their own sessions, never from the live committee status.
   const notifiedSubmissionIds = ownSubmissions.length === 0 ? [] : await database
     .select({ submissionId: decisionNotices.submissionId })
     .from(decisionNotices)
-    .where(inArray(decisionNotices.submissionId, ownSubmissions.map((submission) => submission.id)));
+    .where(and(
+      inArray(decisionNotices.submissionId, ownSubmissions.map((submission) => submission.id)),
+      sentDecisionLetter(),
+    ));
   return context.json({
     profile,
     submissions: ownSubmissions.map((submission) => ({

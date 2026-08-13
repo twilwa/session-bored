@@ -245,6 +245,12 @@ export const routeMap = {
     module: "communications",
     access: "organizer",
   },
+  cancelDecisionNotice: {
+    method: "POST",
+    path: "/api/events/:eventId/decision-notices/:submissionId/cancel",
+    module: "communications",
+    access: "organizer",
+  },
   updateEmailDispatch: {
     method: "PATCH",
     path: "/api/events/:eventId/email-dispatches/:dispatchId",
@@ -1089,10 +1095,23 @@ export interface CfpBuilderVersionInput {
 export type DecisionStatus = "accepted" | "maybe" | "declined";
 
 export interface DecisionNoticeSummary {
+  /**
+   * This exact letter. A submission can have several over time - one live, the rest cancelled -
+   * so an action taken against what the page displayed must name the letter, not the submission.
+   */
+  id: `eml_${string}`;
   outcome: DecisionStatus;
-  deliveryStatus: "queued" | "sent" | "failed";
+  /** `sending` is a claim held for the duration of one provider call. */
+  deliveryStatus: "queued" | "sending" | "sent" | "failed";
   queuedAt: string;
   failureReason: string | null;
+  /**
+   * The address this letter will actually go to, frozen when it was queued. It is not
+   * `DispositionSummary.recipientEmail`, which is the person's address as it stands now:
+   * correcting the person leaves the queued letter pointing at the old one, and a surface
+   * offering to send must show the address it will send to.
+   */
+  recipientEmail: string;
 }
 
 /**
@@ -1137,7 +1156,8 @@ export interface DecisionBatchPreview {
   }>;
 }
 
-export type EmailDispatchStatus = "draft" | "queued" | "sent" | "failed";
+/** `cancelled` belongs only to a decision letter retired before it could send. */
+export type EmailDispatchStatus = "draft" | "queued" | "sent" | "failed" | "cancelled";
 
 export interface EmailDispatchRecipient {
   email: string;
