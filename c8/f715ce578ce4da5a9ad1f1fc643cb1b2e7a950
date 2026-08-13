@@ -1,0 +1,25 @@
+worker/routes/people.ts
+  s_07f4b233d3cd1f::t_4dc326111bd1c7 13,18,250-267,275-276
+AGENTS.md
+  s_07f4b233d3cd1f::t_3a5ad5eca77a71 74-79
+tests/integration/people.test.ts
+  s_07f4b233d3cd1f::t_4dc326111bd1c7 201,218-225
+  s_07f4b233d3cd1f::t_5443677334f77c 5,7,9,173-200,202-212,214-215,217,226-244
+  s_07f4b233d3cd1f::t_5b8db4a29bb163 213,216
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "c8f715ce578ce4da5a9ad1f1fc643cb1b2e7a950",
+  "prompts": {},
+  "sessions": {
+    "s_07f4b233d3cd1f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6315adf8-c9f2-425f-943b-239e8e577741",
+        "model": "claude-opus-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
