@@ -18,6 +18,14 @@ async function signInAsSpeaker(page: import("@playwright/test").Page): Promise<v
   await expect(page.getByRole("heading", { name: "Marcus Okafor" })).toBeVisible();
 }
 
+async function signInAsPriya(page: import("@playwright/test").Page): Promise<void> {
+  await page.goto("/login");
+  await page.getByLabel("Email").fill("sbek-speaker@example.com");
+  await page.getByLabel("Password").fill("SbekTest!2027-spk");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page.getByRole("heading", { name: "Priya Raman" })).toBeVisible();
+}
+
 async function signOut(page: import("@playwright/test").Page): Promise<void> {
   const status = await page.evaluate(async () => {
     const response = await fetch("/api/auth/sign-out", {
@@ -425,18 +433,18 @@ test("picture requests disclose their public headshot effect before and after up
   await pictureDialog.getByLabel("What this request wants").selectOption("picture");
   await expect(pictureDialog).toContainText("The picture a speaker uploads here becomes their profile headshot.");
   await pictureDialog.getByLabel("Task title").fill(pictureTitle);
-  await pictureDialog.getByRole("checkbox", { name: /Marcus Okafor/ }).check();
+  await pictureDialog.getByRole("checkbox", { name: /Priya Raman/ }).check();
   await pictureDialog.getByRole("button", { name: "Assign to 1 speaker" }).click();
 
   await page.getByRole("button", { name: "Create task" }).click();
   const documentDialog = page.getByRole("dialog", { name: "Create onboarding task" });
   await documentDialog.getByLabel("Task kind").selectOption("file_request");
   await documentDialog.getByLabel("Task title").fill(documentTitle);
-  await documentDialog.getByRole("checkbox", { name: /Marcus Okafor/ }).check();
+  await documentDialog.getByRole("checkbox", { name: /Priya Raman/ }).check();
   await documentDialog.getByRole("button", { name: "Assign to 1 speaker" }).click();
 
   await signOut(page);
-  await signInAsSpeaker(page);
+  await signInAsPriya(page);
 
   const pictureRequest = page.locator("li.task-row", { hasText: pictureTitle });
   await expect(pictureRequest.getByText("This picture will become your public profile photo.")).toBeVisible();
