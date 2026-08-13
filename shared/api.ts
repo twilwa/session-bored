@@ -507,7 +507,7 @@ export interface RosterSpeakerSummary extends SpeakerSummary {
   linkedin: string | null;
   socialLinks: Record<string, string> | null;
   profile: { bioComplete: boolean; headshotComplete: boolean };
-  taskSummary: { total: number; incomplete: number };
+  workSummary: { total: number; incomplete: number };
 }
 
 export interface RosterTaskSummary {
@@ -722,7 +722,7 @@ export interface ContentComment {
   author: { name: string; role: Role };
 }
 
-export type DeliverableStatus = "requested" | "overdue" | "delivered";
+export type DeliverableStatus = "requested" | "overdue" | "completed" | "delivered";
 
 export interface DeliverableItem {
   assignmentId: `tassn_${string}`;
@@ -759,6 +759,7 @@ export interface DeliverablesPayload {
     total: number;
     requested: number;
     overdue: number;
+    completed: number;
     delivered: number;
     awaitingApproval: number;
   };

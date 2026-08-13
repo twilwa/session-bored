@@ -86,7 +86,7 @@ describe("organizer speaker roster", () => {
           email: "sbek-speaker2@example.com",
           status: "confirmed",
           profile: { bioComplete: true, headshotComplete: false },
-          taskSummary: { total: 0, incomplete: 1 },
+          workSummary: { total: 2, incomplete: 1 },
         },
         {
           id: "spk_priya_devflow_2027",
@@ -94,7 +94,7 @@ describe("organizer speaker roster", () => {
           email: "sbek-speaker@example.com",
           status: "onboarding",
           profile: { bioComplete: true, headshotComplete: true },
-          taskSummary: { total: 5, incomplete: 5 },
+          workSummary: { total: 5, incomplete: 5 },
         },
       ],
     });
@@ -141,15 +141,94 @@ describe("organizer speaker roster", () => {
       headers: { cookie: organizerCookie },
     });
     const payload = await response.json<{
-      items: Array<{ id: string; taskSummary: { total: number; incomplete: number } }>;
+      items: Array<{ id: string; workSummary: { total: number; incomplete: number } }>;
     }>();
     await env.DB.prepare(
       "update task set status = 'active' where id in (select task_id from task_assignee where speaker_id = ?)",
     ).bind("spk_priya_devflow_2027").run();
-    expect(payload.items.find((speaker) => speaker.id === "spk_priya_devflow_2027")?.taskSummary).toEqual({
+    expect(payload.items.find((speaker) => speaker.id === "spk_priya_devflow_2027")?.workSummary).toEqual({
       total: 5,
       incomplete: 0,
     });
+  });
+
+  it("counts assigned tasks and accepted-speaker profile requirements in one work total", async () => {
+    const initialRosterResponse = await request("/api/events/evt_devflow_conf_2027/roster", {
+      headers: { cookie: organizerCookie },
+    });
+    const initialRoster = await initialRosterResponse.json<{
+      items: Array<{ id: string; bio: string | null; headshotUrl: string | null }>;
+    }>();
+    const initialPriya = initialRoster.items.find((speaker) => speaker.id === "spk_priya_devflow_2027");
+    expect(initialPriya).toBeDefined();
+
+    const accepted = await request("/api/events/evt_devflow_conf_2027/disposition", {
+      method: "PATCH",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({ submissionIds: ["sub_ci_monorepo"], status: "accepted" }),
+    });
+    expect(accepted.status).toBe(200);
+
+    const profileUpdate = await request(
+      "/api/events/evt_devflow_conf_2027/speakers/spk_priya_devflow_2027",
+      {
+        method: "PATCH",
+        headers: { cookie: organizerCookie, "content-type": "application/json" },
+        body: JSON.stringify({ bio: null, headshotUrl: null }),
+      },
+    );
+    expect(profileUpdate.status).toBe(200);
+
+    const tasksResponse = await request("/api/events/evt_devflow_conf_2027/tasks", {
+      headers: { cookie: organizerCookie },
+    });
+    const tasksPayload = await tasksResponse.json<{
+      items: Array<{ status: string; assignees: Array<{ speakerId: string; status: string }> }>;
+    }>();
+    const assignedTasks = tasksPayload.items.filter((task) =>
+      task.assignees.some((assignee) => assignee.speakerId === "spk_priya_devflow_2027")
+    );
+    const openTasks = assignedTasks.filter((task) =>
+      task.status === "active" && task.assignees.some((assignee) =>
+        assignee.speakerId === "spk_priya_devflow_2027" && assignee.status !== "completed"
+      )
+    );
+    expect(assignedTasks).toHaveLength(5);
+    expect(openTasks).toHaveLength(5);
+
+    const rosterResponse = await request("/api/events/evt_devflow_conf_2027/roster", {
+      headers: { cookie: organizerCookie },
+    });
+    const rosterPayload = await rosterResponse.json<{
+      items: Array<{
+        id: string;
+        profile: { bioComplete: boolean; headshotComplete: boolean };
+        workSummary: { total: number; incomplete: number };
+      }>;
+    }>();
+    const priya = rosterPayload.items.find((speaker) => speaker.id === "spk_priya_devflow_2027");
+
+    const restoredProfile = await request(
+      "/api/events/evt_devflow_conf_2027/speakers/spk_priya_devflow_2027",
+      {
+        method: "PATCH",
+        headers: { cookie: organizerCookie, "content-type": "application/json" },
+        body: JSON.stringify({ bio: initialPriya?.bio, headshotUrl: initialPriya?.headshotUrl }),
+      },
+    );
+    expect(restoredProfile.status).toBe(200);
+    const restoredDisposition = await request("/api/events/evt_devflow_conf_2027/disposition", {
+      method: "PATCH",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({ submissionIds: ["sub_ci_monorepo"], status: "declined" }),
+    });
+    expect(restoredDisposition.status).toBe(200);
+
+    expect(priya).toMatchObject({
+      profile: { bioComplete: false, headshotComplete: false },
+      workSummary: { total: assignedTasks.length + 2, incomplete: openTasks.length + 2 },
+    });
+    expect(priya?.workSummary.incomplete).toBeLessThanOrEqual(priya?.workSummary.total ?? -1);
   });
 
   it("keeps the worklist aligned with sessionless roster onboarding assignments", async () => {
@@ -168,14 +247,14 @@ describe("organizer speaker roster", () => {
         id: string;
         status: string;
         profile: { bioComplete: boolean; headshotComplete: boolean };
-        taskSummary: { total: number; incomplete: number };
+        workSummary: { total: number; incomplete: number };
       }>;
     }>();
     const priyaRoster = rosterPayload.items.find((speaker) => speaker.id === "spk_priya_devflow_2027");
     expect(priyaRoster).toMatchObject({
       status: "onboarding",
       profile: { bioComplete: true, headshotComplete: true },
-      taskSummary: { total: 5, incomplete: 5 },
+      workSummary: { total: 5, incomplete: 5 },
     });
 
     const tasksResponse = await request("/api/events/evt_devflow_conf_2027/tasks", {
@@ -220,7 +299,7 @@ describe("organizer speaker roster", () => {
     const priyaMissing = missingPayload.items.find(
       (speaker) => speaker.speakerId === "spk_priya_devflow_2027",
     );
-    expect(priyaMissing?.missingCount).toBe(priyaRoster?.taskSummary.incomplete);
+    expect(priyaMissing?.missingCount).toBe(priyaRoster?.workSummary.incomplete);
     expect(priyaMissing?.missing.map((item) => item.taskId).sort()).toEqual(
       priyaTasks.map((task) => task.id).sort(),
     );
@@ -230,8 +309,8 @@ describe("organizer speaker roster", () => {
 
     const marcusRoster = rosterPayload.items.find((speaker) => speaker.id === "spk_marcus_devflow_2027");
     const marcusMissing = missingPayload.items.find((speaker) => speaker.speakerId === "spk_marcus_devflow_2027");
-    expect(marcusRoster?.taskSummary).toEqual({ total: 0, incomplete: 1 });
-    expect(marcusMissing?.missingCount).toBe(marcusRoster?.taskSummary.incomplete);
+    expect(marcusRoster?.workSummary).toEqual({ total: 2, incomplete: 1 });
+    expect(marcusMissing?.missingCount).toBe(marcusRoster?.workSummary.incomplete);
   });
 
   it("reports an unconfigured portal invitation honestly without creating a dispatch", async () => {
@@ -771,7 +850,7 @@ describe("organizer speaker roster", () => {
       headers: { cookie: organizerCookie },
     });
     const rosterBefore = await rosterBeforeResponse.json<{
-      items: Array<{ id: string; taskSummary: { total: number; incomplete: number } }>;
+      items: Array<{ id: string; workSummary: { total: number; incomplete: number } }>;
     }>();
     const marcusBefore = rosterBefore.items.find((speaker) => speaker.id === "spk_marcus_devflow_2027");
 
@@ -811,12 +890,12 @@ describe("organizer speaker roster", () => {
       headers: { cookie: organizerCookie },
     });
     const rosterAfter = await rosterAfterResponse.json<{
-      items: Array<{ id: string; taskSummary: { total: number; incomplete: number } }>;
+      items: Array<{ id: string; workSummary: { total: number; incomplete: number } }>;
     }>();
-    expect(rosterAfter.items.find((speaker) => speaker.id === "spk_marcus_devflow_2027")?.taskSummary)
+    expect(rosterAfter.items.find((speaker) => speaker.id === "spk_marcus_devflow_2027")?.workSummary)
       .toEqual({
-        total: (marcusBefore?.taskSummary.total ?? 0),
-        incomplete: (marcusBefore?.taskSummary.incomplete ?? 0),
+        total: (marcusBefore?.workSummary.total ?? 0),
+        incomplete: (marcusBefore?.workSummary.incomplete ?? 0),
       });
 
     const missing = await request("/api/events/evt_devflow_conf_2027/missing-information", {

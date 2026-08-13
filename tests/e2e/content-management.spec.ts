@@ -55,8 +55,8 @@ test("speaker and organizer discuss a delivered file from the content board", as
   const emptyRequest = page.locator("li.deliverable-card", { hasText: "Upload headshot" }).filter({
     has: page.getByText("Priya Raman", { exact: true }),
   });
-  await expect(emptyRequest).toContainText(/requested/i);
-  await expect(emptyRequest).toContainText("No uploaded file.");
+  await expect(emptyRequest).toContainText(/completed/i);
+  await expect(emptyRequest).toContainText("Marked complete; no task file is attached.");
 
   await page.getByRole("button", { name: "Delivered 1", exact: true }).click();
   await expect(emptyRequest).toHaveCount(0);

@@ -20,6 +20,7 @@ import {
 } from "../../db/schema.ts";
 import { holdsAccess } from "../access.ts";
 import type { AuthSession } from "../auth.ts";
+import { deriveDeliverableStatus } from "../deliverable-status.ts";
 import { resolveEffectiveRoles } from "../roles.ts";
 import { filenameForVersion } from "../storage/file-versions.ts";
 
@@ -152,8 +153,12 @@ contentRoutes.get("/api/events/:eventId/deliverables", requireOrganizer, async (
       && row.mimeType !== null
       && row.sizeBytes !== null
       && row.uploadedAt !== null;
-    const overdue = !delivered && row.dueAt !== null && row.dueAt.getTime() < now;
-    const status = delivered ? "delivered" : overdue ? "overdue" : "requested";
+    const status = deriveDeliverableStatus({
+      assignmentStatus: row.assignmentStatus,
+      dueAt: row.dueAt,
+      hasFile: delivered,
+      now,
+    });
     return {
       assignmentId: row.assignmentId,
       taskId: row.taskId,
@@ -225,6 +230,7 @@ contentRoutes.get("/api/events/:eventId/deliverables", requireOrganizer, async (
       total: items.length,
       requested: items.filter((item) => item.status === "requested").length,
       overdue: items.filter((item) => item.status === "overdue").length,
+      completed: items.filter((item) => item.status === "completed").length,
       delivered: items.filter((item) => item.status === "delivered").length,
       awaitingApproval: sessionsAwaitingApproval.length,
     },
