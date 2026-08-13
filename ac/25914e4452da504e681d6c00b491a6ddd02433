@@ -1,0 +1,19 @@
+tests/e2e/roster.spec.ts
+  s_206fbe0e74c8f3::t_44eec776831434 413-414
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "ac25914e4452da504e681d6c00b491a6ddd02433",
+  "prompts": {},
+  "sessions": {
+    "s_206fbe0e74c8f3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffa3f-8063-7cf2-9a92-26051287ce42",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
