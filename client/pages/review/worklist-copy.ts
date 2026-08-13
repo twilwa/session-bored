@@ -6,6 +6,6 @@
  * missing, and the two are not the same number.
  */
 export function recusalSummary(recusedBy: string[], recusedAssignments: number): string {
-  const reads = recusedAssignments === 1 ? "that read" : "those reads";
+  const reads = recusedAssignments === 1 ? "1 read" : `${recusedAssignments} reads`;
   return `Recused by ${recusedBy.join(", ")} · ${reads} will not arrive`;
 }

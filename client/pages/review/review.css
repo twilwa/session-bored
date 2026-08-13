@@ -31,7 +31,7 @@
 .review-row__proposal h2 { margin: 6px 0 3px; font: clamp(1.2rem, 2vw, 1.65rem) Georgia, serif; line-height: 1.15; }
 .review-row__proposal a:hover h2 { color: var(--blue); text-decoration: underline; text-underline-offset: 4px; }
 .review-row__proposal small { color: var(--muted); overflow-wrap: anywhere; }
-.review-row__recusal { display: block; margin-top: 4px; color: var(--ink); font-weight: 700; }
+.review-row__proposal small.review-row__recusal { display: block; margin-top: 4px; color: var(--ink); font-weight: 700; }
 .review-tags { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .review-tags > span:not(.status-chip) { border: 1px solid var(--line); padding: 2px 7px; background: var(--white); font: 0.65rem monospace; text-transform: uppercase; }
 .review-row__measure { display: grid; text-align: center; }

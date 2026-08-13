@@ -33,9 +33,10 @@ export function RemovalNotice(
     <section aria-label="What removing this participant did" className="participants__removal" role="status">
       <strong>{removal.name} is no longer on this proposal</strong>
       <p>
-        They lost read and write access to it{hasSession ? " and to its session" : ""}. They are
-        still a speaker at this event: {standing.join(", ")}. Removing a participant here never
-        withdraws them from the event.
+        {hasSession
+          ? "They lost read access to it and the read and write access they had to its session."
+          : "They lost read access to it."} They are still a speaker at this event:{" "}
+        {standing.join(", ")}. Removing a participant here never withdraws them from the event.
       </p>
       <p>
         To take them off the event entirely, remove them on the{" "}
