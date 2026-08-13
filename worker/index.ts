@@ -52,6 +52,7 @@ import contentRoutes from "./routes/content.ts";
 import embedRoutes from "./routes/embeds.ts";
 import eventSettingsRoutes from "./routes/event-settings.ts";
 import peopleRoutes from "./routes/people.ts";
+import { protectedPageRoutes } from "./page-routes.ts";
 
 type SessionUser = AuthSession["user"];
 type AppEnvironment = {
@@ -524,16 +525,10 @@ for (const path of [
   );
 }
 
-for (const [prefix, access] of [
-  ["/organizer", "organizer"],
-  ["/reviewer", "reviewer"],
-  ["/speaker", "speaker"],
-] as const) {
-  app.get(prefix, prepareRequest, requirePageAccess(access), (context) => context.env.ASSETS.fetch(context.req.raw));
-  app.get(`${prefix}/*`, prepareRequest, requirePageAccess(access), (context) => context.env.ASSETS.fetch(context.req.raw));
+for (const { path, access } of protectedPageRoutes) {
+  app.get(path, prepareRequest, requirePageAccess(access), (context) => context.env.ASSETS.fetch(context.req.raw));
+  app.get(`${path}/*`, prepareRequest, requirePageAccess(access), (context) => context.env.ASSETS.fetch(context.req.raw));
 }
-app.get("/submitter", prepareRequest, requirePageAccess("authenticated"), (context) => context.env.ASSETS.fetch(context.req.raw));
-app.get("/submitter/*", prepareRequest, requirePageAccess("authenticated"), (context) => context.env.ASSETS.fetch(context.req.raw));
 
 export type AppType = typeof app;
 export default app;
