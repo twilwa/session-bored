@@ -4,7 +4,7 @@ import { and, desc, eq, isNotNull, isNull, or } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { Hono } from "hono";
 import { createMiddleware } from "hono/factory";
-import { decisionBatches, decisionNotices, emailDispatches, type Role } from "../../db/schema.ts";
+import { decisionBatches, decisionNotices, emailDispatches, users, type Role } from "../../db/schema.ts";
 import { holdsAccess } from "../access.ts";
 import { isEmailConfigured, missingEmailSenderSecrets } from "../email.ts";
 import { sendSessionCalendarInvite } from "../email/calendar-invite.ts";
@@ -105,9 +105,11 @@ commsRoutes.get("/api/events/:eventId/email-dispatches", async (context) => {
         queuedAt: decisionNotices.queuedAt,
         cancelledAt: decisionNotices.cancelledAt,
         cancellationReason: decisionNotices.cancellationReason,
+        cancelledByName: users.name,
       })
       .from(decisionNotices)
       .innerJoin(decisionBatches, eq(decisionNotices.batchId, decisionBatches.id))
+      .leftJoin(users, eq(decisionNotices.cancelledByUserId, users.id))
       // A letter Greenroom queued belongs in this history whether it is still waiting or was
       // retired, so cancelling is never a way to make a decision letter disappear.
       .where(and(
@@ -130,9 +132,13 @@ commsRoutes.get("/api/events/:eventId/email-dispatches", async (context) => {
     recipients: [{ email: notice.recipientEmail, name: notice.recipientName }],
     status: notice.cancelledAt === null ? "queued" as const : "cancelled" as const,
     providerMessageIds: null,
+    // Cancelling is an attributed act, so the history says who did it. It reads as "somebody" only
+    // when that account is gone, never because the record was not kept.
     failureReason: notice.cancelledAt === null
       ? pendingReason
-      : `Cancelled before sending. ${notice.cancellationReason ?? "No reason was given."}`,
+      : `Cancelled before sending by ${notice.cancelledByName ?? "somebody no longer on this Greenroom"}. ${
+        notice.cancellationReason ?? "No reason was given."
+      }`,
     sentAt: null,
     createdByUserId: null,
     createdAt: notice.queuedAt,
@@ -227,14 +233,24 @@ commsRoutes.post("/api/events/:eventId/email-dispatches/reminders/draft", async 
 
 commsRoutes.post("/api/events/:eventId/decision-notices/:submissionId/retry", async (context) => {
   const database = drizzle(context.env.DB);
+  // The letter the caller was looking at. A page loaded before a cancellation would otherwise
+  // send the replacement under the retired letter's review.
+  const payload = await context.req
+    .json<{ noticeId?: unknown }>()
+    .catch(() => ({} as { noticeId?: unknown }));
   const result = await retryDecisionNotice(
     database,
     context.env,
     context.req.param("eventId") as `evt_${string}`,
     context.req.param("submissionId"),
+    undefined,
+    typeof payload.noticeId === "string" ? payload.noticeId : undefined,
   );
   if (result.status === "not_found") {
     return context.json({ error: "notice_not_found" }, 404);
+  }
+  if (result.status === "superseded") {
+    return context.json({ error: "notice_superseded" }, 409);
   }
   if (result.status === "not_retryable") {
     return context.json({ error: "notice_not_retryable", currentStatus: result.currentStatus }, 409);

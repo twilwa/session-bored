@@ -219,3 +219,51 @@ test("organizer corrects a wrong recipient by cancelling the letter and re-queue
     }
   }
 });
+
+test("cancelling without editing the address leaves an already-corrected recipient alone", async ({ page }) => {
+  await page.goto("/login");
+  await page.getByLabel("Email").fill("sbek-organizer@example.com");
+  await page.getByLabel("Password").fill("SbekTest!2027-org");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page).toHaveURL(/\/organizer$/);
+
+  const corrected = `already-corrected-${Date.now()}@greenroom-e2e.dev`;
+  await page.request.patch("/api/events/evt_devflow_conf_2027/disposition", {
+    data: { submissionIds: ["sub_ci_monorepo"], status: "declined" },
+  });
+  const batch = await (await page.request.post("/api/events/evt_devflow_conf_2027/decision-batches", {
+    data: { submissionIds: ["sub_ci_monorepo"] },
+  })).json() as { id: string };
+  await page.request.post(`/api/events/evt_devflow_conf_2027/decision-batches/${batch.id}/dispatch`);
+
+  // The address is corrected on the roster, independently, after the letter froze the old one.
+  const roster = await (await page.request.get("/api/events/evt_devflow_conf_2027/roster")).json() as {
+    items: Array<{ id: string; email: string }>;
+  };
+  const speaker = roster.items.find((item) => item.email === "sbek-speaker@example.com");
+  expect(speaker, "seeded speaker is on the roster").toBeDefined();
+  await page.request.patch(`/api/events/evt_devflow_conf_2027/speakers/${speaker!.id}`, {
+    data: { email: corrected },
+  });
+
+  try {
+    // The dialog prefills the letter's frozen address, which is deliberately not the person's
+    // current one. Cancelling without touching it must not write the stale address back.
+    await page.goto("/organizer/comms");
+    const undelivered = page.getByRole("region", { name: "Decision letters not yet delivered" });
+    await undelivered.getByRole("button", { name: "Wrong recipient?" }).first().click();
+    await expect(page.getByRole("dialog").getByLabel("Correct the recipient's address"))
+      .toHaveValue("sbek-speaker@example.com");
+    await page.getByRole("dialog").getByRole("button", { name: "Cancel this letter only" }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+
+    const after = await (await page.request.get("/api/events/evt_devflow_conf_2027/roster")).json() as {
+      items: Array<{ id: string; email: string }>;
+    };
+    expect(after.items.find((item) => item.id === speaker!.id)?.email).toBe(corrected);
+  } finally {
+    await page.request.patch(`/api/events/evt_devflow_conf_2027/speakers/${speaker!.id}`, {
+      data: { email: "sbek-speaker@example.com" },
+    });
+  }
+});

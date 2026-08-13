@@ -91,6 +91,7 @@ dispositionRoutes.get("/api/events/:eventId/disposition", async (context) => {
       recipientEmail: people.email,
       format: formats.name,
       sessionId: sessions.id,
+      noticeId: decisionNotices.id,
       noticeOutcome: decisionNotices.outcome,
       noticeDeliveryStatus: decisionNotices.deliveryStatus,
       noticeQueuedAt: decisionNotices.queuedAt,
@@ -137,6 +138,7 @@ dispositionRoutes.get("/api/events/:eventId/disposition", async (context) => {
         retained: row.status !== "accepted",
       },
       notice: row.noticeOutcome === null ? null : {
+        id: row.noticeId,
         outcome: row.noticeOutcome,
         deliveryStatus: row.noticeDeliveryStatus,
         queuedAt: row.noticeQueuedAt,
@@ -256,10 +258,16 @@ dispositionRoutes.post("/api/events/:eventId/decision-batches/:batchId/dispatch"
     .select()
     .from(decisionBatchItems)
     .where(eq(decisionBatchItems.batchId, batch.id));
-  // An item this batch already handed to the queue is done, even if that letter has since been
-  // cancelled. Without this, re-dispatching an old batch would queue the retired letter again -
-  // the unique index no longer stops it, because a cancelled letter releases its submission.
-  const items = allItems.filter((item) => item.dispatchedAt === null);
+  // A cancelled letter releases its submission, so uniqueness no longer decides what may be
+  // queued and this route has to. Two ways a batch item is spent:
+  //
+  //   - it was already handed to the queue, so dispatching again would re-queue the same letter;
+  //   - a cancellation superseded it, because its frozen recipient, outcome and copy predate the
+  //     correction. Dispatching it would reinstate exactly what the organizer just retired.
+  //
+  // Both are skipped rather than refused, so a batch that is partly spent still queues the rest
+  // and reports the difference.
+  const items = allItems.filter((item) => item.dispatchedAt === null && item.supersededAt === null);
   const queuedAt = new Date();
   const inserted = items.length === 0
     ? []

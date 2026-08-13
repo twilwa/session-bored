@@ -32,6 +32,13 @@ interface Cancellation {
   submissionId: string;
   recipientName: string;
   recipientEmail: string;
+  /**
+   * What the field was prefilled with. The prefill is the *letter's* frozen address, which is
+   * not always the person's - correcting them on the roster leaves the letter behind. Sending it
+   * back unchanged would write the letter's stale address over the corrected person, so the
+   * correction only travels when the organizer actually typed one.
+   */
+  prefilledEmail: string;
   reason: string;
 }
 
@@ -61,6 +68,9 @@ function requestErrorMessage(status: number, payload: unknown): string {
     }
     if (error === "notice_already_cancelled") {
       return "This letter was already cancelled.";
+    }
+    if (error === "notice_superseded") {
+      return "This letter was cancelled and replaced while this page was open. Reload to see the letter that is waiting now.";
     }
     // A send the provider rejected answers 502 and names its own reason, which is
     // the only thing that tells an organizer what to fix.
@@ -265,10 +275,16 @@ export function CommsPage() {
     }
   }
 
-  async function sendNotice(submissionId: string): Promise<void> {
+  async function sendNotice(submissionId: string, noticeId: string | undefined): Promise<void> {
     setBusy(true);
     try {
-      await readJson(`/api/events/${eventId}/decision-notices/${submissionId}/retry`, { method: "POST" });
+      // Name the letter this page is showing. If it was cancelled and replaced since the page
+      // loaded, the server refuses rather than sending a different letter under this review.
+      await readJson(`/api/events/${eventId}/decision-notices/${submissionId}/retry`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ noticeId }),
+      });
       setMessage("Decision letter sent.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Sending the decision letter failed.");
@@ -281,10 +297,12 @@ export function CommsPage() {
   }
 
   function startCancellation(item: DispositionSummary): void {
+    const prefilledEmail = item.notice?.recipientEmail ?? item.recipientEmail;
     setCancellation({
       submissionId: item.id,
       recipientName: item.recipientName,
-      recipientEmail: item.notice?.recipientEmail ?? item.recipientEmail,
+      recipientEmail: prefilledEmail,
+      prefilledEmail,
       reason: "",
     });
   }
@@ -297,12 +315,13 @@ export function CommsPage() {
   async function cancelNotice(pending: Cancellation, then: "requeue" | "stay"): Promise<void> {
     setBusy(true);
     try {
+      const edited = pending.recipientEmail.trim() !== pending.prefilledEmail;
       await readJson(`/api/events/${eventId}/decision-notices/${pending.submissionId}/cancel`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           reason: pending.reason,
-          recipientEmail: pending.recipientEmail,
+          ...(edited ? { recipientEmail: pending.recipientEmail } : {}),
         }),
       });
       setCancellation(null);
@@ -404,7 +423,7 @@ export function CommsPage() {
                   : null}
                 <div className="comms-draft__actions">
                   {senderStatus?.connected === false ? null : (
-                    <Button disabled={busy || senderStatus === null} onClick={() => void sendNotice(item.id)} tone="signal">
+                    <Button disabled={busy || senderStatus === null} onClick={() => void sendNotice(item.id, item.notice?.id)} tone="signal">
                       Send now
                     </Button>
                   )}

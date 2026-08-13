@@ -45,6 +45,13 @@ export const decisionBatchItems = sqliteTable(
     subject: text("subject").notNull(),
     body: text("body").notNull(),
     dispatchedAt: integer("dispatched_at", { mode: "timestamp_ms" }),
+    /**
+     * Set when the letter this item would queue was retired. A preview rendered before a
+     * correction freezes the recipient and copy that the correction replaced, so dispatching it
+     * afterwards would silently reinstate them. Stamped by the cancellation itself rather than
+     * inferred by comparing timestamps, which cannot order two writes in the same millisecond.
+     */
+    supersededAt: integer("superseded_at", { mode: "timestamp_ms" }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -65,7 +72,16 @@ export const decisionNotices = sqliteTable(
     recipientEmail: text("recipient_email").notNull(),
     subject: text("subject").notNull(),
     body: text("body").notNull(),
-    deliveryStatus: text("delivery_status", { enum: ["queued", "sent", "failed"] }).notNull().default("queued"),
+    /**
+     * `sending` is a claim, taken atomically before the provider call and released by its
+     * outcome. It is what makes cancelling and sending mutually exclusive: whoever wins the
+     * claim owns the letter, and the loser is refused rather than acting on a stale read.
+     */
+    deliveryStatus: text("delivery_status", { enum: ["queued", "sending", "sent", "failed"] })
+      .notNull()
+      .default("queued"),
+    /** When the current `sending` claim was taken, so an abandoned one can be recognised. */
+    sendingSince: integer("sending_since", { mode: "timestamp_ms" }),
     sentAt: integer("sent_at", { mode: "timestamp_ms" }),
     providerMessageId: text("provider_message_id"),
     failureReason: text("failure_reason"),

@@ -1087,8 +1087,14 @@ export interface CfpBuilderVersionInput {
 export type DecisionStatus = "accepted" | "maybe" | "declined";
 
 export interface DecisionNoticeSummary {
+  /**
+   * This exact letter. A submission can have several over time - one live, the rest cancelled -
+   * so an action taken against what the page displayed must name the letter, not the submission.
+   */
+  id: `eml_${string}`;
   outcome: DecisionStatus;
-  deliveryStatus: "queued" | "sent" | "failed";
+  /** `sending` is a claim held for the duration of one provider call. */
+  deliveryStatus: "queued" | "sending" | "sent" | "failed";
   queuedAt: string;
   failureReason: string | null;
   /**

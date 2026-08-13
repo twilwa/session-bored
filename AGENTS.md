@@ -29,10 +29,24 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   refused by every send door. Readers of `decision_notice` outside that write
   path filter `cancelled_at`, or a retired letter keeps counting:
   `worker/routes/disposition.ts` would list a submission once per letter it ever
-  had, and dispatch would send one nobody stands behind. Because a cancelled
-  letter releases its submission, the dispatch route also skips batch items it
-  has already stamped `dispatched_at`, or re-dispatching an old batch resurrects
-  the letter that was retired.
+  had, and dispatch would send one nobody stands behind.
+- **Cancelling opens three windows in which the approved letter and the sent
+  letter could differ. All three are closed, and must stay closed** - that
+  difference is the exact thing cancel-and-replace exists to prevent.
+  - *A send in flight.* `delivery_status = 'sending'` is a claim taken
+    atomically before the provider call and released by its outcome, so a send
+    and a cancellation resolve to one winner instead of both proceeding.
+    Cancelling a claimed letter is refused. A claim older than
+    `staleSendClaimMs` is treated as abandoned and may be retaken, because a
+    Worker that dies mid-send would otherwise strand the letter forever.
+  - *A stale page.* Send-now names the letter it displayed
+    (`retryDecisionNotice`'s `expectedNoticeId`); resolving by submission alone
+    would send a replacement under the retired letter's review.
+  - *A stale preview.* Cancelling stamps `decision_batch_item.superseded_at` on
+    every outstanding item for that submission, and dispatch skips those along
+    with ones it already stamped `dispatched_at`. Stamped causally rather than
+    inferred by comparing timestamps, which cannot order two writes in the same
+    millisecond.
 - Accepting adopts each `submission_speaker.person_id` into the event-scoped
   `speaker` row, creates one `program_session` per `submission_id`, links the
   same speakers through `session_speaker`, and assigns the event's configured

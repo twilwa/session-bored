@@ -127,6 +127,20 @@
       "when": 1786581006890,
       "tag": "0016_special_supernaut",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1786583674763,
+      "tag": "0017_simple_warpath",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1786583783571,
+      "tag": "0018_crazy_jasper_sitwell",
+      "breakpoints": true
     }
   ]
 }

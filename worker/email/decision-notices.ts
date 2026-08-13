@@ -1,8 +1,8 @@
 // ABOUTME: Fills disposition.ts's dispatch seam - sends the letters it already rendered and queued.
 // ABOUTME: Owns per-recipient delivery outcome and the one send path for a letter still undelivered.
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, isNull, lt, ne, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
-import { decisionBatches, decisionNotices, people, submissions } from "../../db/schema.ts";
+import { decisionBatchItems, decisionBatches, decisionNotices, people, submissions } from "../../db/schema.ts";
 import { resolveEmailDelivery, type EmailDelivery, type EmailEnvironment } from "../email.ts";
 import { sendTrackedEmail, textToHtml } from "./send.ts";
 
@@ -24,12 +24,68 @@ export interface DispatchDecisionNoticeEmailsResult {
   failed: string[];
 }
 
+/**
+ * How long a `sending` claim is honoured before it is treated as abandoned. A Worker that dies
+ * between claiming and recording its outcome would otherwise strand the letter forever, which is
+ * the dead end this whole issue is about. Reclaiming risks delivering twice in the narrow case
+ * where the provider accepted the mail and only the write was lost - accepted deliberately,
+ * because before the claim existed that same crash left the row `queued` and the next retry
+ * re-sent it immediately with no window at all.
+ */
+const staleSendClaimMs = 15 * 60_000;
+
+export function staleClaimCutoff(now: Date): Date {
+  return new Date(now.getTime() - staleSendClaimMs);
+}
+
+/**
+ * Takes the letter for this send, atomically, and answers whether it was won. Only a letter that
+ * is not cancelled, not already delivered, and not being sent by somebody else can be claimed, and
+ * the claim is the row update itself rather than a decision made from an earlier read - so a
+ * cancellation racing a send resolves to exactly one winner instead of both proceeding.
+ */
+async function claimForSending(
+  database: EmailDatabase,
+  noticeId: string,
+  now: Date,
+): Promise<{ claimed: true; previousStatus: "queued" | "failed" | "sending" } | { claimed: false }> {
+  const cutoff = staleClaimCutoff(now);
+  const [before] = await database
+    .select({ deliveryStatus: decisionNotices.deliveryStatus })
+    .from(decisionNotices)
+    .where(eq(decisionNotices.id, noticeId));
+  const claimed = await database
+    .update(decisionNotices)
+    .set({ deliveryStatus: "sending", sendingSince: now })
+    .where(and(
+      eq(decisionNotices.id, noticeId),
+      isNull(decisionNotices.cancelledAt),
+      or(
+        eq(decisionNotices.deliveryStatus, "queued"),
+        eq(decisionNotices.deliveryStatus, "failed"),
+        and(
+          eq(decisionNotices.deliveryStatus, "sending"),
+          lt(decisionNotices.sendingSince, cutoff),
+        ),
+      ),
+    ))
+    .returning({ id: decisionNotices.id });
+  return claimed.length === 0
+    ? { claimed: false }
+    : { claimed: true, previousStatus: (before?.deliveryStatus ?? "queued") as "queued" | "failed" | "sending" };
+}
+
 async function deliverAndRecord(
   database: EmailDatabase,
   delivery: EmailDelivery,
   eventId: `evt_${string}`,
   notice: Pick<DecisionNoticeRow, "id" | "outcome" | "recipientEmail" | "subject" | "body">,
-): Promise<"sent" | "failed" | "provider_not_configured"> {
+  now: Date = new Date(),
+): Promise<"sent" | "failed" | "provider_not_configured" | "not_claimable"> {
+  const claim = await claimForSending(database, notice.id, now);
+  if (!claim.claimed) {
+    return "not_claimable";
+  }
   const result = await sendTrackedEmail({
     database,
     delivery,
@@ -41,13 +97,22 @@ async function deliverAndRecord(
     text: notice.body,
   });
   if (result.status === "provider_not_configured") {
+    // Nothing was attempted, so put the letter back exactly as it was rather than leaving it
+    // claimed. An unconfigured deployment must stay silent and leave a queued letter queued.
+    await database
+      .update(decisionNotices)
+      .set({ deliveryStatus: claim.previousStatus === "sending" ? "queued" : claim.previousStatus, sendingSince: null })
+      .where(eq(decisionNotices.id, notice.id));
     return "provider_not_configured";
   }
   const delivered = result.status === "sent";
+  // This send owns the claim, so recording its outcome needs no further condition: no cancellation
+  // could have landed while the claim was held.
   await database
     .update(decisionNotices)
     .set({
       deliveryStatus: delivered ? "sent" : "failed",
+      sendingSince: null,
       sentAt: delivered ? new Date() : null,
       providerMessageId: delivered ? result.providerMessageId ?? null : null,
       failureReason: delivered ? null : result.error ?? "send_failed",
@@ -81,7 +146,9 @@ export async function dispatchDecisionNoticeEmails(
   let attempted = false;
   for (const notice of notices) {
     const outcome = await deliverAndRecord(database, delivery, eventId, notice);
-    if (outcome === "provider_not_configured") {
+    // Cancelled or already being sent by somebody else between the caller's read and here.
+    // Nothing was attempted for it, so nothing is claimed about it either.
+    if (outcome === "provider_not_configured" || outcome === "not_claimable") {
       continue;
     }
     attempted = true;
@@ -93,6 +160,7 @@ export async function dispatchDecisionNoticeEmails(
 export type RetryDecisionNoticeResult =
   | { status: "not_found" }
   | { status: "not_retryable"; currentStatus: string }
+  | { status: "superseded" }
   | { status: "provider_not_configured" }
   | { status: "sent" }
   | { status: "failed"; error: string };
@@ -102,6 +170,11 @@ export type RetryDecisionNoticeResult =
  * one whose send failed, and one still `queued` because no sender was connected
  * when its batch was dispatched. A notice already `sent` is refused here, so
  * this can never deliver the same letter twice.
+ *
+ * `expectedNoticeId` is the letter the caller was looking at. Since a letter can be cancelled and
+ * replaced, resolving by submission alone would let a page loaded before that send the *new*
+ * letter under the old one's review - a different recipient, outcome, and copy than the organizer
+ * read. Naming the letter turns that into a refusal.
  */
 export async function retryDecisionNotice(
   database: EmailDatabase,
@@ -109,6 +182,7 @@ export async function retryDecisionNotice(
   eventId: `evt_${string}`,
   submissionId: string,
   delivery: EmailDelivery = resolveEmailDelivery(env),
+  expectedNoticeId?: string | undefined,
 ): Promise<RetryDecisionNoticeResult> {
   const [row] = await database
     .select({
@@ -130,12 +204,19 @@ export async function retryDecisionNotice(
   if (row === undefined) {
     return { status: "not_found" };
   }
+  if (expectedNoticeId !== undefined && expectedNoticeId !== row.id) {
+    return { status: "superseded" };
+  }
   if (row.deliveryStatus === "sent") {
     return { status: "not_retryable", currentStatus: row.deliveryStatus };
   }
   const outcome = await deliverAndRecord(database, delivery, eventId, row);
   if (outcome === "provider_not_configured") {
     return { status: "provider_not_configured" };
+  }
+  // Somebody else is already sending this letter, or cancelled it while this call was deciding.
+  if (outcome === "not_claimable") {
+    return { status: "not_retryable", currentStatus: "sending" };
   }
   if (outcome === "sent") {
     return { status: "sent" };
@@ -179,6 +260,7 @@ export async function cancelDecisionNotice(params: {
     .select({
       id: decisionNotices.id,
       deliveryStatus: decisionNotices.deliveryStatus,
+      sendingSince: decisionNotices.sendingSince,
       cancelledAt: decisionNotices.cancelledAt,
     })
     .from(decisionNotices)
@@ -191,7 +273,11 @@ export async function cancelDecisionNotice(params: {
   if (live === undefined) {
     return { status: "already_cancelled" };
   }
-  if (live.deliveryStatus === "sent") {
+  const now = new Date();
+  const cutoff = staleClaimCutoff(now);
+  const beingSent = live.deliveryStatus === "sending" &&
+    live.sendingSince !== null && live.sendingSince >= cutoff;
+  if (live.deliveryStatus === "sent" || beingSent) {
     return { status: "not_cancellable", currentStatus: live.deliveryStatus };
   }
 
@@ -204,7 +290,10 @@ export async function cancelDecisionNotice(params: {
     return { status: "not_found" };
   }
 
+  // Resolve the correction without writing it. Nothing about the person changes until the letter
+  // is actually retired, so a cancellation that loses the race below leaves no half-applied edit.
   let recipientEmail = submission.currentEmail;
+  let correctionToApply: string | null = null;
   if (params.correctedRecipientEmail !== undefined) {
     const corrected = params.correctedRecipientEmail.trim().toLowerCase();
     if (!corrected.includes("@") || corrected.startsWith("@") || corrected.endsWith("@")) {
@@ -220,18 +309,60 @@ export async function cancelDecisionNotice(params: {
       if (taken !== undefined) {
         return { status: "recipient_taken" };
       }
-      await database.update(people).set({ email: corrected }).where(eq(people.id, submission.personId));
+      correctionToApply = corrected;
     }
     recipientEmail = corrected;
   }
 
-  await database
+  // Retiring the letter is this one conditional write, so it and a send cannot both win. A send
+  // that claimed the letter, delivered it, or a cancellation that got here first all leave these
+  // conditions unmet, and this call is refused rather than overwriting their outcome.
+  const retired = await database
     .update(decisionNotices)
     .set({
-      cancelledAt: new Date(),
+      cancelledAt: now,
       cancelledByUserId: params.cancelledByUserId,
       cancellationReason: params.reason?.trim() || null,
     })
-    .where(eq(decisionNotices.id, live.id));
+    .where(and(
+      eq(decisionNotices.id, live.id),
+      isNull(decisionNotices.cancelledAt),
+      ne(decisionNotices.deliveryStatus, "sent"),
+      or(
+        ne(decisionNotices.deliveryStatus, "sending"),
+        lt(decisionNotices.sendingSince, cutoff),
+      ),
+    ))
+    .returning({ id: decisionNotices.id });
+  if (retired.length === 0) {
+    const [current] = await database
+      .select({ deliveryStatus: decisionNotices.deliveryStatus, cancelledAt: decisionNotices.cancelledAt })
+      .from(decisionNotices)
+      .where(eq(decisionNotices.id, live.id));
+    return current?.cancelledAt != null
+      ? { status: "already_cancelled" }
+      : { status: "not_cancellable", currentStatus: current?.deliveryStatus ?? "sent" };
+  }
+  // Every preview still outstanding for this submission was rendered against the letter just
+  // retired, so it would queue the very content the organizer is correcting. Stamping them here
+  // is what makes "dispatch cannot undo a correction" a fact about the data rather than a race
+  // between two timestamps.
+  await database
+    .update(decisionBatchItems)
+    .set({ supersededAt: now })
+    .where(and(
+      eq(decisionBatchItems.submissionId, submissionId),
+      isNull(decisionBatchItems.dispatchedAt),
+      isNull(decisionBatchItems.supersededAt),
+    ));
+
+  // The letter is retired, so the correction can be applied. Only now: had the write above lost,
+  // the person's address would have been changed for a letter that went out unchanged.
+  if (correctionToApply !== null) {
+    await database
+      .update(people)
+      .set({ email: correctionToApply })
+      .where(eq(people.id, submission.personId));
+  }
   return { status: "cancelled", submissionId, recipientEmail };
 }
