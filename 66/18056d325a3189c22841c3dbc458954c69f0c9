@@ -1,0 +1,54 @@
+worker/routes/embeds.ts
+  s_07f4b233d3cd1f::t_38ad5c62dcaeb9 8,23,36,38-39
+worker/routes/exports.ts
+  s_07f4b233d3cd1f::t_38ad5c62dcaeb9 28,37,44-45
+worker/routes/disposition.ts
+  s_07f4b233d3cd1f::t_38ad5c62dcaeb9 20,29,49-50
+worker/routes/people.ts
+  s_07f4b233d3cd1f::t_38ad5c62dcaeb9 24,35,42-43,46
+tests/integration/account-access.test.ts
+  s_07f4b233d3cd1f::t_760a04c71301c6 5,8,13,279-316
+  s_07f4b233d3cd1f::t_17acaa89319739 11,317-363
+  s_07f4b233d3cd1f::t_53491570cfb8b2 9
+  s_07f4b233d3cd1f::t_3c295d50b52c4f 364
+worker/routes/content.ts
+  s_07f4b233d3cd1f::t_38ad5c62dcaeb9 38-39,42
+worker/routes/agenda.ts
+  s_07f4b233d3cd1f::t_38ad5c62dcaeb9 19,34,41-42
+worker/routes/participants.ts
+  s_07f4b233d3cd1f::t_38ad5c62dcaeb9 17,24,31-32
+worker/routes/roster.ts
+  s_07f4b233d3cd1f::t_38ad5c62dcaeb9 20,27,38-39
+worker/routes/event-settings.ts
+  s_07f4b233d3cd1f::t_38ad5c62dcaeb9 17,23,30-31
+worker/routes/comms.ts
+  s_07f4b233d3cd1f::t_38ad5c62dcaeb9 8,32,62,64-65
+worker/roles.ts
+  s_07f4b233d3cd1f::t_38ad5c62dcaeb9 73-80,83
+worker/index.ts
+  s_07f4b233d3cd1f::t_38ad5c62dcaeb9 31,75-80,125,164-166,168
+worker/routes/cfp-builder.ts
+  s_07f4b233d3cd1f::t_38ad5c62dcaeb9 23,27,448-449
+worker/routes/review.ts
+  s_07f4b233d3cd1f::t_38ad5c62dcaeb9 250-251,257-262,288-290,374,398-399,404-405,407
+tests/integration/ai-review.test.ts
+  s_07f4b233d3cd1f::t_fb6a8173a675c7 52
+AGENTS.md
+  s_07f4b233d3cd1f::t_e6b84460b6364a 143-156
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "6618056d325a3189c22841c3dbc458954c69f0c9",
+  "prompts": {},
+  "sessions": {
+    "s_07f4b233d3cd1f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6315adf8-c9f2-425f-943b-239e8e577741",
+        "model": "claude-opus-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
