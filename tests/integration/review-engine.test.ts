@@ -1086,11 +1086,30 @@ describe("review engine", () => {
       "/api/review/events/evt_devflow_conf_2027/config",
       { headers: { cookie: organizerCookie } },
     )).json<{
-      reviewers: Array<{ id: string; assignedCount: number; completedCount: number; recusedCount: number }>;
+      reviewers: Array<{
+        id: string;
+        assignedCount: number;
+        completedCount: number;
+        recusedCount: number;
+        recusals: Array<{ submissionId: string; title: string | null }>;
+      }>;
     }>();
     expect(config.reviewers.find((reviewer) => reviewer.id === provisioned.reviewer.id)).toEqual(
       expect.objectContaining({ assignedCount: 1, completedCount: 0, recusedCount: 1 }),
     );
+    // The count names the proposal it stands for, so an organizer can reach it from the card.
+    expect(config.reviewers.find((reviewer) => reviewer.id === provisioned.reviewer.id)?.recusals)
+      .toEqual([expect.objectContaining({ submissionId: "sub_ci_monorepo" })]);
+
+    // The coverage worklist distinguishes a recused proposal from one nobody has opened.
+    const worklist = await (await request(
+      "/api/review/events/evt_devflow_conf_2027/worklist",
+      { headers: { cookie: organizerCookie } },
+    )).json<{ items: Array<{ submissionId: string; ratingCount: number; recusedBy: string[] }> }>();
+    const recusedRow = worklist.items.find((item) => item.submissionId === "sub_ci_monorepo");
+    expect(recusedRow).toEqual(expect.objectContaining({ recusedBy: ["Devin Okafor"] }));
+    const untouchedRow = worklist.items.find((item) => item.submissionId === "sub_ai_verification");
+    expect(untouchedRow?.recusedBy).toEqual([]);
   });
 
   it("refuses a recusal outside the reviewer's own remit and from every other role", async () => {

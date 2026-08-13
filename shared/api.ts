@@ -1242,6 +1242,17 @@ export interface ReviewWorklistItem {
   tracks: string[];
   ratingCount: number;
   averageScore: number | null;
+  /**
+   * Reviewers who declared a conflict on this proposal. A recusal produces no rating, so
+   * without this a recused proposal reads exactly like one nobody has opened.
+   */
+  recusedBy: string[];
+}
+
+/** One proposal a reviewer recused themselves from, named so the count can lead an organizer to it. */
+export interface ReviewerRecusal {
+  submissionId: string;
+  title: string | null;
 }
 
 export interface ReviewProgress {

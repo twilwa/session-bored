@@ -571,6 +571,10 @@ reviewRoutes.get(
         assignedCount: queue.filter((item) => item.assignmentStatus !== "recused").length,
         completedCount: queue.filter((item) => item.assignmentStatus === "completed").length,
         recusedCount: queue.filter((item) => item.assignmentStatus === "recused").length,
+        // The count is only useful if it names the proposals it stands for.
+        recusals: queue
+          .filter((item) => item.assignmentStatus === "recused")
+          .map((item) => ({ submissionId: item.submissionId, title: item.title })),
       };
     }));
     return context.json({
@@ -1346,7 +1350,7 @@ reviewRoutes.get(
   async (context) => {
     const database = drizzle(context.env.DB);
     const eventId = context.req.param("eventId");
-    const [submissionRows, reviewRows, trackRows] = await Promise.all([
+    const [submissionRows, reviewRows, trackRows, recusalRows] = await Promise.all([
       database
         .select({
           submissionId: submissions.id,
@@ -1369,6 +1373,13 @@ reviewRoutes.get(
         .select({ submissionId: submissionTracks.submissionId, name: tracks.name })
         .from(submissionTracks)
         .innerJoin(tracks, eq(submissionTracks.trackId, tracks.id)),
+      // A recusal is the reason a proposal can sit at zero ratings, so the worklist carries it.
+      database
+        .select({ submissionId: reviewAssignments.submissionId, reviewerName: users.name })
+        .from(reviewAssignments)
+        .innerJoin(submissions, eq(reviewAssignments.submissionId, submissions.id))
+        .innerJoin(users, eq(reviewAssignments.reviewerUserId, users.id))
+        .where(and(eq(submissions.eventId, eventId), eq(reviewAssignments.status, "recused"))),
     ]);
     const items = submissionRows.map((submission) => {
       const submissionReviews = reviewRows.filter(
@@ -1386,6 +1397,10 @@ reviewRoutes.get(
         averageScore: numericScores.length === 0
           ? null
           : numericScores.reduce((total, score) => total + score, 0) / numericScores.length,
+        recusedBy: recusalRows
+          .filter((recusal) => recusal.submissionId === submission.submissionId)
+          .map((recusal) => recusal.reviewerName)
+          .sort((left, right) => left.localeCompare(right)),
       };
     });
     const sort = context.req.query("sort") === "score" ? "score" : "coverage";

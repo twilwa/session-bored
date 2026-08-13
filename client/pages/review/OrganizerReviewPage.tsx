@@ -1,7 +1,13 @@
 // ABOUTME: Gives organizers the two canonical committee review views and live coverage.
 // ABOUTME: Keeps reviewer, round, pool, scorecard, and assignment controls secondary but reachable.
 import { useEffect, useState, type FormEvent } from "react";
-import type { ReviewCriterion, ReviewProgress, ReviewSort, ReviewWorklistItem } from "../../../shared/api.ts";
+import type {
+  ReviewCriterion,
+  ReviewerRecusal,
+  ReviewProgress,
+  ReviewSort,
+  ReviewWorklistItem,
+} from "../../../shared/api.ts";
 import { Button, LoadingState, StatusChip, Toast } from "../../components/ui.tsx";
 import { ReviewLink, reviewRequest } from "./reviewClient.tsx";
 import { SubmissionReviewPage } from "./SubmissionReviewPage.tsx";
@@ -17,6 +23,7 @@ interface ReviewerSummary {
   assignedCount: number;
   completedCount: number;
   recusedCount: number;
+  recusals: ReviewerRecusal[];
 }
 
 interface RoundSummary {
@@ -323,6 +330,12 @@ function OrganizerReviewWorklist() {
                 <div className="review-tags">{item.tracks.map((track) => <span key={track}>{track}</span>)}</div>
                 <ReviewLink href={`/organizer/review/submissions/${item.submissionId}`}><h2>{item.title}</h2></ReviewLink>
                 <small>Permanent link · {item.submissionId}</small>
+                {item.recusedBy.length === 0 ? null : (
+                  <small className="review-row__recusal">
+                    Recused by {item.recusedBy.join(", ")} ·{" "}
+                    {item.recusedBy.length === 1 ? "that read" : "those reads"} will not arrive
+                  </small>
+                )}
               </div>
               <div className="review-row__measure"><strong>{item.ratingCount}</strong><span>ratings</span></div>
               <div className="review-row__measure"><strong>{item.averageScore?.toFixed(2) ?? "—"}</strong><span>average</span></div>
@@ -370,7 +383,22 @@ function OrganizerReviewWorklist() {
                     <article key={reviewer.id}>
                       <div><strong>{reviewer.name}</strong><span>{reviewer.completedCount} / {reviewer.assignedCount}</span></div>
                       <div><span style={{ width: `${reviewerPercent}%` }} /></div>
-                      <small>{remitLabel(reviewer.trackIds.length, config.tracks.length)}{reviewer.recusedCount === 0 ? "" : ` · ${reviewer.recusedCount} recused`}</small>
+                      <small>
+                        {remitLabel(reviewer.trackIds.length, config.tracks.length)}
+                        {reviewer.recusals.length === 0 ? null : (
+                          <>
+                            {` · ${reviewer.recusals.length} recused: `}
+                            {reviewer.recusals.map((recusal, position) => (
+                              <span key={recusal.submissionId}>
+                                {position === 0 ? "" : ", "}
+                                <ReviewLink href={`/organizer/review/submissions/${recusal.submissionId}`}>
+                                  {recusal.title ?? recusal.submissionId}
+                                </ReviewLink>
+                              </span>
+                            ))}
+                          </>
+                        )}
+                      </small>
                       <details className="reviewer-scope">
                         <summary>Edit remit</summary>
                         <form onSubmit={(event) => void saveReviewerScope(event, reviewer)}>
