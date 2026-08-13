@@ -1,0 +1,29 @@
+tests/unit/workspace-page-registration.test.ts
+  s_849dc574f6f31e::t_3ab13df4a3cb94 1-20
+wrangler.jsonc
+  s_849dc574f6f31e::t_bd19f34a082b80 19-21
+worker/index.ts
+  s_849dc574f6f31e::t_d1ff9dec3b1b22 55,528-530
+worker/page-routes.ts
+  s_849dc574f6f31e::t_d1ff9dec3b1b22 1-10
+tests/e2e/account-access.spec.ts
+  s_849dc574f6f31e::t_40e8e94f943e78 28
+  s_849dc574f6f31e::t_f519138617a0b9 22
+  s_849dc574f6f31e::t_74fcb170d21c93 17-21,23-27,29-34
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "1c25023c50897303e2f904a9f5957946202e45b2",
+  "prompts": {},
+  "sessions": {
+    "s_849dc574f6f31e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ff9b6-0db7-7093-9ec8-dc6ea3445bc8",
+        "model": "gpt-5.6-terra"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
