@@ -103,8 +103,9 @@ printf '%s' 'https://your-worker.example' | npx wrangler secret put BETTER_AUTH_
 npm run db:migrate:remote && npm run deploy
 ```
 
-R2 is intentionally not bound in M0. The configuration carries a TODO to add
-the `FILES` binding when wave-2 file uploads land.
+Speaker file uploads (headshots and task deliverables) store in the R2 bucket
+bound as `FILES` in `wrangler.jsonc`; create that bucket in the new environment
+before deploying.
 
 ## Connecting an email sender
 
