@@ -1,0 +1,19 @@
+tests/unit/workspace-page-registration.test.ts
+  s_2b2fe2ee0e3549::t_218ebf1a844691 5,9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "79997d77f6b082c4519489e9e59a735a25c5ae0f",
+  "prompts": {},
+  "sessions": {
+    "s_2b2fe2ee0e3549": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8de0c88a-01e2-42dc-956d-be4aee8dac03",
+        "model": "claude-fable-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
