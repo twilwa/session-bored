@@ -1,6 +1,6 @@
 // ABOUTME: Serves the organizer's platform-wide view of who has an account and what it opens.
 // ABOUTME: Owns granting, revoking, and reviewer invitations, each attributed to the organizer who acted.
-import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { Hono } from "hono";
 import { createMiddleware } from "hono/factory";
@@ -12,8 +12,10 @@ import {
   reviewerInvites,
   reviewRounds,
   roleGrants,
+  sessions,
   sessionSpeakers,
   speakers,
+  submissions,
   submissionSpeakers,
   tracks,
   users,
@@ -66,12 +68,23 @@ async function evidenceFor(
     return evidence;
   }
   const [programmed, proposals] = await Promise.all([
+    // Un-accepting keeps the session and its speaker links on purpose, so a live
+    // `session_speaker` row is not by itself evidence of being in the programme. A
+    // submission-backed session counts only while its submission is still accepted; a session
+    // an organizer entered directly answers to no submission and always counts.
     database
       .select({ userId: people.userId, count: sql<number>`count(*)` })
       .from(sessionSpeakers)
+      .innerJoin(sessions, eq(sessionSpeakers.sessionId, sessions.id))
+      .leftJoin(submissions, eq(sessions.submissionId, submissions.id))
       .innerJoin(speakers, eq(sessionSpeakers.speakerId, speakers.id))
       .innerJoin(people, eq(speakers.personId, people.id))
-      .where(and(inArray(people.userId, [...userIds]), isNull(sessionSpeakers.deletedAt)))
+      .where(and(
+        inArray(people.userId, [...userIds]),
+        isNull(sessionSpeakers.deletedAt),
+        isNull(sessions.deletedAt),
+        or(isNull(sessions.submissionId), eq(submissions.status, "accepted")),
+      ))
       .groupBy(people.userId),
     database
       .select({ userId: people.userId, count: sql<number>`count(*)` })

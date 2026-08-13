@@ -242,4 +242,51 @@ describe("organizer People surface", () => {
       .where(eq(reviewerInvites.email, invited));
     expect(stored?.trackIds).toEqual([]);
   });
+
+  it("stops calling an account programmed once its session is no longer accepted", async () => {
+    await request("/api/health");
+    const cookie = await organizerCookie();
+    const author = "unaccepted-evidence@example.com";
+    const authorCookie = await signUp("Unaccepted Author", author);
+
+    // Signed in, so the proposal's person carries this account and the People surface can see it.
+    const created = await request("/api/public/cfp/devflow-conf-2027/submissions", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: authorCookie },
+      body: JSON.stringify({
+        intent: "submit",
+        speaker: { name: "Unaccepted Author", email: author, jobTitle: "Staff Engineer", organization: "Northwind" },
+        collaborators: [],
+        proposal: {
+          title: "A talk that was accepted and then was not",
+          abstract: "What the People surface should say about somebody whose session was withdrawn.",
+          track: "Developer Experience",
+          format: "Talk (30 min)",
+          audienceLevel: "Intermediate",
+          answers: { key_takeaway: "Evidence has to track the live decision." },
+        },
+      }),
+    });
+    expect(created.status).toBe(201);
+    const submissionId = (await created.json<{ submission: { id: string } }>()).submission.id;
+
+    const disposition = async (status: string) => {
+      const response = await request(`/api/events/evt_devflow_conf_2027/disposition`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify({ submissionIds: [submissionId], status }),
+      });
+      expect(response.status).toBe(200);
+    };
+    const evidenceOf = async () =>
+      (await loadPeople(cookie)).items.find((person) => person.email === author)?.evidence;
+
+    await disposition("accepted");
+    expect(await evidenceOf()).toMatchObject({ kind: "programmed", programmedSessions: 1 });
+
+    // Un-accepting keeps the session row on purpose. The evidence an organizer reads before
+    // revoking a grant must follow the live decision, not the leftover row.
+    await disposition("declined");
+    expect(await evidenceOf()).toMatchObject({ kind: "proposals" });
+  });
 });

@@ -160,8 +160,11 @@ longer projects it into the session at all.
 - `worker/routes/people.ts` is the organizer's gate at `/organizer/people`. It
   shows each account's **evidence** - programmed, proposal only, or no records -
   because a `speaker` row is minted at first CFP draft, not at acceptance, so a
-  speaker record alone is not evidence of presenting. Granting is attributed and
-  silent; the notify checkbox defaults to off.
+  speaker record alone is not evidence of presenting. Neither is a live
+  `session_speaker` row: un-accepting keeps the session on purpose, so
+  *Programmed* counts a submission-backed session only while its submission is
+  still accepted, and a directly entered session (no `submission_id`) always.
+  Granting is attributed and silent; the notify checkbox defaults to off.
 - **A reviewer invitation is redeemed only by confirming the address.** Signing
   up as an invited address grants nothing. `worker/reviewer-invites.ts#redeemReviewerInvites`
   runs from Better Auth's `afterEmailVerification` and nowhere else; redeeming at
