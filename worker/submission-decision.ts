@@ -1,6 +1,6 @@
 // ABOUTME: Applies submission status changes and their reversible downstream handoffs.
 // ABOUTME: Gives review and disposition routes one idempotent decision path.
-import { and, eq, inArray, isNull, ne, or } from "drizzle-orm";
+import { and, eq, inArray, isNull, ne } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import {
   createPublicId,
@@ -212,11 +212,10 @@ export async function carryParticipantIntoSession(
 }
 
 /**
- * The onboarding work a session hands its participants: the event's configured templates and
- * the session's own tasks. Read-only, unlike `resolveOnboardingTasks`, because taking work back
- * from somebody must never seed the tasks it is about to archive.
+ * The onboarding work that belongs to one session. It dies with a participant's place on that
+ * session, because nobody owes a trailer for a session they no longer speak at.
  */
-async function onboardingTaskIds(
+async function sessionScopedTaskIds(
   database: DecisionDatabase,
   eventId: string,
   sessionId: string,
@@ -224,13 +223,28 @@ async function onboardingTaskIds(
   const rows = await database
     .select({ id: tasks.id })
     .from(tasks)
+    .where(and(eq(tasks.eventId, eventId), eq(tasks.sessionId, sessionId)));
+  return rows.map((task) => task.id);
+}
+
+/**
+ * The event's configured onboarding templates - a headshot, a bio - which belong to the person
+ * rather than to any one session, so they outlive leaving a session and are taken back only
+ * once the person speaks nowhere at the event. Read-only, unlike `resolveOnboardingTasks`,
+ * because taking work back from somebody must never seed the tasks it is about to archive.
+ */
+async function eventOnboardingTaskIds(
+  database: DecisionDatabase,
+  eventId: string,
+): Promise<string[]> {
+  const rows = await database
+    .select({ id: tasks.id })
+    .from(tasks)
     .leftJoin(taskScopes, eq(taskScopes.taskId, tasks.id))
     .where(and(
       eq(tasks.eventId, eventId),
-      or(
-        eq(tasks.sessionId, sessionId),
-        and(isNull(tasks.sessionId), isNull(taskScopes.taskId)),
-      ),
+      isNull(tasks.sessionId),
+      isNull(taskScopes.taskId),
     ));
   return rows.map((task) => task.id);
 }
@@ -275,6 +289,23 @@ export async function releaseParticipantFromSession(
       eq(sessionSpeakers.speakerId, speaker.id),
       isNull(sessionSpeakers.deletedAt),
     ));
+  const archiveAssignments = async (taskIds: readonly string[]) => {
+    if (taskIds.length === 0) {
+      return;
+    }
+    await database
+      .update(taskAssignees)
+      .set({ deletedAt: new Date() })
+      .where(and(
+        eq(taskAssignees.speakerId, speaker.id),
+        inArray(taskAssignees.taskId, [...taskIds]),
+        isNull(taskAssignees.deletedAt),
+      ));
+  };
+  // This session's own work goes back every time, not only on the last removal. Deferring it
+  // would strand it: a later removal only ever looks at the session it was given, so work from
+  // a session left earlier would stay live for somebody who speaks nowhere at the event.
+  await archiveAssignments(await sessionScopedTaskIds(database, eventId, sessionId));
   const stillSpeaking = await database
     .select({ id: sessionSpeakers.id })
     .from(sessionSpeakers)
@@ -289,17 +320,7 @@ export async function releaseParticipantFromSession(
   if (stillSpeaking.length > 0) {
     return { speaksElsewhereAtEvent: true };
   }
-  const taskIds = await onboardingTaskIds(database, eventId, sessionId);
-  if (taskIds.length > 0) {
-    await database
-      .update(taskAssignees)
-      .set({ deletedAt: new Date() })
-      .where(and(
-        eq(taskAssignees.speakerId, speaker.id),
-        inArray(taskAssignees.taskId, taskIds),
-        isNull(taskAssignees.deletedAt),
-      ));
-  }
+  await archiveAssignments(await eventOnboardingTaskIds(database, eventId));
   return { speaksElsewhereAtEvent: false };
 }
 

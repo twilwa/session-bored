@@ -38,8 +38,12 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   `invited` row from their first draft, is the one name missing from the roster's
   onboarding work and from every public surface. `releaseParticipantFromSession`
   beside it is its exact inverse: both removal doors call it, and it archives the
-  session link plus the onboarding work the handoff created once the person speaks
-  nowhere else at the event. It reports `speaksElsewhereAtEvent` because whether
+  session link plus the onboarding work the handoff created. Those two kinds of
+  work part company here. Work scoped to the session (`task.session_id`) goes back
+  on **every** removal, because a later removal only ever looks at its own session
+  and would strand work from a session left earlier; the event's sessionless,
+  unscoped onboarding templates belong to the person, so they go back only once
+  they speak nowhere else at the event. It reports `speaksElsewhereAtEvent` because whether
   removal should also withdraw the event `speaker` row — which is what drives the
   public speaker directory, the roster row, and mail eligibility — is an open
   programme decision (issue #127). A collaborator is named, not

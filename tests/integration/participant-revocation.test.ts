@@ -4,7 +4,7 @@ import { env } from "cloudflare:workers";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { beforeEach, describe, expect, it } from "vitest";
-import { sessions } from "../../db/schema.ts";
+import { sessions, taskAssignees, tasks } from "../../db/schema.ts";
 import type { EmailDelivery, EmailDeliveryResult } from "../../worker/email.ts";
 import { sendSessionCalendarInvite } from "../../worker/email/calendar-invite.ts";
 import worker from "../../worker/index.ts";
@@ -167,6 +167,40 @@ async function liveSessionLinks(sessionId: string, email: string): Promise<numbe
       where session_speaker.session_id = ? and person.email = ? and session_speaker.deleted_at is null`,
   ).bind(sessionId, email).first<{ count: number }>();
   return row?.count ?? 0;
+}
+
+/**
+ * The rows a template-less event really produces: `resolveOnboardingTasks` seeds a session's
+ * own onboarding tasks when the event configures no event-wide templates, and hands them to
+ * every participant carried onto that session. The seeded fixture event configures templates,
+ * so this writes the same shape directly rather than standing up a second event.
+ */
+async function giveSessionScopedTask(sessionId: string, email: string, title: string): Promise<string> {
+  const speaker = await env.DB.prepare(
+    `select speaker.id as id from speaker
+       join person on person.id = speaker.person_id
+      where person.email = ? and speaker.event_id = ?`,
+  ).bind(email, eventId).first<{ id: string }>();
+  expect(speaker).not.toBeNull();
+  const database = drizzle(env.DB);
+  const taskId = `tsk_scoped_${sessionId}`;
+  await database
+    .insert(tasks)
+    .values({ id: taskId, eventId, sessionId, taskType: "general", title, status: "active" });
+  await database
+    .insert(taskAssignees)
+    .values({ id: `tassn_scoped_${sessionId}`, taskId, speakerId: speaker!.id });
+  return taskId;
+}
+
+async function taskIsLiveFor(taskId: string, email: string): Promise<boolean> {
+  const row = await env.DB.prepare(
+    `select count(*) as count from task_assignee
+       join speaker on speaker.id = task_assignee.speaker_id
+       join person on person.id = speaker.person_id
+      where task_assignee.task_id = ? and person.email = ? and task_assignee.deleted_at is null`,
+  ).bind(taskId, email).first<{ count: number }>();
+  return (row?.count ?? 0) > 0;
 }
 
 const marcus = { name: "Marcus Okafor", email: marcusCredentials.email, roleLabel: "co-speaker" };
@@ -447,5 +481,52 @@ describe("removing a participant revokes what naming them granted", () => {
     const mail = await env.DB.prepare("select count(*) as count from email_dispatch where recipients like ?")
       .bind(`%${marcus.email}%`).first<{ count: number }>();
     expect(mail?.count).toBe(0);
+  });
+
+  it("takes back a session's own onboarding work as soon as they leave that session", async () => {
+    // Two sessions, one person on both. Session-scoped work belongs to the session, so
+    // leaving the first must take its work back even though they still speak at the second -
+    // and the second removal must not be the only chance to archive it.
+    // A collaborator who speaks nowhere else at the event, so the final removal really is
+    // their last session - the seeded Marcus always keeps `ses_docs_retrieval`.
+    const twoSessions = {
+      name: "Ilse Vandermeer",
+      email: "ilse.twosessions@example.test",
+      roleLabel: "co-speaker",
+    };
+    const first = await createPanel("rosa.twosessions.one@example.test", [twoSessions]);
+    const second = await createPanel("rosa.twosessions.two@example.test", [twoSessions]);
+    const firstSessionId = await accept(first.submission.id, organizerCookie);
+    const secondSessionId = await accept(second.submission.id, organizerCookie);
+    expect(firstSessionId).not.toBe(secondSessionId);
+
+    const firstTaskId = await giveSessionScopedTask(firstSessionId, twoSessions.email, "Record a session trailer");
+    const secondTaskId = await giveSessionScopedTask(secondSessionId, twoSessions.email, "Send the panel questions");
+    expect(await taskIsLiveFor(firstTaskId, twoSessions.email)).toBe(true);
+    expect(await taskIsLiveFor(secondTaskId, twoSessions.email)).toBe(true);
+
+    const removeFrom = async (submissionId: string) => {
+      const path = `/api/events/${eventId}/submissions/${submissionId}/participants`;
+      const named = (await participantsOf(submissionId, organizerCookie))
+        .find((participant) => participant.email === twoSessions.email);
+      expect(named).toBeDefined();
+      const response = await request(`${path}/${named?.id}`, {
+        method: "DELETE",
+        headers: { cookie: organizerCookie },
+      });
+      expect(response.status).toBe(200);
+    };
+
+    await removeFrom(first.submission.id);
+    expect(await liveSessionLinks(firstSessionId, twoSessions.email)).toBe(0);
+    expect(await taskIsLiveFor(firstTaskId, twoSessions.email)).toBe(false);
+    // They still speak at the second session, so its own work stays.
+    expect(await taskIsLiveFor(secondTaskId, twoSessions.email)).toBe(true);
+
+    await removeFrom(second.submission.id);
+    expect(await taskIsLiveFor(secondTaskId, twoSessions.email)).toBe(false);
+    // Nothing from either session is left for the portal to expose or accept an upload against.
+    expect(await taskIsLiveFor(firstTaskId, twoSessions.email)).toBe(false);
+    expect(await liveTaskAssignments(twoSessions.email)).toBe(0);
   });
 });
