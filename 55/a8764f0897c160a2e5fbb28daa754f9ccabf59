@@ -1,0 +1,20 @@
+tests/integration/content-management.test.ts
+  s_866f3ae765cf49::t_fe978af0cccc8d 108
+  s_866f3ae765cf49::t_c4fa82f472f01e 175
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "55a8764f0897c160a2e5fbb28daa754f9ccabf59",
+  "prompts": {},
+  "sessions": {
+    "s_866f3ae765cf49": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a73a2e7d-19cd-4ee8-9642-fae83521a203",
+        "model": "claude-fable-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}

@@ -1,0 +1,21 @@
+tests/integration/portal-content.test.ts
+  s_1170199fce5913::t_2c17abb9dd8914 423,427,434-440
+worker/routes/portal.ts
+  s_1170199fce5913::t_2c69c14304a12e 544,557-559
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "cad538e74d9dda1279172678ee9d28d86da0dcc3",
+  "prompts": {},
+  "sessions": {
+    "s_1170199fce5913": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3241ce47-5dd2-4f8a-92e1-340b5e44d87c",
+        "model": "claude-fable-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
