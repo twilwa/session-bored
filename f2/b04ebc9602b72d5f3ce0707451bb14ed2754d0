@@ -1,0 +1,85 @@
+AGENTS.md
+  s_9ca2d4fdbcfa56::t_a6954cd8745618 15-35
+  s_9ca2d4fdbcfa56::t_c7ed3b68094ab8 384-395
+migrations/meta/0016_snapshot.json
+  s_9ca2d4fdbcfa56::t_fc603fbf6be472 1-5189
+worker/index.ts
+  s_9ca2d4fdbcfa56::t_bb50692377bf0e 316-318,323-329,341-345,348-349
+  s_9ca2d4fdbcfa56::t_ade2e77ab1bfdd 330-340,346-347
+  s_9ca2d4fdbcfa56::t_646e47bcdbb3b9 459,463-466
+  s_9ca2d4fdbcfa56::t_b5ef01f8385b32 43
+worker/email/decision-notices.ts
+  s_9ca2d4fdbcfa56::t_3952290d0fd685 149-237
+  s_9ca2d4fdbcfa56::t_6870db0921a80f 3,5
+  s_9ca2d4fdbcfa56::t_7415f929b9520a 125-129
+migrations/0016_special_supernaut.sql
+  s_9ca2d4fdbcfa56::t_4058b6e77f9fd9 1-8,12-13
+  s_9ca2d4fdbcfa56::t_fc603fbf6be472 9-11
+tests/e2e/comms.spec.ts
+  s_9ca2d4fdbcfa56::t_c05eb39e687f23 158-164,173-176,178-186,188-193,195-199,201-219
+  s_9ca2d4fdbcfa56::t_a89c83522e74a4 150-157,165-172,177,187,194,200,220-221
+  s_9ca2d4fdbcfa56::t_3f1e9bd063e5ac 108-112
+migrations/meta/_journal.json
+  s_9ca2d4fdbcfa56::t_fc603fbf6be472 116-119,127-129,132
+client/pages/disposition/disposition.css
+  s_9ca2d4fdbcfa56::t_29355c7963e921 7-8
+worker/routes/comms.ts
+  s_9ca2d4fdbcfa56::t_c1c8a8f92df57f 3
+  s_9ca2d4fdbcfa56::t_93161be6e3da60 106-107,111-112,115-118,131,133-135,139
+  s_9ca2d4fdbcfa56::t_911f1e49b99425 256-259
+  s_9ca2d4fdbcfa56::t_b5ba6292cd8837 12
+  s_9ca2d4fdbcfa56::t_26633dc113fa0e 251-255,260-295
+worker/speaker-access.ts
+  s_9ca2d4fdbcfa56::t_9d95e0fdf4d6e5 21-31
+  s_9ca2d4fdbcfa56::t_8d773fc9069950 4
+client/pages/comms/CommsPage.tsx
+  s_9ca2d4fdbcfa56::t_14254916954a2e 283-321
+  s_9ca2d4fdbcfa56::t_7fddfbbe78daef 53-64
+  s_9ca2d4fdbcfa56::t_4c6ab7598e3053 390-392,404-406,411-418,425-427,429-468
+  s_9ca2d4fdbcfa56::t_f08e5522cecac3 641
+  s_9ca2d4fdbcfa56::t_894b4b2db2d9fa 10-11
+  s_9ca2d4fdbcfa56::t_2653c4e4b6d029 428
+  s_9ca2d4fdbcfa56::t_b4321459c95cac 99
+  s_9ca2d4fdbcfa56::t_9234c2b4454cac 30-37
+  s_9ca2d4fdbcfa56::t_1c93598f488a64 469-470
+db/schema/disposition.ts
+  s_9ca2d4fdbcfa56::t_8eb8b382becc59 3
+  s_9ca2d4fdbcfa56::t_829fe68cdfdcf8 73-75,80-85
+shared/api.ts
+  s_9ca2d4fdbcfa56::t_117225ce195e6c 1145-1146
+  s_9ca2d4fdbcfa56::t_3dc67812a66e13 248-253
+  s_9ca2d4fdbcfa56::t_e4925b643e34e5 1094-1100
+client/pages/disposition/DispositionPage.tsx
+  s_9ca2d4fdbcfa56::t_b14aa1e40fa7db 166-176
+  s_9ca2d4fdbcfa56::t_5401475e4413a8 107-108,116,128-129
+  s_9ca2d4fdbcfa56::t_b1193caa05db86 44
+  s_9ca2d4fdbcfa56::t_5b572fedbaa813 55-69
+  s_9ca2d4fdbcfa56::t_4c286892e95b99 130-131
+tests/integration/decision-notice-correction.test.ts
+  s_9ca2d4fdbcfa56::t_708fcdf4e7c936 1-47,55-284
+  s_9ca2d4fdbcfa56::t_5cba70abc55db9 48-54
+worker/routes/disposition.ts
+  s_9ca2d4fdbcfa56::t_11297f785e6ea6 255,259-262
+  s_9ca2d4fdbcfa56::t_53ec6af4cef583 311-315
+  s_9ca2d4fdbcfa56::t_b135b7434f7e4c 330
+  s_9ca2d4fdbcfa56::t_e54928877d92c5 98
+  s_9ca2d4fdbcfa56::t_76066d7e50ed5c 3
+  s_9ca2d4fdbcfa56::t_1795c32716edfb 104-109
+  s_9ca2d4fdbcfa56::t_12f64ff81680ee 144
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "f2b04ebc9602b72d5f3ce0707451bb14ed2754d0",
+  "prompts": {},
+  "sessions": {
+    "s_9ca2d4fdbcfa56": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c4d3f422-a042-42f6-9009-091c49c9bc34",
+        "model": "claude-opus-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}

@@ -1,0 +1,23 @@
+tests/unit/review-copy.test.ts
+  s_45db264c0dbe67::t_56c3c6b7043b6a 105-115
+worker/submission-decision.ts
+  s_45db264c0dbe67::t_26239cec4b58d9 350,356-362
+client/pages/review/SubmissionParticipants.tsx
+  s_45db264c0dbe67::t_26239cec4b58d9 40
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "25128dba05612a0c1d4f46b6a1c1c178d1be12ba",
+  "prompts": {},
+  "sessions": {
+    "s_45db264c0dbe67": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ff9b5-8c7e-75a0-bc66-c126969b2804",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
