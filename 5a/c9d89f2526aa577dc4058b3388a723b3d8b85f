@@ -1,0 +1,21 @@
+tests/e2e/roster.spec.ts
+  s_acbb6ca27ce0e5::t_6e9036c7848195 443,447
+  s_acbb6ca27ce0e5::t_8efbdfd1f09e59 21-28
+  s_acbb6ca27ce0e5::t_bc3c1b1e029cad 436
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "5ac9d89f2526aa577dc4058b3388a723b3d8b85f",
+  "prompts": {},
+  "sessions": {
+    "s_acbb6ca27ce0e5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f2953f45-789f-42eb-9bb2-ac6bedc4391b",
+        "model": "claude-fable-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
