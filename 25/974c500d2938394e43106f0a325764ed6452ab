@@ -1,0 +1,26 @@
+client/pages/review/review.css
+  s_b2c6efcc163b3e::t_b5c82949bd2766 34
+client/pages/review/worklist-copy.ts
+  s_b2c6efcc163b3e::t_c9c404953b5931 9
+tests/unit/review-copy.test.ts
+  s_b2c6efcc163b3e::t_d71c98afc043b9 38,42,44,47,51-53
+  s_b2c6efcc163b3e::t_1f69a949b28d6e 23,28,33
+client/pages/review/SubmissionParticipants.tsx
+  s_b2c6efcc163b3e::t_669e1aa4a7ea1e 36-39
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "25974c500d2938394e43106f0a325764ed6452ab",
+  "prompts": {},
+  "sessions": {
+    "s_b2c6efcc163b3e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d5ab35b1-9a10-4fa7-b2ed-1b16447a6805",
+        "model": "claude-opus-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
