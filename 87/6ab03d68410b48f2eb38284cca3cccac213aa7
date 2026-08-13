@@ -1,0 +1,20 @@
+AGENTS.md
+  s_45db264c0dbe67::t_7c417f4568ae5a 64-67
+  s_45db264c0dbe67::t_ea518030f75baf 61
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "876ab03d68410b48f2eb38284cca3cccac213aa7",
+  "prompts": {},
+  "sessions": {
+    "s_45db264c0dbe67": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ff9b5-8c7e-75a0-bc66-c126969b2804",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
