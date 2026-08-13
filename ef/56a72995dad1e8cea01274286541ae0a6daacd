@@ -1,0 +1,33 @@
+worker/routes/participants.ts
+  s_45db264c0dbe67::t_05390c0372e0ea 115,136,364-366,369-378
+worker/submission-decision.ts
+  s_45db264c0dbe67::t_05390c0372e0ea 36-39,312,319,329-332,334,336-339,345-355,357,362-364,366,371,374-375
+tests/integration/participant-revocation.test.ts
+  s_45db264c0dbe67::t_7156fd642c7222 162-173,373-374,380-384,628-630,633-635
+shared/api.ts
+  s_45db264c0dbe67::t_05390c0372e0ea 464-468,483-484
+tests/unit/review-copy.test.ts
+  s_45db264c0dbe67::t_7156fd642c7222 23-28,30,92-102
+  s_45db264c0dbe67::t_05390c0372e0ea 17,29
+  s_45db264c0dbe67::t_ebd2f8d0739fa4 103-104
+client/pages/review/SubmissionParticipants.tsx
+  s_45db264c0dbe67::t_05390c0372e0ea 25-35,41,63
+tests/e2e/submission-participants.spec.ts
+  s_45db264c0dbe67::t_2be900d7fd5d14 84-94
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "ef56a72995dad1e8cea01274286541ae0a6daacd",
+  "prompts": {},
+  "sessions": {
+    "s_45db264c0dbe67": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ff9b5-8c7e-75a0-bc66-c126969b2804",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
