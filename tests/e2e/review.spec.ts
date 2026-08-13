@@ -9,6 +9,14 @@ async function signIn(page: import("@playwright/test").Page, email: string, pass
   await page.getByRole("button", { name: "Sign in" }).click();
 }
 
+// Committee setup sits below the coverage worklist, so the toggle click must wait
+// for the loaded worklist or the arriving rows shift it mid-click and the panel stays shut.
+async function openCommitteeSetup(page: import("@playwright/test").Page) {
+  await page.getByRole("link", { name: "Review", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Coverage worklist" }).locator("article").first()).toBeVisible();
+  await page.getByText("Committee setup", { exact: true }).click();
+}
+
 test("an out-of-remit proposal explains the assignment boundary without leaking content", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
   await signIn(page, "sbek-reviewer@example.com", "SbekTest!2027-rev");
@@ -59,8 +67,7 @@ test("organizer review makes the coverage and decision sorts primary", async ({ 
 test("committee setup reports a newly created round without a client error", async ({ page }) => {
   const name = `Browser setup round ${Date.now()}`;
   await signIn(page, "sbek-organizer@example.com", "SbekTest!2027-org");
-  await page.getByRole("link", { name: "Review", exact: true }).click();
-  await page.getByText("Committee setup", { exact: true }).click();
+  await openCommitteeSetup(page);
 
   const roundForm = page.getByRole("heading", { name: "Turn on another pass." }).locator("..");
   await roundForm.getByLabel("Round name").fill(name);
@@ -88,8 +95,7 @@ test("narrowing a remit in committee setup takes that reading access away", asyn
   await expect(reviewerPage.getByRole("link", { name: /Taming 40-Minute CI/ })).toBeVisible();
   await expect(reviewerPage.getByRole("link", { name: /Your AI Pair Programmer/ })).toBeVisible();
 
-  await page.getByRole("link", { name: "Review", exact: true }).click();
-  await page.getByText("Committee setup", { exact: true }).click();
+  await openCommitteeSetup(page);
   const reviewerCard = page
     .locator(".reviewer-progress-list article")
     .filter({ hasText: `Narrowed Reviewer ${unique}` });
@@ -201,8 +207,7 @@ test("reviewer sees the complete submitted proposal", async ({ page }, testInfo)
 test("reviewer explicitly requests enabled AI assistance", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop", "One browser owns the event-level toggle.");
   await signIn(page, "sbek-organizer@example.com", "SbekTest!2027-org");
-  await page.getByRole("link", { name: "Review", exact: true }).click();
-  await page.getByText("Committee setup", { exact: true }).click();
+  await openCommitteeSetup(page);
   const toggle = page.getByLabel("Enable optional AI reading aids");
   if (!(await toggle.isChecked())) {
     const saved = page.waitForResponse((response) =>
@@ -236,8 +241,7 @@ test("reviewer explicitly requests enabled AI assistance", async ({ page }, test
   } finally {
     await page.context().clearCookies();
     await signIn(page, "sbek-organizer@example.com", "SbekTest!2027-org");
-    await page.getByRole("link", { name: "Review", exact: true }).click();
-    await page.getByText("Committee setup", { exact: true }).click();
+    await openCommitteeSetup(page);
     const restoreToggle = page.getByLabel("Enable optional AI reading aids");
     if (await restoreToggle.isChecked()) {
       const saved = page.waitForResponse((response) =>
@@ -257,8 +261,7 @@ test("organizer edits and removes a scorecard criterion", async ({ page }) => {
   const originalLabel = `Temporary criterion ${unique}`;
   const updatedLabel = `Renamed criterion ${unique}`;
   await signIn(page, "sbek-organizer@example.com", "SbekTest!2027-org");
-  await page.getByRole("link", { name: "Review", exact: true }).click();
-  await page.getByText("Committee setup", { exact: true }).click();
+  await openCommitteeSetup(page);
 
   const createForm = page.getByRole("heading", { name: "Add one useful signal." }).locator("..");
   await createForm.getByLabel("Criterion").fill(originalLabel);
@@ -336,6 +339,44 @@ test("a reviewer recuses themselves and the committee sees the recusal", async (
   const reviewerCard = page.locator(".reviewer-progress-list article").filter({ hasText: name });
   await expect(reviewerCard.getByText("0 / 1", { exact: true })).toBeVisible();
   await expect(reviewerCard.getByText("1 recused", { exact: false })).toBeVisible();
+
+  await reviewerCard.getByText("Edit remit", { exact: true }).click();
+  await reviewerCard.getByLabel("Platform & Infra").check();
+  await reviewerCard.getByRole("button", { name: "Save remit" }).click();
+  await expect(reviewerCard.getByText("1 track remit", { exact: false })).toBeVisible();
+  await reviewerCard.getByLabel("Platform & Infra").uncheck();
+  await reviewerCard.getByRole("button", { name: "Save remit" }).click();
+  await expect(page.getByText(
+    "1 removed. They lose that access immediately. " +
+    "They can still read Your AI Pair Programmer Is Lying to You: Verification Patterns That Scale " +
+    "through an explicit assignment. " +
+    "Their recusal from Taming 40-Minute CI: Incremental Builds at Monorepo Scale " +
+    "(Initial review) remains recorded.",
+    { exact: false },
+  )).toBeVisible();
+
+  await reviewerPage.reload();
+  await expect(
+    reviewerPage.getByRole("region", { name: "Your review queue" })
+      .getByRole("link", { name: /Taming 40-Minute CI/ }),
+  ).toHaveCount(0);
+  await expect(reviewerPage.getByRole("region", {
+    name: "Proposals you recused yourself from",
+  }).getByRole("link", { name: /Taming 40-Minute CI/ })).toBeVisible();
+
+  await reviewerCard.getByLabel("Initial review").uncheck();
+  await reviewerCard.getByRole("button", { name: "Save remit" }).click();
+  await expect(page.getByText(
+    "1 removed. They lose that access immediately. " +
+    "Their recusal from Taming 40-Minute CI: Incremental Builds at Monorepo Scale " +
+    "(Initial review) remains recorded.",
+    { exact: false },
+  )).toBeVisible();
+  await expect(reviewerCard.getByText("1 recused", { exact: false })).toBeVisible();
+
+  await reviewerPage.reload();
+  await expect(reviewerPage.getByText("0 proposals in remit", { exact: true })).toBeVisible();
+  await expect(reviewerPage.getByRole("link", { name: /Taming 40-Minute CI/ })).toHaveCount(0);
   // The count leads to the proposal it stands for.
   await reviewerCard.getByRole("link", { name: /Taming 40-Minute CI/ }).click();
   await expect(page).toHaveURL(/\/organizer\/review\/submissions\/sub_ci_monorepo/);

@@ -65,6 +65,7 @@ test("organizer manages CFP tracks and gets reference-safe removal guidance", as
   await dialog.getByRole("button", { name: "Add track" }).click();
   await dialog.getByLabel("Track name").fill(trackName);
   await dialog.getByRole("button", { name: "Create track" }).click();
+  await expect(dialog.getByText(trackName, { exact: true })).toBeVisible();
   await dialog.getByRole("button", { name: "Close dialog" }).click();
   await page.getByRole("tab", { name: "track", exact: true }).click();
   await expect(page.locator(".agenda-column-view header").getByText(trackName, { exact: true })).toBeVisible();
@@ -77,6 +78,7 @@ test("organizer manages CFP tracks and gets reference-safe removal guidance", as
   await dialog.getByRole("button", { name: `Edit ${trackName}` }).click();
   await dialog.getByLabel("Track name").fill(renamedTrackName);
   await dialog.getByRole("button", { name: "Save track" }).click();
+  await expect(dialog.getByText(renamedTrackName, { exact: true })).toBeVisible();
   await dialog.getByRole("button", { name: "Close dialog" }).click();
   await page.goto("/cfp/devflow-conf-2027");
   await expect(page.getByLabel("Track").locator("option", { hasText: renamedTrackName })).toHaveCount(1);
@@ -88,6 +90,8 @@ test("organizer manages CFP tracks and gets reference-safe removal guidance", as
   await dialog.getByRole("button", { name: `Remove ${renamedTrackName}` }).click();
   await expect(dialog).toContainText("stops offering it on the CFP");
   await dialog.getByRole("button", { name: "Remove track" }).click();
+  await expect(dialog.getByRole("button", { name: "Add track" })).toBeVisible();
+  await expect(dialog.getByText(renamedTrackName, { exact: true })).toHaveCount(0);
   await dialog.getByRole("button", { name: "Close dialog" }).click();
   await page.goto("/cfp/devflow-conf-2027");
   await expect(page.getByLabel("Track").locator("option", { hasText: renamedTrackName })).toHaveCount(0);

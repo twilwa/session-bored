@@ -816,12 +816,28 @@ reviewRoutes.patch(
       });
     }
 
-    const queue = (await reviewerQueue(database, reviewerUserId))
-      .filter((item) => item.eventId === eventId);
-    const readableTrackSubmissionIds = new Set(
+    const [queue, recusedAssignments, readableTrackSubmissionIds] = await Promise.all([
+      reviewerQueue(database, reviewerUserId)
+        .then((items) => items.filter((item) => item.eventId === eventId)),
+      database
+        .select({
+          submissionId: submissions.id,
+          title: submissions.title,
+          roundId: reviewRounds.id,
+          roundName: reviewRounds.name,
+        })
+        .from(reviewAssignments)
+        .innerJoin(reviewRounds, eq(reviewAssignments.roundId, reviewRounds.id))
+        .innerJoin(submissions, eq(reviewAssignments.submissionId, submissions.id))
+        .where(and(
+          eq(reviewAssignments.reviewerUserId, reviewerUserId),
+          eq(reviewAssignments.status, "recused"),
+          eq(reviewRounds.eventId, eventId),
+          eq(submissions.isDraft, false),
+        )),
       trackIds.length === 0
-        ? []
-        : (await database
+        ? Promise.resolve(new Set<string>())
+        : database
           .selectDistinct({ submissionId: submissions.id })
           .from(submissions)
           .innerJoin(submissionTracks, eq(submissionTracks.submissionId, submissions.id))
@@ -831,8 +847,9 @@ reviewRoutes.patch(
               eq(submissions.isDraft, false),
               inArray(submissionTracks.trackId, trackIds),
             ),
-          )).map((row) => row.submissionId),
-    );
+          )
+          .then((rows) => new Set(rows.map((row) => row.submissionId))),
+    ]);
 
     return context.json({
       reviewer: { id: reviewer.id, name: reviewer.name, email: reviewer.email },
@@ -842,13 +859,16 @@ reviewRoutes.patch(
       removedRoundIds: removedPoolRows.map((row) => row.roundId),
       retainedAssignments: queue
         .filter((item) =>
-          item.assignmentId !== null && !readableTrackSubmissionIds.has(item.submissionId)
+          item.assignmentId !== null &&
+          item.assignmentStatus !== "recused" &&
+          !readableTrackSubmissionIds.has(item.submissionId)
         )
         .map((item) => ({
           submissionId: item.submissionId,
           title: item.title,
           roundId: item.roundId,
         })),
+      recusedAssignments,
     });
   },
 );

@@ -10,6 +10,10 @@ import type {
 } from "../../../shared/api.ts";
 import { Button, LoadingState, StatusChip, Toast } from "../../components/ui.tsx";
 import { ReviewLink, reviewRequest } from "./reviewClient.tsx";
+import {
+  reviewerRemitSummary,
+  type ReviewerRemitChange,
+} from "./reviewer-remit-copy.ts";
 import { recusalSummary } from "./worklist-copy.ts";
 import { SubmissionReviewPage } from "./SubmissionReviewPage.tsx";
 import "./review.css";
@@ -49,12 +53,9 @@ interface AIReviewConfig {
   enabled: boolean;
 }
 
-interface ReviewerScopeResult {
+interface ReviewerScopeResult extends ReviewerRemitChange {
   remit: { mode: "no_tracks" | "all_submissions" | "tracks"; trackIds: string[] };
   roundIds: string[];
-  removedTrackIds: string[];
-  removedRoundIds: string[];
-  retainedAssignments: Array<{ submissionId: string; title: string | null; roundId: string }>;
 }
 
 function remitLabel(trackCount: number, totalTracks: number, roundCount: number): string {
@@ -190,12 +191,7 @@ function OrganizerReviewWorklist() {
           }),
         },
       );
-      const narrowed = saved.removedTrackIds.length + saved.removedRoundIds.length;
-      setMessage(saved.retainedAssignments.length === 0
-        ? `${reviewer.name}’s remit saved${narrowed === 0 ? "." : ` — ${narrowed} removed. They lose that access immediately.`}`
-        : `${reviewer.name}’s remit saved. They can still read ${
-          saved.retainedAssignments.map((item) => item.title ?? item.submissionId).join(", ")
-        } through an explicit assignment.`);
+      setMessage(reviewerRemitSummary(reviewer.name, saved));
       await loadConfig();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "The remit could not be saved.");
