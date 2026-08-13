@@ -31,6 +31,7 @@
 .review-row__proposal h2 { margin: 6px 0 3px; font: clamp(1.2rem, 2vw, 1.65rem) Georgia, serif; line-height: 1.15; }
 .review-row__proposal a:hover h2 { color: var(--blue); text-decoration: underline; text-underline-offset: 4px; }
 .review-row__proposal small { color: var(--muted); overflow-wrap: anywhere; }
+.review-row__proposal small.review-row__recusal { display: block; margin-top: 4px; color: var(--ink); font-weight: 700; }
 .review-tags { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .review-tags > span:not(.status-chip) { border: 1px solid var(--line); padding: 2px 7px; background: var(--white); font: 0.65rem monospace; text-transform: uppercase; }
 .review-row__measure { display: grid; text-align: center; }
@@ -73,6 +74,7 @@
 .reviewer-progress-list article > div:nth-child(2) { height: 7px; margin: 10px 0 6px; background: #dedad0; }
 .reviewer-progress-list article > div:nth-child(2) span { display: block; height: 100%; background: var(--blue); }
 .reviewer-progress-list small { color: var(--muted); }
+.reviewer-progress-list small a { color: var(--blue); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
 .reviewer-scope { min-width: 0; margin-top: 10px; }
 .reviewer-scope summary { color: var(--blue); font-weight: 800; cursor: pointer; }
 .reviewer-scope form { margin-top: 10px; border: 1px solid var(--line); background: #ebe7dd; padding: 14px; }
@@ -156,6 +158,10 @@
 .participant .button { justify-self: start; margin-top: 6px; }
 .participants__error { color: var(--danger); font-size: 0.82rem; font-weight: 800; }
 .participants__note { margin-top: 12px; color: var(--muted); font-size: 0.76rem; }
+.participants__removal { margin-top: 12px; border-left: 3px solid var(--ink); background: var(--paper, #f6f4ec); padding: 12px 14px; }
+.participants__removal strong { display: block; font-size: 0.9rem; }
+.participants__removal p { margin: 6px 0 0; color: var(--muted); font-size: 0.8rem; line-height: 1.5; }
+.participants__removal a { color: var(--blue); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
 .participants__add { display: grid; gap: 10px; padding: 14px 0; border-top: 1px solid var(--line); }
 .participants__add label { display: grid; gap: 4px; }
 .participants__add label span { color: var(--blue); font: 0.68rem monospace; text-transform: uppercase; }

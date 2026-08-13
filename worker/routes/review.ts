@@ -502,7 +502,7 @@ reviewRoutes.get(
   async (context) => {
     const database = drizzle(context.env.DB);
     const eventId = context.req.param("eventId");
-    const [eventTracks, roundRows, trackReviewers, submissionRows] = await Promise.all([
+    const [eventTracks, roundRows, trackReviewers, submissionRows, recusalRows] = await Promise.all([
       database
         .select({ id: tracks.id, name: tracks.name })
         .from(tracks)
@@ -522,6 +522,25 @@ reviewRoutes.get(
         .select({ id: submissions.id, title: submissions.title, status: submissions.status })
         .from(submissions)
         .where(and(eq(submissions.eventId, eventId), eq(submissions.isDraft, false))),
+      // A recusal is a settled fact about an assignment, not about who is in a round pool now,
+      // so it is read from the assignment rows the worklist reads. Narrowing a remit deletes
+      // pool rows; the read still is not coming, and the card must keep saying so.
+      database
+        .select({
+          reviewerUserId: reviewAssignments.reviewerUserId,
+          roundId: reviewRounds.id,
+          roundName: reviewRounds.name,
+          submissionId: submissions.id,
+          title: submissions.title,
+        })
+        .from(reviewAssignments)
+        .innerJoin(reviewRounds, eq(reviewAssignments.roundId, reviewRounds.id))
+        .innerJoin(submissions, eq(reviewAssignments.submissionId, submissions.id))
+        .where(and(
+          eq(submissions.eventId, eventId),
+          eq(submissions.isDraft, false),
+          eq(reviewAssignments.status, "recused"),
+        )),
     ]);
     const roundIds = roundRows.map((round) => round.id);
     // A reviewer narrowed to no tracks still belongs to the committee through their round pool.
@@ -561,6 +580,7 @@ reviewRoutes.get(
     const reviewersWithProgress = await Promise.all(eventReviewers.map(async (reviewer) => {
       const queue = (await reviewerQueue(database, reviewer.id))
         .filter((item) => item.eventId === eventId);
+      const recusals = recusalRows.filter((row) => row.reviewerUserId === reviewer.id);
       return {
         ...reviewer,
         trackIds: reviewerTrackRows
@@ -570,7 +590,10 @@ reviewRoutes.get(
         // and is reported on its own instead.
         assignedCount: queue.filter((item) => item.assignmentStatus !== "recused").length,
         completedCount: queue.filter((item) => item.assignmentStatus === "completed").length,
-        recusedCount: queue.filter((item) => item.assignmentStatus === "recused").length,
+        recusedCount: recusals.length,
+        // The count is only useful if it names the proposals it stands for, and it counts
+        // assignments, so a proposal recused in two rounds keeps one entry per round.
+        recusals: recusals.map(({ reviewerUserId: _reviewerUserId, ...recusal }) => recusal),
       };
     }));
     return context.json({
@@ -1346,7 +1369,7 @@ reviewRoutes.get(
   async (context) => {
     const database = drizzle(context.env.DB);
     const eventId = context.req.param("eventId");
-    const [submissionRows, reviewRows, trackRows] = await Promise.all([
+    const [submissionRows, reviewRows, trackRows, recusalRows] = await Promise.all([
       database
         .select({
           submissionId: submissions.id,
@@ -1369,6 +1392,17 @@ reviewRoutes.get(
         .select({ submissionId: submissionTracks.submissionId, name: tracks.name })
         .from(submissionTracks)
         .innerJoin(tracks, eq(submissionTracks.trackId, tracks.id)),
+      // A recusal is the reason a proposal can sit at zero ratings, so the worklist carries it.
+      database
+        .select({
+          submissionId: reviewAssignments.submissionId,
+          reviewerUserId: reviewAssignments.reviewerUserId,
+          reviewerName: users.name,
+        })
+        .from(reviewAssignments)
+        .innerJoin(submissions, eq(reviewAssignments.submissionId, submissions.id))
+        .innerJoin(users, eq(reviewAssignments.reviewerUserId, users.id))
+        .where(and(eq(submissions.eventId, eventId), eq(reviewAssignments.status, "recused"))),
     ]);
     const items = submissionRows.map((submission) => {
       const submissionReviews = reviewRows.filter(
@@ -1377,6 +1411,9 @@ reviewRoutes.get(
       const numericScores = submissionReviews
         .map((review) => review.aggregateScore)
         .filter((score): score is number => score !== null);
+      const submissionRecusals = recusalRows.filter(
+        (recusal) => recusal.submissionId === submission.submissionId,
+      );
       return {
         ...submission,
         tracks: trackRows
@@ -1386,6 +1423,15 @@ reviewRoutes.get(
         averageScore: numericScores.length === 0
           ? null
           : numericScores.reduce((total, score) => total + score, 0) / numericScores.length,
+        // The row speaks about the proposal, so it names each reviewer once however many
+        // rounds they stepped back in. Two accounts can share a display name, so the one
+        // that identifies them is the account, and the name is only what it is shown as.
+        recusedBy: [...new Map(
+          submissionRecusals.map((recusal) => [recusal.reviewerUserId, recusal.reviewerName]),
+        ).values()].sort((left, right) => left.localeCompare(right)),
+        // Each recused assignment is one scorecard that is not coming, and a reviewer in two
+        // rounds owes two, so the missing reads are counted separately from the people.
+        recusedAssignments: submissionRecusals.length,
       };
     });
     const sort = context.req.query("sort") === "score" ? "score" : "coverage";

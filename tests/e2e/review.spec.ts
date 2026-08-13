@@ -49,7 +49,8 @@ test("organizer review makes the coverage and decision sorts primary", async ({ 
     name: "Track remit · none selected means assigned proposals only",
   })).toBeVisible();
 
-  await page.getByRole("link", { name: /Taming 40-Minute CI/ }).click();
+  // A reviewer card also links to a proposal it was recused from, so reach this one from the list.
+  await page.getByLabel("Decision meeting agenda").getByRole("link", { name: /Taming 40-Minute CI/ }).click();
   await expect(page).toHaveURL(/\/organizer\/review\/submissions\/sub_ci_monorepo/);
   await expect(page.getByRole("heading", { name: /Talk it through here/ })).toBeVisible();
   await expect(page.getByText("Priya Raman", { exact: true })).toBeVisible();
@@ -327,9 +328,16 @@ test("a reviewer recuses themselves and the committee sees the recusal", async (
   await expect(coverage.getByText("0 of 1 scorecards", { exact: true })).toBeVisible();
 
   await page.getByRole("link", { name: "Review", exact: true }).click();
+  // The worklist row says why a proposal can sit at no ratings.
+  const worklistRow = page.locator(".review-row").filter({ hasText: "sub_ci_monorepo" });
+  await expect(worklistRow.locator(".review-row__recusal")).toContainText(name);
+
   await page.getByText("Committee setup", { exact: true }).click();
   const reviewerCard = page.locator(".reviewer-progress-list article").filter({ hasText: name });
   await expect(reviewerCard.getByText("0 / 1", { exact: true })).toBeVisible();
   await expect(reviewerCard.getByText("1 recused", { exact: false })).toBeVisible();
+  // The count leads to the proposal it stands for.
+  await reviewerCard.getByRole("link", { name: /Taming 40-Minute CI/ }).click();
+  await expect(page).toHaveURL(/\/organizer\/review\/submissions\/sub_ci_monorepo/);
   await reviewerContext.close();
 });

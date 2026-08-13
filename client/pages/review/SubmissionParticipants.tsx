@@ -1,11 +1,60 @@
 // ABOUTME: Gives the program team the proposal's participant list with add, amend, and remove.
 // ABOUTME: Shows whether each participant has already been carried onto the accepted session.
 import { useEffect, useState, type FormEvent } from "react";
-import type { SubmissionParticipantsPayload } from "../../../shared/api.ts";
+import type { ParticipantRemovalOutcome, SubmissionParticipantsPayload } from "../../../shared/api.ts";
 import { Button } from "../../components/ui.tsx";
 import { reviewRequest } from "./reviewClient.tsx";
 
 const emptyDraft = { name: "", email: "", roleLabel: "" };
+
+/**
+ * Says what the removal did and, just as plainly, what it left standing. Removal is scoped to
+ * the proposal by design: it never withdraws the event speaker, so the organizer is told that
+ * outright and pointed at the roster, which is where withdrawing from the event happens.
+ *
+ * What it says was taken is only what this person actually held: a proposal is read-only to a
+ * named participant, a session they were never carried onto was never theirs to lose, and an
+ * approved session is read-only to the speakers who are on it.
+ */
+export function RemovalNotice(
+  { removal, sessionContentStatus }: {
+    removal: ParticipantRemovalOutcome;
+    sessionContentStatus: SubmissionParticipantsPayload["sessionContentStatus"];
+  },
+) {
+  if (!removal.remainsEventSpeaker) {
+    return (
+      <section aria-label="What removing this participant did" className="participants__removal" role="status">
+        <strong>{removal.name} is no longer on this proposal</strong>
+        <p>They lost access to it, and they hold no speaker record at this event, so nothing else is left to undo.</p>
+      </section>
+    );
+  }
+  const standing = [
+    "on the event roster",
+    removal.listedPublicly ? "listed in the public speaker directory" : null,
+    "selectable as a recipient in Communications",
+    removal.speaksElsewhereAtEvent ? "still on the programme for their other sessions here" : null,
+  ].filter((entry): entry is string => entry !== null);
+  const lost = !removal.heldSessionAccess
+    ? "They lost read access to it."
+    : sessionContentStatus === "approved"
+    ? "They lost read access to it, and the read-only access they had to its approved session."
+    : "They lost read access to it, and the read and write access they had to its session.";
+  return (
+    <section aria-label="What removing this participant did" className="participants__removal" role="status">
+      <strong>{removal.name} is no longer on this proposal</strong>
+      <p>
+        {lost} They are still a speaker at this event:{" "}
+        {standing.join(", ")}. Removing a participant here never withdraws them from the event.
+      </p>
+      <p>
+        To take them off the event entirely, remove them on the{" "}
+        <a href="/organizer/roster">roster</a>.
+      </p>
+    </section>
+  );
+}
 
 export function SubmissionParticipants({
   eventId,
@@ -108,6 +157,9 @@ export function SubmissionParticipants({
         </div>
       ))}
       {error === null ? null : <p className="participants__error" role="alert">{error}</p>}
+      {payload.removal === undefined
+        ? null
+        : <RemovalNotice removal={payload.removal} sessionContentStatus={payload.sessionContentStatus} />}
       {adding ? (
         <form className="participants__add" onSubmit={(event) => void addParticipant(event)}>
           <label>
@@ -142,7 +194,8 @@ export function SubmissionParticipants({
       {payload.sessionId === null ? null : (
         <p className="participants__note">
           This proposal is accepted. A participant added here joins the session and its onboarding work;
-          a removed participant leaves the session and keeps their completed work.
+          a removed participant leaves the session and keeps their completed work, and stays a speaker
+          at this event until they are removed on the roster.
         </p>
       )}
     </div>

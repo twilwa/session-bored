@@ -43,10 +43,26 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   on **every** removal, because a later removal only ever looks at its own session
   and would strand work from a session left earlier; the event's sessionless,
   unscoped onboarding templates belong to the person, so they go back only once
-  they speak nowhere else at the event. It reports `speaksElsewhereAtEvent` because whether
-  removal should also withdraw the event `speaker` row — which is what drives the
-  public speaker directory, the roster row, and mail eligibility — is an open
-  programme decision (issue #127). A collaborator is named, not
+  they speak nowhere else at the event, which is the only thing the release's
+  `speaksElsewhereAtEvent` decides. The event `speaker` row — which drives the
+  public speaker directory, the roster row, and mail eligibility — deliberately
+  stands after removal (issue #127, settled: no automatic withdrawal). What removal owes
+  instead is candour: the DELETE answers with `ParticipantRemovalOutcome`, and
+  the panel says the person remains an event speaker and points at the roster,
+  which owns withdrawal. That outcome reads every fact from the event after the
+  removal rather than from the release result, because a proposal with no session
+  still has to report the programme its participant speaks on elsewhere. The
+  notice names only the access the person actually held: the outcome carries
+  `heldSessionAccess`, read from the live `session_speaker` row *before* removal
+  archives it, and the payload carries `sessionContentStatus` beside `sessionId`.
+  A proposal is read-only to a named participant; naming somebody on an accepted
+  proposal through the CFP edit never carries them onto its session, so a session
+  the person never reached was never theirs to lose; and an `approved` session is
+  read-only to the speakers who are on it.
+  `PUBLIC_SPEAKER_STATUSES` in `worker/public-queries.ts`
+  is the one rule for whether an event speaker is publicly listed, and the
+  outcome's `listedPublicly` reads it; read it rather than restating the
+  statuses. A collaborator is named, not
   admitted: naming somebody mints no author key, grants no dashboard, and never
   overwrites the profile an existing person already has.
 - A sessionless task with no `task_scope` row is an event-wide onboarding
@@ -94,7 +110,22 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   notification, and no submission status change. It refuses once a review exists,
   and the score route refuses a recused assignment. Recused work leaves the
   reviewer's actionable queue and the organizer's `assignedCount`, and is reported
-  separately as `recusedCount`.
+  separately as `recusedCount`. Because it produces no rating, the organizer's
+  coverage worklist carries `recusedBy` and the row says so — a recused proposal
+  must never read as one nobody has opened — and each reviewer card's count links
+  to the proposals it stands for (`recusals`). A recusal belongs to a round, so
+  `recusedCount` and `recusals` stay per assignment and each entry names its round;
+  the worklist row speaks about the proposal, so `recusedBy` names each reviewer
+  account once — deduplicated on `reviewer_user_id`, never on the display name,
+  because two accounts may share one — while `recusedAssignments` beside it counts
+  the reads that are not coming and so is not `recusedBy.length`. That pair is
+  written into one sentence by `client/pages/review/worklist-copy.ts`. Both
+  surfaces read the recused `review_assignment` rows
+  themselves, never `reviewerQueue`, which inner-joins `reviewer_round_pool`: a
+  recusal is a settled fact about an assignment, so taking the reviewer out of the
+  round must not make the read that is not coming disappear from their card.
+  Surfacing the fact is the whole feature: no reassignment prompt, no queue,
+  nothing sent (issue #130).
 - Review scores remain in `review.scores`; `review.aggregate_score` is the
   weighted mean of numeric criteria, and the organizer worklist averages those
   review aggregates per submission. Submission comments are one attributed,

@@ -1086,11 +1086,220 @@ describe("review engine", () => {
       "/api/review/events/evt_devflow_conf_2027/config",
       { headers: { cookie: organizerCookie } },
     )).json<{
-      reviewers: Array<{ id: string; assignedCount: number; completedCount: number; recusedCount: number }>;
+      reviewers: Array<{
+        id: string;
+        assignedCount: number;
+        completedCount: number;
+        recusedCount: number;
+        recusals: Array<{ submissionId: string; title: string | null }>;
+      }>;
     }>();
     expect(config.reviewers.find((reviewer) => reviewer.id === provisioned.reviewer.id)).toEqual(
       expect.objectContaining({ assignedCount: 1, completedCount: 0, recusedCount: 1 }),
     );
+    // The count names the proposal it stands for, so an organizer can reach it from the card.
+    expect(config.reviewers.find((reviewer) => reviewer.id === provisioned.reviewer.id)?.recusals)
+      .toEqual([expect.objectContaining({ submissionId: "sub_ci_monorepo" })]);
+
+    // The coverage worklist distinguishes a recused proposal from one nobody has opened.
+    const worklist = await (await request(
+      "/api/review/events/evt_devflow_conf_2027/worklist",
+      { headers: { cookie: organizerCookie } },
+    )).json<{ items: Array<{ submissionId: string; ratingCount: number; recusedBy: string[] }> }>();
+    const recusedRow = worklist.items.find((item) => item.submissionId === "sub_ci_monorepo");
+    expect(recusedRow).toEqual(expect.objectContaining({ recusedBy: ["Devin Okafor"] }));
+    const untouchedRow = worklist.items.find((item) => item.submissionId === "sub_ai_verification");
+    expect(untouchedRow?.recusedBy).toEqual([]);
+  });
+
+  it("counts two reviewers who share a display name as two recusals", async () => {
+    await request("/api/health");
+    const organizerCookie = await signIn("sbek-organizer@example.com", "SbekTest!2027-org");
+    const organizerHeaders = { cookie: organizerCookie, "content-type": "application/json" };
+    // Two accounts, one name: a display string is not an identity.
+    const namesakes = ["namesake-one@example.com", "namesake-two@example.com"];
+    for (const email of namesakes) {
+      const provisioned = await request("/api/review/events/evt_devflow_conf_2027/reviewers", {
+        method: "POST",
+        headers: organizerHeaders,
+        body: JSON.stringify({
+          name: "Alex Moreau",
+          email,
+          password: "ReviewTalks!2027",
+          trackIds: [],
+          roundIds: ["rnd_initial_review"],
+        }),
+      });
+      expect(provisioned.status).toBe(201);
+      const reviewerUserId = (await provisioned.json<{ reviewer: { id: string } }>()).reviewer.id;
+      const assigned = await request("/api/review/rounds/rnd_initial_review/assignments", {
+        method: "POST",
+        headers: organizerHeaders,
+        body: JSON.stringify({ reviewerUserId, submissionIds: ["sub_docs_retrieval"] }),
+      });
+      expect(assigned.status).toBe(201);
+      const recused = await request("/api/review/submissions/sub_docs_retrieval/recusal", {
+        method: "POST",
+        headers: {
+          cookie: await signIn(email, "ReviewTalks!2027"),
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ roundId: "rnd_initial_review" }),
+      });
+      expect(recused.status).toBe(200);
+    }
+
+    const worklist = await (await request(
+      "/api/review/events/evt_devflow_conf_2027/worklist",
+      { headers: { cookie: organizerCookie } },
+    )).json<{ items: Array<{ submissionId: string; recusedBy: string[] }> }>();
+    const recusedBy = worklist.items.find((item) => item.submissionId === "sub_docs_retrieval")?.recusedBy ?? [];
+    // Two people stepped back, so two reads will not arrive - however alike their names read.
+    expect(recusedBy.filter((name) => name === "Alex Moreau")).toEqual(["Alex Moreau", "Alex Moreau"]);
+  });
+
+  it("keeps each round's recusal distinct when one reviewer recuses the same proposal twice", async () => {
+    await request("/api/health");
+    const organizerCookie = await signIn("sbek-organizer@example.com", "SbekTest!2027-org");
+    const organizerHeaders = { cookie: organizerCookie, "content-type": "application/json" };
+    const secondRound = await request("/api/review/events/evt_devflow_conf_2027/rounds", {
+      method: "POST",
+      headers: organizerHeaders,
+      body: JSON.stringify({ name: "Second pass", status: "open" }),
+    });
+    expect(secondRound.status).toBe(201);
+    const secondRoundId = (await secondRound.json<{ id: string }>()).id;
+
+    const provisioned = await (await request("/api/review/events/evt_devflow_conf_2027/reviewers", {
+      method: "POST",
+      headers: organizerHeaders,
+      body: JSON.stringify({
+        name: "Twice Recusing",
+        email: "twice-recusing@example.com",
+        password: "ReviewTalks!2027",
+        trackIds: [],
+        roundIds: ["rnd_initial_review", secondRoundId],
+      }),
+    })).json<{ reviewer: { id: string } }>();
+    for (const roundId of ["rnd_initial_review", secondRoundId]) {
+      const assigned = await request(`/api/review/rounds/${roundId}/assignments`, {
+        method: "POST",
+        headers: organizerHeaders,
+        body: JSON.stringify({ reviewerUserId: provisioned.reviewer.id, submissionIds: ["sub_ci_monorepo"] }),
+      });
+      expect(assigned.status).toBe(201);
+    }
+
+    const reviewerHeaders = {
+      cookie: await signIn("twice-recusing@example.com", "ReviewTalks!2027"),
+      "content-type": "application/json",
+    };
+    for (const roundId of ["rnd_initial_review", secondRoundId]) {
+      const recused = await request("/api/review/submissions/sub_ci_monorepo/recusal", {
+        method: "POST",
+        headers: reviewerHeaders,
+        body: JSON.stringify({ roundId }),
+      });
+      expect(recused.status).toBe(200);
+    }
+
+    const config = await (await request(
+      "/api/review/events/evt_devflow_conf_2027/config",
+      { headers: { cookie: organizerCookie } },
+    )).json<{
+      reviewers: Array<{
+        id: string;
+        recusedCount: number;
+        recusals: Array<{ roundId: string; roundName: string; submissionId: string; title: string | null }>;
+      }>;
+    }>();
+    const reviewer = config.reviewers.find((item) => item.id === provisioned.reviewer.id);
+    // Two rounds, two recusals: the count is per assignment, so each entry must name its own round.
+    expect(reviewer?.recusedCount).toBe(2);
+    const recusals = [...(reviewer?.recusals ?? [])]
+      .sort((left, right) => left.roundName.localeCompare(right.roundName));
+    expect(recusals.map((recusal) => [recusal.roundName, recusal.submissionId])).toEqual([
+      ["Initial review", "sub_ci_monorepo"],
+      ["Second pass", "sub_ci_monorepo"],
+    ]);
+    expect(new Set(reviewer?.recusals.map((recusal) => recusal.roundId)).size).toBe(2);
+
+    // The worklist row speaks about the proposal, so one reviewer is named once.
+    const worklist = await (await request(
+      "/api/review/events/evt_devflow_conf_2027/worklist",
+      { headers: { cookie: organizerCookie } },
+    )).json<{
+      items: Array<{ submissionId: string; recusedBy: string[]; recusedAssignments: number }>;
+    }>();
+    const row = worklist.items.find((item) => item.submissionId === "sub_ci_monorepo");
+    expect(row?.recusedBy.filter((name) => name === "Twice Recusing")).toEqual(["Twice Recusing"]);
+    // One person named once, but two scorecards owed and neither is coming.
+    expect(row?.recusedAssignments).toBeGreaterThanOrEqual(2);
+  });
+
+  it("keeps a recusal on the reviewer card after the organizer takes them out of the round", async () => {
+    await request("/api/health");
+    const organizerCookie = await signIn("sbek-organizer@example.com", "SbekTest!2027-org");
+    const organizerHeaders = { cookie: organizerCookie, "content-type": "application/json" };
+    const provisioned = await (await request("/api/review/events/evt_devflow_conf_2027/reviewers", {
+      method: "POST",
+      headers: organizerHeaders,
+      body: JSON.stringify({
+        name: "Narrowed Later",
+        email: "narrowed-later@example.com",
+        password: "ReviewTalks!2027",
+        trackIds: ["trk_ai_engineering"],
+        roundIds: ["rnd_initial_review"],
+      }),
+    })).json<{ reviewer: { id: string } }>();
+    expect((await request("/api/review/rounds/rnd_initial_review/assignments", {
+      method: "POST",
+      headers: organizerHeaders,
+      body: JSON.stringify({ reviewerUserId: provisioned.reviewer.id, submissionIds: ["sub_ci_monorepo"] }),
+    })).status).toBe(201);
+    expect((await request("/api/review/submissions/sub_ci_monorepo/recusal", {
+      method: "POST",
+      headers: {
+        cookie: await signIn("narrowed-later@example.com", "ReviewTalks!2027"),
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ roundId: "rnd_initial_review" }),
+    })).status).toBe(200);
+
+    const readCard = async () => {
+      const config = await (await request(
+        "/api/review/events/evt_devflow_conf_2027/config",
+        { headers: { cookie: organizerCookie } },
+      )).json<{
+        reviewers: Array<{
+          id: string;
+          recusedCount: number;
+          recusals: Array<{ roundId: string; submissionId: string }>;
+        }>;
+      }>();
+      return config.reviewers.find((reviewer) => reviewer.id === provisioned.reviewer.id);
+    };
+    expect(await readCard()).toEqual(expect.objectContaining({ recusedCount: 1 }));
+
+    // Taking the reviewer out of the round deletes their pool row. The read still is not coming,
+    // so the card must keep saying so and keep linking to the proposal the worklist names.
+    expect((await request(
+      `/api/review/events/evt_devflow_conf_2027/reviewers/${provisioned.reviewer.id}`,
+      { method: "PATCH", headers: organizerHeaders, body: JSON.stringify({ roundIds: [] }) },
+    )).status).toBe(200);
+
+    const narrowed = await readCard();
+    expect(narrowed?.recusedCount).toBe(1);
+    expect(narrowed?.recusals).toEqual([
+      expect.objectContaining({ roundId: "rnd_initial_review", submissionId: "sub_ci_monorepo" }),
+    ]);
+
+    const worklist = await (await request(
+      "/api/review/events/evt_devflow_conf_2027/worklist",
+      { headers: { cookie: organizerCookie } },
+    )).json<{ items: Array<{ submissionId: string; recusedBy: string[] }> }>();
+    expect(worklist.items.find((item) => item.submissionId === "sub_ci_monorepo")?.recusedBy)
+      .toContain("Narrowed Later");
   });
 
   it("refuses a recusal outside the reviewer's own remit and from every other role", async () => {

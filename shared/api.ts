@@ -461,10 +461,35 @@ export interface SubmissionParticipantSummary {
   onSession: boolean;
 }
 
+/**
+ * What a removal did, and what it deliberately left standing. Removing a participant from a
+ * proposal takes their access to that proposal and its session; it never withdraws the
+ * event-scoped speaker row, so the person can stay on the roster, in the public speaker
+ * directory, and in the mail recipient list. This reports that rather than leaving the
+ * organizer to discover it.
+ */
+export interface ParticipantRemovalOutcome {
+  name: string;
+  personId: `psn_${string}`;
+  speakerId: `spk_${string}` | null;
+  remainsEventSpeaker: boolean;
+  listedPublicly: boolean;
+  speaksElsewhereAtEvent: boolean;
+  /**
+   * Whether this person held a live `session_speaker` row when they were removed, read before
+   * the link was archived. Naming somebody on a proposal never carries them onto its session,
+   * so a proposal can hold a session this person could never reach.
+   */
+  heldSessionAccess: boolean;
+}
+
 export interface SubmissionParticipantsPayload {
   submissionId: `sub_${string}`;
   sessionId: `ses_${string}` | null;
+  /** Null with no session. Approved content is read-only to its speakers, so removal took no write. */
+  sessionContentStatus: SessionContentStatus | null;
   participants: SubmissionParticipantSummary[];
+  removal?: ParticipantRemovalOutcome;
 }
 
 export interface RosterSpeakerSummary extends SpeakerSummary {
@@ -1225,6 +1250,28 @@ export interface ReviewWorklistItem {
   tracks: string[];
   ratingCount: number;
   averageScore: number | null;
+  /**
+   * Reviewers who declared a conflict on this proposal, each named once. A recusal produces no
+   * rating, so without this a recused proposal reads exactly like one nobody has opened.
+   */
+  recusedBy: string[];
+  /**
+   * Recused assignments on this proposal, which is the number of scorecards that are not
+   * coming. One reviewer recusing in two rounds owes two, so this is not `recusedBy.length`.
+   */
+  recusedAssignments: number;
+}
+
+/**
+ * One proposal a reviewer recused themselves from, named so the count can lead an organizer to
+ * it. A recusal belongs to a round, and `recusedCount` counts assignments, so the same proposal
+ * appears once per round the reviewer stepped back in — each entry says which.
+ */
+export interface ReviewerRecusal {
+  roundId: string;
+  roundName: string;
+  submissionId: string;
+  title: string | null;
 }
 
 export interface ReviewProgress {
