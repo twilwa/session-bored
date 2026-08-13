@@ -1,0 +1,29 @@
+client/pages/review/OrganizerReviewPage.tsx
+  s_d64c9ca1467fe7::t_455d3268c06cd2 13-16,56,194
+tests/unit/reviewer-remit-copy.test.ts
+  s_d64c9ca1467fe7::t_aa0a3649074b23 1-27
+tests/integration/review-engine.test.ts
+  s_d64c9ca1467fe7::t_b08f5b2e786afc 1272,1276,1297-1299,1301-1317,1331-1336
+  s_d64c9ca1467fe7::t_195cdb41c68367 660,664-669,679,681,684,688-690,701-703
+client/pages/review/reviewer-remit-copy.ts
+  s_d64c9ca1467fe7::t_455d3268c06cd2 1-43
+worker/routes/review.ts
+  s_d64c9ca1467fe7::t_5d4faee3592b68 819-836,838-839,850-851,861-863,870
+  s_d64c9ca1467fe7::t_d1202c36d9b0bd 849
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "a71df9a340359e29f62cf9243a230e1b90fa6dd9",
+  "prompts": {},
+  "sessions": {
+    "s_d64c9ca1467fe7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ff9b5-a3fd-7251-88b7-dff4e7725672",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
