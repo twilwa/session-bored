@@ -1,0 +1,27 @@
+tests/e2e/review.spec.ts
+  s_d64c9ca1467fe7::t_a2ae3f7cec5edc 353-354,371-372
+client/pages/review/reviewer-remit-copy.ts
+  s_d64c9ca1467fe7::t_a2ae3f7cec5edc 7-18,46,49
+tests/integration/review-engine.test.ts
+  s_d64c9ca1467fe7::t_96583bcda50232 675,1792-1796
+tests/unit/reviewer-remit-copy.test.ts
+  s_d64c9ca1467fe7::t_52fdbe3f5d5a77 20,25-51
+worker/routes/review.ts
+  s_d64c9ca1467fe7::t_a2ae3f7cec5edc 827
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "27dc977409a880fd76fa42952dc33bf9a4449488",
+  "prompts": {},
+  "sessions": {
+    "s_d64c9ca1467fe7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ff9b5-a3fd-7251-88b7-dff4e7725672",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
