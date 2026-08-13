@@ -190,6 +190,36 @@ describe("speaker portal content", () => {
     await env.DB.prepare("update task set accepted_file_types = NULL where id = ?").bind("tsk_fixture_3").run();
   });
 
+  it("gives the seeded headshot request its picture types on a database seeded before they existed", async () => {
+    // The exact state of a database seeded by an earlier build: the fixture marker is already
+    // there, so `ensureSeeded` returns early, and the "Upload headshot" request still declares
+    // no type - which makes it a document request that refuses the picture its title asks for.
+    await env.DB.prepare("update task set accepted_file_types = NULL where id = ?").bind("tsk_fixture_1").run();
+    await env.DB.prepare("delete from system_state where key = ?")
+      .bind("fixture.devflow-2027.headshot-request.v1").run();
+
+    // Seeding again is the upgrade a deployed environment gets.
+    expect((await request("/api/health")).status).toBe(200);
+
+    const [row] = (await env.DB.prepare("select accepted_file_types from task where id = ?")
+      .bind("tsk_fixture_1").all<{ accepted_file_types: string | null }>()).results;
+    expect(row?.accepted_file_types).not.toBeNull();
+    expect(JSON.parse(row?.accepted_file_types ?? "null")).toEqual(pictureRequestFileTypes);
+
+    const content = await request("/api/speaker/content", { headers: { cookie: priyaCookie } });
+    const body = await content.json<{ tasks: Array<{ id: string; acceptedFileTypes: string[] | null }> }>();
+    expect(body.tasks.find((task) => task.id === "tsk_fixture_1")?.acceptedFileTypes)
+      .toEqual(pictureRequestFileTypes);
+
+    // And the request now takes the headshot its title asks for.
+    const upload = await request("/api/portal/tasks/tsk_fixture_1/files", {
+      method: "POST",
+      headers: { cookie: priyaCookie },
+      body: fileUpload("seeded-headshot.png", "image/png", pngSignature),
+    });
+    expect(upload.status).toBe(201);
+  });
+
   it("satisfies an organizer's picture request with a png, states that request's own accepted types, and makes it the speaker's headshot", async () => {
     const organizerCookie = await signIn(organizerCredentials.email, organizerCredentials.password);
     const created = await request("/api/events/evt_devflow_conf_2027/tasks", {
