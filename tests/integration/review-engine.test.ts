@@ -1228,9 +1228,13 @@ describe("review engine", () => {
     const worklist = await (await request(
       "/api/review/events/evt_devflow_conf_2027/worklist",
       { headers: { cookie: organizerCookie } },
-    )).json<{ items: Array<{ submissionId: string; recusedBy: string[] }> }>();
-    const recusedBy = worklist.items.find((item) => item.submissionId === "sub_ci_monorepo")?.recusedBy ?? [];
-    expect(recusedBy.filter((name) => name === "Twice Recusing")).toEqual(["Twice Recusing"]);
+    )).json<{
+      items: Array<{ submissionId: string; recusedBy: string[]; recusedAssignments: number }>;
+    }>();
+    const row = worklist.items.find((item) => item.submissionId === "sub_ci_monorepo");
+    expect(row?.recusedBy.filter((name) => name === "Twice Recusing")).toEqual(["Twice Recusing"]);
+    // One person named once, but two scorecards owed and neither is coming.
+    expect(row?.recusedAssignments).toBeGreaterThanOrEqual(2);
   });
 
   it("refuses a recusal outside the reviewer's own remit and from every other role", async () => {

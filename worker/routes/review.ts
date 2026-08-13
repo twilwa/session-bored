@@ -1398,6 +1398,9 @@ reviewRoutes.get(
       const numericScores = submissionReviews
         .map((review) => review.aggregateScore)
         .filter((score): score is number => score !== null);
+      const submissionRecusals = recusalRows.filter(
+        (recusal) => recusal.submissionId === submission.submissionId,
+      );
       return {
         ...submission,
         tracks: trackRows
@@ -1411,10 +1414,11 @@ reviewRoutes.get(
         // rounds they stepped back in. Two accounts can share a display name, so the one
         // that identifies them is the account, and the name is only what it is shown as.
         recusedBy: [...new Map(
-          recusalRows
-            .filter((recusal) => recusal.submissionId === submission.submissionId)
-            .map((recusal) => [recusal.reviewerUserId, recusal.reviewerName]),
+          submissionRecusals.map((recusal) => [recusal.reviewerUserId, recusal.reviewerName]),
         ).values()].sort((left, right) => left.localeCompare(right)),
+        // Each recused assignment is one scorecard that is not coming, and a reviewer in two
+        // rounds owes two, so the missing reads are counted separately from the people.
+        recusedAssignments: submissionRecusals.length,
       };
     });
     const sort = context.req.query("sort") === "score" ? "score" : "coverage";

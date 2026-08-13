@@ -10,6 +10,7 @@ import type {
 } from "../../../shared/api.ts";
 import { Button, LoadingState, StatusChip, Toast } from "../../components/ui.tsx";
 import { ReviewLink, reviewRequest } from "./reviewClient.tsx";
+import { recusalSummary } from "./worklist-copy.ts";
 import { SubmissionReviewPage } from "./SubmissionReviewPage.tsx";
 import "./review.css";
 
@@ -332,8 +333,7 @@ function OrganizerReviewWorklist() {
                 <small>Permanent link · {item.submissionId}</small>
                 {item.recusedBy.length === 0 ? null : (
                   <small className="review-row__recusal">
-                    Recused by {item.recusedBy.join(", ")} ·{" "}
-                    {item.recusedBy.length === 1 ? "that read" : "those reads"} will not arrive
+                    {recusalSummary(item.recusedBy, item.recusedAssignments)}
                   </small>
                 )}
               </div>

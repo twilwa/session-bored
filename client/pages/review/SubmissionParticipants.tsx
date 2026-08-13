@@ -12,7 +12,9 @@ const emptyDraft = { name: "", email: "", roleLabel: "" };
  * the proposal by design: it never withdraws the event speaker, so the organizer is told that
  * outright and pointed at the roster, which is where withdrawing from the event happens.
  */
-function RemovalNotice({ removal }: { removal: ParticipantRemovalOutcome }) {
+export function RemovalNotice(
+  { removal, hasSession }: { removal: ParticipantRemovalOutcome; hasSession: boolean },
+) {
   if (!removal.remainsEventSpeaker) {
     return (
       <section aria-label="What removing this participant did" className="participants__removal" role="status">
@@ -31,8 +33,9 @@ function RemovalNotice({ removal }: { removal: ParticipantRemovalOutcome }) {
     <section aria-label="What removing this participant did" className="participants__removal" role="status">
       <strong>{removal.name} is no longer on this proposal</strong>
       <p>
-        They lost read and write access to it and to its session. They are still a speaker at this
-        event: {standing.join(", ")}. Removing a participant here never withdraws them from the event.
+        They lost read and write access to it{hasSession ? " and to its session" : ""}. They are
+        still a speaker at this event: {standing.join(", ")}. Removing a participant here never
+        withdraws them from the event.
       </p>
       <p>
         To take them off the event entirely, remove them on the{" "}
@@ -143,7 +146,9 @@ export function SubmissionParticipants({
         </div>
       ))}
       {error === null ? null : <p className="participants__error" role="alert">{error}</p>}
-      {payload.removal === undefined ? null : <RemovalNotice removal={payload.removal} />}
+      {payload.removal === undefined
+        ? null
+        : <RemovalNotice hasSession={payload.sessionId !== null} removal={payload.removal} />}
       {adding ? (
         <form className="participants__add" onSubmit={(event) => void addParticipant(event)}>
           <label>

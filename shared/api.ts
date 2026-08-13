@@ -1247,6 +1247,11 @@ export interface ReviewWorklistItem {
    * rating, so without this a recused proposal reads exactly like one nobody has opened.
    */
   recusedBy: string[];
+  /**
+   * Recused assignments on this proposal, which is the number of scorecards that are not
+   * coming. One reviewer recusing in two rounds owes two, so this is not `recusedBy.length`.
+   */
+  recusedAssignments: number;
 }
 
 /**
