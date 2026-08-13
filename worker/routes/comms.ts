@@ -233,18 +233,22 @@ commsRoutes.post("/api/events/:eventId/email-dispatches/reminders/draft", async 
 
 commsRoutes.post("/api/events/:eventId/decision-notices/:submissionId/retry", async (context) => {
   const database = drizzle(context.env.DB);
-  // The letter the caller was looking at. A page loaded before a cancellation would otherwise
-  // send the replacement under the retired letter's review.
+  // The letter the caller was looking at, and it is required. A request that cannot say which
+  // letter it means is refused rather than falling back to submission-scoped selection: that
+  // fallback is precisely how a page loaded before a cancellation would send the replacement
+  // under the retired letter's review.
   const payload = await context.req
     .json<{ noticeId?: unknown }>()
     .catch(() => ({} as { noticeId?: unknown }));
+  if (typeof payload.noticeId !== "string" || payload.noticeId === "") {
+    return context.json({ error: "notice_id_required" }, 400);
+  }
   const result = await retryDecisionNotice(
     database,
     context.env,
     context.req.param("eventId") as `evt_${string}`,
     context.req.param("submissionId"),
-    undefined,
-    typeof payload.noticeId === "string" ? payload.noticeId : undefined,
+    payload.noticeId,
   );
   if (result.status === "not_found") {
     return context.json({ error: "notice_not_found" }, 404);

@@ -192,7 +192,7 @@ describe("decision notice dispatch", () => {
 
     // Retrying the failed one succeeds and is visible per-recipient; the already-sent one is untouched.
     const retrySucceeds: EmailDelivery = { async send() { return { status: "sent", providerMessageId: "retry_1" }; } };
-    const retryResult = await retryDecisionNotice(database, env, eventId, failedRow!.submissionId, retrySucceeds);
+    const retryResult = await retryDecisionNotice(database, env, eventId, failedRow!.submissionId, failedRow!.id, retrySucceeds);
     expect(retryResult).toEqual({ status: "sent" });
     const [retried] = await database.select().from(decisionNotices).where(eq(decisionNotices.id, failedRow!.id));
     expect(retried).toMatchObject({ deliveryStatus: "sent", providerMessageId: "retry_1" });
@@ -200,12 +200,14 @@ describe("decision notice dispatch", () => {
     // The HTTP retry route refuses to retry a notice that is not currently failed.
     const notRetryable = await request(`/api/events/${eventId}/decision-notices/${retried!.submissionId}/retry`, {
       method: "POST",
-      headers: { cookie },
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ noticeId: retried!.id }),
     });
     expect(notRetryable.status).toBe(409);
     const notFound = await request(`/api/events/${eventId}/decision-notices/sub_missing/retry`, {
       method: "POST",
-      headers: { cookie },
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ noticeId: retried!.id }),
     });
     expect(notFound.status).toBe(404);
 
@@ -368,7 +370,11 @@ describe("a decision recorded while no sender is connected", () => {
     const resend = interceptResend({ ok: true, id: "resend_waiting" });
     const sendWaiting = await requestWithSenderConnected(
       `/api/events/${eventId}/decision-notices/${queued!.submissionId}/retry`,
-      { method: "POST", headers: { cookie } },
+      {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ noticeId: queued!.id }),
+      },
     );
     expect(sendWaiting.status).toBe(200);
     await expect(sendWaiting.json()).resolves.toEqual({ status: "sent" });
@@ -386,7 +392,11 @@ describe("a decision recorded while no sender is connected", () => {
     // A delivered letter is refused, so connecting a sender can never re-send it.
     const again = await requestWithSenderConnected(
       `/api/events/${eventId}/decision-notices/${queued!.submissionId}/retry`,
-      { method: "POST", headers: { cookie } },
+      {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ noticeId: queued!.id }),
+      },
     );
     expect(again.status).toBe(409);
     await expect(again.json()).resolves.toMatchObject({ error: "notice_not_retryable", currentStatus: "sent" });
@@ -455,7 +465,11 @@ describe("a decision recorded while no sender is connected", () => {
     // Clicking "Send now" again says the same thing rather than trying again.
     const retried = await requestWithSenderConnected(
       `/api/events/${eventId}/decision-notices/${submissionId}/retry`,
-      { method: "POST", headers: { cookie } },
+      {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ noticeId: notice!.id }),
+      },
     );
     expect(retried.status).toBe(502);
     await expect(retried.json()).resolves.toMatchObject({ status: "failed" });

@@ -167,10 +167,11 @@ describe("decision notice correction", () => {
       expect(row!.cancellation_reason).toBe("Wrong address on file.");
       expect(row!.delivery_status).toBe("queued");
 
-      // Neither send door will touch it any more.
+      // Neither send door will touch it any more. Naming the retired letter is the stronger
+      // assertion: the refusal is about that letter, not about the request being malformed.
       const retry = await request(
         `/api/events/${eventId}/decision-notices/${submissionId}/retry`,
-        { method: "POST", headers: { cookie } },
+        { method: "POST", headers, body: JSON.stringify({ noticeId: row!.id }) },
       );
       expect(retry.status).toBe(404);
     });
@@ -348,7 +349,8 @@ describe("a letter cannot be cancelled and sent at the same time", () => {
       },
     };
 
-    const sending = retryDecisionNotice(database, env, eventIdTyped, submissionId, blocking);
+    const liveId = (await noticesFor(submissionId))[0]!.id;
+    const sending = retryDecisionNotice(database, env, eventIdTyped, submissionId, liveId, blocking);
     // Let the claim land before racing it.
     while (providerCalls === 0) {
       await new Promise((resolve) => setTimeout(resolve, 1));
@@ -396,7 +398,8 @@ describe("a letter cannot be cancelled and sent at the same time", () => {
       },
     };
     // Both send doors, against the retired letter.
-    await expect(retryDecisionNotice(database, env, eventIdTyped, submissionId, counting))
+    const retiredId = (await noticesFor(submissionId))[0]!.id;
+    await expect(retryDecisionNotice(database, env, eventIdTyped, submissionId, retiredId, counting))
       .resolves.toEqual({ status: "not_found" });
     const batchId = (await noticesFor(submissionId))[0]!.id;
     expect(batchId).toBeDefined();
@@ -409,7 +412,8 @@ describe("a letter cannot be cancelled and sent at the same time", () => {
     const unconfigured: EmailDelivery = {
       send: () => Promise.resolve({ status: "provider_not_configured" as const }),
     };
-    await expect(retryDecisionNotice(database, env, eventIdTyped, submissionId, unconfigured))
+    const queuedId = (await noticesFor(submissionId))[0]!.id;
+    await expect(retryDecisionNotice(database, env, eventIdTyped, submissionId, queuedId, unconfigured))
       .resolves.toEqual({ status: "provider_not_configured" });
     const [row] = await noticesFor(submissionId);
     expect(row!.delivery_status).toBe("queued");
@@ -442,7 +446,7 @@ describe("a letter cannot be cancelled and sent at the same time", () => {
     // The stale tab names the letter it displayed. That letter is gone, so nothing is sent -
     // rather than quietly sending the replacement under the retired letter's review.
     await expect(
-      retryDecisionNotice(database, env, eventIdTyped, submissionId, counting, staleNoticeId),
+      retryDecisionNotice(database, env, eventIdTyped, submissionId, staleNoticeId, counting),
     ).resolves.toEqual({ status: "superseded" });
     expect(providerCalls).toBe(0);
 
@@ -513,6 +517,45 @@ describe("a letter cannot be cancelled and sent at the same time", () => {
       "select email from person where id = (select submitter_person_id from submission where id = ?)",
     ).bind(submissionId).first<{ email: string }>();
     expect(person!.email).toBe("already-fixed@greenroom-probe.dev");
+  });
+
+  it("refuses a retry that does not name a letter at all", async () => {
+    await queue();
+    // An opt-in guard would fall back to submission-scoped selection here, which is how a stale
+    // bundle or a hand-made request sends whichever letter the query happens to pick.
+    for (const body of ["{}", JSON.stringify({ noticeId: "" }), JSON.stringify({ noticeId: 7 }), ""]) {
+      const response = await request(
+        `/api/events/${eventId}/decision-notices/${submissionId}/retry`,
+        { method: "POST", headers, body },
+      );
+      expect(response.status, `body: ${body || "(empty)"}`).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({ error: "notice_id_required" });
+    }
+    // Nothing was attempted for it either way.
+    const [row] = await noticesFor(submissionId);
+    expect(row!.delivery_status).toBe("queued");
+  });
+
+  it("refuses a retry that names a cancelled letter", async () => {
+    await queue();
+    const cancelledId = (await noticesFor(submissionId))[0]!.id;
+    const cancelled = await request(
+      `/api/events/${eventId}/decision-notices/${submissionId}/cancel`,
+      { method: "POST", headers, body: JSON.stringify({ reason: "Wrong address." }) },
+    );
+    expect(cancelled.status).toBe(200);
+
+    // No live letter remains, so naming the retired one is refused rather than resolving to
+    // anything else.
+    const response = await request(
+      `/api/events/${eventId}/decision-notices/${submissionId}/retry`,
+      { method: "POST", headers, body: JSON.stringify({ noticeId: cancelledId }) },
+    );
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toMatchObject({ error: "notice_not_found" });
+    const [row] = await noticesFor(submissionId);
+    expect(row!.delivery_status).toBe("queued");
+    expect(row!.cancelled_at).not.toBeNull();
   });
 
   it("names who cancelled the letter in the communications history", async () => {

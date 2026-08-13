@@ -171,18 +171,24 @@ export type RetryDecisionNoticeResult =
  * when its batch was dispatched. A notice already `sent` is refused here, so
  * this can never deliver the same letter twice.
  *
- * `expectedNoticeId` is the letter the caller was looking at. Since a letter can be cancelled and
- * replaced, resolving by submission alone would let a page loaded before that send the *new*
- * letter under the old one's review - a different recipient, outcome, and copy than the organizer
- * read. Naming the letter turns that into a refusal.
+ * `noticeId` is the letter the caller was looking at, and it is **required**. Since a letter can be
+ * cancelled and replaced, resolving by submission alone would let a page loaded before that send
+ * the *new* letter under the old one's review - a different recipient, outcome, and copy than the
+ * organizer read. Naming the letter turns that into a refusal.
+ *
+ * It is a required argument rather than an optional check because the consequence of getting it
+ * wrong is delivering an unreviewed letter to a speaker. An optional guard is only as good as
+ * every caller remembering it, and a caller that forgets - a stale bundle, a new call site, a
+ * hand-made request - would silently fall back to sending whichever letter the query picked. There
+ * is no such fallback: a send that cannot name its letter does not happen.
  */
 export async function retryDecisionNotice(
   database: EmailDatabase,
   env: EmailEnvironment,
   eventId: `evt_${string}`,
   submissionId: string,
+  noticeId: string,
   delivery: EmailDelivery = resolveEmailDelivery(env),
-  expectedNoticeId?: string | undefined,
 ): Promise<RetryDecisionNoticeResult> {
   const [row] = await database
     .select({
@@ -204,7 +210,7 @@ export async function retryDecisionNotice(
   if (row === undefined) {
     return { status: "not_found" };
   }
-  if (expectedNoticeId !== undefined && expectedNoticeId !== row.id) {
+  if (noticeId !== row.id) {
     return { status: "superseded" };
   }
   if (row.deliveryStatus === "sent") {

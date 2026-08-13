@@ -69,6 +69,9 @@ function requestErrorMessage(status: number, payload: unknown): string {
     if (error === "notice_already_cancelled") {
       return "This letter was already cancelled.";
     }
+    if (error === "notice_id_required") {
+      return "This page could not say which letter to send. Reload Communications and try again.";
+    }
     if (error === "notice_superseded") {
       return "This letter was cancelled and replaced while this page was open. Reload to see the letter that is waiting now.";
     }
@@ -275,7 +278,7 @@ export function CommsPage() {
     }
   }
 
-  async function sendNotice(submissionId: string, noticeId: string | undefined): Promise<void> {
+  async function sendNotice(submissionId: string, noticeId: string): Promise<void> {
     setBusy(true);
     try {
       // Name the letter this page is showing. If it was cancelled and replaced since the page
@@ -404,26 +407,31 @@ export function CommsPage() {
         <section className="workspace-section comms-undelivered" aria-label="Decision letters not yet delivered">
           <div className="section-heading"><div><p className="section-label">NEEDS ATTENTION</p><h2>{undeliveredNotices.length} decision letter{undeliveredNotices.length === 1 ? "" : "s"} {undeliveredNotices.length === 1 ? "has" : "have"} not gone out</h2></div></div>
           <div className="comms-draft-list">
-            {undeliveredNotices.map((item) => (
+            {undeliveredNotices.map((item) => {
+              // This list is built from proposals that have a letter, so `notice` is always set.
+              // Binding it here is what lets the send action name the letter it is showing.
+              const notice = item.notice;
+              if (notice === null) return null;
+              return (
               <article className="comms-draft" key={item.id}>
                 {/* The address the letter carries, not the person's current one. Correcting the
                     person leaves this pointing at the old address, and this card offers to send. */}
-                <p><strong>{item.recipientName}</strong> &lt;{item.notice?.recipientEmail ?? item.recipientEmail}&gt;</p>
-                <p className="quiet-copy">{item.title ?? "Untitled proposal"} · {item.notice?.outcome}</p>
+                <p><strong>{item.recipientName}</strong> &lt;{notice.recipientEmail}&gt;</p>
+                <p className="quiet-copy">{item.title ?? "Untitled proposal"} · {notice.outcome}</p>
                 <p className="comms-undelivered-state">
-                  {item.notice?.deliveryStatus === "failed"
+                  {notice.deliveryStatus === "failed"
                     ? "Send failed"
                     : "Waiting to send — no delivery has been attempted"}
                 </p>
-                {item.notice?.deliveryStatus === "failed"
-                  ? <p className="comms-undelivered-reason">{item.notice.failureReason ?? "The sender recorded no reason."}</p>
+                {notice.deliveryStatus === "failed"
+                  ? <p className="comms-undelivered-reason">{notice.failureReason ?? "The sender recorded no reason."}</p>
                   : null}
                 {senderStatus?.connected === false
                   ? <p className="comms-undelivered-blocked">It will go out once an email sender is connected. See the delivery status above.</p>
                   : null}
                 <div className="comms-draft__actions">
                   {senderStatus?.connected === false ? null : (
-                    <Button disabled={busy || senderStatus === null} onClick={() => void sendNotice(item.id, item.notice?.id)} tone="signal">
+                    <Button disabled={busy || senderStatus === null} onClick={() => void sendNotice(item.id, notice.id)} tone="signal">
                       Send now
                     </Button>
                   )}
@@ -436,7 +444,8 @@ export function CommsPage() {
                   </Button>
                 </div>
               </article>
-            ))}
+              );
+            })}
           </div>
         </section>
       )}
