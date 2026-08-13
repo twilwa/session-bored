@@ -347,14 +347,19 @@ export async function releaseParticipantFromSession(
     if (assignments.length === 0) {
       return [];
     }
-    await database
+    const archived = await database
       .update(taskAssignees)
       .set({ deletedAt: new Date() })
       .where(and(
         inArray(taskAssignees.id, assignments.map((assignment) => assignment.assignmentId)),
         isNull(taskAssignees.deletedAt),
-      ));
-    return assignments.map(({ id, title }) => ({ id, title }));
+        ...only,
+      ))
+      .returning({ taskId: taskAssignees.taskId });
+    const archivedTaskIds = new Set(archived.map((assignment) => assignment.taskId));
+    return assignments
+      .filter((assignment) => archivedTaskIds.has(assignment.id))
+      .map(({ id, title }) => ({ id, title }));
   };
   // This session's own work goes back every time, not only on the last removal. Deferring it
   // would strand it: a later removal only ever looks at the session it was given, so work from

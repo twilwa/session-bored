@@ -102,6 +102,17 @@ describe("what the removal notice says it took away", () => {
     expect(markup).toContain("Naming them on this proposal again restores this work and its history.");
   });
 
+  it("does not contradict a withdrawal when the event speaker record is no longer live", () => {
+    const markup = renderToStaticMarkup(
+      createElement(RemovalNotice, {
+        removal: { ...removalWithWithdrawals, remainsEventSpeaker: false, speakerId: null },
+        sessionContentStatus: "approved",
+      }),
+    );
+    expect(markup).toContain("Complete bio and profile");
+    expect(markup).not.toContain("nothing else is left to undo");
+  });
+
   it("still points at the roster whatever the proposal had", () => {
     for (const removal of [removedSpeaker, neverOnTheSession]) {
       for (const sessionContentStatus of [null, "draft", "in_review", "approved"] as const) {
