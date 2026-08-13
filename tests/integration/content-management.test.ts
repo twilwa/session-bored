@@ -105,7 +105,7 @@ describe("content management", () => {
       headers: { cookie: organizerCookie },
     });
     const before = await beforeResponse.json<{
-      metrics: { total: number; requested: number; overdue: number; delivered: number };
+      metrics: { total: number; requested: number; overdue: number; completed: number; delivered: number };
     }>();
     const emptyRequestResponse = await request(`/api/events/${eventId}/tasks`, {
       method: "POST",
@@ -172,7 +172,7 @@ describe("content management", () => {
       total: before.metrics.total + 2,
       requested: before.metrics.requested,
       overdue: before.metrics.overdue,
-      completed: 1,
+      completed: before.metrics.completed + 1,
       delivered: before.metrics.delivered + 1,
     });
     expect(payload.items.find((item) => item.taskId === emptyRequest.id)).toMatchObject({
