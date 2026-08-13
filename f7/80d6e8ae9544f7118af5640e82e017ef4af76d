@@ -1,0 +1,19 @@
+README.md
+  s_79b432de7c74fd::t_9550b6b0da437f 106-108
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "f780d6e8ae9544f7118af5640e82e017ef4af76d",
+  "prompts": {},
+  "sessions": {
+    "s_79b432de7c74fd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "01c6347a-3493-4874-865f-810f37832112",
+        "model": "claude-fable-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
