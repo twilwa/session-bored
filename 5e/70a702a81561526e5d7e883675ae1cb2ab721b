@@ -1,0 +1,23 @@
+client/components/Headshot.tsx
+  s_f58e8dfb1f8475::t_3579138820db56 5-16
+tests/unit/roster-avatar.test.ts
+  s_f58e8dfb1f8475::t_16ecf08a208d64 1
+  s_f58e8dfb1f8475::t_92148c06273d80 6,9-22
+  s_f58e8dfb1f8475::t_d11f3ec672f554 23
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "5e70a702a81561526e5d7e883675ae1cb2ab721b",
+  "prompts": {},
+  "sessions": {
+    "s_f58e8dfb1f8475": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7c78a159-d910-472e-ae88-927290d0a83a",
+        "model": "claude-fable-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}

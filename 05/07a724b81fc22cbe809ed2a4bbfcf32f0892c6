@@ -1,0 +1,44 @@
+client/pages/public/SpeakerDetailPage.tsx
+  s_3d0cb2115ef092::t_0ea6c7c03835af 2,4,58
+  s_3d0cb2115ef092::t_9ddf3f01a59433 8
+client/pages/embeds/EmbedFramePage.tsx
+  s_3d0cb2115ef092::t_0ea6c7c03835af 10,107
+client/components/Headshot.tsx
+  s_3d0cb2115ef092::t_9ddf3f01a59433 3,18,21,27,30,39-41,43
+  s_3d0cb2115ef092::t_0ea6c7c03835af 1-2,4-17,19-20,22-26,28-29,31-38,42,44
+client/pages/public/SpeakersPage.tsx
+  s_3d0cb2115ef092::t_0ea6c7c03835af 3,13
+  s_3d0cb2115ef092::t_9ddf3f01a59433 7
+client/pages/portal/PortalPage.tsx
+  s_3d0cb2115ef092::t_0ea6c7c03835af 11
+  s_3d0cb2115ef092::t_9ddf3f01a59433 283
+client/pages/public/SpeakerGalleryPage.tsx
+  s_3d0cb2115ef092::t_0ea6c7c03835af 4,13
+  s_3d0cb2115ef092::t_9ddf3f01a59433 8
+tests/unit/roster-avatar.test.ts
+  s_3d0cb2115ef092::t_0ea6c7c03835af 6-7,11,24,31
+tests/integration/portal-content.test.ts
+  s_3d0cb2115ef092::t_37cadf3be4de6a 105,386-413
+  s_3d0cb2115ef092::t_b72e606a6f82b7 257,435
+client/pages/roster/RosterPage.tsx
+  s_3d0cb2115ef092::t_9ddf3f01a59433 254
+  s_3d0cb2115ef092::t_0ea6c7c03835af 21,131
+worker/routes/portal.ts
+  s_3d0cb2115ef092::t_0ea6c7c03835af 268,528-531,535,551
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "0507a724b81fc22cbe809ed2a4bbfcf32f0892c6",
+  "prompts": {},
+  "sessions": {
+    "s_3d0cb2115ef092": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ff9b5-f66c-70a2-9106-a95bdb686798",
+        "model": "gpt-5.6-terra"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
