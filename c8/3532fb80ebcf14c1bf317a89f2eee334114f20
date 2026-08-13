@@ -1,0 +1,20 @@
+tests/e2e/roster.spec.ts
+  s_fd0bc42efdedeb::t_bd54f82a3cff11 105-117,130-134,138-141,145-148,150-151
+  s_fd0bc42efdedeb::t_dd1b4da001e3a0 65,71,95,103-104,118-129,135-137,142-144,149,152-153,413,420,422,432-442,444
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "c83532fb80ebcf14c1bf317a89f2eee334114f20",
+  "prompts": {},
+  "sessions": {
+    "s_fd0bc42efdedeb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ff9b5-def8-78b1-8cbd-c4b3e0026c7e",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
