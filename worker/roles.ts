@@ -70,9 +70,17 @@ export async function resolveGrantedRoles(database: Database, userId: string): P
   return grantedRoles(grants.map((grant) => grant.role));
 }
 
+/**
+ * The one role that *describes* an account on screen - its widest live grant. Deciding access
+ * from this is the bug it exists to avoid: ask `holdsAccess` for that, always.
+ */
+export function describingRole(roles: readonly Role[]): Role {
+  return roles[0] ?? "attendee";
+}
+
 /** The widest role this account holds, for describing it. An account with no live grant is an attendee. */
 export async function resolveEffectiveRole(database: Database, userId: string): Promise<Role> {
-  return (await resolveGrantedRoles(database, userId))[0]!;
+  return describingRole(await resolveGrantedRoles(database, userId));
 }
 
 /** The effective role of many accounts at once, keyed by user id. */

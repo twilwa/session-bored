@@ -14,20 +14,21 @@ import {
   tracks,
   type Role,
 } from "../../db/schema.ts";
+import { holdsAccess } from "../access.ts";
 
 type EventSettingsEnvironment = {
   Bindings: CloudflareBindings;
   Variables: {
     authUser: { id: string } | null;
-    role: Role | null;
+    roles: Role[] | null;
   };
 };
 
 const eventSettingsRoutes = new Hono<EventSettingsEnvironment>();
 
 const requireOrganizer = createMiddleware<EventSettingsEnvironment>(async (context, next) => {
-  if (context.get("role") !== "organizer") {
-    const status = context.get("role") === null ? 401 : 403;
+  if (!holdsAccess(context.get("roles") ?? [], "organizer")) {
+    const status = context.get("roles") === null ? 401 : 403;
     return context.json({ error: status === 401 ? "authentication_required" : "forbidden" }, status);
   }
   await next();

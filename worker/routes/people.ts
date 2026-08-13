@@ -21,6 +21,7 @@ import {
   users,
   type Role,
 } from "../../db/schema.ts";
+import { holdsAccess } from "../access.ts";
 import type { PersonAccountEvidence, PersonAccountSummary } from "../../shared/api.ts";
 import type { AuthSession } from "../auth.ts";
 import { sendRoleGrantEmail } from "../email/role-grant.ts";
@@ -31,18 +32,18 @@ type PeopleEnvironment = {
   Bindings: CloudflareBindings;
   Variables: {
     authUser: AuthSession["user"] | null;
-    role: Role | null;
+    roles: Role[] | null;
   };
 };
 
 const peopleRoutes = new Hono<PeopleEnvironment>();
 
 const requireOrganizer = createMiddleware<PeopleEnvironment>(async (context, next) => {
-  const role = context.get("role");
-  if (role === null) {
+  const roles = context.get("roles");
+  if (roles === null) {
     return context.json({ error: "authentication_required" }, 401);
   }
-  if (role !== "organizer") {
+  if (!holdsAccess(roles, "organizer")) {
     return context.json({ error: "forbidden" }, 403);
   }
   await next();

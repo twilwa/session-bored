@@ -38,7 +38,6 @@ type PortalEnvironment = {
   Variables: {
     authSession: AuthSession["session"] | null;
     authUser: AuthSession["user"] | null;
-    role: Role | null;
     roles: Role[] | null;
   };
 };

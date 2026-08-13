@@ -20,10 +20,11 @@ import {
   tracks,
   type Role,
 } from "../../db/schema.ts";
+import { holdsAccess } from "../access.ts";
 
 type BuilderEnvironment = {
   Bindings: CloudflareBindings;
-  Variables: { role: Role | null };
+  Variables: { roles: Role[] | null };
 };
 
 type BuilderDatabase = ReturnType<typeof drizzle>;
@@ -444,8 +445,8 @@ async function renderSubmission(database: BuilderDatabase, submissionId: string)
 const cfpBuilderRoutes = new Hono<BuilderEnvironment>();
 
 cfpBuilderRoutes.use("*", async (context, next) => {
-  if (context.get("role") !== "organizer") {
-    return context.json({ error: context.get("role") === null ? "authentication_required" : "forbidden" }, context.get("role") === null ? 401 : 403);
+  if (!holdsAccess(context.get("roles") ?? [], "organizer")) {
+    return context.json({ error: context.get("roles") === null ? "authentication_required" : "forbidden" }, context.get("roles") === null ? 401 : 403);
   }
   await next();
 });

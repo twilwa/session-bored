@@ -28,7 +28,6 @@ type ContentEnvironment = {
   Variables: {
     authSession: AuthSession["session"] | null;
     authUser: AuthSession["user"] | null;
-    role: Role | null;
     roles: Role[] | null;
   };
 };
@@ -36,11 +35,11 @@ type ContentEnvironment = {
 const contentRoutes = new Hono<ContentEnvironment>();
 
 const requireOrganizer = createMiddleware<ContentEnvironment>(async (context, next) => {
-  const role = context.get("role");
-  if (role === null) {
+  const roles = context.get("roles");
+  if (roles === null) {
     return context.json({ error: "authentication_required" }, 401);
   }
-  if (role !== "organizer") {
+  if (!holdsAccess(roles, "organizer")) {
     return context.json({ error: "forbidden" }, 403);
   }
   await next();

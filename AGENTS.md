@@ -140,15 +140,20 @@ is the only reader, `grantRole` and `revokeRole` are the only writers, and
 revoking sets `revoked_at` rather than deleting, so who decided what survives.
 **What an account may reach is the union of its live grants, never one of
 them.** `resolveGrantedRoles` answers that union, widest first
-(organizer > reviewer > speaker); `prepareRequest` puts it in the `roles`
-context variable and gates read it through `holdsAccess` in `worker/access.ts`,
-so granting a second area really opens it and no role implies another. Gates
-that still compare the single `role` are organizer-only, where the widest role
-and the union agree; **any gate on `reviewer` or `speaker` must read `roles`**,
-or the second grant is invisible again. `resolveEffectiveRole` is that union's
-first entry and exists only to *describe* an account on screen - never gate on
-it. A test harness that injects a signed-in caller must set `roles`, not just
-`role`. Never read
+(organizer > reviewer > speaker), and `prepareRequest` puts it in the `roles`
+context variable - **the only role state a request carries.** There is
+deliberately no single-role context variable beside it: one existed, half the
+gates were migrated off it and half were not, and the half left behind refused
+callers that carried only the union. Every gate, in a route file or a
+middleware, asks `holdsAccess` in `worker/access.ts`, so granting a second area
+really opens it and no role implies another. Where a handler branches on *how
+much* a caller may see - unscoped versus own-remit, identified versus blind -
+branch on `holdsAccess(roles, "organizer")`, never on which role happens to be
+widest. `describingRole` names the union's first entry for screens and for the
+landing area; it decides nothing, and a gate must never call it. A harness that
+mounts routes with an injected caller sets `roles` and nothing else -
+`tests/integration/account-access.test.ts` mounts the review routes that way on
+purpose, so a handler that reads anything else fails there. Never read
 `user.role`: it keeps its original three-value CHECK
 because D1 refuses the rebuild that changing it needs (`user` has ten inbound
 foreign keys and does not honour `PRAGMA foreign_keys=OFF`), and Better Auth no

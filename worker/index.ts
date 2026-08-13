@@ -28,7 +28,7 @@ import {
 } from "../db/schema.ts";
 import { speakerFacingSubmissionStatus, type ApiAccess, type PortalFileVersion } from "../shared/api.ts";
 import { authorizeAccess } from "./access.ts";
-import { resolveGrantedRoles } from "./roles.ts";
+import { describingRole, resolveGrantedRoles } from "./roles.ts";
 import { accessDeniedDocument, prefersHtmlDocument } from "./access-page.ts";
 import { createAuth, type AuthSession } from "./auth.ts";
 import aiReviewRoutes from "./routes/ai-review.ts";
@@ -59,7 +59,6 @@ type AppEnvironment = {
   Variables: {
     authSession: AuthSession["session"] | null;
     authUser: SessionUser | null;
-    role: Role | null;
     roles: Role[] | null;
   };
 };
@@ -73,12 +72,12 @@ const prepareRequest = createMiddleware<AppEnvironment>(async (context, next) =>
   context.set("authUser", authSession?.user ?? null);
   // Roles come from the account's live grants, never from the session or the `user.role`
   // column. Signing up therefore reaches nothing beyond a signed-in attendee until an
-  // organizer decides otherwise. `roles` is what every gate reads, so two grants open two
-  // areas; `role` is the widest of them and describes the account on screen.
-  const roles =
-    authSession === null ? null : await resolveGrantedRoles(drizzle(context.env.DB), authSession.user.id);
-  context.set("roles", roles);
-  context.set("role", roles === null ? null : roles[0]!);
+  // organizer decides otherwise. This union is the only role state a request carries: there is
+  // no second, single-role variable for a gate to read instead, and so none to fall behind it.
+  context.set(
+    "roles",
+    authSession === null ? null : await resolveGrantedRoles(drizzle(context.env.DB), authSession.user.id),
+  );
   await next();
 });
 
@@ -123,7 +122,7 @@ function requirePageAccess(access: ApiAccess) {
         path: url.pathname,
         returnTo: `${url.pathname}${url.search}`,
         requiredAccess: access,
-        user: user === null ? null : { name: user.name, role: context.get("role") },
+        user: user === null ? null : { name: user.name, role: describingRole(roles ?? []) },
       }),
       decision.status,
     );
@@ -162,10 +161,11 @@ app.get("/api/health", (context) =>
 
 app.get("/api/session", requireAccess("authenticated"), (context) => {
   const user = context.get("authUser");
-  // The role the client sees is the resolved one, so a signed-in attendee is described as an
-  // attendee rather than by the `user.role` column nothing reads any more.
+  // The role the client sees describes the account by its widest grant, so a signed-in
+  // attendee is described as an attendee rather than by the `user.role` column nothing reads
+  // any more. It chooses a landing area; it decides no access.
   return context.json({
-    user: user === null ? null : { ...user, role: context.get("role") ?? "attendee" },
+    user: user === null ? null : { ...user, role: describingRole(context.get("roles") ?? []) },
     session: context.get("authSession"),
   });
 });
