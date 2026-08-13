@@ -8,6 +8,7 @@ import {
   type SpeakerContentPayload,
 } from "../../../shared/api.ts";
 import { Button, DataTable, LoadingState, StatusChip, TextField, Toast } from "../../components/ui.tsx";
+import { Headshot } from "../../components/Headshot.tsx";
 import "./portal.css";
 import { FileComments } from "../content/FileComments.tsx";
 import { FileVersionList, formatFileSize } from "../content/FileVersionList.tsx";
@@ -34,11 +35,6 @@ async function uploadFile(path: string, file: File): Promise<void> {
 function formatDueDate(dueAt: string | null): string {
   if (dueAt === null) return "No due date";
   return `Due ${new Date(dueAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}`;
-}
-
-function initials(name: string): string {
-  const parts = name.trim().split(/\s+/);
-  return parts.slice(0, 2).map((part) => part[0]?.toUpperCase() ?? "").join("");
 }
 
 // The server resolves what a request accepts and answers with it, so the hint a speaker
@@ -284,9 +280,7 @@ export function PortalPage() {
         <div className="section-heading"><div><p className="section-label">PROFILE</p><h2>Bio and headshot</h2></div></div>
         <div className="portal-profile__grid">
           <div className="headshot-picker">
-            {content.profile.headshotUrl === null
-              ? <div className="headshot-picker__placeholder" role="img" aria-label="No headshot uploaded">{initials(content.profile.name)}</div>
-              : <img alt={`${content.profile.name} headshot`} className="headshot-picker__image" src={content.profile.headshotUrl} />}
+            <Headshot alt={`${content.profile.name} headshot`} fallbackAriaLabel="No headshot uploaded" fallbackClassName="headshot-picker__placeholder" imageClassName="headshot-picker__image" name={content.profile.name} url={content.profile.headshotUrl} />
             <label className="file-picker">
               <span>{content.profile.headshotUrl === null ? "Upload headshot" : "Replace headshot"}</span>
               <input

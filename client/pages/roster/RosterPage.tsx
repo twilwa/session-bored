@@ -18,7 +18,7 @@ import {
   TextField,
   Toast,
 } from "../../components/ui.tsx";
-import { initialsOf } from "../public/shared.ts";
+import { Headshot } from "../../components/Headshot.tsx";
 
 const eventId = "evt_devflow_conf_2027";
 const workflowStatuses = [
@@ -127,32 +127,8 @@ function openWorkLabel(speaker: RosterSpeakerSummary): ReactNode {
 // The name is already announced beside it, so the avatar stays decorative whether
 // it renders a headshot or initials. A headshot that fails to load falls back to
 // the initials rather than leaving an empty block.
-export function rosterAvatar(name: string, url: string | null, imageFailed: boolean):
-  | { initials: string; kind: "initials" }
-  | { kind: "photo"; src: string } {
-  if (url === null || url === "" || imageFailed) {
-    return { initials: initialsOf(name), kind: "initials" };
-  }
-  return { kind: "photo", src: url };
-}
-
 export function SpeakerAvatar({ name, url }: { name: string; url: string | null }) {
-  const [failed, setFailed] = useState(false);
-  useEffect(() => setFailed(false), [url]);
-  const avatar = rosterAvatar(name, url, failed);
-  if (avatar.kind === "initials") {
-    return <span aria-hidden="true" className="speaker-avatar">{avatar.initials}</span>;
-  }
-  return (
-    <img
-      alt=""
-      aria-hidden="true"
-      className="speaker-avatar speaker-avatar--photo"
-      loading="lazy"
-      onError={() => setFailed(true)}
-      src={avatar.src}
-    />
-  );
+  return <Headshot alt="" fallbackClassName="speaker-avatar" imageClassName="speaker-avatar speaker-avatar--photo" loading="lazy" name={name} url={url} />;
 }
 
 function RosterList() {
@@ -275,12 +251,7 @@ function RosterList() {
                           <span>
                             <small>Current headshot</small>
                             {speaker.headshotUrl === null ? <strong>No headshot supplied</strong> : (
-                              <img
-                                alt={`${speaker.name} headshot`}
-                                className="speaker-avatar"
-                                src={speaker.headshotUrl}
-                                style={{ aspectRatio: "1", height: "auto", maxWidth: "160px", objectFit: "cover", width: "100%" }}
-                              />
+                              <Headshot alt={`${speaker.name} headshot`} fallbackClassName="speaker-avatar" imageClassName="speaker-avatar" imageStyle={{ aspectRatio: "1", height: "auto", maxWidth: "160px", objectFit: "cover", width: "100%" }} name={speaker.name} url={speaker.headshotUrl} />
                             )}
                           </span>
                           <span><small>Bio</small><strong>{speaker.bio ?? "No bio supplied"}</strong></span>

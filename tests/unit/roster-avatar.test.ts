@@ -3,11 +3,12 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { SpeakerAvatar, rosterAvatar } from "../../client/pages/roster/RosterPage.tsx";
+import { headshotDisplay } from "../../client/components/Headshot.tsx";
+import { SpeakerAvatar } from "../../client/pages/roster/RosterPage.tsx";
 
 describe("roster row avatar", () => {
   it("renders the stored headshot when the speaker has one", () => {
-    expect(rosterAvatar("Priya Raman", "/api/public/portal/speakers/spk_priya/headshot", false)).toEqual({
+    expect(headshotDisplay("Priya Raman", "/api/public/portal/speakers/spk_priya/headshot", false)).toEqual({
       kind: "photo",
       src: "/api/public/portal/speakers/spk_priya/headshot",
     });
@@ -20,14 +21,14 @@ describe("roster row avatar", () => {
   });
 
   it("renders initials when the speaker has no headshot", () => {
-    expect(rosterAvatar("Priya Raman", null, false)).toEqual({ initials: "PR", kind: "initials" });
+    expect(headshotDisplay("Priya Raman", null, false)).toEqual({ initials: "PR", kind: "initials" });
     const markup = renderToStaticMarkup(createElement(SpeakerAvatar, { name: "Priya Raman", url: null }));
     expect(markup).toContain(">PR<");
     expect(markup).not.toContain("<img");
   });
 
   it("falls back to initials when the headshot fails to load", () => {
-    expect(rosterAvatar("Priya Raman", "/broken.png", true)).toEqual({ initials: "PR", kind: "initials" });
+    expect(headshotDisplay("Priya Raman", "/broken.png", true)).toEqual({ initials: "PR", kind: "initials" });
   });
 
   it("keeps the avatar decorative so the adjacent name is announced once", () => {

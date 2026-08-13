@@ -265,7 +265,7 @@ async function storeSpeakerHeadshot(
     bytes,
     uploadedByUserId,
   });
-  const headshotUrl = `/api/public/portal/speakers/${profile.speakerId}/headshot`;
+  const headshotUrl = `/api/public/portal/speakers/${profile.speakerId}/headshot?version=${version}`;
   await database.update(people).set({ headshotUrl }).where(eq(people.id, profile.personId));
   await completeMatchingTasks(database, profile.speakerId, /headshot/i);
   return { fileId, version, headshotUrl };
@@ -525,10 +525,14 @@ portalRoutes.get("/public/portal/speakers/:speakerId/headshot", async (context) 
   if (file === undefined) {
     return context.json({ error: "not_found" }, 404);
   }
+  const requestedVersion = context.req.query("version");
+  const versionFilter = requestedVersion === undefined
+    ? eq(fileVersions.latest, true)
+    : eq(fileVersions.version, Number(requestedVersion));
   const [version] = await database
     .select({ storageKey: fileVersions.storageKey })
     .from(fileVersions)
-    .where(and(eq(fileVersions.fileId, file.id), eq(fileVersions.latest, true)));
+    .where(and(eq(fileVersions.fileId, file.id), versionFilter));
   if (version === undefined) {
     return context.json({ error: "not_found" }, 404);
   }
@@ -544,7 +548,7 @@ portalRoutes.get("/public/portal/speakers/:speakerId/headshot", async (context) 
       // The served type is a stated fact, not a hint: a browser must not sniff its way to
       // treating these bytes as anything else.
       "x-content-type-options": "nosniff",
-      "cache-control": "public, max-age=300",
+      "cache-control": "public, max-age=31536000, immutable",
     },
   });
 });

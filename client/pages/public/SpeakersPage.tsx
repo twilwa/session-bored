@@ -1,26 +1,16 @@
 // ABOUTME: Public speaker directory — surname-sorted, searchable, degrades without headshots (F-10.4).
 import { useEffect, useState } from "react";
+import { Headshot } from "../../components/Headshot.tsx";
 import { EmptyState, LoadingState } from "../../components/ui.tsx";
 import type { PublicSpeakersResponse } from "../../../shared/api.ts";
 import { Link, PublicHeader, getJson } from "../../lib.tsx";
-import { DEVFLOW_EVENT_ID, initialsOf, truncate } from "./shared.ts";
+import { DEVFLOW_EVENT_ID, truncate } from "./shared.ts";
 
 function SpeakerCard({ speaker }: { speaker: PublicSpeakersResponse["items"][number] }) {
   const bio = speaker.bio ?? "";
   return (
     <article className="speaker-card">
-      {speaker.headshotUrl === null ? (
-        <span aria-hidden="true" className="speaker-card__avatar speaker-card__avatar--placeholder">
-          {initialsOf(speaker.name)}
-        </span>
-      ) : (
-        <img
-          alt={`Headshot of ${speaker.name}`}
-          className="speaker-card__avatar"
-          loading="lazy"
-          src={speaker.headshotUrl}
-        />
-      )}
+      <Headshot alt={`Headshot of ${speaker.name}`} fallbackClassName="speaker-card__avatar speaker-card__avatar--placeholder" imageClassName="speaker-card__avatar" loading="lazy" name={speaker.name} url={speaker.headshotUrl} />
       <div className="speaker-card__body">
         <h2>{speaker.name}</h2>
         <p className="speaker-card__title">
