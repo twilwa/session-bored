@@ -541,7 +541,7 @@ portalRoutes.get("/public/portal/speakers/:speakerId/headshot", async (context) 
     return context.json({ error: "not_found" }, 404);
   }
   const [version] = await database
-    .select({ storageKey: fileVersions.storageKey })
+    .select({ id: fileVersions.id, storageKey: fileVersions.storageKey })
     .from(fileVersions)
     .where(and(eq(fileVersions.fileId, file.id), versionFilter));
   if (version === undefined) {
@@ -554,8 +554,9 @@ portalRoutes.get("/public/portal/speakers/:speakerId/headshot", async (context) 
   return new Response(object.body, {
     headers: {
       // Never trust the stored/caller-supplied mime type for a publicly, unauthenticated,
-      // inline-served response — derive it independently from the validated extension.
-      "content-type": imageContentTypeForFilename(file.displayName),
+      // inline-served response — derive it independently from the validated extension,
+      // taken from the served version's own filename rather than the newest upload's.
+      "content-type": imageContentTypeForFilename(filenameForVersion(version, file.displayName)),
       // The served type is a stated fact, not a hint: a browser must not sniff its way to
       // treating these bytes as anything else.
       "x-content-type-options": "nosniff",

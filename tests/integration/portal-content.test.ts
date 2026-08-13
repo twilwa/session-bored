@@ -420,19 +420,24 @@ describe("speaker portal content", () => {
     expect(first.status).toBe(201);
     const firstBody = await first.json<{ headshotUrl: string; version: number }>();
 
-    const replacementBytes = [...pngSignature, 0x01];
+    const replacementBytes = [0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10];
     const second = await request("/api/portal/profile/headshot", {
       method: "POST",
       headers: { cookie: priyaCookie },
-      body: fileUpload("priya-second.png", "image/png", replacementBytes),
+      body: fileUpload("priya-second.jpg", "image/jpeg", replacementBytes),
     });
     expect(second.status).toBe(201);
     const secondBody = await second.json<{ headshotUrl: string; version: number }>();
 
     expect(secondBody.version).toBe(firstBody.version + 1);
     expect(secondBody.headshotUrl).not.toBe(firstBody.headshotUrl);
-    expect([...new Uint8Array(await (await request(firstBody.headshotUrl)).arrayBuffer())]).toEqual(pngSignature);
-    expect([...new Uint8Array(await (await request(secondBody.headshotUrl)).arrayBuffer())]).toEqual(replacementBytes);
+    const firstServed = await request(firstBody.headshotUrl);
+    // Each version serves under its own format, not the label of whatever replaced it.
+    expect(firstServed.headers.get("content-type")).toBe("image/png");
+    expect([...new Uint8Array(await firstServed.arrayBuffer())]).toEqual(pngSignature);
+    const secondServed = await request(secondBody.headshotUrl);
+    expect(secondServed.headers.get("content-type")).toBe("image/jpeg");
+    expect([...new Uint8Array(await secondServed.arrayBuffer())]).toEqual(replacementBytes);
 
     const profile = await request("/api/speaker/content", { headers: { cookie: priyaCookie } });
     await expect(profile.json()).resolves.toMatchObject({ profile: { headshotUrl: secondBody.headshotUrl } });
