@@ -1,0 +1,39 @@
+worker/routes/roster.ts
+  s_f0016b9ade0b8d::t_286f4926d1bbc7 541-542,546
+AGENTS.md
+  s_f0016b9ade0b8d::t_049c90d1a82021 45-53
+migrations/0016_task-assignee-granted-by-session.sql
+  s_f0016b9ade0b8d::t_2d661db8d1af62 1-9
+migrations/meta/_journal.json
+  s_f0016b9ade0b8d::t_73350f5cd2be28 116-122
+tests/integration/participant-revocation.test.ts
+  s_f0016b9ade0b8d::t_d711711c1ddb80 378-379,386,391,395-396,400,405-406,424,430-431
+  s_f0016b9ade0b8d::t_076e2b87f529dd 411,416,418,420-421
+  s_f0016b9ade0b8d::t_e48c94288c5166 196-233
+  s_f0016b9ade0b8d::t_a8b452eafd196a 380-385,387-390,392-394,397-399,401-404,412-415,425-429
+  s_f0016b9ade0b8d::t_4c5711049f2123 407-410,417,419,422-423
+worker/submission-decision.ts
+  s_f0016b9ade0b8d::t_98fe10de2ac4ae 165-167,170-175
+  s_f0016b9ade0b8d::t_a95c10e23abe18 241-243
+  s_f0016b9ade0b8d::t_3af3f3280bae29 324,335,345-351
+  s_f0016b9ade0b8d::t_80829a0ff195e3 3
+  s_f0016b9ade0b8d::t_dd2eb9d0b9e816 288-293
+db/schema.ts
+  s_f0016b9ade0b8d::t_cdcf9a43340456 615-619
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "d0d2a3ea127e7f39f96e32260d4206e379d26eff",
+  "prompts": {},
+  "sessions": {
+    "s_f0016b9ade0b8d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fc72bf2c-96b2-48c7-808a-9067a47ee595",
+        "model": "claude-opus-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
