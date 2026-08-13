@@ -10,10 +10,12 @@ import {
   grantableRoles,
   people,
   reviewerInvites,
+  reviewRounds,
   roleGrants,
   sessionSpeakers,
   speakers,
   submissionSpeakers,
+  tracks,
   users,
   type Role,
 } from "../../db/schema.ts";
@@ -245,6 +247,24 @@ peopleRoutes.post("/api/events/:eventId/reviewer-invites", requireOrganizer, asy
   if (existing !== undefined) {
     return context.json({ error: "invite_already_open", inviteId: existing.id }, 409);
   }
+  // An invitation that names no remit carries the same default a directly provisioned
+  // reviewer gets - every event track and the first open round - so redemption opens a queue
+  // with work in it. Only an explicitly empty `trackIds` means no tracks.
+  const [eventTracks, openRounds] = await Promise.all([
+    database.select({ id: tracks.id }).from(tracks).where(eq(tracks.eventId, eventId)).orderBy(asc(tracks.sortOrder)),
+    database
+      .select({ id: reviewRounds.id })
+      .from(reviewRounds)
+      .where(and(eq(reviewRounds.eventId, eventId), eq(reviewRounds.status, "open")))
+      .orderBy(asc(reviewRounds.sortOrder)),
+  ]);
+  const defaultRound = openRounds[0];
+  if (defaultRound === undefined) {
+    return context.json({ error: "open_round_required" }, 409);
+  }
+  const requestedRoundIds = Array.isArray(payload.roundIds)
+    ? payload.roundIds.filter((id): id is string => typeof id === "string")
+    : [];
   const [invite] = await database
     .insert(reviewerInvites)
     .values({
@@ -252,10 +272,8 @@ peopleRoutes.post("/api/events/:eventId/reviewer-invites", requireOrganizer, asy
       eventId,
       trackIds: Array.isArray(payload.trackIds)
         ? payload.trackIds.filter((id): id is string => typeof id === "string")
-        : [],
-      roundIds: Array.isArray(payload.roundIds)
-        ? payload.roundIds.filter((id): id is string => typeof id === "string")
-        : [],
+        : eventTracks.map((track) => track.id),
+      roundIds: requestedRoundIds.length === 0 ? [defaultRound.id] : requestedRoundIds,
       invitedByUserId: organizer.id,
     })
     .returning({ id: reviewerInvites.id });

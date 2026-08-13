@@ -71,8 +71,12 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   submitter, track links, and speaker role labels.
 - A reviewer's readable remit is the union of their event track responsibility
   and explicit per-submission assignments, limited to their per-round pool.
-  Provisioning defaults to every event track and the first open round; an empty
-  `trackIds` array means no tracks, never all of them.
+  Both doors into the committee - direct provisioning in `worker/routes/review.ts`
+  and an invitation in `worker/routes/people.ts` - resolve the same default when
+  the organizer names no remit: every event track and the first open round, and
+  no open round refuses with `open_round_required`. An *explicitly* empty
+  `trackIds` array means no tracks, never all of them. An invitation stores the
+  resolved ids, so redemption opens a queue with work in it.
   `PATCH /review/events/:eventId/reviewers/:reviewerUserId` replaces that remit
   in both directions, so narrowing takes effect on the reviewer's next read. It
   reports `retainedAssignments` because an explicit assignment still grants

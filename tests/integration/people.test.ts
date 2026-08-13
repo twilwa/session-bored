@@ -2,10 +2,11 @@
 // ABOUTME: Confirms only an organizer can open the gate and that a grant is always attributed.
 import { env } from "cloudflare:workers";
 import { drizzle } from "drizzle-orm/d1";
-import { eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
-import { users } from "../../db/schema.ts";
+import { reviewerInvites, reviewRounds, tracks, users } from "../../db/schema.ts";
 import type { PersonAccountSummary } from "../../shared/api.ts";
+import { redeemReviewerInvites } from "../../worker/reviewer-invites.ts";
 import worker from "../../worker/index.ts";
 
 async function request(path: string, init?: RequestInit): Promise<Response> {
@@ -168,5 +169,77 @@ describe("organizer People surface", () => {
     expect((await request(`/api/reviewer-invites/${inviteId}`, { method: "DELETE", headers: { cookie } })).status)
       .toBe(200);
     expect((await loadPeople(cookie)).invites.map((invite) => invite.id)).not.toContain(inviteId);
+  });
+
+  it("gives an invitation that names no remit the same default a provisioned reviewer gets", async () => {
+    await request("/api/health");
+    const cookie = await organizerCookie();
+    const database = drizzle(env.DB);
+    const eventId = "evt_devflow_conf_2027";
+    const invited = "default-remit-invite@example.com";
+
+    const created = await request(`/api/events/${eventId}/reviewer-invites`, {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ email: invited }),
+    });
+    expect(created.status).toBe(201);
+
+    const eventTrackIds = (
+      await database.select({ id: tracks.id }).from(tracks).where(eq(tracks.eventId, eventId))
+    ).map((track) => track.id);
+    const openRoundIds = (
+      await database
+        .select({ id: reviewRounds.id })
+        .from(reviewRounds)
+        .where(and(eq(reviewRounds.eventId, eventId), eq(reviewRounds.status, "open")))
+        .orderBy(asc(reviewRounds.sortOrder))
+    ).map((round) => round.id);
+    expect(eventTrackIds.length).toBeGreaterThan(0);
+    expect(openRoundIds.length).toBeGreaterThan(0);
+
+    // The symptom first: redeeming this invitation must open a queue with work in it.
+    await signUp("Default Remit", invited);
+    const userId = await userIdFor(invited);
+    expect(await redeemReviewerInvites(database, { id: userId, email: invited, emailVerified: true }))
+      .toHaveLength(1);
+
+    const reviewerCookie = await signIn(invited, "Greenroom!2027");
+    const queue = await request("/api/review/queue", { headers: { cookie: reviewerCookie } });
+    expect(queue.status).toBe(200);
+    expect((await queue.json<{ items: unknown[] }>()).items.length).toBeGreaterThan(0);
+
+    // And the organizer's reviewer configuration lists them, rather than omitting them.
+    const config = await request(`/api/review/events/${eventId}/config`, { headers: { cookie } });
+    expect(config.status).toBe(200);
+    expect(
+      (await config.json<{ reviewers: Array<{ id: string }> }>()).reviewers.map((reviewer) => reviewer.id),
+    ).toContain(userId);
+
+    // And the cause: the invitation carried the default remit rather than nothing at all.
+    const [stored] = await database
+      .select({ trackIds: reviewerInvites.trackIds, roundIds: reviewerInvites.roundIds })
+      .from(reviewerInvites)
+      .where(eq(reviewerInvites.email, invited));
+    expect(stored?.trackIds?.slice().sort()).toEqual(eventTrackIds.slice().sort());
+    expect(stored?.roundIds).toEqual([openRoundIds[0]]);
+  });
+
+  it("still lets an organizer invite a reviewer to no tracks at all", async () => {
+    await request("/api/health");
+    const cookie = await organizerCookie();
+    const invited = "no-tracks-invite@example.com";
+
+    expect((await request("/api/events/evt_devflow_conf_2027/reviewer-invites", {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ email: invited, trackIds: [] }),
+    })).status).toBe(201);
+
+    const [stored] = await drizzle(env.DB)
+      .select({ trackIds: reviewerInvites.trackIds })
+      .from(reviewerInvites)
+      .where(eq(reviewerInvites.email, invited));
+    expect(stored?.trackIds).toEqual([]);
   });
 });
