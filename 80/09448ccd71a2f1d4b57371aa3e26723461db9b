@@ -1,0 +1,28 @@
+worker/submission-decision.ts
+  s_5362dc1519e8f0::t_cb095644fb8c0f 258-279
+  s_5362dc1519e8f0::t_7f4623da858887 334
+  s_5362dc1519e8f0::t_d5dda744f39753 288-293
+  s_5362dc1519e8f0::t_c7e34dab92d221 257
+tests/integration/review-engine.test.ts
+  s_5362dc1519e8f0::t_d826fb8aa3cbe5 1219-1221
+worker/routes/participants.ts
+  s_5362dc1519e8f0::t_e57bba6bededf3 20-24
+  s_5362dc1519e8f0::t_7e05f0cfc870f7 100
+  s_5362dc1519e8f0::t_1a3e8ffd533dd0 91-92
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "8009448ccd71a2f1d4b57371aa3e26723461db9b",
+  "prompts": {},
+  "sessions": {
+    "s_5362dc1519e8f0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "87015144-0cca-42c7-9517-defc7f00eaa1",
+        "model": "claude-opus-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
