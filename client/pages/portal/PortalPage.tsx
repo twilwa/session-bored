@@ -2,6 +2,7 @@
 // ABOUTME: Every mutation writes through the shared speaker/session/task records the organizer reads.
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
+  fileRequestKindOf,
   speakerFacingSubmissionLabels,
   type PortalSession,
   type PortalTask,
@@ -22,7 +23,7 @@ async function readJson<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json<T>();
 }
 
-async function uploadFile(path: string, file: File): Promise<void> {
+async function uploadFile<T = unknown>(path: string, file: File): Promise<T> {
   const formData = new FormData();
   formData.append("file", file);
   const response = await fetch(path, { method: "POST", credentials: "same-origin", body: formData });
@@ -30,6 +31,7 @@ async function uploadFile(path: string, file: File): Promise<void> {
     const body = await response.json<{ message?: string; error?: string }>().catch(() => null);
     throw new Error(body?.message ?? body?.error ?? `Upload failed (${response.status}).`);
   }
+  return response.json<T>();
 }
 
 function formatDueDate(dueAt: string | null): string {
@@ -46,6 +48,10 @@ function uploadRules(task: PortalTask): string | null {
   return `Accepted: ${task.acceptedFileTypes.join(", ")} · up to ${formatFileSize(task.maximumFileBytes)}`;
 }
 
+function appliesAsPublicHeadshot(task: PortalTask): boolean {
+  return task.taskType === "file_request" && fileRequestKindOf(task.acceptedFileTypes) === "picture";
+}
+
 function TaskRow({ task, onComplete, onUpload, busy }: {
   task: PortalTask;
   onComplete: (taskId: string) => void;
@@ -53,11 +59,13 @@ function TaskRow({ task, onComplete, onUpload, busy }: {
   busy: boolean;
 }) {
   const done = task.status === "completed";
+  const appliesToHeadshot = appliesAsPublicHeadshot(task);
   return (
     <li className={`task-row${done ? " task-row--done" : ""}`}>
       <div className="task-row__info">
         <strong>{task.title}</strong>
         {task.instructions === null ? null : <p>{task.instructions}</p>}
+        {appliesToHeadshot ? <p>This picture will become your public profile photo.</p> : null}
         <small>{formatDueDate(task.dueAt)}</small>
       </div>
       <div className="task-row__action">
@@ -77,6 +85,7 @@ function TaskRow({ task, onComplete, onUpload, busy }: {
                 type="file"
               />
             </label>
+            {appliesToHeadshot ? <small>Uploading will replace your public profile photo.</small> : null}
             <small className="task-row__rules">{uploadRules(task)}</small>
           </div>
         ) : (
@@ -235,9 +244,11 @@ export function PortalPage() {
   async function uploadTaskFile(taskId: string, file: File): Promise<void> {
     setBusy(true);
     try {
-      await uploadFile(`/api/portal/tasks/${taskId}/files`, file);
+      const result = await uploadFile<{ headshotUrl: string | null }>(`/api/portal/tasks/${taskId}/files`, file);
       await load();
-      setMessage("File uploaded. Task marked complete.");
+      setMessage(result.headshotUrl === null
+        ? "File uploaded. Task marked complete."
+        : "File uploaded. This is now your profile photo on the public programme.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "File could not be uploaded.");
     } finally {

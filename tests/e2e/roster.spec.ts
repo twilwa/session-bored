@@ -410,6 +410,45 @@ test("organizer assigns a file request in bulk and sees who needs chasing", asyn
   await expect(page.getByText(/days overdue/).first()).toBeVisible();
 });
 
+test("picture requests disclose their public headshot effect before and after upload", async ({ page }) => {
+  await signInAsOrganizer(page);
+  await page.goto("/organizer/roster/tasks");
+
+  const suffix = Date.now().toString();
+  const pictureTitle = `Send us a conference photo ${suffix}`;
+  const documentTitle = `Upload your release form ${suffix}`;
+
+  await page.getByRole("button", { name: "Create task" }).click();
+  const pictureDialog = page.getByRole("dialog", { name: "Create onboarding task" });
+  await pictureDialog.getByLabel("Task kind").selectOption("file_request");
+  await pictureDialog.getByLabel("What this request wants").selectOption("picture");
+  await expect(pictureDialog).toContainText("The picture a speaker uploads here becomes their profile headshot.");
+  await pictureDialog.getByLabel("Task title").fill(pictureTitle);
+  await pictureDialog.getByRole("checkbox", { name: /Marcus Okafor/ }).check();
+  await pictureDialog.getByRole("button", { name: "Assign to 1 speaker" }).click();
+
+  await page.getByRole("button", { name: "Create task" }).click();
+  const documentDialog = page.getByRole("dialog", { name: "Create onboarding task" });
+  await documentDialog.getByLabel("Task kind").selectOption("file_request");
+  await documentDialog.getByLabel("Task title").fill(documentTitle);
+  await documentDialog.getByRole("checkbox", { name: /Marcus Okafor/ }).check();
+  await documentDialog.getByRole("button", { name: "Assign to 1 speaker" }).click();
+
+  await signOut(page);
+  await signInAsSpeaker(page);
+
+  const pictureRequest = page.locator("li.task-row", { hasText: pictureTitle });
+  await expect(pictureRequest.getByText("This picture will become your public profile photo.")).toBeVisible();
+  await expect(pictureRequest.getByText("Uploading will replace your public profile photo.")).toBeVisible();
+
+  const documentRequest = page.locator("li.task-row", { hasText: documentTitle });
+  await expect(documentRequest.getByText("This picture will become your public profile photo.")).toHaveCount(0);
+  await expect(documentRequest.getByText("Uploading will replace your public profile photo.")).toHaveCount(0);
+
+  await pictureRequest.locator("input[type='file']").setInputFiles("fixtures/headshot.png");
+  await expect(page.getByText("File uploaded. This is now your profile photo on the public programme.")).toBeVisible();
+});
+
 test("organizer-completed file work stays complete on the Deliverables board", async ({ page }) => {
   await signInAsOrganizer(page);
   await page.goto("/organizer/roster/tasks");
