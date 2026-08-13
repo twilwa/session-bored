@@ -1,0 +1,20 @@
+tests/e2e/account-access.spec.ts
+  s_07f4b233d3cd1f::t_df9922b94260ce 99-102,104-125,128,130-132,134,136-138
+  s_07f4b233d3cd1f::t_6b8b3739889b9e 103,126-127,129,133,135
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "d98309e271aba64014b44a2103eb1635a37e59ee",
+  "prompts": {},
+  "sessions": {
+    "s_07f4b233d3cd1f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6315adf8-c9f2-425f-943b-239e8e577741",
+        "model": "claude-opus-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
