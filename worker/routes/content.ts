@@ -18,6 +18,7 @@ import {
   type Role,
   users,
 } from "../../db/schema.ts";
+import { holdsAccess } from "../access.ts";
 import type { AuthSession } from "../auth.ts";
 import { resolveEffectiveRoles } from "../roles.ts";
 import { filenameForVersion } from "../storage/file-versions.ts";
@@ -28,6 +29,7 @@ type ContentEnvironment = {
     authSession: AuthSession["session"] | null;
     authUser: AuthSession["user"] | null;
     role: Role | null;
+    roles: Role[] | null;
   };
 };
 
@@ -48,7 +50,7 @@ async function fileAccess(
   database: ReturnType<typeof drizzle>,
   fileId: string,
   userId: string,
-  role: Role,
+  roles: readonly Role[],
 ): Promise<"allowed" | "forbidden" | "not_found"> {
   const [file] = await database
     .select({ id: files.id, speakerId: files.speakerId })
@@ -57,10 +59,10 @@ async function fileAccess(
   if (file === undefined) {
     return "not_found";
   }
-  if (role === "organizer") {
+  if (holdsAccess(roles, "organizer")) {
     return "allowed";
   }
-  if (role !== "speaker" || file.speakerId === null) {
+  if (!holdsAccess(roles, "speaker") || file.speakerId === null) {
     return "forbidden";
   }
   const [owned] = await database
@@ -234,12 +236,12 @@ contentRoutes.get("/api/events/:eventId/deliverables", requireOrganizer, async (
 
 contentRoutes.get("/api/content/files/:fileId/comments", async (context) => {
   const user = context.get("authUser");
-  const role = context.get("role");
-  if (user === null || role === null) {
+  const roles = context.get("roles") ?? null;
+  if (user === null || roles === null) {
     return context.json({ error: "authentication_required" }, 401);
   }
   const database = drizzle(context.env.DB);
-  const access = await fileAccess(database, context.req.param("fileId"), user.id, role);
+  const access = await fileAccess(database, context.req.param("fileId"), user.id, roles);
   if (access === "not_found") {
     return context.json({ error: "not_found" }, 404);
   }
@@ -274,12 +276,12 @@ contentRoutes.get("/api/content/files/:fileId/comments", async (context) => {
 
 contentRoutes.post("/api/content/files/:fileId/comments", async (context) => {
   const user = context.get("authUser");
-  const role = context.get("role");
-  if (user === null || role === null) {
+  const roles = context.get("roles") ?? null;
+  if (user === null || roles === null) {
     return context.json({ error: "authentication_required" }, 401);
   }
   const database = drizzle(context.env.DB);
-  const access = await fileAccess(database, context.req.param("fileId"), user.id, role);
+  const access = await fileAccess(database, context.req.param("fileId"), user.id, roles);
   if (access === "not_found") {
     return context.json({ error: "not_found" }, 404);
   }
@@ -304,7 +306,7 @@ contentRoutes.post("/api/content/files/:fileId/comments", async (context) => {
   }
   return context.json({
     ...saved,
-    author: { name: user.name, role },
+    author: { name: user.name, role: roles[0] },
   }, 201);
 });
 

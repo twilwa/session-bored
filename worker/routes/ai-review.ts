@@ -15,6 +15,7 @@ import {
   submissionSpeakers,
   type Role,
 } from "../../db/schema.ts";
+import { holdsAccess } from "../access.ts";
 import type { AuthSession } from "../auth.ts";
 import { reviewProposalAnswers } from "../review-answers.ts";
 import {
@@ -34,6 +35,7 @@ type AIReviewEnvironment = {
     authSession: AuthSession["session"] | null;
     authUser: AuthSession["user"] | null;
     role: Role | null;
+    roles: Role[] | null;
   };
 };
 
@@ -49,11 +51,11 @@ function resolveConfiguredAssistant(environment: CloudflareBindings): ReviewAssi
 
 function requireRole(requiredRole: "organizer" | "reviewer") {
   return createMiddleware<AIReviewEnvironment>(async (context, next) => {
-    const role = context.get("role");
-    if (role === null) {
+    const roles = context.get("roles") ?? null;
+    if (roles === null) {
       return context.json({ error: "authentication_required" }, 401);
     }
-    if (role !== requiredRole) {
+    if (!holdsAccess(roles, requiredRole)) {
       return context.json({ error: "forbidden" }, 403);
     }
     await next();

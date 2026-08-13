@@ -10,32 +10,47 @@ describe("access policy", () => {
   });
 
   it("returns 403 when an authenticated role crosses a role boundary", () => {
-    expect(authorizeAccess({ role: "reviewer" }, "organizer")).toEqual({
+    expect(authorizeAccess({ roles: ["reviewer"] }, "organizer")).toEqual({
       allowed: false,
       status: 403,
     });
-    expect(authorizeAccess({ role: "speaker" }, "reviewer")).toEqual({
+    expect(authorizeAccess({ roles: ["speaker"] }, "reviewer")).toEqual({
       allowed: false,
       status: 403,
     });
   });
 
   it("requires ownership checks after role access succeeds", () => {
-    expect(authorizeAccess({ role: "reviewer" }, "reviewer", false)).toEqual({
+    expect(authorizeAccess({ roles: ["reviewer"] }, "reviewer", false)).toEqual({
       allowed: false,
       status: 403,
     });
-    expect(authorizeAccess({ role: "reviewer" }, "reviewer", true)).toEqual({ allowed: true });
+    expect(authorizeAccess({ roles: ["reviewer"] }, "reviewer", true)).toEqual({ allowed: true });
   });
 
   it("refuses an attendee every role-scoped area", () => {
     for (const area of ["organizer", "reviewer", "speaker"] as const) {
-      expect(authorizeAccess({ role: "attendee" }, area)).toEqual({ allowed: false, status: 403 });
+      expect(authorizeAccess({ roles: ["attendee"] }, area)).toEqual({ allowed: false, status: 403 });
     }
   });
 
+  it("opens every granted area to an account holding more than one grant", () => {
+    const twoHats = { roles: ["reviewer", "speaker"] } as const;
+    expect(authorizeAccess(twoHats, "reviewer")).toEqual({ allowed: true });
+    expect(authorizeAccess(twoHats, "speaker")).toEqual({ allowed: true });
+    // And no further: holding two grants confers nothing it was not given.
+    expect(authorizeAccess(twoHats, "organizer")).toEqual({ allowed: false, status: 403 });
+  });
+
+  it("never lets a wider grant imply a narrower one", () => {
+    expect(authorizeAccess({ roles: ["organizer"] }, "speaker")).toEqual({
+      allowed: false,
+      status: 403,
+    });
+  });
+
   it("counts an attendee as signed in, so their own records stay reachable", () => {
-    expect(authorizeAccess({ role: "attendee" }, "authenticated")).toEqual({ allowed: true });
-    expect(authorizeAccess({ role: "attendee" }, "public")).toEqual({ allowed: true });
+    expect(authorizeAccess({ roles: ["attendee"] }, "authenticated")).toEqual({ allowed: true });
+    expect(authorizeAccess({ roles: ["attendee"] }, "public")).toEqual({ allowed: true });
   });
 });

@@ -24,6 +24,7 @@ import {
   type Role,
   users,
 } from "../../db/schema.ts";
+import { holdsAccess } from "../access.ts";
 import type { ReviewAssignmentStatus } from "../../shared/api.ts";
 import type { AuthSession } from "../auth.ts";
 import { createAuth } from "../auth.ts";
@@ -38,6 +39,7 @@ type ReviewEnvironment = {
     authSession: AuthSession["session"] | null;
     authUser: AuthSession["user"] | null;
     role: Role | null;
+    roles: Role[] | null;
   };
 };
 
@@ -45,11 +47,11 @@ const reviewRoutes = new Hono<ReviewEnvironment>();
 
 function requireRole(requiredRole: "organizer" | "reviewer") {
   return createMiddleware<ReviewEnvironment>(async (context, next) => {
-    const role = context.get("role");
-    if (role === null) {
+    const roles = context.get("roles") ?? null;
+    if (roles === null) {
       return context.json({ error: "authentication_required" }, 401);
     }
-    if (role !== requiredRole) {
+    if (!holdsAccess(roles, requiredRole)) {
       return context.json({ error: "forbidden" }, 403);
     }
     await next();

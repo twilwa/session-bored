@@ -31,6 +31,7 @@ type TestEnvironment = {
     authSession: AuthSession["session"] | null;
     authUser: AuthSession["user"] | null;
     role: Role | null;
+    roles: Role[] | null;
   };
 };
 
@@ -50,6 +51,7 @@ function createInjectedApp(
     context.set("authSession", null);
     context.set("authUser", authUser);
     context.set("role", "reviewer");
+    context.set("roles", ["reviewer"]);
     await next();
   });
   app.route("/api", createAIReviewRoutes(() => assistant));

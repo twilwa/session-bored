@@ -273,4 +273,42 @@ describe("granting and revoking", () => {
       .where(and(eq(roleGrants.userId, userId), eq(roleGrants.role, "reviewer")));
     expect((await request("/api/reviewer/assignments", { headers: { cookie } })).status).toBe(403);
   });
+
+  it("opens both areas to an account holding two grants", async () => {
+    await request("/api/health");
+    const cookie = await signUp("Two Hats", "two-hats@example.com");
+    const database = drizzle(env.DB);
+    const userId = await userIdFor("two-hats@example.com");
+    const organizerId = await userIdFor("sbek-organizer@example.com");
+
+    for (const role of ["reviewer", "speaker"] as const) {
+      await database.insert(roleGrants).values({
+        userId,
+        role,
+        source: "organizer",
+        grantedByUserId: organizerId,
+        grantedAt: new Date(),
+      });
+    }
+
+    // The second grant has to actually open the second area. Resolving to a single widest
+    // role would answer `reviewer` here and refuse the speaker area it was just given.
+    expect((await request("/api/reviewer/assignments", { headers: { cookie } })).status).toBe(200);
+    expect((await request("/api/speaker/content", { headers: { cookie } })).status).toBe(200);
+    for (const path of ["/reviewer", "/speaker"]) {
+      expect((await request(path, { headers: { cookie, ...documentHeaders } })).status).not.toBe(403);
+    }
+
+    // And only the granted areas: nothing here confers organizer.
+    expect((await request("/api/events", { headers: { cookie } })).status).toBe(403);
+    expect((await request("/organizer", { headers: { cookie, ...documentHeaders } })).status).toBe(403);
+
+    // Revoking one leaves the other standing.
+    await database
+      .update(roleGrants)
+      .set({ revokedAt: new Date(), revokedByUserId: organizerId })
+      .where(and(eq(roleGrants.userId, userId), eq(roleGrants.role, "reviewer")));
+    expect((await request("/api/reviewer/assignments", { headers: { cookie } })).status).toBe(403);
+    expect((await request("/api/speaker/content", { headers: { cookie } })).status).toBe(200);
+  });
 });

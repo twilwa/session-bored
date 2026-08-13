@@ -28,7 +28,7 @@ import {
 } from "../db/schema.ts";
 import { speakerFacingSubmissionStatus, type ApiAccess, type PortalFileVersion } from "../shared/api.ts";
 import { authorizeAccess } from "./access.ts";
-import { resolveEffectiveRole } from "./roles.ts";
+import { resolveGrantedRoles } from "./roles.ts";
 import { accessDeniedDocument, prefersHtmlDocument } from "./access-page.ts";
 import { createAuth, type AuthSession } from "./auth.ts";
 import aiReviewRoutes from "./routes/ai-review.ts";
@@ -60,6 +60,7 @@ type AppEnvironment = {
     authSession: AuthSession["session"] | null;
     authUser: SessionUser | null;
     role: Role | null;
+    roles: Role[] | null;
   };
 };
 
@@ -70,20 +71,21 @@ const prepareRequest = createMiddleware<AppEnvironment>(async (context, next) =>
   const authSession = await createAuth(context.env).api.getSession({ headers: context.req.raw.headers });
   context.set("authSession", authSession?.session ?? null);
   context.set("authUser", authSession?.user ?? null);
-  // Role comes from the account's live grants, never from the session or the `user.role`
+  // Roles come from the account's live grants, never from the session or the `user.role`
   // column. Signing up therefore reaches nothing beyond a signed-in attendee until an
-  // organizer decides otherwise.
-  context.set(
-    "role",
-    authSession === null ? null : await resolveEffectiveRole(drizzle(context.env.DB), authSession.user.id),
-  );
+  // organizer decides otherwise. `roles` is what every gate reads, so two grants open two
+  // areas; `role` is the widest of them and describes the account on screen.
+  const roles =
+    authSession === null ? null : await resolveGrantedRoles(drizzle(context.env.DB), authSession.user.id);
+  context.set("roles", roles);
+  context.set("role", roles === null ? null : roles[0]!);
   await next();
 });
 
 function requireAccess(access: ApiAccess) {
   return createMiddleware<AppEnvironment>(async (context, next) => {
-    const role = context.get("role");
-    const decision = authorizeAccess(role === null ? null : { role }, access);
+    const roles = context.get("roles") ?? null;
+    const decision = authorizeAccess(roles === null ? null : { roles }, access);
     if (!decision.allowed) {
       return context.json(
         { error: decision.status === 401 ? "authentication_required" : "forbidden" },
@@ -101,8 +103,8 @@ function requireAccess(access: ApiAccess) {
  */
 function requirePageAccess(access: ApiAccess) {
   return createMiddleware<AppEnvironment>(async (context, next) => {
-    const role = context.get("role");
-    const decision = authorizeAccess(role === null ? null : { role }, access);
+    const roles = context.get("roles") ?? null;
+    const decision = authorizeAccess(roles === null ? null : { roles }, access);
     if (decision.allowed) {
       await next();
       return;
@@ -121,7 +123,7 @@ function requirePageAccess(access: ApiAccess) {
         path: url.pathname,
         returnTo: `${url.pathname}${url.search}`,
         requiredAccess: access,
-        user: user === null ? null : { name: user.name, role },
+        user: user === null ? null : { name: user.name, role: context.get("role") },
       }),
       decision.status,
     );
