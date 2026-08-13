@@ -657,16 +657,10 @@ describe("review engine", () => {
         headers: organizerHeaders,
         body: JSON.stringify({
           reviewerUserId: provisioned.reviewer.id,
-          submissionIds: ["sub_ai_verification", "sub_ci_monorepo"],
+          submissionIds: ["sub_ai_verification"],
         }),
       })).status,
     ).toBe(201);
-    const reviewerCookie = await signIn("jules-reviewer@example.com", "ReviewTalks!2027");
-    expect((await request("/api/review/submissions/sub_ci_monorepo/recusal", {
-      method: "POST",
-      headers: { cookie: reviewerCookie, "content-type": "application/json" },
-      body: JSON.stringify({ roundId: "rnd_initial_review" }),
-    })).status).toBe(200);
 
     const scopePath =
       `/api/review/events/evt_devflow_conf_2027/reviewers/${provisioned.reviewer.id}`;
@@ -685,9 +679,7 @@ describe("review engine", () => {
     expect(narrowed.retainedAssignments.map((item) => item.submissionId)).toEqual([
       "sub_ai_verification",
     ]);
-    expect(narrowed.recusedAssignments.map((item) => item.submissionId)).toEqual([
-      "sub_ci_monorepo",
-    ]);
+    expect(narrowed.recusedAssignments).toEqual([]);
 
     const stillListed = await (await request(
       "/api/review/events/evt_devflow_conf_2027/config",
@@ -696,11 +688,11 @@ describe("review engine", () => {
     expect(stillListed.reviewers.find((reviewer) => reviewer.id === provisioned.reviewer.id))
       .toEqual(expect.objectContaining({ trackIds: [] }));
 
+    const reviewerCookie = await signIn("jules-reviewer@example.com", "ReviewTalks!2027");
     const remainingQueue = await (await request("/api/review/queue", {
       headers: { cookie: reviewerCookie },
-    })).json<{ items: Array<{ submissionId: string; assignmentStatus: string }> }>();
-    expect(remainingQueue.items.filter((item) => item.assignmentStatus !== "recused")
-      .map((item) => item.submissionId)).toEqual(["sub_ai_verification"]);
+    })).json<{ items: Array<{ submissionId: string }> }>();
+    expect(remainingQueue.items.map((item) => item.submissionId)).toEqual(["sub_ai_verification"]);
 
     const revoked = await (await request(scopePath, {
       method: "PATCH",
@@ -1249,7 +1241,7 @@ describe("review engine", () => {
     expect(row?.recusedAssignments).toBeGreaterThanOrEqual(2);
   });
 
-  it("keeps a recusal on the reviewer card after the organizer takes them out of the round", async () => {
+  it("keeps a recusal and its effect after the organizer empties the reviewer remit", async () => {
     await request("/api/health");
     const organizerCookie = await signIn("sbek-organizer@example.com", "SbekTest!2027-org");
     const organizerHeaders = { cookie: organizerCookie, "content-type": "application/json" };
@@ -1744,5 +1736,104 @@ describe("review engine", () => {
       "Upload final slides by 2027-05-01",
       "Sign speaker release form",
     ]);
+  });
+
+  it("separates retained access from a durable recusal through every narrowing step", async () => {
+    await request("/api/health");
+    const organizerCookie = await signIn("sbek-organizer@example.com", "SbekTest!2027-org");
+    const organizerHeaders = { cookie: organizerCookie, "content-type": "application/json" };
+    const provisioned = await (await request(
+      "/api/review/events/evt_devflow_conf_2027/reviewers",
+      {
+        method: "POST",
+        headers: organizerHeaders,
+        body: JSON.stringify({
+          name: "Remit Integrity Reviewer",
+          email: "remit-integrity-reviewer@example.com",
+          password: "ReviewTalks!2027",
+          trackIds: ["trk_platform_infra"],
+          roundIds: ["rnd_initial_review"],
+        }),
+      },
+    )).json<{ reviewer: { id: string } }>();
+    expect((await request("/api/review/rounds/rnd_initial_review/assignments", {
+      method: "POST",
+      headers: organizerHeaders,
+      body: JSON.stringify({
+        reviewerUserId: provisioned.reviewer.id,
+        submissionIds: ["sub_ai_verification", "sub_ci_monorepo"],
+      }),
+    })).status).toBe(201);
+    const reviewerCookie = await signIn(
+      "remit-integrity-reviewer@example.com",
+      "ReviewTalks!2027",
+    );
+    expect((await request("/api/review/submissions/sub_ci_monorepo/recusal", {
+      method: "POST",
+      headers: { cookie: reviewerCookie, "content-type": "application/json" },
+      body: JSON.stringify({ roundId: "rnd_initial_review" }),
+    })).status).toBe(200);
+
+    const scopePath =
+      `/api/review/events/evt_devflow_conf_2027/reviewers/${provisioned.reviewer.id}`;
+    const narrowed = await (await request(scopePath, {
+      method: "PATCH",
+      headers: organizerHeaders,
+      body: JSON.stringify({ trackIds: [] }),
+    })).json<{
+      removedTrackIds: string[];
+      retainedAssignments: Array<{ submissionId: string }>;
+      recusedAssignments: Array<{ submissionId: string }>;
+    }>();
+    expect(narrowed.removedTrackIds).toEqual(["trk_platform_infra"]);
+    expect(narrowed.retainedAssignments.map((item) => item.submissionId)).toEqual([
+      "sub_ai_verification",
+    ]);
+    expect(narrowed.recusedAssignments.map((item) => item.submissionId)).toEqual([
+      "sub_ci_monorepo",
+    ]);
+
+    const narrowedQueue = await (await request(
+      "/api/review/queue",
+      { headers: { cookie: reviewerCookie } },
+    )).json<{ items: Array<{ submissionId: string; assignmentStatus: string }> }>();
+    expect(narrowedQueue.items.filter((item) => item.assignmentStatus !== "recused")
+      .map((item) => item.submissionId)).toEqual(["sub_ai_verification"]);
+
+    const emptied = await (await request(scopePath, {
+      method: "PATCH",
+      headers: organizerHeaders,
+      body: JSON.stringify({ roundIds: [] }),
+    })).json<{
+      removedRoundIds: string[];
+      retainedAssignments: Array<{ submissionId: string }>;
+      recusedAssignments: Array<{ submissionId: string }>;
+    }>();
+    expect(emptied.removedRoundIds).toEqual(["rnd_initial_review"]);
+    expect(emptied.retainedAssignments).toEqual([]);
+    expect(emptied.recusedAssignments).toEqual([
+      expect.objectContaining({ submissionId: "sub_ci_monorepo" }),
+    ]);
+
+    const config = await (await request(
+      "/api/review/events/evt_devflow_conf_2027/config",
+      { headers: { cookie: organizerCookie } },
+    )).json<{
+      reviewers: Array<{
+        id: string;
+        recusedCount: number;
+        recusals: Array<{ submissionId: string }>;
+      }>;
+    }>();
+    expect(config.reviewers.find((reviewer) => reviewer.id === provisioned.reviewer.id))
+      .toEqual(expect.objectContaining({
+        recusedCount: 1,
+        recusals: [expect.objectContaining({ submissionId: "sub_ci_monorepo" })],
+      }));
+    const emptyQueue = await (await request(
+      "/api/review/queue",
+      { headers: { cookie: reviewerCookie } },
+    )).json<{ items: Array<{ submissionId: string }> }>();
+    expect(emptyQueue.items).toEqual([]);
   });
 });

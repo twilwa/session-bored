@@ -336,6 +336,41 @@ test("a reviewer recuses themselves and the committee sees the recusal", async (
   const reviewerCard = page.locator(".reviewer-progress-list article").filter({ hasText: name });
   await expect(reviewerCard.getByText("0 / 1", { exact: true })).toBeVisible();
   await expect(reviewerCard.getByText("1 recused", { exact: false })).toBeVisible();
+
+  await reviewerCard.getByText("Edit remit", { exact: true }).click();
+  await reviewerCard.getByLabel("Platform & Infra").check();
+  await reviewerCard.getByRole("button", { name: "Save remit" }).click();
+  await reviewerCard.getByLabel("Platform & Infra").uncheck();
+  await reviewerCard.getByRole("button", { name: "Save remit" }).click();
+  await expect(page.getByText(
+    "1 removed. They lose that access immediately. " +
+    "They can still read Your AI Pair Programmer Is Lying to You: Verification Patterns That Scale " +
+    "through an explicit assignment. " +
+    "Their recusal from Taming 40-Minute CI: Incremental Builds at Monorepo Scale remains recorded.",
+    { exact: false },
+  )).toBeVisible();
+
+  await reviewerPage.reload();
+  await expect(
+    reviewerPage.getByRole("region", { name: "Your review queue" })
+      .getByRole("link", { name: /Taming 40-Minute CI/ }),
+  ).toHaveCount(0);
+  await expect(reviewerPage.getByRole("region", {
+    name: "Proposals you recused yourself from",
+  }).getByRole("link", { name: /Taming 40-Minute CI/ })).toBeVisible();
+
+  await reviewerCard.getByLabel("Initial review").uncheck();
+  await reviewerCard.getByRole("button", { name: "Save remit" }).click();
+  await expect(page.getByText(
+    "1 removed. They lose that access immediately. " +
+    "Their recusal from Taming 40-Minute CI: Incremental Builds at Monorepo Scale remains recorded.",
+    { exact: false },
+  )).toBeVisible();
+  await expect(reviewerCard.getByText("1 recused", { exact: false })).toBeVisible();
+
+  await reviewerPage.reload();
+  await expect(reviewerPage.getByText("0 proposals in remit", { exact: true })).toBeVisible();
+  await expect(reviewerPage.getByRole("link", { name: /Taming 40-Minute CI/ })).toHaveCount(0);
   // The count leads to the proposal it stands for.
   await reviewerCard.getByRole("link", { name: /Taming 40-Minute CI/ }).click();
   await expect(page).toHaveURL(/\/organizer\/review\/submissions\/sub_ci_monorepo/);
