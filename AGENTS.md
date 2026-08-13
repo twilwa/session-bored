@@ -84,8 +84,13 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   It returns the session content to `draft`, preserves all schedule fields, and
   pauses session-scoped tasks. Re-accepting reuses the same stable IDs. Agenda
   and public lanes must gate on the live decision and content status.
-- The workspace page routes in `worker/index.ts` (`/organizer`, `/reviewer`,
-  `/speaker`, `/submitter`) answer a refused caller in its own language through
+- `worker/page-routes.ts#protectedPageRoutes` is the one table of gated
+  workspace pages (`/organizer`, `/reviewer`, `/speaker`, `/submitter`);
+  `worker/index.ts` mounts each entry and its subtree. A page in that table must
+  also appear, root and `/*`, in `assets.run_worker_first` in `wrangler.jsonc`,
+  or assets serve it before the Worker and its gate never runs (issue #151);
+  `tests/unit/workspace-page-registration.test.ts` enforces the parity. The
+  routes answer a refused caller in its own language through
   `requirePageAccess`: a document navigation (`Sec-Fetch-Dest`, else `Accept`)
   gets the branded page in `worker/access-page.ts`, everything else keeps the
   JSON error. Both carry the same 401 or 403, so never assert a page route's
