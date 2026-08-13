@@ -81,6 +81,17 @@ test("a panel names its participants, the program team amends them, and acceptan
   const removalNotice = page.getByRole("status", { name: "What removing this participant did" });
   await expect(removalNotice.getByText("Late Addition is no longer on this proposal")).toBeVisible();
   await expect(removalNotice.getByText("They are still a speaker at this event", { exact: false })).toBeVisible();
+  await expect(removalNotice.getByText("They no longer owe this onboarding work:")).toBeVisible();
+  await expect(removalNotice.getByRole("listitem")).toHaveText([
+    "Complete bio and profile",
+    "Confirm participation",
+    "Sign speaker release form",
+    "Upload final slides by 2027-05-01",
+    "Upload headshot",
+  ]);
+  await expect(removalNotice.getByText(
+    "Naming them on this proposal again restores this work and its history.",
+  )).toBeVisible();
   await expect(removalNotice.getByRole("link", { name: "roster" })).toHaveAttribute("href", "/organizer/roster");
   await expect(page.locator(".participant").filter({ hasText: "Late Addition" })).toHaveCount(0);
 

@@ -461,6 +461,11 @@ export interface SubmissionParticipantSummary {
   onSession: boolean;
 }
 
+export interface WithdrawnOnboardingTask {
+  taskId: `tsk_${string}`;
+  title: string;
+}
+
 /**
  * What a removal did, and what it deliberately left standing. Removing a participant from a
  * proposal takes their access to that proposal and its session; it never withdraws the
@@ -475,6 +480,8 @@ export interface ParticipantRemovalOutcome {
   remainsEventSpeaker: boolean;
   listedPublicly: boolean;
   speaksElsewhereAtEvent: boolean;
+  /** Every live assignment this removal archived, named for the organizer who acted. */
+  withdrawnOnboarding: WithdrawnOnboardingTask[];
   /**
    * Whether this person held a live `session_speaker` row when they were removed, read before
    * the link was archived. Naming somebody on a proposal never carries them onto its session,
