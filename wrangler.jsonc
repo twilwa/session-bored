@@ -16,7 +16,9 @@
       "/reviewer",
       "/reviewer/*",
       "/speaker",
-      "/speaker/*"
+      "/speaker/*",
+      "/submitter",
+      "/submitter/*"
     ]
   },
   "d1_databases": [

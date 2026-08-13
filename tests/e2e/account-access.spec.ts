@@ -14,6 +14,24 @@ async function signUp(page: import("@playwright/test").Page, name: string, email
   await page.getByRole("button", { name: "Create account" }).click();
 }
 
+test("the submitter gate explains sign-in and then admits an authenticated account", async ({ page }) => {
+  const denied = await page.goto("/submitter");
+
+  expect(denied?.status()).toBe(401);
+  await expect(page.getByRole("heading", { name: "Sign in to reach the signed-in workspace." })).toBeVisible();
+  await expect(page.locator("main").getByRole("link", { name: "Sign in" })).toHaveAttribute(
+    "href",
+    "/login?returnTo=%2Fsubmitter",
+  );
+
+  await signUp(page, "Submitter Account", uniqueEmail("submitter"));
+  await expect(page).toHaveURL(/\/schedule\/mine$/);
+  await page.goto("/submitter");
+
+  await expect(page.getByRole("heading", { name: /Your proposals/ })).toBeVisible();
+  await expect(page.getByText("403 · WRONG WORKSPACE")).toHaveCount(0);
+});
+
 test("a new account signs up, lands on its own schedule, and reaches no workspace", async ({ page }) => {
   const email = uniqueEmail("attendee");
   await signUp(page, "Rowan Ellis", email);
