@@ -1,0 +1,30 @@
+tests/e2e/event-settings.spec.ts
+  s_b7a675077ee56b::t_68029bbe780ece 81
+  s_b7a675077ee56b::t_a55f1ba67fe39b 68
+  s_b7a675077ee56b::t_180d5658765cf9 94
+  s_b7a675077ee56b::t_797075756744ee 93
+tests/e2e/review.spec.ts
+  s_b7a675077ee56b::t_c4bf3076cbe9df 244
+  s_b7a675077ee56b::t_d52b36f188c48c 70
+  s_b7a675077ee56b::t_0e1bc2ec2f43bc 210
+  s_b7a675077ee56b::t_cfcbf8d9d49685 264
+  s_b7a675077ee56b::t_0941cd58aac294 12-19
+  s_b7a675077ee56b::t_e29ac1ab758c90 98
+  s_b7a675077ee56b::t_6650ecb55e1bc6 346
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "63e1b863b5ed937f93f89d9e677073150ca324fa",
+  "prompts": {},
+  "sessions": {
+    "s_b7a675077ee56b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4e5c84c5-214c-4d06-a3ae-7c408c44957a",
+        "model": "claude-fable-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
