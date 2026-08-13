@@ -8,7 +8,6 @@ import {
   formatSchedule,
   formatSpeakerLine,
   formatTime,
-  initialsOf,
   readFiltersFromUrl,
   surnameOf,
   truncate,
@@ -121,21 +120,6 @@ describe("formatSpeakerLine", () => {
         { id: "spk_2", name: "B Speaker", jobTitle: null, organization: "Beta" },
       ]),
     ).toBe("A Speaker · Dev, Acme; B Speaker · Beta");
-  });
-});
-
-describe("initialsOf", () => {
-  it("returns first + last initial for full names", () => {
-    expect(initialsOf("Priya Raman")).toBe("PR");
-    expect(initialsOf("Marcus Okafor")).toBe("MO");
-  });
-
-  it("returns first two chars of a single token", () => {
-    expect(initialsOf("Cher")).toBe("CH");
-  });
-
-  it("handles trailing whitespace", () => {
-    expect(initialsOf("  Priya Raman  ")).toBe("PR");
   });
 });
 

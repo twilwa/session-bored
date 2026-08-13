@@ -1,10 +1,25 @@
-// ABOUTME: Asserts the organizer roster row shows a stored headshot and falls back to initials.
+// ABOUTME: Pins the shared headshot initials derivation and the organizer roster row's avatar.
 // ABOUTME: A silent fallback would re-hide the photo, so both states and a load failure are pinned.
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { headshotDisplay } from "../../client/components/Headshot.tsx";
+import { headshotDisplay, initialsOf } from "../../client/components/Headshot.tsx";
 import { SpeakerAvatar } from "../../client/pages/roster/RosterPage.tsx";
+
+describe("initialsOf", () => {
+  it("returns first + last initial for full names", () => {
+    expect(initialsOf("Priya Raman")).toBe("PR");
+    expect(initialsOf("Marcus Okafor")).toBe("MO");
+  });
+
+  it("returns first two chars of a single token", () => {
+    expect(initialsOf("Cher")).toBe("CH");
+  });
+
+  it("handles trailing whitespace", () => {
+    expect(initialsOf("  Priya Raman  ")).toBe("PR");
+  });
+});
 
 describe("roster row avatar", () => {
   it("renders the stored headshot when the speaker has one", () => {

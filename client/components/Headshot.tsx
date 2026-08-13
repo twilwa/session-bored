@@ -2,8 +2,18 @@
 // ABOUTME: Keeps every audience surface honest when a stored image cannot be displayed.
 import { useEffect, useState, type CSSProperties } from "react";
 
-function initialsOf(name: string): string {
-  return name.trim().split(/\s+/).slice(0, 2).map((part) => part[0]?.toUpperCase() ?? "").join("");
+// The one initials derivation for every headshot fallback: first + last word
+// initials for multi-word names, the first two letters of a single-word name,
+// and an empty badge for an all-whitespace name. Surfaces differ in sizing only.
+export function initialsOf(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 0) {
+    return "?";
+  }
+  if (parts.length === 1) {
+    return parts[0]!.slice(0, 2).toUpperCase();
+  }
+  return (parts[0]![0]! + parts[parts.length - 1]![0]!).toUpperCase();
 }
 
 export function headshotDisplay(name: string, url: string | null, failed: boolean): { initials: string; kind: "initials" } | { kind: "photo"; src: string } {
