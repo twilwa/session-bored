@@ -14,7 +14,9 @@ import {
   submissionSpeakers,
   type Role,
 } from "../../db/schema.ts";
+import type { ParticipantRemovalOutcome } from "../../shared/api.ts";
 import { holdsAccess } from "../access.ts";
+import { PUBLIC_SPEAKER_STATUSES } from "../public-queries.ts";
 import { carryParticipantIntoSession, releaseParticipantFromSession } from "../submission-decision.ts";
 
 type ParticipantEnvironment = {
@@ -59,6 +61,37 @@ async function readSubmissionContext(
     .from(sessions)
     .where(and(eq(sessions.submissionId, submissionId), eq(sessions.eventId, eventId)));
   return { submission, sessionId: session?.id ?? null };
+}
+
+/**
+ * Reads what removing this person leaves standing at the event. The event-scoped `speaker`
+ * row is deliberately untouched by removal, so the organizer is told it is still there, and
+ * whether it is still on the public directory, rather than assuming removal withdrew them.
+ */
+async function removalOutcome(
+  database: ParticipantDatabase,
+  eventId: string,
+  personId: string,
+  speaksElsewhereAtEvent: boolean,
+): Promise<ParticipantRemovalOutcome> {
+  const [person] = await database
+    .select({ id: people.id, name: people.name })
+    .from(people)
+    .where(eq(people.id, personId));
+  const [speaker] = await database
+    .select({ id: speakers.id, status: speakers.status, deletedAt: speakers.deletedAt })
+    .from(speakers)
+    .where(and(eq(speakers.personId, personId), eq(speakers.eventId, eventId)));
+  const remainsEventSpeaker = speaker !== undefined && speaker.deletedAt === null;
+  return {
+    name: person?.name ?? "That participant",
+    personId: personId as `psn_${string}`,
+    speakerId: remainsEventSpeaker ? (speaker.id as `spk_${string}`) : null,
+    remainsEventSpeaker,
+    listedPublicly: remainsEventSpeaker
+      && (PUBLIC_SPEAKER_STATUSES as readonly string[]).includes(speaker.status),
+    speaksElsewhereAtEvent,
+  };
 }
 
 async function participantsResponse(
@@ -280,12 +313,24 @@ participantRoutes.delete(
       .update(submissionSpeakers)
       .set({ deletedAt: new Date() })
       .where(eq(submissionSpeakers.id, participant.id));
-    if (scope.sessionId !== null) {
-      await releaseParticipantFromSession(context.env.DB, eventId, scope.sessionId, participant.personId);
-    }
-    return context.json(
-      await participantsResponse(database, eventId, submissionId, scope.submission.submitterPersonId, scope.sessionId),
-    );
+    const release = scope.sessionId === null
+      ? { speaksElsewhereAtEvent: false }
+      : await releaseParticipantFromSession(context.env.DB, eventId, scope.sessionId, participant.personId);
+    return context.json({
+      ...await participantsResponse(
+        database,
+        eventId,
+        submissionId,
+        scope.submission.submitterPersonId,
+        scope.sessionId,
+      ),
+      removal: await removalOutcome(
+        database,
+        eventId,
+        participant.personId,
+        release.speaksElsewhereAtEvent,
+      ),
+    });
   },
 );
 

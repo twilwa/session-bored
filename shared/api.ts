@@ -461,10 +461,27 @@ export interface SubmissionParticipantSummary {
   onSession: boolean;
 }
 
+/**
+ * What a removal did, and what it deliberately left standing. Removing a participant from a
+ * proposal takes their access to that proposal and its session; it never withdraws the
+ * event-scoped speaker row, so the person can stay on the roster, in the public speaker
+ * directory, and in the mail recipient list. This reports that rather than leaving the
+ * organizer to discover it.
+ */
+export interface ParticipantRemovalOutcome {
+  name: string;
+  personId: `psn_${string}`;
+  speakerId: `spk_${string}` | null;
+  remainsEventSpeaker: boolean;
+  listedPublicly: boolean;
+  speaksElsewhereAtEvent: boolean;
+}
+
 export interface SubmissionParticipantsPayload {
   submissionId: `sub_${string}`;
   sessionId: `ses_${string}` | null;
   participants: SubmissionParticipantSummary[];
+  removal?: ParticipantRemovalOutcome;
 }
 
 export interface RosterSpeakerSummary extends SpeakerSummary {

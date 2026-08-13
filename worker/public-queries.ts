@@ -32,8 +32,10 @@ const PUBLIC_SESSION_GATE = and(
 
 // ABOUTME: Public speakers have cleared invitation and employer-approval states.
 // Confirmed, onboarding, and ready speakers remain visible even when their profiles are incomplete.
+export const PUBLIC_SPEAKER_STATUSES = ["confirmed", "onboarding", "ready"] as const;
+
 const PUBLIC_SPEAKER_GATE = and(
-  inArray(speakers.status, ["confirmed", "onboarding", "ready"]),
+  inArray(speakers.status, [...PUBLIC_SPEAKER_STATUSES]),
   isNull(speakers.deletedAt),
   isNull(people.deletedAt),
 );

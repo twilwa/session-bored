@@ -156,6 +156,10 @@
 .participant .button { justify-self: start; margin-top: 6px; }
 .participants__error { color: var(--danger); font-size: 0.82rem; font-weight: 800; }
 .participants__note { margin-top: 12px; color: var(--muted); font-size: 0.76rem; }
+.participants__removal { margin-top: 12px; border-left: 3px solid var(--ink); background: var(--paper, #f6f4ec); padding: 12px 14px; }
+.participants__removal strong { display: block; font-size: 0.9rem; }
+.participants__removal p { margin: 6px 0 0; color: var(--muted); font-size: 0.8rem; line-height: 1.5; }
+.participants__removal a { color: var(--blue); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
 .participants__add { display: grid; gap: 10px; padding: 14px 0; border-top: 1px solid var(--line); }
 .participants__add label { display: grid; gap: 4px; }
 .participants__add label span { color: var(--blue); font: 0.68rem monospace; text-transform: uppercase; }

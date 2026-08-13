@@ -75,6 +75,15 @@ test("a panel names its participants, the program team amends them, and acceptan
   await expect(page.getByText("On the session").first()).toBeVisible();
   await expect(page.getByText("Not on the session")).toHaveCount(0);
 
+  // Removing somebody says what it did and, as plainly, what it left standing at the event.
+  await page.locator(".participant").filter({ hasText: "Late Addition" })
+    .getByRole("button", { name: "Remove" }).click();
+  const removalNotice = page.getByRole("status", { name: "What removing this participant did" });
+  await expect(removalNotice.getByText("Late Addition is no longer on this proposal")).toBeVisible();
+  await expect(removalNotice.getByText("They are still a speaker at this event", { exact: false })).toBeVisible();
+  await expect(removalNotice.getByRole("link", { name: "roster" })).toHaveAttribute("href", "/organizer/roster");
+  await expect(page.locator(".participant").filter({ hasText: "Late Addition" })).toHaveCount(0);
+
   // Everybody on the panel, the author included, clears onto the roster ready for publication.
   const addresses = [
     authorEmail,
