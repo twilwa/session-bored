@@ -384,6 +384,31 @@ describe("speaker portal content", () => {
     expect(served.headers.get("content-type")).toBe("image/png");
     expect(served.headers.get("x-content-type-options")).toBe("nosniff");
     expect(served.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+
+    // The unversioned form resolves the latest version, so a cache must keep asking.
+    const latest = await request("/api/public/portal/speakers/spk_priya_devflow_2027/headshot");
+    expect(latest.status).toBe(200);
+    expect(latest.headers.get("cache-control")).toBe("public, max-age=300");
+  });
+
+  it("answers a malformed version query with not found on both headshot and file routes", async () => {
+    const upload = await request("/api/portal/profile/headshot", {
+      method: "POST",
+      headers: { cookie: priyaCookie },
+      body: fileUpload("priya.png", "image/png", pngSignature),
+    });
+    expect(upload.status).toBe(201);
+    const { fileId } = await upload.json<{ fileId: string }>();
+
+    const publicResponse = await request(
+      "/api/public/portal/speakers/spk_priya_devflow_2027/headshot?version=abc",
+    );
+    expect(publicResponse.status).toBe(404);
+
+    const privateResponse = await request(`/api/portal/files/${fileId}?version=abc`, {
+      headers: { cookie: priyaCookie },
+    });
+    expect(privateResponse.status).toBe(404);
   });
 
   it("gives a replacement its own public URL, so a fresh request cannot return the previous headshot bytes", async () => {
