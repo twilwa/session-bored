@@ -1,6 +1,6 @@
 // ABOUTME: Changes submission decisions silently and exposes deliberate disposition operations.
 // ABOUTME: Keeps notification dispatch separate from reversible committee status changes.
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { Hono } from "hono";
 import { createMiddleware } from "hono/factory";
@@ -95,12 +95,18 @@ dispositionRoutes.get("/api/events/:eventId/disposition", async (context) => {
       noticeDeliveryStatus: decisionNotices.deliveryStatus,
       noticeQueuedAt: decisionNotices.queuedAt,
       noticeFailureReason: decisionNotices.failureReason,
+      noticeRecipientEmail: decisionNotices.recipientEmail,
     })
     .from(submissions)
     .innerJoin(people, eq(submissions.submitterPersonId, people.id))
     .leftJoin(formats, eq(submissions.formatId, formats.id))
     .leftJoin(sessions, eq(submissions.id, sessions.submissionId))
-    .leftJoin(decisionNotices, eq(submissions.id, decisionNotices.submissionId))
+    // The live letter only. A submission whose letter was cancelled reads as unqueued again,
+    // and joining the cancelled ones would list the submission once per letter it ever had.
+    .leftJoin(
+      decisionNotices,
+      and(eq(submissions.id, decisionNotices.submissionId), isNull(decisionNotices.cancelledAt)),
+    )
     .where(eq(submissions.eventId, context.req.param("eventId")))
     .orderBy(submissions.createdAt);
   const trackRows = rows.length === 0 ? [] : await database
@@ -135,6 +141,7 @@ dispositionRoutes.get("/api/events/:eventId/disposition", async (context) => {
         deliveryStatus: row.noticeDeliveryStatus,
         queuedAt: row.noticeQueuedAt,
         failureReason: row.noticeFailureReason,
+        recipientEmail: row.noticeRecipientEmail,
       },
       diverged: row.noticeOutcome !== null && row.noticeOutcome !== row.status,
     })),
@@ -245,10 +252,14 @@ dispositionRoutes.post("/api/events/:eventId/decision-batches/:batchId/dispatch"
   if (batch === undefined) {
     return context.json({ error: "batch_not_found" }, 404);
   }
-  const items = await database
+  const allItems = await database
     .select()
     .from(decisionBatchItems)
     .where(eq(decisionBatchItems.batchId, batch.id));
+  // An item this batch already handed to the queue is done, even if that letter has since been
+  // cancelled. Without this, re-dispatching an old batch would queue the retired letter again -
+  // the unique index no longer stops it, because a cancelled letter releases its submission.
+  const items = allItems.filter((item) => item.dispatchedAt === null);
   const queuedAt = new Date();
   const inserted = items.length === 0
     ? []
@@ -297,7 +308,11 @@ dispositionRoutes.post("/api/events/:eventId/decision-batches/:batchId/dispatch"
       body: decisionNotices.body,
     })
     .from(decisionNotices)
-    .where(and(eq(decisionNotices.batchId, batch.id), eq(decisionNotices.deliveryStatus, "queued")));
+    .where(and(
+      eq(decisionNotices.batchId, batch.id),
+      eq(decisionNotices.deliveryStatus, "queued"),
+      isNull(decisionNotices.cancelledAt),
+    ));
 
   const emailResult = await dispatchDecisionNoticeEmails(
     database,
@@ -312,7 +327,7 @@ dispositionRoutes.post("/api/events/:eventId/decision-batches/:batchId/dispatch"
   return context.json({
     status: "queued",
     queuedCount: inserted.length,
-    skippedCount: items.length - inserted.length,
+    skippedCount: allItems.length - inserted.length,
     pendingCount: connected ? 0 : pending.length,
     emailDelivery: connected ? "dispatched" : "not_configured",
     sent: emailResult.sent,

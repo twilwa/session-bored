@@ -105,7 +105,11 @@ test("a queued decision notice stays visible when no sender is connected", async
 
   await page.goto("/organizer/comms");
   const log = page.getByRole("region", { name: "Dispatch log" });
-  const notice = log.getByRole("row").filter({ hasText: "Your talk has been accepted to DevFlow Conf 2027" });
+  // A proposal can have more than one letter in this history once an earlier one is cancelled,
+  // so identify the waiting letter by the pending state rather than by its subject alone.
+  const notice = log.getByRole("row")
+    .filter({ hasText: "Your talk has been accepted to DevFlow Conf 2027" })
+    .filter({ hasText: "No email sender is connected, so delivery was not attempted." });
   await expect(notice).toContainText("queued");
   await expect(notice).toContainText("No email sender is connected, so delivery was not attempted.");
   await expect(notice.getByText("sent", { exact: true })).toHaveCount(0);
@@ -142,4 +146,76 @@ test("a decision letter that could not be sent stays visible and honest in Commu
   await expect(undelivered).toContainText("It will go out once an email sender is connected.");
   // With no sender there is nothing to click, so the page offers no dead-end send action.
   await expect(undelivered.getByRole("button", { name: "Send now" })).toHaveCount(0);
+});
+
+test("organizer corrects a wrong recipient by cancelling the letter and re-queueing it", async ({ page }) => {
+  await page.goto("/login");
+  await page.getByLabel("Email").fill("sbek-organizer@example.com");
+  await page.getByLabel("Password").fill("SbekTest!2027-org");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page).toHaveURL(/\/organizer$/);
+
+  // A cancelled letter stays in the history for good, so every run needs its own reason to
+  // identify by. The local database is persistent and other specs queue this same proposal.
+  const reason = `Queued to a stale address ${Date.now()}.`;
+  const corrected = "priya.raman@greenroom-e2e.dev";
+
+  // Whatever the earlier specs left, there is exactly one live letter for this proposal after
+  // this: a dispatch that finds one already queued adds nothing.
+  await page.request.patch("/api/events/evt_devflow_conf_2027/disposition", {
+    data: { submissionIds: ["sub_ai_verification"], status: "accepted" },
+  });
+  const batch = await (await page.request.post("/api/events/evt_devflow_conf_2027/decision-batches", {
+    data: { submissionIds: ["sub_ai_verification"] },
+  })).json() as { id: string };
+  await page.request.post(`/api/events/evt_devflow_conf_2027/decision-batches/${batch.id}/dispatch`);
+
+  try {
+    await page.goto("/organizer/comms");
+    const undelivered = page.getByRole("region", { name: "Decision letters not yet delivered" });
+    await expect(undelivered).toContainText("sbek-speaker@example.com");
+
+    // The control exists, is reachable, and opens the correction it promises.
+    await undelivered.getByRole("button", { name: "Wrong recipient?" }).first().click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toContainText("has not been sent, so cancelling it tells nobody anything");
+    const addressField = dialog.getByLabel("Correct the recipient's address");
+    await expect(addressField).toHaveValue("sbek-speaker@example.com");
+    await addressField.fill(corrected);
+    await dialog.getByLabel("Why is it being cancelled?").fill(reason);
+    await dialog.getByRole("button", { name: "Cancel and re-queue" }).click();
+
+    // One click lands on the replacement letter, rendered from the corrected record.
+    await expect(page).toHaveURL(/\/organizer\/disposition\?requeue=sub_ai_verification$/);
+    const replacement = page.getByRole("region", { name: "Replacement letter" });
+    await expect(replacement).toContainText("The previous letter was cancelled and has not been sent.");
+    await expect(replacement).toContainText("Nothing is queued until you dispatch it.");
+    await expect(page.getByRole("region", { name: "Decision batch preview" })).toContainText(corrected);
+
+    // Approval is still required: the replacement is not queued until dispatch is clicked.
+    const notices = await (await page.request.get("/api/events/evt_devflow_conf_2027/disposition")).json() as {
+      items: Array<{ id: string; notice: unknown }>;
+    };
+    expect(notices.items.find((item) => item.id === "sub_ai_verification")?.notice).toBeNull();
+
+    // The cancelled letter did not vanish - it is in the shared history, marked cancelled, and
+    // still showing the address it would have gone to.
+    await page.goto("/organizer/comms");
+    const cancelled = page.getByRole("region", { name: "Dispatch log" })
+      .getByRole("row").filter({ hasText: reason });
+    await expect(cancelled).toContainText("cancelled");
+    await expect(cancelled).toContainText("sbek-speaker@example.com");
+  } finally {
+    // Always put the fixture address back, including after a failure, or every later spec reads
+    // a speaker this one renamed.
+    const roster = await (await page.request.get("/api/events/evt_devflow_conf_2027/roster")).json() as {
+      items: Array<{ id: string; email: string }>;
+    };
+    const moved = roster.items.find((item) => item.email === corrected);
+    if (moved !== undefined) {
+      await page.request.patch(`/api/events/evt_devflow_conf_2027/speakers/${moved.id}`, {
+        data: { email: "sbek-speaker@example.com" },
+      });
+    }
+  }
 });

@@ -1,5 +1,6 @@
 // ABOUTME: Stores reviewable decision batches and the once-only queue log for disposition notices.
 // ABOUTME: Keeps committee decisions separate from deliberate communication dispatch records.
+import { sql } from "drizzle-orm";
 import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 const decisionOutcomes = ["accepted", "maybe", "declined"] as const;
@@ -69,11 +70,19 @@ export const decisionNotices = sqliteTable(
     providerMessageId: text("provider_message_id"),
     failureReason: text("failure_reason"),
     queuedAt: integer("queued_at", { mode: "timestamp_ms" }).notNull(),
+    cancelledAt: integer("cancelled_at", { mode: "timestamp_ms" }),
+    cancelledByUserId: text("cancelled_by_user_id"),
+    cancellationReason: text("cancellation_reason"),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
   (table) => [
-    uniqueIndex("decision_notice_submission_unique").on(table.submissionId),
+    // One live letter per submission, which is what makes dispatch once-only. A cancelled
+    // letter stays for the record and releases the submission so a corrected letter can be
+    // reviewed and queued in its place.
+    uniqueIndex("decision_notice_submission_unique")
+      .on(table.submissionId)
+      .where(sql`${table.cancelledAt} is null`),
     index("decision_notice_batch_idx").on(table.batchId),
   ],
 );

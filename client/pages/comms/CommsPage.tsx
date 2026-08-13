@@ -7,7 +7,8 @@ import type {
   EmailDispatchSummary,
 } from "../../../shared/api.ts";
 import { EmailSenderNotice, useEmailSenderStatus } from "../../components/email-sender.tsx";
-import { Button, DataTable, LoadingState, StatusChip, TextField, Toast } from "../../components/ui.tsx";
+import { Button, DataTable, LoadingState, Modal, StatusChip, TextField, Toast } from "../../components/ui.tsx";
+import { navigate } from "../../lib.tsx";
 import "./comms.css";
 
 const eventId = "evt_devflow_conf_2027";
@@ -26,6 +27,14 @@ interface TemplateEditor {
   body: string;
 }
 
+/** A letter the organizer is retiring, and the correction that should replace it. */
+interface Cancellation {
+  submissionId: string;
+  recipientName: string;
+  recipientEmail: string;
+  reason: string;
+}
+
 function requestErrorMessage(status: number, payload: unknown): string {
   if (typeof payload === "object" && payload !== null) {
     const error = "error" in payload && typeof payload.error === "string" ? payload.error : null;
@@ -40,6 +49,18 @@ function requestErrorMessage(status: number, payload: unknown): string {
     }
     if (error === "email_not_configured") {
       return "No email sender is configured, so nothing was sent. The draft remains ready for review.";
+    }
+    if (error === "recipient_email_taken") {
+      return "Another person already uses that address, so nothing was changed and the letter is still queued.";
+    }
+    if (error === "invalid_recipient_email") {
+      return "That is not an email address, so nothing was changed and the letter is still queued.";
+    }
+    if (error === "notice_not_cancellable") {
+      return "This letter has already been sent, so it is history and cannot be cancelled.";
+    }
+    if (error === "notice_already_cancelled") {
+      return "This letter was already cancelled.";
     }
     // A send the provider rejected answers 502 and names its own reason, which is
     // the only thing that tells an organizer what to fix.
@@ -75,6 +96,7 @@ export function CommsPage() {
   const [previewResult, setPreviewResult] = useState<{ subject: string; text: string } | null>(null);
   const [selectedRecipientIds, setSelectedRecipientIds] = useState<string[]>([]);
   const [templateEditor, setTemplateEditor] = useState<TemplateEditor | null>(null);
+  const [cancellation, setCancellation] = useState<Cancellation | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [edits, setEdits] = useState<Record<string, { subject: string; body: string }>>({});
@@ -258,6 +280,45 @@ export function CommsPage() {
     }
   }
 
+  function startCancellation(item: DispositionSummary): void {
+    setCancellation({
+      submissionId: item.id,
+      recipientName: item.recipientName,
+      recipientEmail: item.notice?.recipientEmail ?? item.recipientEmail,
+      reason: "",
+    });
+  }
+
+  /**
+   * Retires the letter, optionally correcting the address it was queued to. "requeue" then hands
+   * the organizer to Disposition with a fresh letter rendered from the corrected record - which
+   * they still have to review and dispatch. Cancelling never queues or sends anything itself.
+   */
+  async function cancelNotice(pending: Cancellation, then: "requeue" | "stay"): Promise<void> {
+    setBusy(true);
+    try {
+      await readJson(`/api/events/${eventId}/decision-notices/${pending.submissionId}/cancel`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          reason: pending.reason,
+          recipientEmail: pending.recipientEmail,
+        }),
+      });
+      setCancellation(null);
+      if (then === "requeue") {
+        navigate(`/organizer/disposition?requeue=${pending.submissionId}`);
+        return;
+      }
+      await load();
+      setMessage("The letter was cancelled. It stays in the dispatch log, marked cancelled.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "The letter could not be cancelled.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function runPreview(): Promise<void> {
     if (activeTemplate === undefined) return;
     if (selectedRecipientIds.length === 0) {
@@ -326,7 +387,9 @@ export function CommsPage() {
           <div className="comms-draft-list">
             {undeliveredNotices.map((item) => (
               <article className="comms-draft" key={item.id}>
-                <p><strong>{item.recipientName}</strong> &lt;{item.recipientEmail}&gt;</p>
+                {/* The address the letter carries, not the person's current one. Correcting the
+                    person leaves this pointing at the old address, and this card offers to send. */}
+                <p><strong>{item.recipientName}</strong> &lt;{item.notice?.recipientEmail ?? item.recipientEmail}&gt;</p>
                 <p className="quiet-copy">{item.title ?? "Untitled proposal"} · {item.notice?.outcome}</p>
                 <p className="comms-undelivered-state">
                   {item.notice?.deliveryStatus === "failed"
@@ -338,15 +401,71 @@ export function CommsPage() {
                   : null}
                 {senderStatus?.connected === false
                   ? <p className="comms-undelivered-blocked">It will go out once an email sender is connected. See the delivery status above.</p>
-                  : (
+                  : null}
+                <div className="comms-draft__actions">
+                  {senderStatus?.connected === false ? null : (
                     <Button disabled={busy || senderStatus === null} onClick={() => void sendNotice(item.id)} tone="signal">
                       Send now
                     </Button>
                   )}
+                  <Button
+                    disabled={busy}
+                    onClick={() => startCancellation(item)}
+                    tone="quiet"
+                  >
+                    Wrong recipient?
+                  </Button>
+                </div>
               </article>
             ))}
           </div>
         </section>
+      )}
+
+      {cancellation === null ? null : (
+        <Modal
+          onClose={() => setCancellation(null)}
+          open
+          title={`Cancel the letter to ${cancellation.recipientName}`}
+        >
+          <p>
+            This letter has not been sent, so cancelling it tells nobody anything. It stays in the
+            dispatch log below, marked cancelled, with the reason you give here.
+          </p>
+          <TextField
+            label="Correct the recipient's address"
+            name="cancel-recipient-email"
+            onChange={(event) => setCancellation({ ...cancellation, recipientEmail: event.target.value })}
+            type="email"
+            value={cancellation.recipientEmail}
+          />
+          <p className="quiet-copy">
+            This updates the address Greenroom holds for {cancellation.recipientName}, so every later
+            letter goes to the right place. Leave it unchanged to cancel without correcting anything.
+          </p>
+          <TextField
+            label="Why is it being cancelled?"
+            name="cancel-reason"
+            onChange={(event) => setCancellation({ ...cancellation, reason: event.target.value })}
+            value={cancellation.reason}
+          />
+          <div className="comms-draft__actions">
+            <Button
+              disabled={busy}
+              onClick={() => void cancelNotice(cancellation, "requeue")}
+              tone="signal"
+            >
+              Cancel and re-queue
+            </Button>
+            <Button disabled={busy} onClick={() => void cancelNotice(cancellation, "stay")}>
+              Cancel this letter only
+            </Button>
+          </div>
+          <p className="quiet-copy">
+            Re-queueing takes you to Disposition with a fresh letter rendered from the corrected
+            record. Nothing is queued until you review it there and dispatch it.
+          </p>
+        </Modal>
       )}
 
       <section className="workspace-section" aria-label="Template library">
@@ -519,7 +638,7 @@ export function CommsPage() {
               { key: "recipient", label: "Recipient", render: (row) => row.recipients.map((recipient) => recipient.email).join(", ") },
               { key: "subject", label: "Subject", render: (row) => row.subject },
               { key: "status", label: "Status", render: (row) => <StatusChip tone={statusTone(row.status)}>{row.status}</StatusChip> },
-              { key: "outcome", label: "Detail", render: (row) => row.status === "failed" || row.status === "queued" ? row.failureReason ?? "" : row.sentAt ?? "" },
+              { key: "outcome", label: "Detail", render: (row) => row.status === "sent" ? row.sentAt ?? "" : row.failureReason ?? "" },
             ]}
             rows={sentLog}
           />

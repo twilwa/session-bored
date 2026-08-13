@@ -1,8 +1,8 @@
 // ABOUTME: Fills disposition.ts's dispatch seam - sends the letters it already rendered and queued.
 // ABOUTME: Owns per-recipient delivery outcome and the one send path for a letter still undelivered.
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
-import { decisionBatches, decisionNotices } from "../../db/schema.ts";
+import { decisionBatches, decisionNotices, people, submissions } from "../../db/schema.ts";
 import { resolveEmailDelivery, type EmailDelivery, type EmailEnvironment } from "../email.ts";
 import { sendTrackedEmail, textToHtml } from "./send.ts";
 
@@ -122,7 +122,11 @@ export async function retryDecisionNotice(
     })
     .from(decisionNotices)
     .innerJoin(decisionBatches, eq(decisionNotices.batchId, decisionBatches.id))
-    .where(and(eq(decisionNotices.submissionId, submissionId), eq(decisionBatches.eventId, eventId)));
+    .where(and(
+      eq(decisionNotices.submissionId, submissionId),
+      eq(decisionBatches.eventId, eventId),
+      isNull(decisionNotices.cancelledAt),
+    ));
   if (row === undefined) {
     return { status: "not_found" };
   }
@@ -141,4 +145,93 @@ export async function retryDecisionNotice(
     .from(decisionNotices)
     .where(eq(decisionNotices.id, row.id));
   return { status: "failed", error: updated?.failureReason ?? "send_failed" };
+}
+
+export type CancelDecisionNoticeResult =
+  | { status: "not_found" }
+  | { status: "already_cancelled" }
+  | { status: "not_cancellable"; currentStatus: string }
+  | { status: "invalid_recipient" }
+  | { status: "recipient_taken" }
+  | { status: "cancelled"; submissionId: string; recipientEmail: string };
+
+/**
+ * Retires a decision letter that has not reached its recipient, so a corrected one can be
+ * reviewed and queued in its place. A letter already `sent` is history and is refused here.
+ *
+ * Cancelling is not editing. The letter itself is never rewritten - it keeps the recipient,
+ * outcome, subject, and body it was approved with, and stays readable in Communications
+ * alongside who retired it and why. What `correctedRecipientEmail` changes is the *person's*
+ * address, the same field the roster already edits, which is what makes the replacement
+ * letter come out right. The replacement is a fresh batch the organizer reviews and
+ * dispatches, so the approval a letter carries always describes the letter that was sent.
+ */
+export async function cancelDecisionNotice(params: {
+  database: EmailDatabase;
+  eventId: `evt_${string}`;
+  submissionId: string;
+  cancelledByUserId: string;
+  reason?: string | undefined;
+  correctedRecipientEmail?: string | undefined;
+}): Promise<CancelDecisionNoticeResult> {
+  const { database, eventId, submissionId } = params;
+  const rows = await database
+    .select({
+      id: decisionNotices.id,
+      deliveryStatus: decisionNotices.deliveryStatus,
+      cancelledAt: decisionNotices.cancelledAt,
+    })
+    .from(decisionNotices)
+    .innerJoin(decisionBatches, eq(decisionNotices.batchId, decisionBatches.id))
+    .where(and(eq(decisionNotices.submissionId, submissionId), eq(decisionBatches.eventId, eventId)));
+  if (rows.length === 0) {
+    return { status: "not_found" };
+  }
+  const live = rows.find((row) => row.cancelledAt === null);
+  if (live === undefined) {
+    return { status: "already_cancelled" };
+  }
+  if (live.deliveryStatus === "sent") {
+    return { status: "not_cancellable", currentStatus: live.deliveryStatus };
+  }
+
+  const [submission] = await database
+    .select({ personId: submissions.submitterPersonId, currentEmail: people.email })
+    .from(submissions)
+    .innerJoin(people, eq(submissions.submitterPersonId, people.id))
+    .where(eq(submissions.id, submissionId));
+  if (submission === undefined) {
+    return { status: "not_found" };
+  }
+
+  let recipientEmail = submission.currentEmail;
+  if (params.correctedRecipientEmail !== undefined) {
+    const corrected = params.correctedRecipientEmail.trim().toLowerCase();
+    if (!corrected.includes("@") || corrected.startsWith("@") || corrected.endsWith("@")) {
+      return { status: "invalid_recipient" };
+    }
+    if (corrected !== submission.currentEmail) {
+      const [taken] = await database
+        .select({ id: people.id })
+        .from(people)
+        .where(and(sql`lower(${people.email}) = ${corrected}`, sql`${people.id} <> ${submission.personId}`));
+      // Someone else already answers to this address, so adopting it would silently merge two
+      // people. Nothing is cancelled: the correction the organizer asked for did not happen.
+      if (taken !== undefined) {
+        return { status: "recipient_taken" };
+      }
+      await database.update(people).set({ email: corrected }).where(eq(people.id, submission.personId));
+    }
+    recipientEmail = corrected;
+  }
+
+  await database
+    .update(decisionNotices)
+    .set({
+      cancelledAt: new Date(),
+      cancelledByUserId: params.cancelledByUserId,
+      cancellationReason: params.reason?.trim() || null,
+    })
+    .where(eq(decisionNotices.id, live.id));
+  return { status: "cancelled", submissionId, recipientEmail };
 }

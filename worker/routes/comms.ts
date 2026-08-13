@@ -1,6 +1,6 @@
 // ABOUTME: Serves Greenroom's communications surface for event templates and reviewable dispatch drafts.
 // ABOUTME: Also exposes reminder drafting, decision-notice retry, and deliberate calendar-invite sends.
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNotNull, isNull, or } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { Hono } from "hono";
 import { createMiddleware } from "hono/factory";
@@ -9,7 +9,7 @@ import { holdsAccess } from "../access.ts";
 import { isEmailConfigured, missingEmailSenderSecrets } from "../email.ts";
 import { sendSessionCalendarInvite } from "../email/calendar-invite.ts";
 import { discardDraftDispatch, sendQueuedDispatch, updateDraftDispatch } from "../email/dispatch-queue.ts";
-import { retryDecisionNotice } from "../email/decision-notices.ts";
+import { cancelDecisionNotice, retryDecisionNotice } from "../email/decision-notices.ts";
 import { draftOverdueTaskReminders } from "../email/reminders.ts";
 import {
   createEventTemplate,
@@ -103,12 +103,19 @@ commsRoutes.get("/api/events/:eventId/email-dispatches", async (context) => {
         subject: decisionNotices.subject,
         body: decisionNotices.body,
         queuedAt: decisionNotices.queuedAt,
+        cancelledAt: decisionNotices.cancelledAt,
+        cancellationReason: decisionNotices.cancellationReason,
       })
       .from(decisionNotices)
       .innerJoin(decisionBatches, eq(decisionNotices.batchId, decisionBatches.id))
+      // A letter Greenroom queued belongs in this history whether it is still waiting or was
+      // retired, so cancelling is never a way to make a decision letter disappear.
       .where(and(
         eq(decisionBatches.eventId, eventId),
-        eq(decisionNotices.deliveryStatus, "queued"),
+        or(
+          eq(decisionNotices.deliveryStatus, "queued"),
+          isNotNull(decisionNotices.cancelledAt),
+        ),
       )),
   ]);
   const pendingReason = isEmailConfigured(context.env)
@@ -121,13 +128,15 @@ commsRoutes.get("/api/events/:eventId/email-dispatches", async (context) => {
     subject: notice.subject,
     body: notice.body,
     recipients: [{ email: notice.recipientEmail, name: notice.recipientName }],
-    status: "queued" as const,
+    status: notice.cancelledAt === null ? "queued" as const : "cancelled" as const,
     providerMessageIds: null,
-    failureReason: pendingReason,
+    failureReason: notice.cancelledAt === null
+      ? pendingReason
+      : `Cancelled before sending. ${notice.cancellationReason ?? "No reason was given."}`,
     sentAt: null,
     createdByUserId: null,
     createdAt: notice.queuedAt,
-    updatedAt: notice.queuedAt,
+    updatedAt: notice.cancelledAt ?? notice.queuedAt,
     deletedAt: null,
   }));
   const items = [...dispatches, ...queuedItems]
@@ -237,6 +246,51 @@ commsRoutes.post("/api/events/:eventId/decision-notices/:submissionId/retry", as
     return context.json({ status: "failed", error: result.error }, 502);
   }
   return context.json({ status: "sent" });
+});
+
+commsRoutes.post("/api/events/:eventId/decision-notices/:submissionId/cancel", async (context) => {
+  const user = context.get("authUser");
+  if (user === null) {
+    return context.json({ error: "authentication_required" }, 401);
+  }
+  // An empty body is an ordinary cancellation with no reason and no address correction.
+  const payload = await context.req
+    .json<{ reason?: unknown; recipientEmail?: unknown }>()
+    .catch(() => ({} as { reason?: unknown; recipientEmail?: unknown }));
+  if (
+    (payload.reason !== undefined && typeof payload.reason !== "string") ||
+    (payload.recipientEmail !== undefined && typeof payload.recipientEmail !== "string")
+  ) {
+    return context.json({ error: "invalid_cancellation" }, 400);
+  }
+  const result = await cancelDecisionNotice({
+    database: drizzle(context.env.DB),
+    eventId: context.req.param("eventId") as `evt_${string}`,
+    submissionId: context.req.param("submissionId"),
+    cancelledByUserId: user.id,
+    reason: typeof payload.reason === "string" ? payload.reason : undefined,
+    correctedRecipientEmail: typeof payload.recipientEmail === "string" ? payload.recipientEmail : undefined,
+  });
+  if (result.status === "not_found") {
+    return context.json({ error: "notice_not_found" }, 404);
+  }
+  if (result.status === "already_cancelled") {
+    return context.json({ error: "notice_already_cancelled" }, 409);
+  }
+  if (result.status === "not_cancellable") {
+    return context.json({ error: "notice_not_cancellable", currentStatus: result.currentStatus }, 409);
+  }
+  if (result.status === "invalid_recipient") {
+    return context.json({ error: "invalid_recipient_email" }, 400);
+  }
+  if (result.status === "recipient_taken") {
+    return context.json({ error: "recipient_email_taken" }, 409);
+  }
+  return context.json({
+    status: "cancelled",
+    submissionId: result.submissionId,
+    recipientEmail: result.recipientEmail,
+  });
 });
 
 commsRoutes.get("/api/events/:eventId/comms/templates", async (context) => {
