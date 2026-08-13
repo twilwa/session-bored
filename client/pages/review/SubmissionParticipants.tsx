@@ -22,11 +22,23 @@ export function RemovalNotice(
     sessionContentStatus: SubmissionParticipantsPayload["sessionContentStatus"];
   },
 ) {
+  const withdrawnOnboarding = removal.withdrawnOnboarding.length === 0
+    ? <p>No onboarding work was withdrawn.</p>
+    : (
+      <>
+        <p>They no longer owe this onboarding work:</p>
+        <ul>
+          {removal.withdrawnOnboarding.map((task) => <li key={task.taskId}>{task.title}</li>)}
+        </ul>
+        <p>Naming them on this proposal again restores this work and its history.</p>
+      </>
+    );
   if (!removal.remainsEventSpeaker) {
     return (
       <section aria-label="What removing this participant did" className="participants__removal" role="status">
         <strong>{removal.name} is no longer on this proposal</strong>
-        <p>They lost access to it, and they hold no speaker record at this event, so nothing else is left to undo.</p>
+        <p>They lost access to it, and they hold no live speaker record at this event.</p>
+        {withdrawnOnboarding}
       </section>
     );
   }
@@ -48,6 +60,7 @@ export function RemovalNotice(
         {lost} They are still a speaker at this event:{" "}
         {standing.join(", ")}. Removing a participant here never withdraws them from the event.
       </p>
+      {withdrawnOnboarding}
       <p>
         To take them off the event entirely, remove them on the{" "}
         <a href="/organizer/roster">roster</a>.

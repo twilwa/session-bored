@@ -33,6 +33,10 @@ interface OnboardingTask {
   title: string;
 }
 
+export interface ParticipantRelease {
+  withdrawnOnboarding: OnboardingTask[];
+}
+
 /**
  * The onboarding work every participant on a session picks up. The event's own sessionless,
  * unscoped tasks are the configured template; an event that has configured none falls back to
@@ -305,14 +309,14 @@ export async function releaseParticipantFromSession(
   eventId: string,
   sessionId: string,
   personId: string,
-): Promise<void> {
+): Promise<ParticipantRelease> {
   const database = drizzle(binding);
   const [speaker] = await database
     .select({ id: speakers.id })
     .from(speakers)
     .where(and(eq(speakers.personId, personId), eq(speakers.eventId, eventId)));
   if (speaker === undefined) {
-    return;
+    return { withdrawnOnboarding: [] };
   }
   await database
     .update(sessionSpeakers)
@@ -322,34 +326,58 @@ export async function releaseParticipantFromSession(
       eq(sessionSpeakers.speakerId, speaker.id),
       isNull(sessionSpeakers.deletedAt),
     ));
-  const archiveAssignments = async (taskIds: readonly string[], ...only: SQL[]) => {
+  const archiveAssignments = async (
+    taskIds: readonly string[],
+    ...only: SQL[]
+  ): Promise<OnboardingTask[]> => {
     if (taskIds.length === 0) {
-      return;
+      return [];
     }
-    await database
-      .update(taskAssignees)
-      .set({ deletedAt: new Date() })
+    const assignments = await database
+      .select({ assignmentId: taskAssignees.id, id: tasks.id, title: tasks.title })
+      .from(taskAssignees)
+      .innerJoin(tasks, eq(tasks.id, taskAssignees.taskId))
       .where(and(
         eq(taskAssignees.speakerId, speaker.id),
         inArray(taskAssignees.taskId, [...taskIds]),
         isNull(taskAssignees.deletedAt),
         ...only,
-      ));
+      ))
+      .orderBy(tasks.title, tasks.id);
+    if (assignments.length === 0) {
+      return [];
+    }
+    const archived = await database
+      .update(taskAssignees)
+      .set({ deletedAt: new Date() })
+      .where(and(
+        inArray(taskAssignees.id, assignments.map((assignment) => assignment.assignmentId)),
+        isNull(taskAssignees.deletedAt),
+        ...only,
+      ))
+      .returning({ taskId: taskAssignees.taskId });
+    const archivedTaskIds = new Set(archived.map((assignment) => assignment.taskId));
+    return assignments
+      .filter((assignment) => archivedTaskIds.has(assignment.id))
+      .map(({ id, title }) => ({ id, title }));
   };
   // This session's own work goes back every time, not only on the last removal. Deferring it
   // would strand it: a later removal only ever looks at the session it was given, so work from
   // a session left earlier would stay live for somebody who speaks nowhere at the event.
-  await archiveAssignments(await sessionScopedTaskIds(database, eventId, sessionId));
+  const withdrawnOnboarding = await archiveAssignments(
+    await sessionScopedTaskIds(database, eventId, sessionId),
+  );
   if (await speaksElsewhereAtEvent(database, eventId, speaker.id)) {
-    return;
+    return { withdrawnOnboarding };
   }
   // Of the event's own onboarding, only the assignments a session handoff created. Work the
   // person already owed the event, or that an organizer handed them from the roster, records
   // no granting session and is not this removal's to take: they are still a speaker here.
-  await archiveAssignments(
+  withdrawnOnboarding.push(...await archiveAssignments(
     await eventOnboardingTaskIds(database, eventId),
     isNotNull(taskAssignees.grantedBySessionId),
-  );
+  ));
+  return { withdrawnOnboarding };
 }
 
 async function ensureAcceptedHandoff(

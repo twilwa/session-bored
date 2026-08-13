@@ -14,10 +14,19 @@ const removedSpeaker: ParticipantRemovalOutcome = {
   remainsEventSpeaker: true,
   listedPublicly: true,
   speaksElsewhereAtEvent: false,
+  withdrawnOnboarding: [],
   heldSessionAccess: true,
 };
 
 const neverOnTheSession: ParticipantRemovalOutcome = { ...removedSpeaker, heldSessionAccess: false };
+
+const removalWithWithdrawals = {
+  ...removedSpeaker,
+  withdrawnOnboarding: [
+    { taskId: "tsk_bio", title: "Complete bio and profile" },
+    { taskId: "tsk_release", title: "Sign speaker release form" },
+  ],
+} satisfies ParticipantRemovalOutcome;
 
 describe("what the worklist row says a recusal costs", () => {
   it("counts the recused assignments, not the reviewers, when one reviewer recused twice", () => {
@@ -78,6 +87,30 @@ describe("what the removal notice says it took away", () => {
       "They lost read access to it, and the read-only access they had to its approved session.",
     );
     expect(markup).not.toContain("write access");
+  });
+
+  it("names every onboarding item the removal withdrew and how to restore it", () => {
+    const markup = renderToStaticMarkup(
+      createElement(RemovalNotice, {
+        removal: removalWithWithdrawals,
+        sessionContentStatus: "approved",
+      }),
+    );
+    expect(markup).toContain("They no longer owe this onboarding work:");
+    expect(markup).toContain("Complete bio and profile");
+    expect(markup).toContain("Sign speaker release form");
+    expect(markup).toContain("Naming them on this proposal again restores this work and its history.");
+  });
+
+  it("does not contradict a withdrawal when the event speaker record is no longer live", () => {
+    const markup = renderToStaticMarkup(
+      createElement(RemovalNotice, {
+        removal: { ...removalWithWithdrawals, remainsEventSpeaker: false, speakerId: null },
+        sessionContentStatus: "approved",
+      }),
+    );
+    expect(markup).toContain("Complete bio and profile");
+    expect(markup).not.toContain("nothing else is left to undo");
   });
 
   it("still points at the roster whatever the proposal had", () => {

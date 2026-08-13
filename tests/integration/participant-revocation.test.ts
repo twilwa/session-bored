@@ -159,6 +159,18 @@ async function liveTaskAssignments(email: string): Promise<number> {
   return row?.count ?? 0;
 }
 
+async function liveTaskTitles(email: string): Promise<string[]> {
+  const rows = await env.DB.prepare(
+    `select task.title as title from task_assignee
+       join task on task.id = task_assignee.task_id
+       join speaker on speaker.id = task_assignee.speaker_id
+       join person on person.id = speaker.person_id
+      where person.email = ? and task_assignee.deleted_at is null
+      order by task.title`,
+  ).bind(email).all<{ title: string }>();
+  return rows.results.map((row) => row.title);
+}
+
 async function liveSessionLinks(sessionId: string, email: string): Promise<number> {
   const row = await env.DB.prepare(
     `select count(*) as count from session_speaker
@@ -358,12 +370,18 @@ describe("removing a participant revokes what naming them granted", () => {
     const created = await createPanel("rosa.onboarding@example.test", [collaborator]);
     await accept(created.submission.id, organizerCookie);
     const path = `/api/events/${eventId}/submissions/${created.submission.id}/participants`;
-    expect(await liveTaskAssignments(collaborator.email)).toBeGreaterThan(0);
+    const assignedTaskTitles = await liveTaskTitles(collaborator.email);
+    expect(assignedTaskTitles.length).toBeGreaterThan(0);
 
     const named = (await participantsOf(created.submission.id, organizerCookie))
       .find((participant) => participant.email === collaborator.email);
     const removed = await request(`${path}/${named?.id}`, { method: "DELETE", headers: { cookie: organizerCookie } });
     expect(removed.status).toBe(200);
+    const outcome = await removed.json<{
+      removal: { withdrawnOnboarding: Array<{ taskId: string; title: string }> };
+    }>();
+    expect(outcome.removal.withdrawnOnboarding.map((task) => task.title).sort())
+      .toEqual(assignedTaskTitles);
     expect(await liveTaskAssignments(collaborator.email)).toBe(0);
 
     const namedAgain = await request(path, {
@@ -607,9 +625,14 @@ describe("removing a participant revokes what naming them granted", () => {
         headers: { cookie: organizerCookie },
       });
       expect(response.status).toBe(200);
+      return response.json<{
+        removal: { withdrawnOnboarding: Array<{ taskId: string; title: string }> };
+      }>();
     };
 
-    await removeFrom(first.submission.id);
+    const firstRemoval = await removeFrom(first.submission.id);
+    expect(firstRemoval.removal.withdrawnOnboarding.map((task) => task.title))
+      .toEqual(["Record a session trailer"]);
     expect(await liveSessionLinks(firstSessionId, twoSessions.email)).toBe(0);
     expect(await taskIsLiveFor(firstTaskId, twoSessions.email)).toBe(false);
     // They still speak at the second session, so its own work stays.

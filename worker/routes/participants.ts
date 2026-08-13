@@ -112,6 +112,7 @@ async function removalOutcome(
   eventId: string,
   personId: string,
   heldSessionAccess: boolean,
+  withdrawnOnboarding: ParticipantRemovalOutcome["withdrawnOnboarding"],
 ): Promise<ParticipantRemovalOutcome> {
   const [person] = await database
     .select({ id: people.id, name: people.name })
@@ -132,6 +133,7 @@ async function removalOutcome(
     listedPublicly: remainsEventSpeaker
       && (PUBLIC_SPEAKER_STATUSES as readonly string[]).includes(speaker.status),
     speaksElsewhereAtEvent: stillSpeaking,
+    withdrawnOnboarding,
     heldSessionAccess,
   };
 }
@@ -359,12 +361,21 @@ participantRoutes.delete(
       .update(submissionSpeakers)
       .set({ deletedAt: new Date() })
       .where(eq(submissionSpeakers.id, participant.id));
-    if (scope.sessionId !== null) {
-      await releaseParticipantFromSession(context.env.DB, eventId, scope.sessionId, participant.personId);
-    }
+    const release = scope.sessionId === null
+      ? { withdrawnOnboarding: [] }
+      : await releaseParticipantFromSession(context.env.DB, eventId, scope.sessionId, participant.personId);
     return context.json({
       ...await participantsResponse(database, eventId, submissionId, scope),
-      removal: await removalOutcome(database, eventId, participant.personId, heldSessionAccess),
+      removal: await removalOutcome(
+        database,
+        eventId,
+        participant.personId,
+        heldSessionAccess,
+        release.withdrawnOnboarding.map((task) => ({
+          taskId: task.id as `tsk_${string}`,
+          title: task.title,
+        })),
+      ),
     });
   },
 );

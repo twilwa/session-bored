@@ -55,12 +55,17 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   stands after removal (issue #127, settled: no automatic withdrawal). What removal owes
   instead is candour: the DELETE answers with `ParticipantRemovalOutcome`, and
   the panel says the person remains an event speaker and points at the roster,
-  which owns withdrawal. That outcome reads every fact from the event after the
-  removal rather than from the release result, because a proposal with no session
-  still has to report the programme its participant speaks on elsewhere. The
-  notice names only the access the person actually held: the outcome carries
+  which owns withdrawal. That outcome reads the person's standing from the event
+  after the removal rather than from the release result, because a proposal with
+  no session still has to report the programme its participant speaks on
+  elsewhere. The
+  notice names the access the person actually held: the outcome carries
   `heldSessionAccess`, read from the live `session_speaker` row *before* removal
   archives it, and the payload carries `sessionContentStatus` beside `sessionId`.
+  The release also returns the exact live task assignments it archived; the
+  organizer outcome carries their IDs and titles as `withdrawnOnboarding`, and
+  the same notice names every one. The author-side CFP edit uses the release but
+  sends no notice or mail.
   A proposal is read-only to a named participant; naming somebody on an accepted
   proposal through the CFP edit never carries them onto its session, so a session
   the person never reached was never theirs to lose; and an `approved` session is
