@@ -193,6 +193,44 @@ async function giveSessionScopedTask(sessionId: string, email: string, title: st
   return taskId;
 }
 
+/**
+ * Puts somebody on the roster and hands them the event's own onboarding templates from it, the
+ * way an organizer does for a speaker who is not on any proposal. This is the onboarding a
+ * person already owes the event before a proposal names them, and it must outlive being named
+ * and unnamed again. Returns the task ids they now hold.
+ */
+async function giveEventOnboarding(
+  speaker: { name: string; email: string },
+  organizerCookie: string,
+): Promise<string[]> {
+  const added = await request(`/api/events/${eventId}/speakers`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie: organizerCookie },
+    body: JSON.stringify({ name: speaker.name, email: speaker.email, status: "onboarding" }),
+  });
+  expect(added.status).toBe(201);
+  const speakerId = (await added.json<{ id: string }>()).id;
+  const templates = await env.DB.prepare(
+    `select task.id as id from task
+       left join task_scope on task_scope.task_id = task.id
+      where task.event_id = ? and task.session_id is null and task_scope.task_id is null
+        and task.deleted_at is null`,
+  ).bind(eventId).all<{ id: string }>();
+  for (const template of templates.results) {
+    const holders = await env.DB.prepare(
+      "select speaker_id from task_assignee where task_id = ? and deleted_at is null",
+    ).bind(template.id).all<{ speaker_id: string }>();
+    const speakerIds = [...new Set([...holders.results.map((row) => row.speaker_id), speakerId])];
+    const assigned = await request(`/api/events/${eventId}/tasks/${template.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie: organizerCookie },
+      body: JSON.stringify({ speakerIds }),
+    });
+    expect(assigned.status).toBe(200);
+  }
+  return templates.results.map((template) => template.id);
+}
+
 async function taskIsLiveFor(taskId: string, email: string): Promise<boolean> {
   const row = await env.DB.prepare(
     `select count(*) as count from task_assignee
@@ -335,6 +373,60 @@ describe("removing a participant revokes what naming them granted", () => {
     });
     expect(namedAgain.status).toBe(201);
     expect(await liveTaskAssignments(collaborator.email)).toBeGreaterThan(0);
+  });
+
+  it("leaves alone the event onboarding a participant already held before they were named", async () => {
+    // The smallest possible correction: an organizer names somebody on an accepted proposal
+    // and takes the name straight back again. This person already owed the event its whole
+    // onboarding checklist before the proposal ever named them, so naming them created none of
+    // that work - and removing them must not be what takes it away.
+    const collaborator = { name: "Nadia Alqvist", email: "nadia.alreadyowed@example.test", roleLabel: "co-speaker" };
+    const alreadyOwed = await giveEventOnboarding(collaborator, organizerCookie);
+    expect(alreadyOwed.length).toBeGreaterThan(0);
+
+    const created = await createPanel("rosa.alreadyowed@example.test", [collaborator]);
+    await accept(created.submission.id, organizerCookie);
+    // Naming them created nothing: every template they were carried onto, they already held.
+    expect(await liveTaskAssignments(collaborator.email)).toBe(alreadyOwed.length);
+
+    const path = `/api/events/${eventId}/submissions/${created.submission.id}/participants`;
+    const named = (await participantsOf(created.submission.id, organizerCookie))
+      .find((participant) => participant.email === collaborator.email);
+    const removed = await request(`${path}/${named?.id}`, { method: "DELETE", headers: { cookie: organizerCookie } });
+    expect(removed.status).toBe(200);
+    // The proposal was their only session, so this is the removal that used to empty the list.
+    expect((await removed.json<{ removal: { speaksElsewhereAtEvent: boolean } }>()).removal)
+      .toMatchObject({ speaksElsewhereAtEvent: false });
+
+    for (const taskId of alreadyOwed) {
+      expect(await taskIsLiveFor(taskId, collaborator.email)).toBe(true);
+    }
+    expect(await liveTaskAssignments(collaborator.email)).toBe(alreadyOwed.length);
+  });
+
+  it("lets no author strip a co-presenter's own event onboarding by dropping them", async () => {
+    // The author-side door shows no notice at all, so it is the quieter half of the same
+    // defect: dropping a collaborator from a proposal must not reach the onboarding they
+    // already owed the event before this proposal ever named them.
+    const author = "rosa.authorstrip@example.test";
+    const collaborator = { name: "Tomas Herrera", email: "tomas.alreadyowed@example.test", roleLabel: "co-speaker" };
+    const alreadyOwed = await giveEventOnboarding(collaborator, organizerCookie);
+    expect(alreadyOwed.length).toBeGreaterThan(0);
+
+    const created = await createPanel(author, [collaborator]);
+    const sessionId = await accept(created.submission.id, organizerCookie);
+    const dropped = await request(`${created.accessPath}?key=${encodeURIComponent(created.editKey)}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(panelProposal(author, [])),
+    });
+    expect(dropped.status).toBe(200);
+
+    expect(await liveSessionLinks(sessionId, collaborator.email)).toBe(0);
+    for (const taskId of alreadyOwed) {
+      expect(await taskIsLiveFor(taskId, collaborator.email)).toBe(true);
+    }
+    expect(await liveTaskAssignments(collaborator.email)).toBe(alreadyOwed.length);
   });
 
   it("keeps the onboarding work of somebody who still speaks elsewhere at the event", async () => {

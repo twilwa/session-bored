@@ -42,9 +42,15 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   work part company here. Work scoped to the session (`task.session_id`) goes back
   on **every** removal, because a later removal only ever looks at its own session
   and would strand work from a session left earlier; the event's sessionless,
-  unscoped onboarding templates belong to the person, so they go back only once
-  they speak nowhere else at the event, which is the only thing the release's
-  `speaksElsewhereAtEvent` decides. The event `speaker` row — which drives the
+  unscoped onboarding templates belong to the person, so an assignment goes back
+  only once they speak nowhere else at the event — which is the only thing the
+  release's `speaksElsewhereAtEvent` decides — **and** only if a handoff is what
+  created it. `task_assignee.granted_by_session_id` records that: the handoff
+  stamps it when it inserts a row and never when it restores one, so work the
+  person already owed the event, or that an organizer handed them from the roster
+  (which clears the stamp when it restores an assignment), survives a removal
+  intact. Without that, the smallest correction round-trip — name somebody, unname
+  them — emptied their whole event checklist (issue #148). The event `speaker` row — which drives the
   public speaker directory, the roster row, and mail eligibility — deliberately
   stands after removal (issue #127, settled: no automatic withdrawal). What removal owes
   instead is candour: the DELETE answers with `ParticipantRemovalOutcome`, and
