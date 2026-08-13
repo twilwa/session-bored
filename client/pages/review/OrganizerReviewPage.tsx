@@ -59,9 +59,9 @@ interface ReviewerScopeResult {
 
 function remitLabel(trackCount: number, totalTracks: number, roundCount: number): string {
   // A queue is built from the reviewer's round pool, so no round means no work whatever their
-  // tracks say. An account granted reviewer from People starts here, and the card is where an
-  // organizer gives it a remit.
-  if (roundCount === 0) return "No remit yet · give them a round below";
+  // tracks say - whether they were narrowed out of every round or were granted reviewer from
+  // People and have never been in one. Either way the card below is where that is fixed.
+  if (roundCount === 0) return "In no review round · give them one below";
   if (trackCount === 0) return "Assigned proposals only";
   return trackCount === totalTracks ? "All submissions" : `${trackCount} track remit`;
 }

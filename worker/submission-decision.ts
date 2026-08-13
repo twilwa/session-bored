@@ -297,7 +297,8 @@ export async function speaksElsewhereAtEvent(
  * speaker directory, the roster's own row, and mail eligibility, and withdrawing it is the
  * roster's action, never this one. What removal owes instead is candour, which the DELETE
  * route reports through `ParticipantRemovalOutcome`. `speaksElsewhereAtEvent` here decides
- * only how much onboarding work goes back.
+ * only whether the event's own onboarding is reached at all; the granting session recorded on
+ * each assignment decides which of it goes back.
  */
 export async function releaseParticipantFromSession(
   binding: D1Database,
