@@ -480,6 +480,8 @@ export interface ParticipantRemovalOutcome {
 export interface SubmissionParticipantsPayload {
   submissionId: `sub_${string}`;
   sessionId: `ses_${string}` | null;
+  /** Null with no session. Approved content is read-only to its speakers, so removal took no write. */
+  sessionContentStatus: SessionContentStatus | null;
   participants: SubmissionParticipantSummary[];
   removal?: ParticipantRemovalOutcome;
 }

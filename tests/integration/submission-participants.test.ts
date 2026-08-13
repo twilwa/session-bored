@@ -450,6 +450,40 @@ describe("the program team's own hold on the participant list", () => {
     expect(stillASpeaker).toMatchObject({ status: "onboarding", deleted_at: null });
   });
 
+  it("reports the session's content status, so the notice claims only the access that existed", async () => {
+    const created = await createPanel("rosa.approved@example.test");
+    await request(`/api/events/${eventId}/disposition`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie: organizerCookie },
+      body: JSON.stringify({ submissionIds: [created.submission.id], status: "accepted" }),
+    });
+    const path = `/api/events/${eventId}/submissions/${created.submission.id}/participants`;
+    const listed = await (await request(path, { headers: { cookie: organizerCookie } }))
+      .json<{ sessionId: string | null; sessionContentStatus: string | null; participants: Participant[] }>();
+    expect(listed.sessionContentStatus).toBe("draft");
+
+    // Approving locks the speakers out of editing, so removal takes no write access from them.
+    const approved = await request(
+      `/api/events/${eventId}/agenda/sessions/${listed.sessionId}/content`,
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json", cookie: organizerCookie },
+        body: JSON.stringify({ contentStatus: "approved" }),
+      },
+    );
+    expect(approved.status).toBe(200);
+    const collaborator = listed.participants.find((participant) => participant.name === "Dev Malhotra");
+    const removed = await request(`${path}/${collaborator?.id}`, {
+      method: "DELETE",
+      headers: { cookie: organizerCookie },
+    });
+    expect(removed.status).toBe(200);
+    await expect(removed.json()).resolves.toMatchObject({
+      sessionContentStatus: "approved",
+      removal: { name: "Dev Malhotra", remainsEventSpeaker: true },
+    });
+  });
+
   it("reports the programme they still speak on when this proposal has no session", async () => {
     // The same person on two proposals: one accepted and scheduled, one still under review.
     const sharedCollaborator = { name: "Two Stage", email: "two.stage@example.test", roleLabel: "co-speaker" };
@@ -475,8 +509,9 @@ describe("the program team's own hold on the participant list", () => {
 
     const path = `/api/events/${eventId}/submissions/${undecided.submission.id}/participants`;
     const listed = await (await request(path, { headers: { cookie: organizerCookie } }))
-      .json<{ sessionId: string | null; participants: Participant[] }>();
+      .json<{ sessionId: string | null; sessionContentStatus: string | null; participants: Participant[] }>();
     expect(listed.sessionId).toBeNull();
+    expect(listed.sessionContentStatus).toBeNull();
     const collaborator = listed.participants.find((participant) => participant.name === "Two Stage");
 
     const removed = await request(`${path}/${collaborator?.id}`, {

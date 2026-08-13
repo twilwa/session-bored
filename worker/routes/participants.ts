@@ -46,6 +46,8 @@ participantRoutes.use("/api/events/:eventId/submissions/:submissionId/participan
 
 type ParticipantDatabase = ReturnType<typeof drizzle>;
 
+type SubmissionContext = NonNullable<Awaited<ReturnType<typeof readSubmissionContext>>>;
+
 const emailPattern = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 async function readSubmissionContext(
@@ -61,10 +63,14 @@ async function readSubmissionContext(
     return null;
   }
   const [session] = await database
-    .select({ id: sessions.id })
+    .select({ id: sessions.id, contentStatus: sessions.contentStatus })
     .from(sessions)
     .where(and(eq(sessions.submissionId, submissionId), eq(sessions.eventId, eventId)));
-  return { submission, sessionId: session?.id ?? null };
+  return {
+    submission,
+    sessionId: session?.id ?? null,
+    sessionContentStatus: session?.contentStatus ?? null,
+  };
 }
 
 /**
@@ -105,9 +111,10 @@ async function participantsResponse(
   database: ParticipantDatabase,
   eventId: string,
   submissionId: string,
-  submitterPersonId: string,
-  sessionId: string | null,
+  scope: SubmissionContext,
 ) {
+  const { sessionId, sessionContentStatus } = scope;
+  const submitterPersonId = scope.submission.submitterPersonId;
   const rows = await database
     .select({
       id: submissionSpeakers.id,
@@ -132,6 +139,7 @@ async function participantsResponse(
   return {
     submissionId,
     sessionId,
+    sessionContentStatus,
     participants: rows.map((row) => ({
       ...row,
       isSubmitter: row.personId === submitterPersonId,
@@ -149,7 +157,7 @@ participantRoutes.get("/api/events/:eventId/submissions/:submissionId/participan
     return context.json({ error: "submission_not_found" }, 404);
   }
   return context.json(
-    await participantsResponse(database, eventId, submissionId, scope.submission.submitterPersonId, scope.sessionId),
+    await participantsResponse(database, eventId, submissionId, scope),
   );
 });
 
@@ -233,7 +241,7 @@ participantRoutes.post("/api/events/:eventId/submissions/:submissionId/participa
     });
   }
   return context.json(
-    await participantsResponse(database, eventId, submissionId, scope.submission.submitterPersonId, scope.sessionId),
+    await participantsResponse(database, eventId, submissionId, scope),
     201,
   );
 });
@@ -285,7 +293,7 @@ participantRoutes.patch(
       }
     }
     return context.json(
-      await participantsResponse(database, eventId, submissionId, scope.submission.submitterPersonId, scope.sessionId),
+      await participantsResponse(database, eventId, submissionId, scope),
     );
   },
 );
@@ -324,13 +332,7 @@ participantRoutes.delete(
       await releaseParticipantFromSession(context.env.DB, eventId, scope.sessionId, participant.personId);
     }
     return context.json({
-      ...await participantsResponse(
-        database,
-        eventId,
-        submissionId,
-        scope.submission.submitterPersonId,
-        scope.sessionId,
-      ),
+      ...await participantsResponse(database, eventId, submissionId, scope),
       removal: await removalOutcome(database, eventId, participant.personId),
     });
   },

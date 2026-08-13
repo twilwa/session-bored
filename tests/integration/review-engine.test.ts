@@ -1237,6 +1237,71 @@ describe("review engine", () => {
     expect(row?.recusedAssignments).toBeGreaterThanOrEqual(2);
   });
 
+  it("keeps a recusal on the reviewer card after the organizer takes them out of the round", async () => {
+    await request("/api/health");
+    const organizerCookie = await signIn("sbek-organizer@example.com", "SbekTest!2027-org");
+    const organizerHeaders = { cookie: organizerCookie, "content-type": "application/json" };
+    const provisioned = await (await request("/api/review/events/evt_devflow_conf_2027/reviewers", {
+      method: "POST",
+      headers: organizerHeaders,
+      body: JSON.stringify({
+        name: "Narrowed Later",
+        email: "narrowed-later@example.com",
+        password: "ReviewTalks!2027",
+        trackIds: ["trk_ai_engineering"],
+        roundIds: ["rnd_initial_review"],
+      }),
+    })).json<{ reviewer: { id: string } }>();
+    expect((await request("/api/review/rounds/rnd_initial_review/assignments", {
+      method: "POST",
+      headers: organizerHeaders,
+      body: JSON.stringify({ reviewerUserId: provisioned.reviewer.id, submissionIds: ["sub_ci_monorepo"] }),
+    })).status).toBe(201);
+    expect((await request("/api/review/submissions/sub_ci_monorepo/recusal", {
+      method: "POST",
+      headers: {
+        cookie: await signIn("narrowed-later@example.com", "ReviewTalks!2027"),
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ roundId: "rnd_initial_review" }),
+    })).status).toBe(200);
+
+    const readCard = async () => {
+      const config = await (await request(
+        "/api/review/events/evt_devflow_conf_2027/config",
+        { headers: { cookie: organizerCookie } },
+      )).json<{
+        reviewers: Array<{
+          id: string;
+          recusedCount: number;
+          recusals: Array<{ roundId: string; submissionId: string }>;
+        }>;
+      }>();
+      return config.reviewers.find((reviewer) => reviewer.id === provisioned.reviewer.id);
+    };
+    expect(await readCard()).toEqual(expect.objectContaining({ recusedCount: 1 }));
+
+    // Taking the reviewer out of the round deletes their pool row. The read still is not coming,
+    // so the card must keep saying so and keep linking to the proposal the worklist names.
+    expect((await request(
+      `/api/review/events/evt_devflow_conf_2027/reviewers/${provisioned.reviewer.id}`,
+      { method: "PATCH", headers: organizerHeaders, body: JSON.stringify({ roundIds: [] }) },
+    )).status).toBe(200);
+
+    const narrowed = await readCard();
+    expect(narrowed?.recusedCount).toBe(1);
+    expect(narrowed?.recusals).toEqual([
+      expect.objectContaining({ roundId: "rnd_initial_review", submissionId: "sub_ci_monorepo" }),
+    ]);
+
+    const worklist = await (await request(
+      "/api/review/events/evt_devflow_conf_2027/worklist",
+      { headers: { cookie: organizerCookie } },
+    )).json<{ items: Array<{ submissionId: string; recusedBy: string[] }> }>();
+    expect(worklist.items.find((item) => item.submissionId === "sub_ci_monorepo")?.recusedBy)
+      .toContain("Narrowed Later");
+  });
+
   it("refuses a recusal outside the reviewer's own remit and from every other role", async () => {
     await request("/api/health");
     const organizerCookie = await signIn("sbek-organizer@example.com", "SbekTest!2027-org");

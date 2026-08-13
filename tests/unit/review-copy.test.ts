@@ -37,26 +37,38 @@ describe("what the worklist row says a recusal costs", () => {
 describe("what the removal notice says it took away", () => {
   it("claims neither a session nor write access the proposal never had", () => {
     const markup = renderToStaticMarkup(
-      createElement(RemovalNotice, { removal: removedSpeaker, hasSession: false }),
+      createElement(RemovalNotice, { removal: removedSpeaker, sessionContentStatus: null }),
     );
     expect(markup).toContain("They lost read access to it.");
     expect(markup).not.toContain("its session");
     expect(markup).not.toContain("write");
   });
 
-  it("names the session and its write access when the accepted proposal has one", () => {
-    const markup = renderToStaticMarkup(
-      createElement(RemovalNotice, { removal: removedSpeaker, hasSession: true }),
-    );
-    expect(markup).toContain(
-      "They lost read access to it and the read and write access they had to its session.",
-    );
+  it("names the session and its write access while the speaker could still edit it", () => {
+    for (const sessionContentStatus of ["draft", "in_review"] as const) {
+      const markup = renderToStaticMarkup(
+        createElement(RemovalNotice, { removal: removedSpeaker, sessionContentStatus }),
+      );
+      expect(markup).toContain(
+        "They lost read access to it, and the read and write access they had to its session.",
+      );
+    }
   });
 
-  it("still points at the roster in both cases", () => {
-    for (const hasSession of [true, false]) {
+  it("claims no write access on an approved session, which was already read-only to them", () => {
+    const markup = renderToStaticMarkup(
+      createElement(RemovalNotice, { removal: removedSpeaker, sessionContentStatus: "approved" }),
+    );
+    expect(markup).toContain(
+      "They lost read access to it, and the read-only access they had to its approved session.",
+    );
+    expect(markup).not.toContain("write access");
+  });
+
+  it("still points at the roster whatever the proposal had", () => {
+    for (const sessionContentStatus of [null, "draft", "in_review", "approved"] as const) {
       const markup = renderToStaticMarkup(
-        createElement(RemovalNotice, { removal: removedSpeaker, hasSession }),
+        createElement(RemovalNotice, { removal: removedSpeaker, sessionContentStatus }),
       );
       expect(markup).toContain("/organizer/roster");
       expect(markup).toContain("still a speaker at this event");

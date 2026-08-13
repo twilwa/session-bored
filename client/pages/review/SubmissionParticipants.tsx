@@ -11,9 +11,15 @@ const emptyDraft = { name: "", email: "", roleLabel: "" };
  * Says what the removal did and, just as plainly, what it left standing. Removal is scoped to
  * the proposal by design: it never withdraws the event speaker, so the organizer is told that
  * outright and pointed at the roster, which is where withdrawing from the event happens.
+ *
+ * What it says was taken is only what the speaker actually held: a proposal is read-only to a
+ * named participant, and an approved session is read-only to its speakers too.
  */
 export function RemovalNotice(
-  { removal, hasSession }: { removal: ParticipantRemovalOutcome; hasSession: boolean },
+  { removal, sessionContentStatus }: {
+    removal: ParticipantRemovalOutcome;
+    sessionContentStatus: SubmissionParticipantsPayload["sessionContentStatus"];
+  },
 ) {
   if (!removal.remainsEventSpeaker) {
     return (
@@ -29,13 +35,16 @@ export function RemovalNotice(
     "selectable as a recipient in Communications",
     removal.speaksElsewhereAtEvent ? "still on the programme for their other sessions here" : null,
   ].filter((entry): entry is string => entry !== null);
+  const lost = sessionContentStatus === null
+    ? "They lost read access to it."
+    : sessionContentStatus === "approved"
+    ? "They lost read access to it, and the read-only access they had to its approved session."
+    : "They lost read access to it, and the read and write access they had to its session.";
   return (
     <section aria-label="What removing this participant did" className="participants__removal" role="status">
       <strong>{removal.name} is no longer on this proposal</strong>
       <p>
-        {hasSession
-          ? "They lost read access to it and the read and write access they had to its session."
-          : "They lost read access to it."} They are still a speaker at this event:{" "}
+        {lost} They are still a speaker at this event:{" "}
         {standing.join(", ")}. Removing a participant here never withdraws them from the event.
       </p>
       <p>
@@ -149,7 +158,7 @@ export function SubmissionParticipants({
       {error === null ? null : <p className="participants__error" role="alert">{error}</p>}
       {payload.removal === undefined
         ? null
-        : <RemovalNotice hasSession={payload.sessionId !== null} removal={payload.removal} />}
+        : <RemovalNotice removal={payload.removal} sessionContentStatus={payload.sessionContentStatus} />}
       {adding ? (
         <form className="participants__add" onSubmit={(event) => void addParticipant(event)}>
           <label>

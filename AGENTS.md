@@ -51,7 +51,10 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   the panel says the person remains an event speaker and points at the roster,
   which owns withdrawal. That outcome reads every fact from the event after the
   removal rather than from the release result, because a proposal with no session
-  still has to report the programme its participant speaks on elsewhere.
+  still has to report the programme its participant speaks on elsewhere. The
+  notice names only the access the person actually held, so the payload carries
+  `sessionContentStatus` beside `sessionId`: a proposal is read-only to a named
+  participant, and an `approved` session is read-only to its speakers too.
   `PUBLIC_SPEAKER_STATUSES` in `worker/public-queries.ts`
   is the one rule for whether that speaker is publicly listed; read it rather
   than restating the statuses. A collaborator is named, not
@@ -109,7 +112,10 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   `recusedCount` and `recusals` stay per assignment and each entry names its round;
   the worklist row speaks about the proposal and names each reviewer account once
   — deduplicated on `reviewer_user_id`, never on the display name, because two
-  accounts may share one.
+  accounts may share one. Both surfaces read the recused `review_assignment` rows
+  themselves, never `reviewerQueue`, which inner-joins `reviewer_round_pool`: a
+  recusal is a settled fact about an assignment, so taking the reviewer out of the
+  round must not make the read that is not coming disappear from their card.
   Surfacing the fact is the whole feature: no reassignment prompt, no queue,
   nothing sent (issue #130).
 - Review scores remain in `review.scores`; `review.aggregate_score` is the

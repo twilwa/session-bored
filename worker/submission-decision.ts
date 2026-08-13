@@ -249,11 +249,6 @@ async function eventOnboardingTaskIds(
   return rows.map((task) => task.id);
 }
 
-export interface ParticipantRelease {
-  /** Whether they still hold a live session at this event after being let go of this one. */
-  speaksElsewhereAtEvent: boolean;
-}
-
 /**
  * Whether this speaker still holds a live session at the event. Removal and the outcome the
  * organizer is shown ask the same question at different moments, so they ask it in one place.
@@ -297,14 +292,14 @@ export async function releaseParticipantFromSession(
   eventId: string,
   sessionId: string,
   personId: string,
-): Promise<ParticipantRelease> {
+): Promise<void> {
   const database = drizzle(binding);
   const [speaker] = await database
     .select({ id: speakers.id })
     .from(speakers)
     .where(and(eq(speakers.personId, personId), eq(speakers.eventId, eventId)));
   if (speaker === undefined) {
-    return { speaksElsewhereAtEvent: false };
+    return;
   }
   await database
     .update(sessionSpeakers)
@@ -332,10 +327,9 @@ export async function releaseParticipantFromSession(
   // a session left earlier would stay live for somebody who speaks nowhere at the event.
   await archiveAssignments(await sessionScopedTaskIds(database, eventId, sessionId));
   if (await speaksElsewhereAtEvent(database, eventId, speaker.id)) {
-    return { speaksElsewhereAtEvent: true };
+    return;
   }
   await archiveAssignments(await eventOnboardingTaskIds(database, eventId));
-  return { speaksElsewhereAtEvent: false };
 }
 
 async function ensureAcceptedHandoff(
