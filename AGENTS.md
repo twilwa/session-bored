@@ -43,10 +43,15 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   on **every** removal, because a later removal only ever looks at its own session
   and would strand work from a session left earlier; the event's sessionless,
   unscoped onboarding templates belong to the person, so they go back only once
-  they speak nowhere else at the event. It reports `speaksElsewhereAtEvent` because whether
-  removal should also withdraw the event `speaker` row — which is what drives the
-  public speaker directory, the roster row, and mail eligibility — is an open
-  programme decision (issue #127). A collaborator is named, not
+  they speak nowhere else at the event. It reports `speaksElsewhereAtEvent`
+  because removal deliberately does not withdraw the event `speaker` row — which
+  is what drives the public speaker directory, the roster row, and mail
+  eligibility (issue #127, settled: no automatic withdrawal). What removal owes
+  instead is candour: the DELETE answers with `ParticipantRemovalOutcome`, and
+  the panel says the person remains an event speaker and points at the roster,
+  which owns withdrawal. `PUBLIC_SPEAKER_STATUSES` in `worker/public-queries.ts`
+  is the one rule for whether that speaker is publicly listed; read it rather
+  than restating the statuses. A collaborator is named, not
   admitted: naming somebody mints no author key, grants no dashboard, and never
   overwrites the profile an existing person already has.
 - A sessionless task with no `task_scope` row is an event-wide onboarding
@@ -94,7 +99,11 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   notification, and no submission status change. It refuses once a review exists,
   and the score route refuses a recused assignment. Recused work leaves the
   reviewer's actionable queue and the organizer's `assignedCount`, and is reported
-  separately as `recusedCount`.
+  separately as `recusedCount`. Because it produces no rating, the organizer's
+  coverage worklist carries `recusedBy` and the row says so — a recused proposal
+  must never read as one nobody has opened — and each reviewer card's count links
+  to the proposals it stands for (`recusals`). Surfacing the fact is the whole
+  feature: no reassignment prompt, no queue, nothing sent (issue #130).
 - Review scores remain in `review.scores`; `review.aggregate_score` is the
   weighted mean of numeric criteria, and the organizer worklist averages those
   review aggregates per submission. Submission comments are one attributed,
