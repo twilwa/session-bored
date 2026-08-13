@@ -1,0 +1,19 @@
+AGENTS.md
+  s_5e7ed9d7486f24::t_8e6104067ee951 87-93
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "80d5e2532cc7a87d284223d9f1453d44186590f8",
+  "prompts": {},
+  "sessions": {
+    "s_5e7ed9d7486f24": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d4292d44-6d69-4cff-a246-c9b46a6ff1e2",
+        "model": "claude-fable-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
