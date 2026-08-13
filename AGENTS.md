@@ -60,8 +60,9 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   the person never reached was never theirs to lose; and an `approved` session is
   read-only to the speakers who are on it.
   `PUBLIC_SPEAKER_STATUSES` in `worker/public-queries.ts`
-  is the one rule for whether that speaker is publicly listed; read it rather
-  than restating the statuses. A collaborator is named, not
+  is the one rule for whether an event speaker is publicly listed, and the
+  outcome's `listedPublicly` reads it; read it rather than restating the
+  statuses. A collaborator is named, not
   admitted: naming somebody mints no author key, grants no dashboard, and never
   overwrites the profile an existing person already has.
 - A sessionless task with no `task_scope` row is an event-wide onboarding
@@ -114,9 +115,12 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   must never read as one nobody has opened — and each reviewer card's count links
   to the proposals it stands for (`recusals`). A recusal belongs to a round, so
   `recusedCount` and `recusals` stay per assignment and each entry names its round;
-  the worklist row speaks about the proposal and names each reviewer account once
-  — deduplicated on `reviewer_user_id`, never on the display name, because two
-  accounts may share one. Both surfaces read the recused `review_assignment` rows
+  the worklist row speaks about the proposal, so `recusedBy` names each reviewer
+  account once — deduplicated on `reviewer_user_id`, never on the display name,
+  because two accounts may share one — while `recusedAssignments` beside it counts
+  the reads that are not coming and so is not `recusedBy.length`. That pair is
+  written into one sentence by `client/pages/review/worklist-copy.ts`. Both
+  surfaces read the recused `review_assignment` rows
   themselves, never `reviewerQueue`, which inner-joins `reviewer_round_pool`: a
   recusal is a settled fact about an assignment, so taking the reviewer out of the
   round must not make the read that is not coming disappear from their card.
