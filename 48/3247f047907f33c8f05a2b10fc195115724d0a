@@ -1,0 +1,34 @@
+tests/e2e/review.spec.ts
+  s_d64c9ca1467fe7::t_bc45e895aaab47 347-348
+  s_d64c9ca1467fe7::t_3813ac123f1597 339-340,343-346,349-373
+  s_d64c9ca1467fe7::t_3410c436335d26 341-342
+tests/integration/review-engine.test.ts
+  s_d64c9ca1467fe7::t_4d2ebf4c9f8392 682
+  s_d64c9ca1467fe7::t_23ef7f721bdd23 1244
+  s_d64c9ca1467fe7::t_ffb10a8e724d41 660,691,694-695,1740-1837
+  s_45db264c0dbe67::t_d06b1f5073c44a 1838
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "483247f047907f33c8f05a2b10fc195115724d0a",
+  "prompts": {},
+  "sessions": {
+    "s_45db264c0dbe67": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ff9b5-8c7e-75a0-bc66-c126969b2804",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    },
+    "s_d64c9ca1467fe7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ff9b5-a3fd-7251-88b7-dff4e7725672",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
