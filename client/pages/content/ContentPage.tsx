@@ -1,4 +1,4 @@
-// ABOUTME: Gives organizers one filterable view of requested, overdue, delivered, and approval-ready content.
+// ABOUTME: Gives organizers one filterable view of requested, overdue, completed, delivered, and approval-ready content.
 // ABOUTME: Links canonical uploads and their cross-role comment threads without duplicating task or file state.
 import { useEffect, useMemo, useState } from "react";
 import type { DeliverablesPayload, DeliverableStatus } from "../../../shared/api.ts";
