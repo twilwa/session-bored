@@ -17,7 +17,11 @@ import {
 import type { ParticipantRemovalOutcome } from "../../shared/api.ts";
 import { holdsAccess } from "../access.ts";
 import { PUBLIC_SPEAKER_STATUSES } from "../public-queries.ts";
-import { carryParticipantIntoSession, releaseParticipantFromSession } from "../submission-decision.ts";
+import {
+  carryParticipantIntoSession,
+  releaseParticipantFromSession,
+  speaksElsewhereAtEvent,
+} from "../submission-decision.ts";
 
 type ParticipantEnvironment = {
   Bindings: CloudflareBindings;
@@ -84,17 +88,8 @@ async function removalOutcome(
     .from(speakers)
     .where(and(eq(speakers.personId, personId), eq(speakers.eventId, eventId)));
   const remainsEventSpeaker = speaker !== undefined && speaker.deletedAt === null;
-  const stillSpeaking = !remainsEventSpeaker ? [] : await database
-    .select({ id: sessionSpeakers.id })
-    .from(sessionSpeakers)
-    .innerJoin(sessions, eq(sessions.id, sessionSpeakers.sessionId))
-    .where(and(
-      eq(sessionSpeakers.speakerId, speaker.id),
-      eq(sessions.eventId, eventId),
-      isNull(sessionSpeakers.deletedAt),
-      isNull(sessions.deletedAt),
-    ))
-    .limit(1);
+  const stillSpeaking = remainsEventSpeaker
+    && await speaksElsewhereAtEvent(database, eventId, speaker.id);
   return {
     name: person?.name ?? "That participant",
     personId: personId as `psn_${string}`,
@@ -102,7 +97,7 @@ async function removalOutcome(
     remainsEventSpeaker,
     listedPublicly: remainsEventSpeaker
       && (PUBLIC_SPEAKER_STATUSES as readonly string[]).includes(speaker.status),
-    speaksElsewhereAtEvent: stillSpeaking.length > 0,
+    speaksElsewhereAtEvent: stillSpeaking,
   };
 }
 

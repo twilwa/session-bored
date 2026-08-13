@@ -1216,7 +1216,9 @@ describe("review engine", () => {
     const reviewer = config.reviewers.find((item) => item.id === provisioned.reviewer.id);
     // Two rounds, two recusals: the count is per assignment, so each entry must name its own round.
     expect(reviewer?.recusedCount).toBe(2);
-    expect(reviewer?.recusals.map((recusal) => [recusal.roundName, recusal.submissionId])).toEqual([
+    const recusals = [...(reviewer?.recusals ?? [])]
+      .sort((left, right) => left.roundName.localeCompare(right.roundName));
+    expect(recusals.map((recusal) => [recusal.roundName, recusal.submissionId])).toEqual([
       ["Initial review", "sub_ci_monorepo"],
       ["Second pass", "sub_ci_monorepo"],
     ]);

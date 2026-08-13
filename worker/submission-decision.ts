@@ -255,6 +255,29 @@ export interface ParticipantRelease {
 }
 
 /**
+ * Whether this speaker still holds a live session at the event. Removal and the outcome the
+ * organizer is shown ask the same question at different moments, so they ask it in one place.
+ */
+export async function speaksElsewhereAtEvent(
+  database: DecisionDatabase,
+  eventId: string,
+  speakerId: string,
+): Promise<boolean> {
+  const [stillSpeaking] = await database
+    .select({ id: sessionSpeakers.id })
+    .from(sessionSpeakers)
+    .innerJoin(sessions, eq(sessions.id, sessionSpeakers.sessionId))
+    .where(and(
+      eq(sessionSpeakers.speakerId, speakerId),
+      eq(sessions.eventId, eventId),
+      isNull(sessionSpeakers.deletedAt),
+      isNull(sessions.deletedAt),
+    ))
+    .limit(1);
+  return stillSpeaking !== undefined;
+}
+
+/**
  * Takes back what `carryParticipantIntoSession` gave, for somebody the program team or the
  * author has removed from the proposal. It archives the session link, and the onboarding work
  * that being carried onto a session created, so no speaker-facing read or write still answers
@@ -262,10 +285,12 @@ export interface ParticipantRelease {
  * everything archived here comes back untouched if they are named again — the speaker, the
  * session, the assignments, and their completion history are never erased.
  *
- * Whether the event-scoped `speaker` row itself should be withdrawn when this was their last
- * session is an open programme decision (issue #127), and it is the answer that drives the
- * public speaker directory, the roster's own row, and mail eligibility. This is where that
- * answer belongs: `speaksElsewhereAtEvent` is the fact it needs, computed once, here.
+ * The event-scoped `speaker` row deliberately stands after removal, even when this was their
+ * last session (issue #127, settled: no automatic withdrawal). That row drives the public
+ * speaker directory, the roster's own row, and mail eligibility, and withdrawing it is the
+ * roster's action, never this one. What removal owes instead is candour, which the DELETE
+ * route reports through `ParticipantRemovalOutcome`. `speaksElsewhereAtEvent` here decides
+ * only how much onboarding work goes back.
  */
 export async function releaseParticipantFromSession(
   binding: D1Database,
@@ -306,18 +331,7 @@ export async function releaseParticipantFromSession(
   // would strand it: a later removal only ever looks at the session it was given, so work from
   // a session left earlier would stay live for somebody who speaks nowhere at the event.
   await archiveAssignments(await sessionScopedTaskIds(database, eventId, sessionId));
-  const stillSpeaking = await database
-    .select({ id: sessionSpeakers.id })
-    .from(sessionSpeakers)
-    .innerJoin(sessions, eq(sessions.id, sessionSpeakers.sessionId))
-    .where(and(
-      eq(sessionSpeakers.speakerId, speaker.id),
-      eq(sessions.eventId, eventId),
-      isNull(sessionSpeakers.deletedAt),
-      isNull(sessions.deletedAt),
-    ))
-    .limit(1);
-  if (stillSpeaking.length > 0) {
+  if (await speaksElsewhereAtEvent(database, eventId, speaker.id)) {
     return { speaksElsewhereAtEvent: true };
   }
   await archiveAssignments(await eventOnboardingTaskIds(database, eventId));
