@@ -1,0 +1,20 @@
+AGENTS.md
+  s_b4e04a7d6425e3::t_d4ae9fdf3e168d 114-115
+  s_b4e04a7d6425e3::t_a16a52d5491295 109-113
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "11fc38c78207a909d26892fc60ec2c2ab9ae94cd",
+  "prompts": {},
+  "sessions": {
+    "s_b4e04a7d6425e3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "32e99a9f-3815-4cbb-888a-f354f3f9049c",
+        "model": "claude-fable-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
