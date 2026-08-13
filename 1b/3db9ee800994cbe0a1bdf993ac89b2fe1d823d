@@ -1,0 +1,51 @@
+tests/integration/review-engine.test.ts
+  s_b2c6efcc163b3e::t_bf1c540538c572 1240-1304
+tests/unit/review-copy.test.ts
+  s_b2c6efcc163b3e::t_1db11452dba9a1 40,47-58,60,63,65,68-69,71
+worker/routes/review.ts
+  s_b2c6efcc163b3e::t_27ec7c765b2613 593,596
+  s_b2c6efcc163b3e::t_d22c01a3e75a07 525-543
+  s_b2c6efcc163b3e::t_83b20cb755ef8e 505
+  s_b2c6efcc163b3e::t_e80f808459a561 583
+shared/api.ts
+  s_b2c6efcc163b3e::t_8a95aac4839ba5 483-484
+tests/integration/submission-participants.test.ts
+  s_b2c6efcc163b3e::t_2349151d7d99cd 453-486
+  s_b2c6efcc163b3e::t_808cd4f6d10455 512,514
+client/pages/review/SubmissionParticipants.tsx
+  s_b2c6efcc163b3e::t_ee9ef0e8772219 38-42,47
+  s_b2c6efcc163b3e::t_a66f6330296ae0 14-16,19-20,22
+  s_b2c6efcc163b3e::t_49adf323811013 21
+  s_b2c6efcc163b3e::t_7c48f8d1ffdec0 161
+worker/submission-decision.ts
+  s_b2c6efcc163b3e::t_8476519c2cce42 330
+  s_b2c6efcc163b3e::t_b86e3fea7398c2 295,302
+AGENTS.md
+  s_b2c6efcc163b3e::t_c3c043da45f2b8 115-118
+  s_b2c6efcc163b3e::t_7248cb17024f2b 54-57
+worker/routes/participants.ts
+  s_b2c6efcc163b3e::t_0a35ce5719dc2c 49-50
+  s_b2c6efcc163b3e::t_3916f42f08df4f 244
+  s_b2c6efcc163b3e::t_8bbd7d8afa3e54 114,116-117
+  s_b2c6efcc163b3e::t_99b092cc5e97cf 142
+  s_b2c6efcc163b3e::t_6e377efab6bf6f 160
+  s_b2c6efcc163b3e::t_f2cf87e4278cbb 335
+  s_b2c6efcc163b3e::t_0a5e880a2d534d 296
+  s_b2c6efcc163b3e::t_ca8bb2030e3a4d 66,69-73
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "1b3db9ee800994cbe0a1bdf993ac89b2fe1d823d",
+  "prompts": {},
+  "sessions": {
+    "s_b2c6efcc163b3e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d5ab35b1-9a10-4fa7-b2ed-1b16447a6805",
+        "model": "claude-opus-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}

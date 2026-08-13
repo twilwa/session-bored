@@ -1,0 +1,47 @@
+worker/routes/participants.ts
+  s_b2c6efcc163b3e::t_b4639385def0b9 77-101,107-108,114
+  s_b2c6efcc163b3e::t_ae1b410d787f0a 357
+  s_b2c6efcc163b3e::t_fff7f28230d848 135
+  s_b2c6efcc163b3e::t_11f43a8ad6754c 356,367
+  s_b2c6efcc163b3e::t_e6e59922a73c03 76
+client/pages/review/SubmissionParticipants.tsx
+  s_b2c6efcc163b3e::t_4247317b190be8 15-17
+  s_b2c6efcc163b3e::t_fcfcfc799d3344 39
+AGENTS.md
+  s_b2c6efcc163b3e::t_822e39e4d5b6da 55-61
+shared/api.ts
+  s_b2c6efcc163b3e::t_04b5d92971372a 478-483
+tests/integration/submission-participants.test.ts
+  s_b2c6efcc163b3e::t_6ae4652d3d574a 570-575
+  s_b2c6efcc163b3e::t_7fb05fa33850ce 442-443
+  s_b2c6efcc163b3e::t_6d9afe58b9064a 485-529
+tests/unit/review-copy.test.ts
+  s_b2c6efcc163b3e::t_b05ed5ca2cba99 43,50-59
+  s_b2c6efcc163b3e::t_65194c91483b83 84-91
+  s_b2c6efcc163b3e::t_d069e5e59c5f32 17,20
+  s_d626ec6d9bfa9d::t_21966c971631a5 21,60-61
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "5a523b884eba4497c250e79ba8da64d0a892ad2f",
+  "prompts": {},
+  "sessions": {
+    "s_b2c6efcc163b3e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d5ab35b1-9a10-4fa7-b2ed-1b16447a6805",
+        "model": "claude-opus-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    },
+    "s_d626ec6d9bfa9d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a065e8b4-51cd-46e8-a174-7d0c1e36fe21",
+        "model": "claude-opus-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
