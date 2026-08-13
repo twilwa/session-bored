@@ -1,0 +1,33 @@
+tests/integration/portal-content.test.ts
+  s_206fbe0e74c8f3::t_c11b2e323ed1b8 34-35,39-44,183
+  s_206fbe0e74c8f3::t_62c347fcbe9134 28-33,36-38,76
+  s_206fbe0e74c8f3::t_9f835641399303 527,548
+  s_206fbe0e74c8f3::t_a956d76527964e 300-324,326-345
+  s_206fbe0e74c8f3::t_c7a24f4651d9f6 57,61-63,65,192,206,240,273,325,363,405,431,627
+tests/integration/portal-authorization.test.ts
+  s_206fbe0e74c8f3::t_10ee7f68dabd3b 24
+tests/integration/content-management.test.ts
+  s_206fbe0e74c8f3::t_10ee7f68dabd3b 25
+worker/routes/portal.ts
+  s_206fbe0e74c8f3::t_00d845ec7e09f3 441-450
+tests/integration/roster.test.ts
+  s_206fbe0e74c8f3::t_10ee7f68dabd3b 24
+client/pages/portal/PortalPage.tsx
+  s_206fbe0e74c8f3::t_6ff6945dabe182 26,29-31,61,85,247-251,254-256,364
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "c970ed22f01ffa2cf5766710f5fc654a4fb0d2c0",
+  "prompts": {},
+  "sessions": {
+    "s_206fbe0e74c8f3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffa3f-8063-7cf2-9a92-26051287ce42",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
