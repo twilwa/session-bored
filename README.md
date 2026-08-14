@@ -73,10 +73,11 @@ is never enough to claim it. Confirmation mail needs an email sender; until one
 is connected, invitations simply stay pending and organizers can grant directly
 from People instead.
 
-Granting reviewer opens the committee area; it does not decide what that reviewer
-may read. Give them tracks and a round from **Committee setup** in the review
-workspace, which lists every granted reviewer, including one who has no remit yet.
-Until they are in a round pool, their queue is empty.
+Granting reviewer from People asks in the same step what that reviewer may read:
+at least one track and one open review round, so a new reviewer signs in to a
+queue with work in it. **Committee setup** in the review workspace lists every
+granted reviewer, including one who still has no remit, and is where an existing
+remit is changed.
 
 ## Commands
 
