@@ -137,6 +137,43 @@ describe("account-backed personal schedule", () => {
     }
   });
 
+  it("saves and clears a batch larger than one database statement writes", async () => {
+    await request("/api/health");
+    const path = "/api/attendee/events/evt_devflow_conf_2027/schedule";
+    const cookie = await signUp("Batch Session Picker", "batch-session-picker@example.com");
+    const database = drizzle(env.DB);
+    const batchIds = Array.from({ length: 40 }, (_, index) => `ses_batch_${index}`);
+    for (let index = 0; index < batchIds.length; index += 5) {
+      await database.insert(sessions).values(batchIds.slice(index, index + 5).map((id, offset) => ({
+        id,
+        eventId: "evt_devflow_conf_2027",
+        title: `Batch session ${index + offset}`,
+        contentStatus: "approved" as const,
+        scheduleStatus: "tbd" as const,
+        directEntry: true,
+        icsUid: `${id}@session-bored`,
+        publishedAt: new Date("2027-04-01T12:00:00Z"),
+      })));
+    }
+
+    const saved = await request(path, {
+      method: "PATCH",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ add: batchIds, remove: [] }),
+    });
+    expect(saved.status).toBe(200);
+    const savedIds = (await saved.json<{ sessionIds: string[] }>()).sessionIds;
+    expect([...savedIds].sort()).toEqual([...batchIds].sort());
+
+    const cleared = await request(path, {
+      method: "PATCH",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ add: [], remove: batchIds }),
+    });
+    expect(cleared.status).toBe(200);
+    expect(await cleared.json()).toEqual({ sessionIds: [] });
+  });
+
   it("keeps an attendee's saved public sessions after signing out and back in", async () => {
     await request("/api/health");
     const email = "agenda-attendee@example.com";

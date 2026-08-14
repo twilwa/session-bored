@@ -37,6 +37,7 @@ class FakeSchedule implements PersonalScheduleEnvironment {
   pendingUserId: Deferred<string | null> | null = null;
   userIdFailure: Error | null = null;
   failNextUpdate: Error | null = null;
+  updateFailure: Error | null = null;
   blockNextUpdate: { started: Deferred<void>; release: Deferred<void> } | null = null;
 
   constructor(devicePicks: string[] = []) {
@@ -73,6 +74,9 @@ class FakeSchedule implements PersonalScheduleEnvironment {
       this.blockNextUpdate = null;
       block.started.resolve();
       await block.release.promise;
+    }
+    if (this.updateFailure !== null) {
+      throw this.updateFailure;
     }
     const failure = this.failNextUpdate;
     if (failure !== null) {
@@ -266,26 +270,47 @@ describe("a pick made while a save is in flight", () => {
 });
 
 describe("when the account check cannot be answered", () => {
-  it("holds the picks unsaved and lands them on the device once it resolves", async () => {
-    const environment = new FakeSchedule([]);
+  it("keeps saving the visitor's picks on the device", async () => {
+    const environment = new FakeSchedule(["ses_earlier"]);
     environment.userIdFailure = new Error("session_load_failed");
     const store = createPersonalScheduleStore(EVENT_ID, environment);
 
     await store.settle();
-    expect(store.snapshot().storageStatus).toBe("unsaved");
+    expect(store.snapshot().storageStatus).toBe("device");
 
     await store.toggle("ses_pick");
-    expect(store.snapshot().sessionIds).toEqual(["ses_pick"]);
-    expect(store.snapshot().storageStatus).toBe("unsaved");
-    expect(environment.storage.has(DEVICE_KEY)).toBe(false);
 
-    environment.userIdFailure = null;
-    environment.userId = null;
+    expect(store.snapshot().sessionIds).toEqual(["ses_earlier", "ses_pick"]);
+    expect(store.snapshot().storageStatus).toBe("device");
+    expect(JSON.parse(environment.storage.get(DEVICE_KEY)!)).toEqual(["ses_earlier", "ses_pick"]);
+    expect(environment.updates).toEqual([]);
+  });
+});
+
+describe("a flush the server refuses part of", () => {
+  it("keeps the picks whose batch never left the browser", async () => {
+    const environment = new FakeSchedule([]);
+    environment.publicIds = new Set(manyPicks(150));
+    const store = createPersonalScheduleStore(EVENT_ID, environment);
     await store.settle();
 
-    expect(store.snapshot().storageStatus).toBe("device");
-    expect(JSON.parse(environment.storage.get(DEVICE_KEY)!)).toEqual(["ses_pick"]);
-    expect(environment.updates).toEqual([]);
+    environment.updateFailure = new Error("personal_schedule_sync_failed");
+    for (const sessionId of manyPicks(150)) {
+      await store.toggle(sessionId);
+    }
+    expect(environment.account).toEqual([]);
+
+    environment.updateFailure = null;
+    environment.publicIds.delete("ses_0");
+    await store.settle();
+
+    expect(store.snapshot().storageStatus).toBe("error");
+
+    await store.settle();
+
+    expect(environment.account).toEqual(manyPicks(150).slice(100));
+    expect(store.snapshot().sessionIds).toEqual(manyPicks(150).slice(100));
+    expect(store.snapshot().storageStatus).toBe("account");
   });
 });
 

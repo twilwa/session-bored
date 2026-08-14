@@ -70,11 +70,9 @@ export function PersonalSchedulePage() {
     ? "Saved to your account · available on any device"
     : storageStatus === "error"
       ? "Account sync needs retry · your latest change may not be saved"
-      : storageStatus === "unsaved"
-        ? "Not saved yet · these picks stay on this page until the server answers"
-        : storageStatus === "checking"
-          ? "Checking for your account…"
-          : "Saved on this device · no account needed";
+      : storageStatus === "checking"
+        ? "Checking for your account…"
+        : "Saved on this device · no account needed";
 
   async function copyCalendarLink(): Promise<void> {
     const calendarUrl = new URL(calendarPath, window.location.origin).toString();

@@ -1,10 +1,10 @@
 // ABOUTME: Persists each signed-in account's selected public sessions across devices.
 // ABOUTME: Filters every saved selection through the same public programme gate attendees browse.
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, getTableColumns, inArray } from "drizzle-orm";
 import { drizzle, type DrizzleD1Database } from "drizzle-orm/d1";
 import { Hono } from "hono";
 import { personalScheduleSessions } from "../../db/schema.ts";
-import { personalScheduleUpdateLimit } from "../../shared/api.ts";
+import { personalScheduleUpdateLimit, type PersonalScheduleResponse } from "../../shared/api.ts";
 import type { AuthSession } from "../auth.ts";
 import { fetchPublicSessions } from "../public-queries.ts";
 
@@ -25,6 +25,22 @@ const publicSessionFilters = {
   day: undefined,
 };
 
+// D1 binds at most 100 parameters per query, so a request that fits the route's own id
+// limit still reaches the database as several smaller statements.
+const boundParameterLimit = 100;
+const insertRowLimit = Math.floor(
+  boundParameterLimit / Object.keys(getTableColumns(personalScheduleSessions)).length,
+);
+const removeIdLimit = boundParameterLimit - 1;
+
+function chunk<Item>(values: Item[], size: number): Item[][] {
+  const chunks: Item[][] = [];
+  for (let index = 0; index < values.length; index += size) {
+    chunks.push(values.slice(index, index + size));
+  }
+  return chunks;
+}
+
 function sessionIds(value: unknown): string[] | null {
   if (!Array.isArray(value) || value.length > personalScheduleUpdateLimit) {
     return null;
@@ -44,10 +60,7 @@ async function readSchedule(
   const selected = await database
     .select({ sessionId: personalScheduleSessions.sessionId })
     .from(personalScheduleSessions)
-    .where(and(
-      eq(personalScheduleSessions.userId, userId),
-      inArray(personalScheduleSessions.sessionId, publicSessions.map((session) => session.id)),
-    ));
+    .where(eq(personalScheduleSessions.userId, userId));
   const selectedIds = new Set(selected.map((item) => item.sessionId));
   return publicSessions.map((session) => session.id).filter((sessionId) => selectedIds.has(sessionId));
 }
@@ -59,7 +72,9 @@ personalScheduleRoutes.get("/attendee/events/:eventId/schedule", async (context)
   }
   const database = drizzle(context.env.DB);
   const publicSessions = await fetchPublicSessions(database, context.req.param("eventId"), publicSessionFilters);
-  return context.json({ sessionIds: await readSchedule(database, user.id, publicSessions) });
+  return context.json(
+    { sessionIds: await readSchedule(database, user.id, publicSessions) } satisfies PersonalScheduleResponse,
+  );
 });
 
 personalScheduleRoutes.patch("/attendee/events/:eventId/schedule", async (context) => {
@@ -87,22 +102,24 @@ personalScheduleRoutes.patch("/attendee/events/:eventId/schedule", async (contex
     return context.json({ error: "invalid_personal_schedule" }, 400);
   }
 
-  if (remove.length > 0) {
+  for (const batch of chunk(remove, removeIdLimit)) {
     await database.delete(personalScheduleSessions).where(and(
       eq(personalScheduleSessions.userId, user.id),
-      inArray(personalScheduleSessions.sessionId, remove),
+      inArray(personalScheduleSessions.sessionId, batch),
     ));
   }
   const removed = new Set(remove);
   const additions = add.filter((sessionId) => !removed.has(sessionId));
-  if (additions.length > 0) {
+  for (const batch of chunk(additions, insertRowLimit)) {
     await database
       .insert(personalScheduleSessions)
-      .values(additions.map((sessionId) => ({ userId: user.id, sessionId })))
+      .values(batch.map((sessionId) => ({ userId: user.id, sessionId })))
       .onConflictDoNothing();
   }
 
-  return context.json({ sessionIds: await readSchedule(database, user.id, publicSessions) });
+  return context.json(
+    { sessionIds: await readSchedule(database, user.id, publicSessions) } satisfies PersonalScheduleResponse,
+  );
 });
 
 export default personalScheduleRoutes;

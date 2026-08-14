@@ -1,13 +1,17 @@
 // ABOUTME: Keeps anonymous personal schedules on-device and signed-in schedules on the account.
 // ABOUTME: Migrates each device's existing picks additively so signing in never discards them.
 import { useEffect, useMemo, useSyncExternalStore } from "react";
-import { personalScheduleUpdateLimit, type PersonalScheduleChange } from "../../../shared/api.ts";
+import {
+  personalScheduleUpdateLimit,
+  type PersonalScheduleChange,
+  type PersonalScheduleResponse,
+} from "../../../shared/api.ts";
 import { observePublicSession } from "../../lib.tsx";
 
 const STORAGE_PREFIX = "greenroom.personal-schedule.v1";
 const MIGRATION_PREFIX = "greenroom.personal-schedule-account.v1";
 
-export type StorageStatus = "checking" | "device" | "account" | "error" | "unsaved";
+export type StorageStatus = "checking" | "device" | "account" | "error";
 
 export interface PersonalScheduleSnapshot {
   sessionIds: string[];
@@ -37,10 +41,6 @@ export class PersonalScheduleRejected extends Error {}
 
 interface SessionPayload {
   user: { id: string };
-}
-
-interface PersonalSchedulePayload {
-  sessionIds: string[];
 }
 
 interface PublicSessionListPayload {
@@ -101,7 +101,7 @@ export function browserPersonalScheduleEnvironment(): PersonalScheduleEnvironmen
       if (!response.ok) {
         throw new Error("personal_schedule_load_failed");
       }
-      return (await response.json<PersonalSchedulePayload>()).sessionIds;
+      return (await response.json<PersonalScheduleResponse>()).sessionIds;
     },
     async updateAccountSchedule(eventId, change) {
       const response = await fetch(accountSchedulePath(eventId), {
@@ -116,7 +116,7 @@ export function browserPersonalScheduleEnvironment(): PersonalScheduleEnvironmen
       if (!response.ok) {
         throw new Error("personal_schedule_sync_failed");
       }
-      return (await response.json<PersonalSchedulePayload>()).sessionIds;
+      return (await response.json<PersonalScheduleResponse>()).sessionIds;
     },
     async publicSessionIds(eventId) {
       const response = await fetch(`/api/public/events/${eventId}/sessions`, { credentials: "same-origin" });
@@ -161,8 +161,7 @@ export function createPersonalScheduleStore(
   }
 
   function publish(): void {
-    const storageStatus = !failed ? mode : mode === "checking" ? "unsaved" : "error";
-    snapshot = { sessionIds, storageStatus };
+    snapshot = { sessionIds, storageStatus: failed ? "error" : mode };
     for (const listener of listeners) {
       listener();
     }
@@ -178,9 +177,19 @@ export function createPersonalScheduleStore(
     return next;
   }
 
-  async function applyChange(change: PersonalScheduleChange, current: string[]): Promise<string[]> {
+  async function applyChange(
+    change: PersonalScheduleChange,
+    current: string[],
+    sent?: Map<string, boolean>,
+  ): Promise<string[]> {
     let saved = current;
     for (const batch of accountScheduleBatches(change)) {
+      for (const sessionId of batch.add) {
+        sent?.set(sessionId, true);
+      }
+      for (const sessionId of batch.remove) {
+        sent?.set(sessionId, false);
+      }
       saved = await environment.updateAccountSchedule(eventId, batch);
     }
     return saved;
@@ -195,14 +204,14 @@ export function createPersonalScheduleStore(
   }
 
   async function flushPending(current: string[]): Promise<string[]> {
-    const sent = new Map(pending);
-    const add = [...sent].filter(([, keep]) => keep).map(([sessionId]) => sessionId);
-    const remove = [...sent].filter(([, keep]) => !keep).map(([sessionId]) => sessionId);
+    const add = [...pending].filter(([, keep]) => keep).map(([sessionId]) => sessionId);
+    const remove = [...pending].filter(([, keep]) => !keep).map(([sessionId]) => sessionId);
     if (add.length === 0 && remove.length === 0) {
       return current;
     }
+    const sent = new Map<string, boolean>();
     try {
-      const saved = await applyChange({ add, remove }, current);
+      const saved = await applyChange({ add, remove }, current, sent);
       forgetSent(sent);
       return withPending(saved);
     } catch (error) {
@@ -225,11 +234,19 @@ export function createPersonalScheduleStore(
     return saved;
   }
 
+  async function resolveAccountUserId(): Promise<string | null> {
+    try {
+      return await environment.accountUserId();
+    } catch {
+      return null;
+    }
+  }
+
   async function runSettle(): Promise<void> {
     const attempt = generation;
     try {
       if (mode === "checking") {
-        const userId = await environment.accountUserId();
+        const userId = await resolveAccountUserId();
         if (attempt !== generation) {
           return;
         }
