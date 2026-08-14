@@ -253,6 +253,7 @@ function DirectoryDetail({
 
 export function SpeakerDirectoryPage({ personId }: { personId?: string }) {
   const [activePersonId, setActivePersonId] = useState(personId);
+  const [reloadCount, setReloadCount] = useState(0);
   const [list, setList] = useState<SpeakerDirectoryListResponse | null>(null);
   const [detail, setDetail] = useState<SpeakerDirectoryDetailResponse | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -277,7 +278,7 @@ export function SpeakerDirectoryPage({ personId }: { personId?: string }) {
       })
       .catch(() => { if (active) setLoadFailed(true); });
     return () => { active = false; };
-  }, [activePersonId]);
+  }, [activePersonId, reloadCount]);
 
   async function merge(): Promise<void> {
     if (mergeChoice === null) return;
@@ -290,8 +291,11 @@ export function SpeakerDirectoryPage({ personId }: { personId?: string }) {
       });
       const message = `${mergeChoice.archived.name} merged into ${mergeChoice.kept.name}.`;
       setMergeChoice(null);
-      window.history.pushState({}, "", `/organizer/directory/${result.keptPersonId}`);
+      // Replaces rather than pushes: the record just archived answers 404 now, so leaving its URL
+      // in history would give the organizer a Back button that lands on a record that cannot load.
+      window.history.replaceState({}, "", `/organizer/directory/${result.keptPersonId}`);
       setActivePersonId(result.keptPersonId);
+      setReloadCount((count) => count + 1);
       setMessage(message);
     } catch {
       setMessage("Those records could not be merged. Nothing was changed.");

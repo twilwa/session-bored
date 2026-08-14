@@ -30,6 +30,57 @@ test("organizer browses the all-event directory and opens a speaker history", as
   expect(width).toBeLessThanOrEqual(await page.evaluate(() => window.innerWidth));
 });
 
+async function submitProposalAs(
+  request: import("@playwright/test").APIRequestContext,
+  speaker: { name: string; email: string; organization: string },
+  title: string,
+): Promise<void> {
+  const submitted = await request.post("/api/public/cfp/devflow-conf-2027/submissions", {
+    data: {
+      intent: "submit",
+      speaker: { ...speaker, jobTitle: "Staff Engineer" },
+      collaborators: [],
+      proposal: {
+        title,
+        abstract: "A real proposal that gives this directory identity a proposal record to keep.",
+        track: "Developer Experience",
+        format: "Talk (30 min)",
+        audienceLevel: "Intermediate",
+        answers: { key_takeaway: "Durable speaker identity matters across events." },
+      },
+    },
+  });
+  expect(submitted.status(), await submitted.text()).toBe(201);
+}
+
+test("the record an organizer keeps reloads without its archived duplicate", async ({ page }, testInfo) => {
+  const suffix = `${testInfo.project.name}-${Date.now()}`;
+  const name = `Directory Twin ${suffix}`;
+  const organization = `Northwind ${suffix}`;
+  const keptEmail = `twin-kept-${suffix}@example.com`;
+  const archivedEmail = `twin-archived-${suffix}@example.com`;
+  await submitProposalAs(page.request, { name, email: keptEmail, organization }, `Twin kept ${suffix}`);
+  await submitProposalAs(page.request, { name, email: archivedEmail, organization }, `Twin archived ${suffix}`);
+
+  await signInAsOrganizer(page);
+  await page.goto("/organizer/directory");
+  await page.getByLabel("Search directory").fill(keptEmail);
+  await page.locator(".directory-row").filter({ hasText: keptEmail })
+    .getByRole("link", { name: `View ${name}` }).click();
+  await expect(page.getByRole("heading", { name: "Possible duplicates" })).toBeVisible();
+
+  const candidate = page.locator(".directory-duplicate").filter({ hasText: archivedEmail });
+  await candidate.getByRole("button", { name: `Keep ${keptEmail}` }).click();
+  const dialog = page.getByRole("dialog", { name: "Confirm speaker merge" });
+  await expect(dialog).toContainText(`Archive ${archivedEmail}`);
+  await dialog.getByRole("button", { name: `Merge and keep ${keptEmail}` }).click();
+
+  await expect(page.locator(".toast")).toContainText("merged into");
+  await expect(page.getByRole("heading", { name: "Possible duplicates" })).toBeHidden();
+  await expect(page.getByText(archivedEmail)).toHaveCount(0);
+  await expect(page.locator(".directory-event__work")).toContainText("2 proposals");
+});
+
 test("organizer reviews and merges a likely duplicate while choosing the kept record", async ({ page }, testInfo) => {
   await signInAsOrganizer(page);
   const directoryResponse = await page.request.get("/api/speaker-directory");

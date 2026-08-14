@@ -44,14 +44,16 @@ speakerDirectoryRoutes.get("/api/speaker-directory", requireOrganizer, async (co
 speakerDirectoryRoutes.get("/api/speaker-directory/:personId", requireOrganizer, async (context) => {
   const directory = await loadSpeakerDirectory(drizzle(context.env.DB));
   const personId = context.req.param("personId");
-  const summary = directory.items.find((item) => item.id === personId);
-  const person = directory.people.find((item) => item.id === personId);
+  const summary = directory.itemsById.get(personId);
+  const person = directory.peopleById.get(personId);
   if (summary === undefined || person === undefined) return context.json({ error: "not_found" }, 404);
 
+  const reasonsByCandidateId = directory.duplicateReasonsByPersonId.get(personId)
+    ?? new Map<string, SpeakerDirectoryDuplicate["reasons"]>();
   const possibleDuplicates: SpeakerDirectoryDuplicate[] = directory.people.flatMap((candidate) => {
-    const reasons = duplicateReasonsFor(person, candidate);
-    if (reasons.length === 0) return [];
-    const candidateSummary = directory.items.find((item) => item.id === candidate.id)!;
+    const reasons = reasonsByCandidateId.get(candidate.id);
+    if (reasons === undefined) return [];
+    const candidateSummary = directory.itemsById.get(candidate.id)!;
     return [{
       id: candidate.id,
       name: candidate.name,
@@ -239,10 +241,13 @@ speakerDirectoryRoutes.post("/api/speaker-directory/:personId/merge", requireOrg
     );
   }
 
+  // Both person ids are read back from live rows so a merge that raced another one - the same pair
+  // in the opposite direction, archiving the record this batch is keeping - hits the column's not
+  // null constraint and rolls the whole batch back, rather than half-applying into a merge cycle.
   const mergeId = `pmg_${crypto.randomUUID().replaceAll("-", "")}`;
   statements.push(
     context.env.DB.prepare(
-      "insert into directory_merge (id, kept_person_id, merged_person_id, merged_by_user_id, reasons, merged_profile, created_at) values (?, ?, ?, ?, ?, ?, ?)",
+      "insert into directory_merge (id, kept_person_id, merged_person_id, merged_by_user_id, reasons, merged_profile, created_at) values (?, (select id from person where id = ? and deleted_at is null), (select id from person where id = ? and deleted_at is null), ?, ?, ?, ?)",
     ).bind(
       mergeId,
       keptPerson.id,
@@ -257,7 +262,16 @@ speakerDirectoryRoutes.post("/api/speaker-directory/:personId/merge", requireOrg
     ).bind(now, now, mergedPerson.id),
   );
 
-  await context.env.DB.batch(statements);
+  try {
+    await context.env.DB.batch(statements);
+  } catch (error) {
+    const stillLive = await database
+      .select({ id: people.id })
+      .from(people)
+      .where(and(inArray(people.id, [keptPerson.id, mergedPerson.id]), isNull(people.deletedAt)));
+    if (stillLive.length === 2) throw error;
+    return context.json({ error: "merge_conflict" }, 409);
+  }
   const response: SpeakerDirectoryMergeResult = {
     keptPersonId: keptPerson.id,
     mergedPersonId: mergedPerson.id,
