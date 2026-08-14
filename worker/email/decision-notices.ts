@@ -1,6 +1,6 @@
 // ABOUTME: Fills disposition.ts's dispatch seam - sends the letters it already rendered and queued.
 // ABOUTME: Owns per-recipient delivery outcome and the one send path for a letter still undelivered.
-import { and, eq, isNull, lt, ne, or, sql } from "drizzle-orm";
+import { and, eq, isNull, lt, ne, or } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { decisionBatchItems, decisionBatches, decisionNotices, people, submissions } from "../../db/schema.ts";
 import { resolveEmailDelivery, type EmailDelivery, type EmailEnvironment } from "../email.ts";
@@ -355,7 +355,7 @@ export async function cancelDecisionNotice(params: {
       const [holder] = await database
         .select({ id: people.id })
         .from(people)
-        .where(and(sql`lower(${people.email}) = ${corrected}`, sql`${people.id} <> ${submission.personId}`));
+        .where(and(eq(people.email, corrected), ne(people.id, submission.personId)));
       if (holder !== undefined) {
         // A row answering to the address is not yet a different person: a duplicate merged into
         // this one keeps its address forever, and that address is this person's own history.
