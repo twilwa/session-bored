@@ -64,8 +64,10 @@ test("a new account signs up, lands on its own schedule, and reaches no workspac
 });
 
 test("the sign-up page states the role it produces", async ({ page }) => {
-  await page.goto("/signup");
+  const invitedEmail = uniqueEmail("prefilled-reviewer");
+  await page.goto(`/signup?email=${encodeURIComponent(invitedEmail)}`);
   await expect(page.getByRole("heading", { name: "Create account" })).toBeVisible();
+  await expect(page.getByLabel("Email")).toHaveValue(invitedEmail);
   await expect(page.locator(".signup-outcome")).toContainText("attendee");
   const width = await page.evaluate(() => document.documentElement.scrollWidth);
   expect(width).toBeLessThanOrEqual(await page.evaluate(() => window.innerWidth));
@@ -114,7 +116,7 @@ test("an invitation is recorded as pending, not as access", async ({ page }) => 
   await page.getByLabel("Invite a reviewer by email").fill(invited);
   await page.getByRole("button", { name: "Send invitation" }).click();
 
-  await expect(page.locator(".toast")).toContainText("once they confirm that address");
+  await expect(page.locator(".toast")).toContainText("no email sender is connected");
   const invite = page.locator(".people-invite-list li").filter({ hasText: invited });
   await expect(invite).toBeVisible();
   await expect(invite.getByText("waiting on confirmation")).toBeVisible();

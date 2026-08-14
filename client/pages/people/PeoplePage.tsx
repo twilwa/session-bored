@@ -102,12 +102,19 @@ export function PeoplePage() {
 
   async function invite(): Promise<void> {
     try {
-      await requestJson(`/api/events/${eventId}/reviewer-invites`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email: inviteEmail }),
-      });
-      setMessage(`Invitation recorded. ${inviteEmail} becomes a reviewer once they confirm that address.`);
+      const result = await requestJson<{ emailDelivery: "sent" | "failed" | "not_configured" }>(
+        `/api/events/${eventId}/reviewer-invites`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ email: inviteEmail }),
+        },
+      );
+      setMessage(result.emailDelivery === "sent"
+        ? `Invitation sent to ${inviteEmail}. They become a reviewer once they confirm that address.`
+        : result.emailDelivery === "failed"
+        ? "Invitation recorded, but email delivery failed. Open Communications for the failure details."
+        : "Invitation recorded, but no email sender is connected. Connect one before asking them to respond.");
       setInviteEmail("");
       setReload((token) => token + 1);
     } catch {

@@ -75,11 +75,11 @@ Signing in from a page that turned you away returns you to that page whenever it
 sits inside an area your account reaches; anything else lands you on your home
 area.
 
-An organizer can also invite a reviewer by email. The invitation becomes reviewer
-access only once that person confirms the address, so knowing an invited address
-is never enough to claim it. Confirmation mail needs an email sender; until one
-is connected, invitations simply stay pending and organizers can grant directly
-from People instead.
+An organizer can also invite a reviewer by email. The invitation is sent through
+Communications and becomes reviewer access only once that person creates an account
+and confirms the invited address, so knowing that address is never enough to claim
+it. Invitation mail needs an email sender; without one, People says delivery was not
+attempted and the invitation remains pending.
 
 Granting reviewer from People asks in the same step what that reviewer may read:
 at least one track and one open review round, so a new reviewer signs in to a

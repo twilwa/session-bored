@@ -24,6 +24,7 @@ import {
 import { holdsAccess } from "../access.ts";
 import type { PersonAccountEvidence, PersonAccountSummary } from "../../shared/api.ts";
 import type { AuthSession } from "../auth.ts";
+import { sendReviewerInvitationEmail } from "../email/reviewer-invitation.ts";
 import { sendRoleGrantEmail } from "../email/role-grant.ts";
 import { applyReviewerRemit, normalizeInviteEmail } from "../reviewer-invites.ts";
 import { grantRole, listLiveGrants, revokeRole } from "../roles.ts";
@@ -356,9 +357,21 @@ peopleRoutes.post("/api/events/:eventId/reviewer-invites", requireOrganizer, asy
       invitedByUserId: organizer.id,
     })
     .returning({ id: reviewerInvites.id });
+  const delivery = await sendReviewerInvitationEmail({
+    database,
+    env: context.env,
+    eventId: eventId as `evt_${string}`,
+    recipientEmail: email,
+    createdByUserId: organizer.id,
+  });
+  if (delivery.status === "event_not_found") {
+    return context.json({ error: "event_not_found" }, 404);
+  }
   return context.json(
     {
       invite: { id: invite!.id, email, eventId },
+      emailDelivery: delivery.status === "provider_not_configured" ? "not_configured" : delivery.status,
+      ...(delivery.status === "failed" ? { failureReason: delivery.error ?? "send_failed" } : {}),
       // Said plainly so an organizer is never left believing an invitation is already access.
       note: "The invitation becomes reviewer access only when this address is confirmed.",
     },
