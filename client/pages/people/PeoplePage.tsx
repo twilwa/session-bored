@@ -105,14 +105,19 @@ export function PeoplePage() {
 
   async function invite(): Promise<void> {
     try {
-      const result = await requestJson<{ emailDelivery: "sent" | "failed" | "not_configured" }>(
-        `/api/events/${eventId}/reviewer-invites`,
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ email: inviteEmail }),
-        },
-      );
+      const response = await fetch(`/api/events/${eventId}/reviewer-invites`, {
+        credentials: "same-origin",
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: inviteEmail }),
+      });
+      const result = await response
+        .json<{ emailDelivery?: "sent" | "failed" | "not_configured"; note?: string }>()
+        .catch(() => ({ emailDelivery: undefined, note: undefined }));
+      if (!response.ok) {
+        setMessage(result.note ?? "That invitation could not be recorded.");
+        return;
+      }
       setMessage(result.emailDelivery === "sent"
         ? `Invitation sent to ${inviteEmail}. They become a reviewer once they confirm that address.`
         : result.emailDelivery === "failed"

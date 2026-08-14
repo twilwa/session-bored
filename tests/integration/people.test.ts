@@ -37,7 +37,14 @@ async function organizerCookie(): Promise<string> {
   return signIn("sbek-organizer@example.com", "SbekTest!2027-org");
 }
 
-async function loadPeople(cookie: string): Promise<{ items: PersonAccountSummary[]; invites: Array<{ id: string; email: string }> }> {
+interface OpenInvite {
+  id: string;
+  email: string;
+  emailDelivery: "sent" | "failed" | "not_attempted";
+  canResend: boolean;
+}
+
+async function loadPeople(cookie: string): Promise<{ items: PersonAccountSummary[]; invites: OpenInvite[] }> {
   const response = await request("/api/people", { headers: { cookie } });
   expect(response.status).toBe(200);
   return response.json();
@@ -270,6 +277,89 @@ describe("organizer People surface", () => {
     const queue = await request("/api/review/queue", { headers: { cookie: reviewerCookie } });
     expect(queue.status).toBe(200);
     expect((await queue.json<{ items: unknown[] }>()).items.length).toBeGreaterThan(0);
+  });
+
+  it("refuses an invitation to a confirmed address and names the grant that does work", async () => {
+    await request("/api/health");
+    const cookie = await organizerCookie();
+    const database = drizzle(env.DB);
+    const eventId = "evt_devflow_conf_2027";
+    const invited = "confirmed-account-invite@example.com";
+    await signUp("Confirmed Account", invited);
+    const userId = await userIdFor(invited);
+
+    const inviteReviewer = async (email: string) =>
+      request(`/api/events/${eventId}/reviewer-invites`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+
+    // While the address is unconfirmed the invitation is still the right door, because
+    // confirming it is exactly what redeems the invitation.
+    const beforeConfirmation = await inviteReviewer(invited);
+    expect(beforeConfirmation.status).toBe(201);
+    const openInviteId = (await beforeConfirmation.json<{ invite: { id: string } }>()).invite.id;
+    expect((await request(`/api/reviewer-invites/${openInviteId}`, { method: "DELETE", headers: { cookie } })).status)
+      .toBe(200);
+
+    await database.update(users).set({ emailVerified: true }).where(eq(users.id, userId));
+
+    // Confirmed, so the address has no confirmation left to make and an invitation could only
+    // sit open forever. The organizer is told that, and told what to do instead.
+    const refused = await inviteReviewer("Confirmed-Account-Invite@Example.com");
+    expect(refused.status).toBe(409);
+    const refusal = await refused.json<{ error: string; userId: string; note: string }>();
+    expect(refusal).toMatchObject({ error: "account_already_confirmed", userId });
+    expect(refusal.note).toContain("Grant reviewer access");
+
+    // Nothing was recorded, so no invitation waits on a confirmation that already happened.
+    expect((await loadPeople(cookie)).invites.map((invite) => invite.email)).not.toContain(invited);
+
+    // And the recourse the refusal names really opens the committee.
+    const granted = await request(`/api/people/${userId}/grants`, {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ role: "reviewer" }),
+    });
+    expect(granted.status).toBe(200);
+    const reviewerCookie = await signIn(invited, "Greenroom!2027");
+    expect((await request("/api/review/queue", { headers: { cookie: reviewerCookie } })).status).toBe(200);
+  });
+
+  it("keeps an invitation resendable while no email sender is connected", async () => {
+    await request("/api/health");
+    const cookie = await organizerCookie();
+    const eventId = "evt_devflow_conf_2027";
+    const invited = "unconnected-sender-invite@example.com";
+
+    const created = await request(`/api/events/${eventId}/reviewer-invites`, {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ email: invited }),
+    });
+    expect(created.status).toBe(201);
+    const createdPayload = await created.json<{ invite: { id: string }; emailDelivery: string }>();
+    expect(createdPayload.emailDelivery).toBe("not_configured");
+    const inviteId = createdPayload.invite.id;
+
+    // Nothing was attempted, so the invitation is not stranded behind a send that never happened.
+    const openInvite = (await loadPeople(cookie)).invites.find((invite) => invite.id === inviteId);
+    expect(openInvite).toMatchObject({ email: invited, emailDelivery: "not_attempted", canResend: true });
+
+    const resent = await request(`/api/events/${eventId}/reviewer-invites/${inviteId}/resend`, {
+      method: "POST",
+      headers: { cookie },
+    });
+    expect(resent.status).toBe(200);
+    await expect(resent.json()).resolves.toMatchObject({
+      invite: { id: inviteId, email: invited, eventId },
+      emailDelivery: "not_configured",
+    });
+
+    // Still nobody has been reached, so it stays resendable rather than reading as sent.
+    expect((await loadPeople(cookie)).invites.find((invite) => invite.id === inviteId))
+      .toMatchObject({ emailDelivery: "not_attempted", canResend: true });
   });
 
   it("still lets an organizer invite a reviewer to no tracks at all", async () => {

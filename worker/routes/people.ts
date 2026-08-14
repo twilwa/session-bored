@@ -1,6 +1,6 @@
 // ABOUTME: Serves the organizer's platform-wide view of who has an account and what it opens.
 // ABOUTME: Owns granting, revoking, and reviewer invitations, each attributed to the organizer who acted.
-import { and, asc, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNull, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { Hono } from "hono";
 import { createMiddleware } from "hono/factory";
@@ -25,6 +25,7 @@ import {
 import { holdsAccess } from "../access.ts";
 import type { PersonAccountEvidence, PersonAccountSummary } from "../../shared/api.ts";
 import type { AuthSession } from "../auth.ts";
+import type { EmailDeliveryResult } from "../email.ts";
 import {
   reviewerInvitationTemplateKey,
   sendReviewerInvitationEmail,
@@ -75,6 +76,64 @@ function reviewerInvitationDeliveryFor(
     return "failed";
   }
   return "not_attempted";
+}
+
+/**
+ * An invitation is only ever answered by an attempt made after it was created, so the read is
+ * bounded by the oldest invitation it has to speak for. Attempt rows accumulate for the life of
+ * an event; the open invitations they describe do not.
+ */
+async function readReviewerInvitationDispatches(
+  database: ReturnType<typeof drizzle>,
+  eventIds: readonly string[],
+  since: Date,
+): Promise<ReviewerInvitationDispatch[]> {
+  if (eventIds.length === 0) {
+    return [];
+  }
+  return database
+    .select({
+      eventId: emailDispatches.eventId,
+      recipients: emailDispatches.recipients,
+      status: emailDispatches.status,
+      createdAt: emailDispatches.createdAt,
+    })
+    .from(emailDispatches)
+    .where(and(
+      inArray(emailDispatches.eventId, [...eventIds]),
+      eq(emailDispatches.templateKey, reviewerInvitationTemplateKey),
+      gte(emailDispatches.createdAt, since),
+      isNull(emailDispatches.deletedAt),
+    ));
+}
+
+/** The one wire vocabulary both invitation doors report delivery in. */
+function invitationDeliveryResponse(
+  result: EmailDeliveryResult,
+): { emailDelivery: "sent" | "failed" | "not_configured"; failureReason?: string } {
+  if (result.status === "provider_not_configured") {
+    return { emailDelivery: "not_configured" };
+  }
+  if (result.status === "failed") {
+    return { emailDelivery: "failed", failureReason: result.error ?? "send_failed" };
+  }
+  return { emailDelivery: "sent" };
+}
+
+/**
+ * An invitation is redeemed only by confirming the address, so an address whose account has
+ * already confirmed has no redemption left to make. The organizer is told that rather than
+ * being handed an invitation that can never become access.
+ */
+async function confirmedAccountFor(
+  database: ReturnType<typeof drizzle>,
+  email: string,
+): Promise<{ id: string; name: string } | undefined> {
+  const [account] = await database
+    .select({ id: users.id, name: users.name })
+    .from(users)
+    .where(and(sql`lower(${users.email}) = ${email}`, eq(users.emailVerified, true)));
+  return account;
 }
 
 const requireOrganizer = createMiddleware<PeopleEnvironment>(async (context, next) => {
@@ -243,21 +302,10 @@ peopleRoutes.get("/api/people", requireOrganizer, async (context) => {
     .where(and(isNull(reviewerInvites.redeemedAt), isNull(reviewerInvites.revokedAt)))
     .orderBy(asc(reviewerInvites.createdAt));
   const inviteEventIds = [...new Set(openInvites.map((invite) => invite.eventId))];
-  const invitationDispatches = inviteEventIds.length === 0
+  const oldestOpenInvite = openInvites[0];
+  const invitationDispatches = oldestOpenInvite === undefined
     ? []
-    : await database
-      .select({
-        eventId: emailDispatches.eventId,
-        recipients: emailDispatches.recipients,
-        status: emailDispatches.status,
-        createdAt: emailDispatches.createdAt,
-      })
-      .from(emailDispatches)
-      .where(and(
-        inArray(emailDispatches.eventId, inviteEventIds),
-        eq(emailDispatches.templateKey, reviewerInvitationTemplateKey),
-        isNull(emailDispatches.deletedAt),
-      ));
+    : await readReviewerInvitationDispatches(database, inviteEventIds, oldestOpenInvite.createdAt);
   return context.json({
     items,
     invites: openInvites.map((invite) => {
@@ -372,6 +420,18 @@ peopleRoutes.post("/api/events/:eventId/reviewer-invites", requireOrganizer, asy
   const database = drizzle(context.env.DB);
   const email = normalizeInviteEmail(payload.email);
   const eventId = context.req.param("eventId");
+  const confirmedAccount = await confirmedAccountFor(database, email);
+  if (confirmedAccount !== undefined) {
+    return context.json(
+      {
+        error: "account_already_confirmed",
+        userId: confirmedAccount.id,
+        note:
+          `${confirmedAccount.name} has already confirmed this address, so an invitation has nothing left to redeem. Grant reviewer access on their account instead.`,
+      },
+      409,
+    );
+  }
   const [existing] = await database
     .select({ id: reviewerInvites.id })
     .from(reviewerInvites)
@@ -429,8 +489,7 @@ peopleRoutes.post("/api/events/:eventId/reviewer-invites", requireOrganizer, asy
   return context.json(
     {
       invite: { id: invite!.id, email, eventId },
-      emailDelivery: delivery.status === "provider_not_configured" ? "not_configured" : delivery.status,
-      ...(delivery.status === "failed" ? { failureReason: delivery.error ?? "send_failed" } : {}),
+      ...invitationDeliveryResponse(delivery),
       // Said plainly so an organizer is never left believing an invitation is already access.
       note: "The invitation becomes reviewer access only when this address is confirmed.",
     },
@@ -462,19 +521,7 @@ peopleRoutes.post("/api/events/:eventId/reviewer-invites/:inviteId/resend", requ
   if (invite === undefined) {
     return context.json({ error: "invite_not_found" }, 404);
   }
-  const dispatches = await database
-    .select({
-      eventId: emailDispatches.eventId,
-      recipients: emailDispatches.recipients,
-      status: emailDispatches.status,
-      createdAt: emailDispatches.createdAt,
-    })
-    .from(emailDispatches)
-    .where(and(
-      eq(emailDispatches.eventId, eventId),
-      eq(emailDispatches.templateKey, reviewerInvitationTemplateKey),
-      isNull(emailDispatches.deletedAt),
-    ));
+  const dispatches = await readReviewerInvitationDispatches(database, [eventId], invite.createdAt);
   if (reviewerInvitationDeliveryFor(invite, dispatches) === "sent") {
     return context.json({ error: "invitation_already_sent" }, 409);
   }
@@ -490,8 +537,7 @@ peopleRoutes.post("/api/events/:eventId/reviewer-invites/:inviteId/resend", requ
   }
   return context.json({
     invite: { id: invite.id, email: invite.email, eventId },
-    emailDelivery: delivery.status === "provider_not_configured" ? "not_configured" : delivery.status,
-    ...(delivery.status === "failed" ? { failureReason: delivery.error ?? "send_failed" } : {}),
+    ...invitationDeliveryResponse(delivery),
   });
 });
 
