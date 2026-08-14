@@ -157,7 +157,15 @@ export function SubmissionParticipants({
               : <span>{participant.onSession ? "On the session" : "Not on the session"}</span>}
           </div>
           {participant.publicationPending && payload.sessionId !== null && payload.sessionTitle !== null
-            ? <PendingPublicationNotice sessions={[{ id: payload.sessionId, title: payload.sessionTitle }]} />
+            ? (
+              <PendingPublicationNotice
+                sessions={[{
+                  id: payload.sessionId,
+                  title: payload.sessionTitle,
+                  awaitingContentApproval: false,
+                }]}
+              />
+            )
             : null}
           {participant.isSubmitter ? null : (
             <button

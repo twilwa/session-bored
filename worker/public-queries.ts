@@ -15,11 +15,9 @@ import {
 } from "../db/schema.ts";
 import { chunkIds } from "./d1-limits.ts";
 
-// ABOUTME: A session is public only after explicit publication, while its content and source decision remain live.
-// Schedule status is intentionally not a gate because published TBD sessions remain visible.
-export const PUBLIC_SESSION_GATE = and(
-  eq(sessions.contentStatus, "approved"),
-  isNotNull(sessions.publishedAt),
+// ABOUTME: A session still standing on the programme: live, and its source decision still accepted.
+// It says nothing about publication, so an organizer surface can ask about a session the public cannot see.
+export const PROGRAMME_SESSION_GATE = and(
   isNull(sessions.deletedAt),
   or(
     eq(sessions.directEntry, true),
@@ -29,6 +27,14 @@ export const PUBLIC_SESSION_GATE = and(
         AND ${submissions.status} = 'accepted'
     )`,
   ),
+);
+
+// ABOUTME: A session is public only after explicit publication, while its content and source decision remain live.
+// Schedule status is intentionally not a gate because published TBD sessions remain visible.
+export const PUBLIC_SESSION_GATE = and(
+  eq(sessions.contentStatus, "approved"),
+  isNotNull(sessions.publishedAt),
+  PROGRAMME_SESSION_GATE,
 );
 
 /**

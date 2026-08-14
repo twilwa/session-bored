@@ -113,11 +113,13 @@ async function resolveOnboardingTasks(
  * lineup stays invited until republish; archived links are restored rather than duplicated, so
  * a participant who is removed and named again keeps their completion history.
  *
- * The hold is decided here, from the session's publication and this participant's own link,
- * rather than by the caller, so acceptance, a repeated acceptance, and a late organizer
- * addition all resolve it the same way. Only a live link the last publish already stamped
- * escapes the hold: a pending link is still waiting for its republish, and an archived one is
- * a re-addition whose public place has to be confirmed again.
+ * Both halves are decided here, from the session and this participant's own link, rather than
+ * by the caller, so acceptance, a repeated acceptance, and a late organizer addition all
+ * resolve them the same way. The link is left pending unless it is one the last publish
+ * stamped while live: a pending link is still waiting for its republish, and an archived one
+ * is a re-addition whose public place has to be confirmed again. A session that has been
+ * published also parks the person at `invited`, so joining its lineup cannot put a new face on
+ * the public site before the organizer says so.
  */
 async function attachParticipant(
   database: DecisionDatabase,
@@ -128,10 +130,10 @@ async function attachParticipant(
     roleLabel: string;
     sortOrder: number;
     onboardingTasks: OnboardingTask[];
-    sessionPublishedAt: Date | null;
+    session: { publishedAt: Date | null };
   },
 ): Promise<string> {
-  const { eventId, sessionId, personId, roleLabel, sortOrder, sessionPublishedAt } = participant;
+  const { eventId, sessionId, personId, roleLabel, sortOrder, session } = participant;
   let [speaker] = await database
     .select()
     .from(speakers)
@@ -148,7 +150,7 @@ async function attachParticipant(
   const alreadyInPublicLineup = existingLink !== undefined
     && existingLink.deletedAt === null
     && existingLink.publishedAt !== null;
-  const holdForRepublish = sessionPublishedAt !== null && !alreadyInPublicLineup;
+  const holdForRepublish = session.publishedAt !== null && !alreadyInPublicLineup;
   if (speaker === undefined) {
     await database
       .insert(speakers)
@@ -191,7 +193,7 @@ async function attachParticipant(
     .set({
       roleLabel,
       sortOrder,
-      ...(holdForRepublish ? { publishedAt: null } : {}),
+      ...(alreadyInPublicLineup ? {} : { publishedAt: null }),
       deletedAt: null,
     })
     .where(and(eq(sessionSpeakers.sessionId, sessionId), eq(sessionSpeakers.speakerId, speaker.id)));
@@ -257,7 +259,7 @@ export async function carryParticipantIntoSession(
     roleLabel: participant.roleLabel,
     sortOrder: participant.sortOrder,
     onboardingTasks: await resolveOnboardingTasks(database, eventId, sessionId),
-    sessionPublishedAt: session.publishedAt,
+    session,
   });
 }
 
@@ -506,7 +508,7 @@ async function ensureAcceptedHandoff(
       roleLabel: participant.roleLabel,
       sortOrder: participant.sortOrder,
       onboardingTasks,
-      sessionPublishedAt: session.publishedAt,
+      session,
     });
     acceptedSpeakers.push({
       id: speakerId,

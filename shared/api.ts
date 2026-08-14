@@ -525,7 +525,9 @@ export interface RosterSpeakerSummary extends SpeakerSummary {
   socialLinks: Record<string, string> | null;
   profile: { bioComplete: boolean; headshotComplete: boolean };
   workSummary: { total: number; incomplete: number };
-  pendingPublicationSessions: Array<{ id: `ses_${string}`; title: string }>;
+  pendingPublicationSessions: Array<
+    { id: `ses_${string}`; title: string; awaitingContentApproval: boolean }
+  >;
 }
 
 export interface RosterTaskSummary {

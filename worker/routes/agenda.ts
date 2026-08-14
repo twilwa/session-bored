@@ -461,13 +461,20 @@ agendaRoutes.post("/api/events/:eventId/agenda/publish", async (context) => {
             AND ${speakers.deletedAt} IS NULL
         )`,
       ))
-      .returning({ speakerId: sessionSpeakers.speakerId });
-    if (revealedLinks.length > 0) {
+      .returning({ speakerId: sessionSpeakers.speakerId, sessionId: sessionSpeakers.sessionId });
+    // Only the speakers this publish takes off a hold. The hold is placed on a session that was
+    // already public, so a first publish reveals nobody who was waiting on one, and `invited`
+    // there is a workflow status the organizer set by hand - not this route's to overrule.
+    const republishedSessionIds = new Set<string>(
+      eligible.filter((session) => session.publishedAt !== null).map((session) => session.id),
+    );
+    const releasedFromHold = revealedLinks.filter((link) => republishedSessionIds.has(link.sessionId));
+    if (releasedFromHold.length > 0) {
       await database
         .update(speakers)
         .set({ status: "onboarding" })
         .where(and(
-          inArray(speakers.id, revealedLinks.map((link) => link.speakerId)),
+          inArray(speakers.id, releasedFromHold.map((link) => link.speakerId)),
           eq(speakers.status, "invited"),
         ));
     }
