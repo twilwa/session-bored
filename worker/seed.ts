@@ -530,6 +530,7 @@ export async function ensureSeeded(env: CloudflareBindings): Promise<void> {
     })
     .onConflictDoNothing();
 
+  const publicSessionPublishedAt = new Date("2027-04-01T12:00:00Z");
   await database
     .insert(sessions)
     .values({
@@ -544,12 +545,17 @@ export async function ensureSeeded(env: CloudflareBindings): Promise<void> {
       scheduleStatus: "tbd",
       scheduledDate: "2027-05-13",
       icsUid: "ses_docs_retrieval@session-bored",
-      publishedAt: new Date("2027-04-01T12:00:00Z"),
+      publishedAt: publicSessionPublishedAt,
     })
     .onConflictDoNothing();
   await database
     .insert(sessionSpeakers)
-    .values({ id: "ssnr_docs_marcus", sessionId: fixtureIds.session, speakerId: fixtureIds.speakers.speaker2 })
+    .values({
+      id: "ssnr_docs_marcus",
+      sessionId: fixtureIds.session,
+      speakerId: fixtureIds.speakers.speaker2,
+      publishedAt: publicSessionPublishedAt,
+    })
     .onConflictDoNothing();
 
   for (const [index, title] of fixture.tasks_for_speakers.entries()) {

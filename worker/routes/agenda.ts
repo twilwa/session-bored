@@ -185,6 +185,7 @@ async function readAgenda(binding: D1Database, eventId: string): Promise<AgendaS
         sessionId: sessionSpeakers.sessionId,
         speakerId: speakers.id,
         name: people.name,
+        publishedAt: sessionSpeakers.publishedAt,
       })
       .from(sessionSpeakers)
       .innerJoin(speakers, eq(sessionSpeakers.speakerId, speakers.id))
@@ -199,10 +200,14 @@ async function readAgenda(binding: D1Database, eventId: string): Promise<AgendaS
       ))
       .orderBy(asc(sessionSpeakers.sortOrder), asc(people.name));
   const speakersBySession = new Map<string, Array<{ id: string; name: string }>>();
+  const pendingSpeakersBySession = new Map<string, number>();
   for (const speaker of speakerRows) {
     const sessionParticipants = speakersBySession.get(speaker.sessionId) ?? [];
     sessionParticipants.push({ id: speaker.speakerId, name: speaker.name });
     speakersBySession.set(speaker.sessionId, sessionParticipants);
+    if (speaker.publishedAt === null) {
+      pendingSpeakersBySession.set(speaker.sessionId, (pendingSpeakersBySession.get(speaker.sessionId) ?? 0) + 1);
+    }
   }
 
   const agendaSessions: AgendaSession[] = sessionRows.map((session) => ({
@@ -220,6 +225,7 @@ async function readAgenda(binding: D1Database, eventId: string): Promise<AgendaS
     startsAt: session.startsAt?.getTime() ?? null,
     endsAt: session.endsAt?.getTime() ?? null,
     publishedAt: session.publishedAt?.getTime() ?? null,
+    pendingSpeakerCount: session.publishedAt === null ? 0 : (pendingSpeakersBySession.get(session.id) ?? 0),
     durationMinutes: session.durationMinutes ?? 30,
     track: session.trackId === null || session.trackName === null
       ? null
@@ -426,14 +432,43 @@ agendaRoutes.post("/api/events/:eventId/agenda/publish", async (context) => {
       title: session.title,
       reasons: publishSkipReasons(session),
     }));
-  const alreadyPublicCount = eligible.filter((session) => session.publishedAt !== null).length;
-  const newlyPublishedCount = eligible.length - alreadyPublicCount;
+  const newlyPublishedCount = eligible.filter((session) =>
+    session.publishedAt === null || session.pendingSpeakerCount > 0
+  ).length;
+  const alreadyPublicCount = eligible.length - newlyPublishedCount;
   const publishedAt = new Date();
   if (eligible.length > 0) {
-    await drizzle(context.env.DB)
+    const database = drizzle(context.env.DB);
+    const publishableSpeakerLinks = await database
+      .select({
+        id: sessionSpeakers.id,
+        speakerId: sessionSpeakers.speakerId,
+        publishedAt: sessionSpeakers.publishedAt,
+      })
+      .from(sessionSpeakers)
+      .where(and(
+        inArray(sessionSpeakers.sessionId, eligible.map((session) => session.id)),
+        isNull(sessionSpeakers.deletedAt),
+      ));
+    await database
       .update(sessions)
       .set({ publishedAt })
       .where(inArray(sessions.id, eligible.map((session) => session.id)));
+    if (publishableSpeakerLinks.length > 0) {
+      await database
+        .update(sessionSpeakers)
+        .set({ publishedAt })
+        .where(inArray(sessionSpeakers.id, publishableSpeakerLinks.map((link) => link.id)));
+      const pendingSpeakerIds = publishableSpeakerLinks
+        .filter((link) => link.publishedAt === null)
+        .map((link) => link.speakerId);
+      if (pendingSpeakerIds.length > 0) {
+        await database
+          .update(speakers)
+          .set({ status: "onboarding" })
+          .where(and(inArray(speakers.id, pendingSpeakerIds), eq(speakers.status, "invited")));
+      }
+    }
   }
   const result: AgendaPublishResult = {
     status: "published",

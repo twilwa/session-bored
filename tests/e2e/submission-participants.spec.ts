@@ -12,12 +12,13 @@ async function signIn(page: import("@playwright/test").Page, email: string, pass
 test("a panel names its participants, the program team amends them, and acceptance keeps them", async ({ page }) => {
   const stamp = Date.now();
   const authorEmail = `panel.author.${stamp}@example.test`;
+  const sessionTitle = `What a panel owes its audience ${stamp}`;
   await page.goto("/cfp/devflow-conf-2027");
 
   await expect(page.getByText("Name your co-presenters here")).toBeVisible();
   await page.getByLabel("Your name").fill("Rosa Okonkwo");
   await page.locator("#cfp-speaker-email").fill(authorEmail);
-  await page.getByLabel("Session title").fill(`What a panel owes its audience ${stamp}`);
+  await page.getByLabel("Session title").fill(sessionTitle);
   await page.getByLabel("Abstract").fill("Three practitioners on the difference between a discussion and a performance.");
   await page.getByLabel("Track").selectOption({ label: "Developer Experience" });
   await page.getByLabel("Format").selectOption({ label: "Panel (45 min)" });
@@ -109,7 +110,34 @@ test("a panel names its participants, the program team amends them, and acceptan
   const panel = addresses.map((address) => roster.find((item) => item.email === address));
   expect(panel.map((item) => item?.status)).toEqual(["onboarding", "onboarding", "onboarding", "onboarding"]);
 
+  const publishedSessionId = await page.evaluate(async (title) => {
+    const agenda = await fetch("/api/events/evt_devflow_conf_2027/agenda", { credentials: "same-origin" })
+      .then((response) => response.json() as Promise<{ sessions: Array<{ id: string; title: string }> }>);
+    const session = agenda.sessions.find((item) => item.title === title);
+    if (session === undefined) throw new Error(`Session missing for ${title}`);
+    await fetch(`/api/events/evt_devflow_conf_2027/agenda/sessions/${session.id}`, {
+      method: "PATCH",
+      credentials: "same-origin",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ scheduleStatus: "tbd", scheduledDate: "2027-05-13" }),
+    });
+    await fetch(`/api/events/evt_devflow_conf_2027/agenda/sessions/${session.id}/content`, {
+      method: "PATCH",
+      credentials: "same-origin",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ contentStatus: "approved" }),
+    });
+    await fetch("/api/events/evt_devflow_conf_2027/agenda/publish", {
+      method: "POST",
+      credentials: "same-origin",
+    });
+    return session.id;
+  }, sessionTitle);
+  expect(publishedSessionId).toMatch(/^ses_/);
+
   await page.goto("/speakers");
+  // Removal leaves the event-speaker row standing; the roster owns withdrawal, so this person
+  // remains in the directory even though their session link was removed before publication.
   for (const name of ["Rosa Okonkwo", "Dev Malhotra", "Ines Brenner", "Late Addition"]) {
     await expect(page.getByText(name, { exact: true }).first()).toBeVisible();
   }
@@ -126,4 +154,116 @@ test("a panel names its participants, the program team amends them, and acceptan
       });
     }
   }, panel.map((item) => item?.id ?? ""));
+});
+
+test("a participant added to a published session stays pending until the organizer republishes", async ({ page }) => {
+  const stamp = Date.now();
+  const title = `Pending participant publication ${stamp}`;
+  const authorName = `Published Author ${stamp}`;
+  const pendingName = `Pending Presenter ${stamp}`;
+  const createdResponse = await page.request.post("/api/public/cfp/devflow-conf-2027/submissions", {
+    data: {
+      intent: "submit",
+      speaker: {
+        name: authorName,
+        email: `published.author.${stamp}@example.test`,
+        jobTitle: "Principal Engineer",
+        organization: "Northwind Labs",
+      },
+      collaborators: [],
+      proposal: {
+        title,
+        abstract: "A real-browser proof that participant publication remains deliberate.",
+        track: "Developer Experience",
+        format: "Talk (30 min)",
+        audienceLevel: "Intermediate",
+        answers: { key_takeaway: "Publication is a confirmation, not a side effect." },
+      },
+    },
+  });
+  expect(createdResponse.status()).toBe(201);
+  const created = await createdResponse.json() as { submission: { id: string } };
+
+  await signIn(page, "sbek-organizer@example.com", "SbekTest!2027-org");
+  await expect(page).toHaveURL(/\/organizer$/);
+  const sessionId = await page.evaluate(async ({ submissionId, sessionTitle }) => {
+    const accepted = await fetch("/api/events/evt_devflow_conf_2027/disposition", {
+      method: "PATCH",
+      credentials: "same-origin",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ submissionIds: [submissionId], status: "accepted" }),
+    });
+    if (!accepted.ok) {
+      throw new Error(`Proposal could not be accepted (${accepted.status}): ${await accepted.text()}`);
+    }
+    const agenda = await fetch("/api/events/evt_devflow_conf_2027/agenda", { credentials: "same-origin" })
+      .then((response) => response.json() as Promise<{ sessions: Array<{ id: string; title: string }> }>);
+    const session = agenda.sessions.find((item) => item.title === sessionTitle);
+    if (session === undefined) throw new Error("Accepted session missing from agenda");
+    await fetch(`/api/events/evt_devflow_conf_2027/agenda/sessions/${session.id}`, {
+      method: "PATCH",
+      credentials: "same-origin",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ scheduleStatus: "tbd", scheduledDate: "2027-05-13" }),
+    });
+    await fetch(`/api/events/evt_devflow_conf_2027/agenda/sessions/${session.id}/content`, {
+      method: "PATCH",
+      credentials: "same-origin",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ contentStatus: "approved" }),
+    });
+    await fetch("/api/events/evt_devflow_conf_2027/agenda/publish", {
+      method: "POST",
+      credentials: "same-origin",
+    });
+    return session.id;
+  }, { submissionId: created.submission.id, sessionTitle: title });
+
+  await page.goto(`/organizer/review/submissions/${created.submission.id}`);
+  await page.getByRole("button", { name: "Add a participant" }).click();
+  await expect(page.getByText("Their place on this session will stay private until you review and republish the agenda."))
+    .toBeVisible();
+  await page.getByRole("textbox", { name: "Name" }).fill(pendingName);
+  await page.getByRole("textbox", { name: "Email" }).fill(`pending.presenter.${stamp}@example.test`);
+  await page.getByRole("textbox", { name: "Role" }).last().fill("co-speaker");
+  await page.getByRole("button", { name: "Add participant" }).click();
+  const pendingParticipant = page.locator(".participant").filter({ hasText: pendingName });
+  await expect(pendingParticipant.getByText("Pending publication")).toBeVisible();
+  expect(await page.request.get(`/api/public/events/evt_devflow_conf_2027/sessions`).then((response) => response.text()))
+    .not.toContain(pendingName);
+
+  await page.goto("/organizer/roster");
+  await page.getByLabel("Search speakers").fill(pendingName);
+  const pendingRosterRecord = page.locator(".speaker-record").filter({ hasText: pendingName });
+  await expect(pendingRosterRecord.getByText("Pending publication")).toBeVisible();
+  await expect(pendingRosterRecord.getByText(title)).toBeVisible();
+  await pendingRosterRecord.getByRole("link", { name: "Review and republish agenda" }).click();
+  await expect(page).toHaveURL(/\/organizer\/agenda$/);
+  await expect(page.getByText("1 participant pending")).toBeVisible();
+  await page.getByRole("button", { name: "Republish agenda" }).click();
+  await expect(page.getByText("1 participant pending")).toHaveCount(0);
+
+  expect(await page.request.get(`/api/public/events/evt_devflow_conf_2027/sessions`).then((response) => response.text()))
+    .toContain(pendingName);
+  await page.goto("/program");
+  const publicSession = page.getByRole("article").filter({ has: page.getByRole("heading", { name: title }) });
+  await expect(publicSession).toContainText(pendingName);
+  await page.goto("/speakers");
+  await expect(page.getByText(pendingName, { exact: true }).first()).toBeVisible();
+
+  await page.evaluate(async ({ publishedAuthor, pendingPresenter }) => {
+    const roster = await fetch("/api/events/evt_devflow_conf_2027/roster", { credentials: "same-origin" })
+      .then((response) => response.json() as Promise<{ items: Array<{ id: string; name: string }> }>);
+    for (const name of [publishedAuthor, pendingPresenter]) {
+      const speaker = roster.items.find((item) => item.name === name);
+      if (speaker === undefined) continue;
+      await fetch(`/api/events/evt_devflow_conf_2027/speakers/${speaker.id}`, {
+        method: "PATCH",
+        credentials: "same-origin",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ status: "withdrawn" }),
+      });
+    }
+  }, { publishedAuthor: authorName, pendingPresenter: pendingName });
+  expect(sessionId).toMatch(/^ses_/);
 });

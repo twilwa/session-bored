@@ -1,6 +1,6 @@
 // ABOUTME: Manages the organizer speaker roster, onboarding assignments, and missing-information worklist.
 // ABOUTME: Derives workflow visibility from event-scoped speakers, accepted sessions, and task assignments.
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { Hono } from "hono";
 import { createMiddleware } from "hono/factory";
@@ -91,6 +91,24 @@ rosterRoutes.get("/api/events/:eventId/roster", async (context) => {
         eq(submissions.status, "accepted"),
       ));
 
+  const pendingPublicationRows = items.length === 0
+    ? []
+    : await database
+      .select({
+        speakerId: sessionSpeakers.speakerId,
+        sessionId: sessions.id,
+        sessionTitle: sessions.title,
+      })
+      .from(sessionSpeakers)
+      .innerJoin(sessions, eq(sessionSpeakers.sessionId, sessions.id))
+      .where(and(
+        inArray(sessionSpeakers.speakerId, items.map((item) => item.id)),
+        isNull(sessionSpeakers.publishedAt),
+        isNull(sessionSpeakers.deletedAt),
+        isNotNull(sessions.publishedAt),
+        isNull(sessions.deletedAt),
+      ));
+
   const assignments = items.length === 0
     ? []
     : await database
@@ -119,6 +137,12 @@ rosterRoutes.get("/api/events/:eventId/roster", async (context) => {
         headshotComplete,
         tracksProfile: acceptedSpeakerIds.has(item.id),
       });
+      const pendingPublicationSessions = pendingPublicationRows
+        .filter((row) => row.speakerId === item.id)
+        .map((row) => ({
+          id: row.sessionId as `ses_${string}`,
+          title: row.sessionTitle ?? "Untitled session",
+        }));
       return {
         ...item,
         profile: {
@@ -126,6 +150,7 @@ rosterRoutes.get("/api/events/:eventId/roster", async (context) => {
           headshotComplete,
         },
         workSummary,
+        pendingPublicationSessions,
       };
     }),
   });

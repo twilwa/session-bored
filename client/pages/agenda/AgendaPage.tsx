@@ -556,6 +556,10 @@ export function AgendaPage() {
   }
 
   const conflicts = agenda.conflicts;
+  const pendingSpeakerCount = agenda.sessions.reduce((count, session) => count + session.pendingSpeakerCount, 0);
+  const currentSessionCount = agenda.sessions.filter((session) =>
+    session.publishedAt !== null && session.pendingSpeakerCount === 0
+  ).length;
   const conflictingSessionIds = new Set(conflicts.flatMap((conflict) => conflict.sessionIds));
   const timezone = agenda.event.timezone;
   const dayStarts = timeSlots.map((time) => zonedEpoch(activeDay, time, timezone));
@@ -654,8 +658,13 @@ export function AgendaPage() {
         />
         <div className="agenda-publish">
           <span>Public</span>
-          <strong>{agenda.sessions.filter((session) => session.publishedAt !== null).length}/{agenda.sessions.length} current</strong>
-          <Button disabled={busy} onClick={() => void publish()} tone="signal">{busy ? "Saving…" : "Publish agenda ↗"}</Button>
+          <strong>{currentSessionCount}/{agenda.sessions.length} current</strong>
+          {pendingSpeakerCount === 0 ? null : (
+            <small>{pendingSpeakerCount} participant{pendingSpeakerCount === 1 ? "" : "s"} pending</small>
+          )}
+          <Button disabled={busy} onClick={() => void publish()} tone="signal">
+            {busy ? "Saving…" : pendingSpeakerCount > 0 ? "Republish agenda ↗" : "Publish agenda ↗"}
+          </Button>
         </div>
       </div>
 

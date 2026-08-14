@@ -16,7 +16,7 @@ import {
 } from "../../db/schema.ts";
 import type { ParticipantRemovalOutcome } from "../../shared/api.ts";
 import { holdsAccess } from "../access.ts";
-import { PUBLIC_SPEAKER_STATUSES } from "../public-queries.ts";
+import { isPublicSpeaker } from "../public-queries.ts";
 import {
   carryParticipantIntoSession,
   releaseParticipantFromSession,
@@ -63,13 +63,20 @@ async function readSubmissionContext(
     return null;
   }
   const [session] = await database
-    .select({ id: sessions.id, contentStatus: sessions.contentStatus })
+    .select({
+      id: sessions.id,
+      title: sessions.title,
+      contentStatus: sessions.contentStatus,
+      publishedAt: sessions.publishedAt,
+    })
     .from(sessions)
     .where(and(eq(sessions.submissionId, submissionId), eq(sessions.eventId, eventId)));
   return {
     submission,
     sessionId: session?.id ?? null,
     sessionContentStatus: session?.contentStatus ?? null,
+    sessionPublishedAt: session?.publishedAt ?? null,
+    sessionTitle: session?.title ?? null,
   };
 }
 
@@ -119,7 +126,7 @@ async function removalOutcome(
     .from(people)
     .where(eq(people.id, personId));
   const [speaker] = await database
-    .select({ id: speakers.id, status: speakers.status, deletedAt: speakers.deletedAt })
+    .select({ id: speakers.id, deletedAt: speakers.deletedAt })
     .from(speakers)
     .where(and(eq(speakers.personId, personId), eq(speakers.eventId, eventId)));
   const remainsEventSpeaker = speaker !== undefined && speaker.deletedAt === null;
@@ -130,8 +137,7 @@ async function removalOutcome(
     personId: personId as `psn_${string}`,
     speakerId: remainsEventSpeaker ? (speaker.id as `spk_${string}`) : null,
     remainsEventSpeaker,
-    listedPublicly: remainsEventSpeaker
-      && (PUBLIC_SPEAKER_STATUSES as readonly string[]).includes(speaker.status),
+    listedPublicly: remainsEventSpeaker && await isPublicSpeaker(database, eventId, speaker.id),
     speaksElsewhereAtEvent: stillSpeaking,
     withdrawnOnboarding,
     heldSessionAccess,
@@ -144,7 +150,7 @@ async function participantsResponse(
   submissionId: string,
   scope: SubmissionContext,
 ) {
-  const { sessionId, sessionContentStatus } = scope;
+  const { sessionId, sessionContentStatus, sessionPublishedAt, sessionTitle } = scope;
   const submitterPersonId = scope.submission.submitterPersonId;
   const rows = await database
     .select({
@@ -161,20 +167,25 @@ async function participantsResponse(
     .innerJoin(people, eq(submissionSpeakers.personId, people.id))
     .where(and(eq(submissionSpeakers.submissionId, submissionId), isNull(submissionSpeakers.deletedAt)))
     .orderBy(asc(submissionSpeakers.sortOrder), asc(submissionSpeakers.id));
-  const onSessionPersonIds = sessionId === null ? [] : await database
-    .select({ personId: speakers.personId })
+  const onSessionPeople = sessionId === null ? [] : await database
+    .select({ personId: speakers.personId, publishedAt: sessionSpeakers.publishedAt })
     .from(sessionSpeakers)
     .innerJoin(speakers, eq(sessionSpeakers.speakerId, speakers.id))
     .where(and(eq(sessionSpeakers.sessionId, sessionId), isNull(sessionSpeakers.deletedAt)));
-  const carried = new Set(onSessionPersonIds.map((row) => row.personId));
+  const carried = new Map(onSessionPeople.map((row) => [row.personId, row.publishedAt]));
   return {
     submissionId,
     sessionId,
     sessionContentStatus,
+    sessionPublishedAt: sessionPublishedAt?.getTime() ?? null,
+    sessionTitle,
     participants: rows.map((row) => ({
       ...row,
       isSubmitter: row.personId === submitterPersonId,
       onSession: carried.has(row.personId),
+      publicationPending: sessionPublishedAt !== null
+        && carried.has(row.personId)
+        && carried.get(row.personId) === null,
     })),
   };
 }

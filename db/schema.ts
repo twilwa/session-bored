@@ -488,6 +488,7 @@ export const sessionSpeakers = sqliteTable(
     speakerId: text("speaker_id").notNull().references(() => speakers.id),
     roleLabel: text("role_label").notNull().default("speaker"),
     sortOrder: integer("sort_order").notNull().default(0),
+    publishedAt: integer("published_at", { mode: "timestamp_ms" }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
     deletedAt: deletedAt(),

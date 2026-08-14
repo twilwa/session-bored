@@ -471,6 +471,7 @@ export interface SubmissionParticipantSummary {
   sortOrder: number;
   isSubmitter: boolean;
   onSession: boolean;
+  publicationPending: boolean;
 }
 
 export interface WithdrawnOnboardingTask {
@@ -507,6 +508,8 @@ export interface SubmissionParticipantsPayload {
   sessionId: `ses_${string}` | null;
   /** Null with no session. Approved content is read-only to its speakers, so removal took no write. */
   sessionContentStatus: SessionContentStatus | null;
+  sessionPublishedAt: number | null;
+  sessionTitle: string | null;
   participants: SubmissionParticipantSummary[];
   removal?: ParticipantRemovalOutcome;
 }
@@ -520,6 +523,7 @@ export interface RosterSpeakerSummary extends SpeakerSummary {
   socialLinks: Record<string, string> | null;
   profile: { bioComplete: boolean; headshotComplete: boolean };
   workSummary: { total: number; incomplete: number };
+  pendingPublicationSessions: Array<{ id: `ses_${string}`; title: string }>;
 }
 
 export interface RosterTaskSummary {
@@ -622,6 +626,7 @@ export interface AgendaSession {
   startsAt: number | null;
   endsAt: number | null;
   publishedAt: number | null;
+  pendingSpeakerCount: number;
   durationMinutes: number;
   track: null | { id: string; name: string; color: string | null };
   room: null | { id: string; name: string };

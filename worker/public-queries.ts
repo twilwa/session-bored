@@ -1,7 +1,7 @@
 // ABOUTME: Centralizes the public read model for published event content with approval gating.
 // ABOUTME: Keeps the unpublished/withdrawn content rule in one narrow module so it cannot drift.
 import { and, desc, eq, inArray, isNotNull, isNull, like, or, sql } from "drizzle-orm";
-import type { DrizzleD1Database } from "drizzle-orm/d1";
+import { drizzle, type DrizzleD1Database } from "drizzle-orm/d1";
 import {
   events,
   formats,
@@ -40,6 +40,23 @@ const PUBLIC_SPEAKER_GATE = and(
   isNull(speakers.deletedAt),
   isNull(people.deletedAt),
 );
+
+export async function isPublicSpeaker(
+  database: ReturnType<typeof drizzle>,
+  eventId: string,
+  speakerId: string,
+): Promise<boolean> {
+  const [row] = await database
+    .select({ id: speakers.id })
+    .from(speakers)
+    .innerJoin(people, eq(speakers.personId, people.id))
+    .where(and(
+      eq(speakers.id, speakerId),
+      eq(speakers.eventId, eventId),
+      PUBLIC_SPEAKER_GATE,
+    ));
+  return row !== undefined;
+}
 
 export interface PublicSpeakerRef {
   id: string;
@@ -131,6 +148,7 @@ function searchPredicate(q: string) {
       JOIN ${people} ON ${people}.id = ${speakers}.person_id
       WHERE ${sessionSpeakers}.session_id = ${sessions}.id
         AND ${sessionSpeakers}.deleted_at IS NULL
+        AND ${sessionSpeakers}.published_at IS NOT NULL
         AND ${speakers}.deleted_at IS NULL
         AND lower(coalesce(${people}.name, '')) LIKE ${term} ESCAPE '\\'
     )`,
@@ -203,6 +221,7 @@ export async function fetchPublicSessions(
           .where(
             and(
               isNull(sessionSpeakers.deletedAt),
+              isNotNull(sessionSpeakers.publishedAt),
               PUBLIC_SPEAKER_GATE,
               inArray(sessionSpeakers.sessionId, sessionIds),
             ),
@@ -319,6 +338,7 @@ export async function fetchPublicSpeakers(
           .where(
             and(
               isNull(sessionSpeakers.deletedAt),
+              isNotNull(sessionSpeakers.publishedAt),
               eq(sessions.eventId, eventId),
               PUBLIC_SESSION_GATE,
               inArray(sessionSpeakers.speakerId, speakerIds),
@@ -341,7 +361,10 @@ export async function countPublicSpeakers(
     .select({ count: sql<number>`count(*)`.as("count") })
     .from(speakers)
     .innerJoin(people, eq(speakers.personId, people.id))
-    .where(and(eq(speakers.eventId, eventId), PUBLIC_SPEAKER_GATE));
+    .where(and(
+      eq(speakers.eventId, eventId),
+      PUBLIC_SPEAKER_GATE,
+    ));
   return row?.count ?? 0;
 }
 
@@ -363,7 +386,11 @@ export async function fetchPublicSpeaker(
     })
     .from(speakers)
     .innerJoin(people, eq(speakers.personId, people.id))
-    .where(and(eq(speakers.id, speakerId), eq(speakers.eventId, eventId), PUBLIC_SPEAKER_GATE));
+    .where(and(
+      eq(speakers.id, speakerId),
+      eq(speakers.eventId, eventId),
+      PUBLIC_SPEAKER_GATE,
+    ));
   if (row === undefined) {
     return null;
   }
@@ -387,6 +414,7 @@ export async function fetchPublicSpeaker(
         eq(sessionSpeakers.speakerId, speakerId),
         eq(sessions.eventId, eventId),
         isNull(sessionSpeakers.deletedAt),
+        isNotNull(sessionSpeakers.publishedAt),
         PUBLIC_SESSION_GATE,
       ),
     )

@@ -149,6 +149,34 @@ async function seedLeakFixtures(): Promise<void> {
     )
     .bind("ssnr_withdrawn_docs", "ses_docs_retrieval", "spk_withdrawn_secret", Date.now(), Date.now())
     .run();
+  await db.batch([
+    db.prepare("INSERT INTO person (id, name, email, created_at, updated_at) VALUES (?, ?, ?, ?, ?)")
+      .bind(
+        "psn_pending_publication_secret",
+        "Pending Publication Secret",
+        "pending-publication@example.test",
+        Date.now(),
+        Date.now(),
+      ),
+    db.prepare("INSERT INTO speaker (id, person_id, event_id, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)")
+      .bind(
+        "spk_pending_publication_secret",
+        "psn_pending_publication_secret",
+        EVENT_ID,
+        "invited",
+        Date.now(),
+        Date.now(),
+      ),
+    db.prepare(
+      "INSERT INTO session_speaker (id, session_id, speaker_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+    ).bind(
+      "ssnr_pending_publication_docs",
+      "ses_docs_retrieval",
+      "spk_pending_publication_secret",
+      Date.now(),
+      Date.now(),
+    ),
+  ]);
 }
 
 describe("Public audience surfaces", () => {
@@ -289,6 +317,7 @@ describe("Public audience surfaces", () => {
     expect(speakerNames).not.toContain("Wendy Withdrawn");
     expect(speakerNames).not.toContain("invited private speaker");
     expect(speakerNames).not.toContain("pending private speaker");
+    expect(speakerNames).not.toContain("Pending Publication Secret");
 
     const withdrawnDetail = await json<{ error?: string }>(
       `/api/public/events/${EVENT_ID}/speakers/spk_withdrawn_secret`,
@@ -305,7 +334,17 @@ describe("Public audience surfaces", () => {
     const docs = sessions.body.items.find((item) => item.id === "ses_docs_retrieval");
     expect(docs).toBeDefined();
     expect(docs?.speakers.map((speaker) => speaker.name)).not.toContain("Wendy Withdrawn");
+    expect(docs?.speakers.map((speaker) => speaker.name)).not.toContain("Pending Publication Secret");
     expect(docs?.speakers.map((speaker) => speaker.name)).toContain("Marcus Okafor");
+
+    const pendingSearch = await json<SessionsPayload>(
+      `/api/public/events/${EVENT_ID}/sessions?q=pending%20publication`,
+    );
+    expect(pendingSearch.body.items).toEqual([]);
+    const pendingDetail = await json<{ error?: string }>(
+      `/api/public/events/${EVENT_ID}/speakers/spk_pending_publication_secret`,
+    );
+    expect(pendingDetail.status).toBe(404);
   });
 
   it("exports only selected sessions that have passed the public gate", async () => {

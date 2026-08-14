@@ -109,8 +109,9 @@ async function resolveOnboardingTasks(
 /**
  * Carries one named participant onto a session: adopts their event speaker identity, links
  * them to the session under their own role label, and gives them the same onboarding work as
- * everybody else on it. Archived links are restored rather than duplicated, so a participant
- * who is removed and named again keeps their completion history.
+ * everybody else on it. A late addition to a published session stays invited until republish;
+ * archived links are restored rather than duplicated, so a participant who is removed and
+ * named again keeps their completion history.
  */
 async function attachParticipant(
   database: DecisionDatabase,
@@ -121,9 +122,10 @@ async function attachParticipant(
     roleLabel: string;
     sortOrder: number;
     onboardingTasks: OnboardingTask[];
+    holdForRepublish?: boolean;
   },
 ): Promise<string> {
-  const { eventId, sessionId, personId, roleLabel, sortOrder } = participant;
+  const { eventId, sessionId, personId, roleLabel, sortOrder, holdForRepublish = false } = participant;
   let [speaker] = await database
     .select()
     .from(speakers)
@@ -131,7 +133,12 @@ async function attachParticipant(
   if (speaker === undefined) {
     await database
       .insert(speakers)
-      .values({ id: createPublicId("spk"), personId, eventId, status: "onboarding" })
+      .values({
+        id: createPublicId("spk"),
+        personId,
+        eventId,
+        status: holdForRepublish ? "invited" : "onboarding",
+      })
       .onConflictDoNothing();
     [speaker] = await database
       .select()
@@ -141,11 +148,10 @@ async function attachParticipant(
   if (speaker === undefined) {
     throw new Error(`Speaker handoff failed for ${personId}`);
   }
-  // ABOUTME: A CFP author already has an `invited` speaker row from their first draft. Being carried
-  // onto a session is what starts onboarding, so promote them the same way a newly adopted
-  // participant starts — otherwise the person who wrote the proposal is the one missing from the
-  // roster's onboarding work and from every public surface that gates on a cleared speaker.
-  if (speaker.status === "invited") {
+  // ABOUTME: A CFP author already has an `invited` speaker row from their first draft. Acceptance
+  // starts onboarding immediately, while a late addition to an already-public session waits for
+  // the agenda republish that confirms the person should join the public programme.
+  if (speaker.status === "invited" && !holdForRepublish) {
     await database
       .update(speakers)
       .set({ status: "onboarding" })
@@ -163,7 +169,7 @@ async function attachParticipant(
     .onConflictDoNothing();
   await database
     .update(sessionSpeakers)
-    .set({ roleLabel, sortOrder, deletedAt: null })
+    .set({ roleLabel, sortOrder, publishedAt: null, deletedAt: null })
     .where(and(eq(sessionSpeakers.sessionId, sessionId), eq(sessionSpeakers.speakerId, speaker.id)));
   for (const task of participant.onboardingTasks) {
     // Only an assignment this handoff actually creates records the session that granted it.
@@ -203,8 +209,8 @@ async function attachParticipant(
 
 /**
  * Gives an already-accepted proposal's session a participant the program team named after the
- * decision. It runs the acceptance handoff for that one person, so a late addition reaches the
- * session, the roster, and their onboarding work on exactly the same terms as the rest.
+ * decision. It runs the acceptance handoff for that one person, while preserving the public
+ * session's current speaker snapshot until the organizer deliberately republishes.
  */
 export async function carryParticipantIntoSession(
   binding: D1Database,
@@ -213,6 +219,13 @@ export async function carryParticipantIntoSession(
   participant: { personId: string; roleLabel: string; sortOrder: number },
 ): Promise<string> {
   const database = drizzle(binding);
+  const [session] = await database
+    .select({ publishedAt: sessions.publishedAt })
+    .from(sessions)
+    .where(and(eq(sessions.id, sessionId), eq(sessions.eventId, eventId)));
+  if (session === undefined) {
+    throw new Error(`Session ${sessionId} was not found for participant handoff`);
+  }
   return attachParticipant(database, {
     eventId,
     sessionId,
@@ -220,6 +233,7 @@ export async function carryParticipantIntoSession(
     roleLabel: participant.roleLabel,
     sortOrder: participant.sortOrder,
     onboardingTasks: await resolveOnboardingTasks(database, eventId, sessionId),
+    holdForRepublish: session.publishedAt !== null,
   });
 }
 

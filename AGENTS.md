@@ -108,10 +108,15 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   proposal through the CFP edit never carries them onto its session, so a session
   the person never reached was never theirs to lose; and an `approved` session is
   read-only to the speakers who are on it.
-  `PUBLIC_SPEAKER_STATUSES` in `worker/public-queries.ts`
-  is the one rule for whether an event speaker is publicly listed, and the
-  outcome's `listedPublicly` reads it; read it rather than restating the
-  statuses. A collaborator is named, not
+  `PUBLIC_SPEAKER_STATUSES` in `worker/public-queries.ts` is the one rule for
+  whether an event speaker is publicly listed, and the outcome's
+  `listedPublicly` reads it; read it rather than restating the statuses.
+  `session_speaker.published_at` separately records that an explicit agenda
+  publish included that link. A new participant added after publication stays
+  `invited`, and therefore off the public directory, until republish stamps the
+  link and starts onboarding; an already-public event speaker stays public while
+  their new session participation is pending, so adding them does not make the
+  public site lose information either. A collaborator is named, not
   admitted: naming somebody mints no author key, grants no dashboard, and never
   overwrites the profile an existing person already has.
 - A sessionless task with no `task_scope` row is an event-wide onboarding

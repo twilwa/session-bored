@@ -28,6 +28,7 @@ function session(overrides: Partial<AgendaSession> & { id: string; title: string
     contentStatus: "draft",
     editedSinceApproval: false,
     endsAt: startsAt === null ? null : startsAt + durationMinutes * 60_000,
+    pendingSpeakerCount: 0,
     publishedAt: null,
     room: null,
     scheduleStatus: startsAt === null ? "unplaced" : "placed",

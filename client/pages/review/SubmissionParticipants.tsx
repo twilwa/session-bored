@@ -2,6 +2,7 @@
 // ABOUTME: Shows whether each participant has already been carried onto the accepted session.
 import { useEffect, useState, type FormEvent } from "react";
 import type { ParticipantRemovalOutcome, SubmissionParticipantsPayload } from "../../../shared/api.ts";
+import { PendingPublicationNotice } from "../../components/PendingPublicationNotice.tsx";
 import { Button } from "../../components/ui.tsx";
 import { reviewRequest } from "./reviewClient.tsx";
 
@@ -155,6 +156,9 @@ export function SubmissionParticipants({
               ? null
               : <span>{participant.onSession ? "On the session" : "Not on the session"}</span>}
           </div>
+          {participant.publicationPending && payload.sessionId !== null && payload.sessionTitle !== null
+            ? <PendingPublicationNotice sessions={[{ id: payload.sessionId, title: payload.sessionTitle }]} />
+            : null}
           {participant.isSubmitter ? null : (
             <button
               className="button button--quiet"
@@ -175,6 +179,12 @@ export function SubmissionParticipants({
         : <RemovalNotice removal={payload.removal} sessionContentStatus={payload.sessionContentStatus} />}
       {adding ? (
         <form className="participants__add" onSubmit={(event) => void addParticipant(event)}>
+          {payload.sessionPublishedAt === null ? null : (
+            <p className="participants__note">
+              This session is already public. Their place on this session will stay private until you review and
+              republish the agenda.
+            </p>
+          )}
           <label>
             <span>Name</span>
             <input onChange={(event) => setDraft({ ...draft, name: event.target.value })} required value={draft.name} />
@@ -206,8 +216,9 @@ export function SubmissionParticipants({
       )}
       {payload.sessionId === null ? null : (
         <p className="participants__note">
-          This proposal is accepted. A participant added here joins the session and its onboarding work;
-          a removed participant leaves the session and keeps their completed work, and stays a speaker
+          This proposal is accepted. A participant added here joins the session and its onboarding work
+          {payload.sessionPublishedAt === null ? "." : ", but their place on it stays off public surfaces until the agenda is republished."}
+          {" "}A removed participant leaves the session and keeps their completed work, and stays a speaker
           at this event until they are removed on the roster.
         </p>
       )}
