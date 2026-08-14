@@ -1,18 +1,13 @@
 // ABOUTME: Keeps anonymous personal schedules on-device and signed-in schedules on the account.
 // ABOUTME: Migrates each device's existing picks additively so signing in never discards them.
 import { useEffect, useMemo, useSyncExternalStore } from "react";
+import { personalScheduleUpdateLimit, type PersonalScheduleChange } from "../../../shared/api.ts";
+import { observePublicSession } from "../../lib.tsx";
 
 const STORAGE_PREFIX = "greenroom.personal-schedule.v1";
 const MIGRATION_PREFIX = "greenroom.personal-schedule-account.v1";
 
-export const ACCOUNT_UPDATE_LIMIT = 100;
-
-export type StorageStatus = "checking" | "device" | "account" | "error";
-
-export interface PersonalScheduleChange {
-  add: string[];
-  remove: string[];
-}
+export type StorageStatus = "checking" | "device" | "account" | "error" | "unsaved";
 
 export interface PersonalScheduleSnapshot {
   sessionIds: string[];
@@ -32,6 +27,7 @@ export interface PersonalScheduleStore {
   subscribe(listener: () => void): () => void;
   snapshot(): PersonalScheduleSnapshot;
   settle(): Promise<void>;
+  reset(): Promise<void>;
   toggle(sessionId: string): Promise<void>;
 }
 
@@ -65,11 +61,11 @@ function accountSchedulePath(eventId: string): string {
 
 export function accountScheduleBatches(change: PersonalScheduleChange): PersonalScheduleChange[] {
   const batches: PersonalScheduleChange[] = [];
-  for (let index = 0; index < change.remove.length; index += ACCOUNT_UPDATE_LIMIT) {
-    batches.push({ add: [], remove: change.remove.slice(index, index + ACCOUNT_UPDATE_LIMIT) });
+  for (let index = 0; index < change.remove.length; index += personalScheduleUpdateLimit) {
+    batches.push({ add: [], remove: change.remove.slice(index, index + personalScheduleUpdateLimit) });
   }
-  for (let index = 0; index < change.add.length; index += ACCOUNT_UPDATE_LIMIT) {
-    batches.push({ add: change.add.slice(index, index + ACCOUNT_UPDATE_LIMIT), remove: [] });
+  for (let index = 0; index < change.add.length; index += personalScheduleUpdateLimit) {
+    batches.push({ add: change.add.slice(index, index + personalScheduleUpdateLimit), remove: [] });
   }
   return batches;
 }
@@ -137,14 +133,15 @@ export function createPersonalScheduleStore(
   eventId: string,
   environment: PersonalScheduleEnvironment = browserPersonalScheduleEnvironment(),
 ): PersonalScheduleStore {
-  const devicePicks = readDevicePicks();
   const pending = new Map<string, boolean>();
   const listeners = new Set<() => void>();
+  let devicePicks = readDevicePicks();
   let sessionIds = devicePicks;
   let mode: "checking" | "device" | "account" = "checking";
   let failed = false;
   let accountUserId: string | null = null;
   let accountLoaded = false;
+  let generation = 0;
   let snapshot: PersonalScheduleSnapshot = { sessionIds, storageStatus: "checking" };
   let queue: Promise<void> = Promise.resolve();
 
@@ -164,7 +161,8 @@ export function createPersonalScheduleStore(
   }
 
   function publish(): void {
-    snapshot = { sessionIds, storageStatus: failed ? "error" : mode };
+    const storageStatus = !failed ? mode : mode === "checking" ? "unsaved" : "error";
+    snapshot = { sessionIds, storageStatus };
     for (const listener of listeners) {
       listener();
     }
@@ -188,6 +186,33 @@ export function createPersonalScheduleStore(
     return saved;
   }
 
+  function forgetSent(sent: Map<string, boolean>): void {
+    for (const [sessionId, keep] of sent) {
+      if (pending.get(sessionId) === keep) {
+        pending.delete(sessionId);
+      }
+    }
+  }
+
+  async function flushPending(current: string[]): Promise<string[]> {
+    const sent = new Map(pending);
+    const add = [...sent].filter(([, keep]) => keep).map(([sessionId]) => sessionId);
+    const remove = [...sent].filter(([, keep]) => !keep).map(([sessionId]) => sessionId);
+    if (add.length === 0 && remove.length === 0) {
+      return current;
+    }
+    try {
+      const saved = await applyChange({ add, remove }, current);
+      forgetSent(sent);
+      return withPending(saved);
+    } catch (error) {
+      if (error instanceof PersonalScheduleRejected) {
+        forgetSent(sent);
+      }
+      throw error;
+    }
+  }
+
   async function loadAccountSchedule(userId: string): Promise<string[]> {
     let saved = await environment.readAccountSchedule(eventId);
     if (environment.readStored(migrationKey(userId, eventId)) !== "done") {
@@ -201,10 +226,15 @@ export function createPersonalScheduleStore(
   }
 
   async function runSettle(): Promise<void> {
+    const attempt = generation;
     try {
       if (mode === "checking") {
-        accountUserId = await environment.accountUserId();
-        mode = accountUserId === null ? "device" : "account";
+        const userId = await environment.accountUserId();
+        if (attempt !== generation) {
+          return;
+        }
+        accountUserId = userId;
+        mode = userId === null ? "device" : "account";
       }
       if (mode === "device") {
         persistDevicePicks();
@@ -214,21 +244,26 @@ export function createPersonalScheduleStore(
         return;
       }
       if (!accountLoaded) {
-        sessionIds = withPending(await loadAccountSchedule(accountUserId!));
+        const saved = await loadAccountSchedule(accountUserId!);
+        if (attempt !== generation) {
+          return;
+        }
+        sessionIds = withPending(saved);
         accountLoaded = true;
         publish();
       }
-      const add = [...pending].filter(([, keep]) => keep).map(([sessionId]) => sessionId);
-      const remove = [...pending].filter(([, keep]) => !keep).map(([sessionId]) => sessionId);
-      if (add.length > 0 || remove.length > 0) {
-        sessionIds = await applyChange({ add, remove }, sessionIds);
-        pending.clear();
+      const settled = await flushPending(sessionIds);
+      if (attempt !== generation) {
+        return;
       }
+      sessionIds = settled;
       failed = false;
       publish();
     } catch (error) {
+      if (attempt !== generation) {
+        return;
+      }
       if (error instanceof PersonalScheduleRejected) {
-        pending.clear();
         accountLoaded = false;
       }
       failed = true;
@@ -239,6 +274,19 @@ export function createPersonalScheduleStore(
   function settle(): Promise<void> {
     queue = queue.then(runSettle);
     return queue;
+  }
+
+  function reset(): Promise<void> {
+    generation += 1;
+    pending.clear();
+    accountUserId = null;
+    accountLoaded = false;
+    mode = "checking";
+    failed = false;
+    devicePicks = readDevicePicks();
+    sessionIds = devicePicks;
+    publish();
+    return settle();
   }
 
   function toggle(sessionId: string): Promise<void> {
@@ -265,6 +313,7 @@ export function createPersonalScheduleStore(
       return snapshot;
     },
     settle,
+    reset,
     toggle,
   };
 }
@@ -275,6 +324,9 @@ export function usePersonalSchedule(eventId: string) {
 
   useEffect(() => {
     void store.settle();
+    return observePublicSession(() => {
+      void store.reset();
+    });
   }, [store]);
 
   return {

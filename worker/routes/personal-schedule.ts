@@ -4,6 +4,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { drizzle, type DrizzleD1Database } from "drizzle-orm/d1";
 import { Hono } from "hono";
 import { personalScheduleSessions } from "../../db/schema.ts";
+import { personalScheduleUpdateLimit } from "../../shared/api.ts";
 import type { AuthSession } from "../auth.ts";
 import { fetchPublicSessions } from "../public-queries.ts";
 
@@ -25,7 +26,7 @@ const publicSessionFilters = {
 };
 
 function sessionIds(value: unknown): string[] | null {
-  if (!Array.isArray(value) || value.length > 100) {
+  if (!Array.isArray(value) || value.length > personalScheduleUpdateLimit) {
     return null;
   }
   const ids = value.filter((item): item is string => typeof item === "string" && item !== "");
