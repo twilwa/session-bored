@@ -168,11 +168,15 @@ async function participantsResponse(
     .where(and(eq(submissionSpeakers.submissionId, submissionId), isNull(submissionSpeakers.deletedAt)))
     .orderBy(asc(submissionSpeakers.sortOrder), asc(submissionSpeakers.id));
   const onSessionPeople = sessionId === null ? [] : await database
-    .select({ personId: speakers.personId, publishedAt: sessionSpeakers.publishedAt })
+    .select({
+      personId: speakers.personId,
+      publishedAt: sessionSpeakers.publishedAt,
+      speakerArchivedAt: speakers.deletedAt,
+    })
     .from(sessionSpeakers)
     .innerJoin(speakers, eq(sessionSpeakers.speakerId, speakers.id))
     .where(and(eq(sessionSpeakers.sessionId, sessionId), isNull(sessionSpeakers.deletedAt)));
-  const carried = new Map(onSessionPeople.map((row) => [row.personId, row.publishedAt]));
+  const carried = new Map(onSessionPeople.map((row) => [row.personId, row]));
   const sessionIsPubliclyLive = sessionContentStatus !== null
     && isPubliclyLiveSession({ contentStatus: sessionContentStatus, publishedAt: sessionPublishedAt });
   return {
@@ -180,15 +184,20 @@ async function participantsResponse(
     sessionId,
     sessionContentStatus,
     sessionPublishedAt: sessionPublishedAt?.getTime() ?? null,
+    sessionPubliclyLive: sessionIsPubliclyLive,
     sessionTitle,
-    participants: rows.map((row) => ({
-      ...row,
-      isSubmitter: row.personId === submitterPersonId,
-      onSession: carried.has(row.personId),
-      publicationPending: sessionIsPubliclyLive
-        && carried.has(row.personId)
-        && carried.get(row.personId) === null,
-    })),
+    participants: rows.map((row) => {
+      const sessionLink = carried.get(row.personId);
+      return {
+        ...row,
+        isSubmitter: row.personId === submitterPersonId,
+        onSession: sessionLink !== undefined,
+        publicationPending: sessionIsPubliclyLive
+          && sessionLink !== undefined
+          && sessionLink.publishedAt === null
+          && sessionLink.speakerArchivedAt === null,
+      };
+    }),
   };
 }
 

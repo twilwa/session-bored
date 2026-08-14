@@ -509,6 +509,8 @@ export interface SubmissionParticipantsPayload {
   /** Null with no session. Approved content is read-only to its speakers, so removal took no write. */
   sessionContentStatus: SessionContentStatus | null;
   sessionPublishedAt: number | null;
+  /** Whether the session is on the public site now, so a pending place has a republish to wait for. */
+  sessionPubliclyLive: boolean;
   sessionTitle: string | null;
   participants: SubmissionParticipantSummary[];
   removal?: ParticipantRemovalOutcome;

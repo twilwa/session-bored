@@ -179,12 +179,12 @@ export function SubmissionParticipants({
         : <RemovalNotice removal={payload.removal} sessionContentStatus={payload.sessionContentStatus} />}
       {adding ? (
         <form className="participants__add" onSubmit={(event) => void addParticipant(event)}>
-          {payload.sessionPublishedAt === null ? null : (
+          {payload.sessionPubliclyLive ? (
             <p className="participants__note">
               This session is already public. Their place on this session will stay private until you review and
               republish the agenda.
             </p>
-          )}
+          ) : null}
           <label>
             <span>Name</span>
             <input onChange={(event) => setDraft({ ...draft, name: event.target.value })} required value={draft.name} />
@@ -217,7 +217,7 @@ export function SubmissionParticipants({
       {payload.sessionId === null ? null : (
         <p className="participants__note">
           This proposal is accepted. A participant added here joins the session and its onboarding work
-          {payload.sessionPublishedAt === null ? "." : ", but their place on it stays off public surfaces until the agenda is republished."}
+          {payload.sessionPubliclyLive ? ", but their place on it stays off public surfaces until the agenda is republished." : "."}
           {" "}A removed participant leaves the session and keeps their completed work, and stays a speaker
           at this event until they are removed on the roster.
         </p>

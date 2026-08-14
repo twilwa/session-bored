@@ -142,9 +142,10 @@ test("a panel names its participants, the program team amends them, and acceptan
     await expect(page.getByText(name, { exact: true }).first()).toBeVisible();
   }
 
-  // This spec adds real people to the shared fixture event, so it withdraws them through the
-  // organizer's own roster action and leaves the seeded programme exactly as it found it.
-  await page.evaluate(async (speakerIds) => {
+  // This spec adds real people and one session to the shared fixture event, so it withdraws the
+  // people through the organizer's own roster action, takes the session back off the schedule -
+  // which clears its publication - and leaves the seeded programme exactly as it found it.
+  await page.evaluate(async ({ speakerIds, sessionId }) => {
     for (const speakerId of speakerIds) {
       await fetch(`/api/events/evt_devflow_conf_2027/speakers/${speakerId}`, {
         method: "PATCH",
@@ -153,7 +154,13 @@ test("a panel names its participants, the program team amends them, and acceptan
         body: JSON.stringify({ status: "withdrawn" }),
       });
     }
-  }, panel.map((item) => item?.id ?? ""));
+    await fetch(`/api/events/evt_devflow_conf_2027/agenda/sessions/${sessionId}`, {
+      method: "PATCH",
+      credentials: "same-origin",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ scheduleStatus: "unplaced" }),
+    });
+  }, { speakerIds: panel.map((item) => item?.id ?? ""), sessionId: publishedSessionId });
 });
 
 test("a participant added to a published session stays pending until the organizer republishes", async ({ page }) => {
@@ -251,7 +258,10 @@ test("a participant added to a published session stays pending until the organiz
   await page.goto("/speakers");
   await expect(page.getByText(pendingName, { exact: true }).first()).toBeVisible();
 
-  await page.evaluate(async ({ publishedAuthor, pendingPresenter }) => {
+  expect(sessionId).toMatch(/^ses_/);
+  // Publication is this spec's subject, so it also has to hand the shared fixture event back
+  // unpublished: the people are withdrawn and the session comes off the schedule.
+  await page.evaluate(async ({ publishedAuthor, pendingPresenter, publishedSessionId }) => {
     const roster = await fetch("/api/events/evt_devflow_conf_2027/roster", { credentials: "same-origin" })
       .then((response) => response.json() as Promise<{ items: Array<{ id: string; name: string }> }>);
     for (const name of [publishedAuthor, pendingPresenter]) {
@@ -264,6 +274,11 @@ test("a participant added to a published session stays pending until the organiz
         body: JSON.stringify({ status: "withdrawn" }),
       });
     }
-  }, { publishedAuthor: authorName, pendingPresenter: pendingName });
-  expect(sessionId).toMatch(/^ses_/);
+    await fetch(`/api/events/evt_devflow_conf_2027/agenda/sessions/${publishedSessionId}`, {
+      method: "PATCH",
+      credentials: "same-origin",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ scheduleStatus: "unplaced" }),
+    });
+  }, { publishedAuthor: authorName, pendingPresenter: pendingName, publishedSessionId: sessionId });
 });

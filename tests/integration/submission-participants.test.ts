@@ -468,8 +468,10 @@ describe("the program team's own hold on the participant list", () => {
     });
     expect(added.status).toBe(201);
     const afterAdd = await added.json<{
+      sessionPubliclyLive: boolean;
       participants: Array<Participant & { publicationPending: boolean }>;
     }>();
+    expect(afterAdd.sessionPubliclyLive).toBe(true);
     expect(afterAdd.participants.find((participant) => participant.name === "Pending Presenter"))
       .toMatchObject({ onSession: true, publicationPending: true });
 
@@ -544,6 +546,83 @@ describe("the program team's own hold on the participant list", () => {
       .toMatchObject({ status: "onboarding" });
   });
 
+  it("leaves an archived speaker's pending place pending, however often the agenda is published", async () => {
+    const created = await createPanel("rosa.archived-pending@example.test");
+    await request(`/api/events/${eventId}/disposition`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie: organizerCookie },
+      body: JSON.stringify({ submissionIds: [created.submission.id], status: "accepted" }),
+    });
+    const session = await env.DB.prepare("select id from program_session where submission_id = ?")
+      .bind(created.submission.id).first<{ id: string }>();
+    await request(`/api/events/${eventId}/agenda/sessions/${session?.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie: organizerCookie },
+      body: JSON.stringify({ scheduleStatus: "tbd", scheduledDate: "2027-05-13" }),
+    });
+    await request(`/api/events/${eventId}/agenda/sessions/${session?.id}/content`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie: organizerCookie },
+      body: JSON.stringify({ contentStatus: "approved" }),
+    });
+    const publish = () =>
+      request(`/api/events/${eventId}/agenda/publish`, { method: "POST", headers: { cookie: organizerCookie } });
+    expect((await publish()).status).toBe(200);
+
+    const email = "archived.pending@example.test";
+    const added = await request(`/api/events/${eventId}/submissions/${created.submission.id}/participants`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: organizerCookie },
+      body: JSON.stringify({ name: "Archived Pending", email, roleLabel: "co-speaker" }),
+    });
+    expect(added.status).toBe(201);
+    const readRoster = () =>
+      request(`/api/events/${eventId}/roster`, { headers: { cookie: organizerCookie } })
+        .then((response) => response.json<{ items: Array<{ id: string; name: string; status: string }> }>());
+    const speakerId = (await readRoster()).items.find((speaker) => speaker.name === "Archived Pending")?.id;
+    expect(speakerId).toBeDefined();
+
+    // Archiving takes them off the roster and off the agenda's pending count, so a publish run
+    // for unrelated reasons is one the organizer was never told concerned them.
+    expect((await request(`/api/events/${eventId}/speakers/${speakerId}`, {
+      method: "DELETE",
+      headers: { cookie: organizerCookie },
+    })).status).toBe(200);
+    const agendaWhileArchived = await request(`/api/events/${eventId}/agenda`, {
+      headers: { cookie: organizerCookie },
+    }).then((response) => response.json<{ sessions: Array<{ id: string; pendingSpeakerCount: number }> }>());
+    expect(agendaWhileArchived.sessions.find((item) => item.id === session?.id)?.pendingSpeakerCount).toBe(0);
+    const whileArchived = await request(
+      `/api/events/${eventId}/submissions/${created.submission.id}/participants`,
+      { headers: { cookie: organizerCookie } },
+    ).then((response) =>
+      response.json<{ participants: Array<{ name: string; onSession: boolean; publicationPending: boolean }> }>()
+    );
+    expect(whileArchived.participants.find((participant) => participant.name === "Archived Pending"))
+      .toMatchObject({ onSession: true, publicationPending: false });
+    expect((await publish()).status).toBe(200);
+
+    // Restoring them is not a publication decision, so their place is still waiting for one.
+    const restored = await request(`/api/events/${eventId}/speakers`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: organizerCookie },
+      body: JSON.stringify({ name: "Archived Pending", email, status: "onboarding" }),
+    });
+    expect(restored.status).toBe(200);
+    await expect(restored.json()).resolves.toMatchObject({ restoredSpeaker: true });
+
+    expect(await (await request(`/api/public/events/${eventId}/sessions`)).text())
+      .not.toContain("Archived Pending");
+    const agendaAfterRestore = await request(`/api/events/${eventId}/agenda`, {
+      headers: { cookie: organizerCookie },
+    }).then((response) => response.json<{ sessions: Array<{ id: string; pendingSpeakerCount: number }> }>());
+    expect(agendaAfterRestore.sessions.find((item) => item.id === session?.id)?.pendingSpeakerCount).toBe(1);
+
+    expect((await publish()).status).toBe(200);
+    expect(await (await request(`/api/public/events/${eventId}/sessions`)).text())
+      .toContain("Archived Pending");
+  });
+
   it("offers no republish for a session the publish route would skip", async () => {
     const created = await createPanel("rosa.unpublishable@example.test");
     const decide = (status: string) =>
@@ -602,8 +681,16 @@ describe("the program team's own hold on the participant list", () => {
 
     const listed = await request(participantsPath, { headers: { cookie: organizerCookie } })
       .then((response) =>
-        response.json<{ participants: Array<{ name: string; onSession: boolean; publicationPending: boolean }> }>()
+        response.json<{
+          sessionPublishedAt: number | null;
+          sessionPubliclyLive: boolean;
+          participants: Array<{ name: string; onSession: boolean; publicationPending: boolean }>;
+        }>()
       );
+    // The session still carries its old publication marker, so the copy that offers a republish
+    // has to read the whole rule rather than that column alone.
+    expect(listed.sessionPublishedAt).not.toBeNull();
+    expect(listed.sessionPubliclyLive).toBe(false);
     expect(listed.participants.find((participant) => participant.name === "Unpublishable Addition"))
       .toMatchObject({ onSession: true, publicationPending: false });
 

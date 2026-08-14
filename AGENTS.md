@@ -123,11 +123,17 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   organizer addition all resolve it identically, and re-applying `accepted`
   cannot promote somebody the organizer has not published yet. Publish stamps
   only the links still waiting and promotes exactly the speakers that update
-  returns, so the column keeps recording when a participant first became public.
-  A participant is offered as pending only for a session that is publicly live
-  (`isPubliclyLiveSession`, beside `PUBLIC_SESSION_GATE`): a session publish will
-  skip has no republish to offer, or the roster prompt and the agenda's
-  "Republish agenda" stay stuck on forever. A collaborator is named, not
+  returns, so the column keeps recording when a participant first became public,
+  and it skips an archived speaker's link because the agenda never counted that
+  link as pending - stamping it would hand them the public lineup the day the
+  roster restores them, with no republish. A participant is offered as pending
+  only for a session that is publicly live (`isPubliclyLiveSession`, beside
+  `PUBLIC_SESSION_GATE`) and only while their speaker row is live: a republish
+  that will not reveal this person must not be offered for them, or the roster
+  prompt, the proposal panel, and the agenda's "Republish agenda" stay stuck on
+  forever. Every organizer surface reads that one rule rather than
+  `published_at` alone - the proposal panel through the payload's
+  `sessionPubliclyLive`. A collaborator is named, not
   admitted: naming somebody mints no author key, grants no dashboard, and never
   overwrites the profile an existing person already has.
 - A sessionless task with no `task_scope` row is an event-wide onboarding

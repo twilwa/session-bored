@@ -1,6 +1,6 @@
 // ABOUTME: Reads, approves, places, and publishes accepted sessions on an event agenda.
 // ABOUTME: Recomputes speaker and room conflicts after every non-blocking scheduling change.
-import { and, asc, eq, inArray, isNull, or } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { Hono } from "hono";
 import { createMiddleware } from "hono/factory";
@@ -446,6 +446,8 @@ agendaRoutes.post("/api/events/:eventId/agenda/publish", async (context) => {
       .where(inArray(sessions.id, eligible.map((session) => session.id)));
     // Only the links still waiting are stamped, so the column keeps recording when a
     // participant first became public, and what it returns is exactly who this publish reveals.
+    // An archived speaker is not one of them: the agenda never counted their link as pending,
+    // so stamping it here would hand them the public lineup the day somebody restores them.
     const revealedLinks = await database
       .update(sessionSpeakers)
       .set({ publishedAt })
@@ -453,6 +455,11 @@ agendaRoutes.post("/api/events/:eventId/agenda/publish", async (context) => {
         inArray(sessionSpeakers.sessionId, eligible.map((session) => session.id)),
         isNull(sessionSpeakers.deletedAt),
         isNull(sessionSpeakers.publishedAt),
+        sql`EXISTS (
+          SELECT 1 FROM ${speakers}
+          WHERE ${speakers.id} = ${sessionSpeakers.speakerId}
+            AND ${speakers.deletedAt} IS NULL
+        )`,
       ))
       .returning({ speakerId: sessionSpeakers.speakerId });
     if (revealedLinks.length > 0) {
