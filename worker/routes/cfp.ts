@@ -5,6 +5,7 @@ import { drizzle } from "drizzle-orm/d1";
 import { Hono } from "hono";
 import {
   createPublicId,
+  decisionNotices,
   events,
   formFields,
   formVersionFields,
@@ -22,7 +23,9 @@ import {
   submissionValues,
   tracks,
 } from "../../db/schema.ts";
+import { submitterFacingSubmissionStatus } from "../../shared/api.ts";
 import { sendSubmissionConfirmationEmail } from "../email/submission-confirmation.ts";
+import { sentDecisionLetter } from "../speaker-access.ts";
 import { carryParticipantIntoSession, releaseParticipantFromSession } from "../submission-decision.ts";
 
 export interface CfpAvailability {
@@ -698,10 +701,15 @@ async function readSubmission(
       organization: people.organization,
       bio: people.bio,
       format: formats.name,
+      sentDecisionNoticeId: decisionNotices.id,
     })
     .from(submissions)
     .innerJoin(people, eq(submissions.submitterPersonId, people.id))
     .leftJoin(formats, eq(submissions.formatId, formats.id))
+    .leftJoin(
+      decisionNotices,
+      and(eq(decisionNotices.submissionId, submissions.id), sentDecisionLetter()),
+    )
     .where(and(eq(submissions.id, submissionId), eq(submissions.formId, cfp.form.id)));
   if (item === undefined) {
     return null;
@@ -726,7 +734,7 @@ async function readSubmission(
   return {
     id: item.id,
     formVersion: item.formVersion,
-    status: item.status,
+    status: submitterFacingSubmissionStatus(item.status, item.sentDecisionNoticeId !== null),
     isDraft: item.isDraft,
     title: item.title,
     abstract: item.abstract,
@@ -966,8 +974,8 @@ cfpRoutes.patch("/:slug/submissions/:submissionId", async (context) => {
     .update(submissions)
     .set({
       formatId: taxonomy.formatId,
-      status: becomesSubmitted ? "submitted" : existing.status,
-      isDraft: becomesSubmitted ? false : existing.isDraft,
+      status: becomesSubmitted ? "submitted" : undefined,
+      isDraft: becomesSubmitted ? false : undefined,
       title: input.proposal.title?.trim() || null,
       abstract: input.proposal.abstract?.trim() || null,
       titleAtTime: becomesSubmitted ? input.speaker.jobTitle?.trim() || null : undefined,

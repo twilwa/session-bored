@@ -10,7 +10,7 @@ import {
   submissions,
   type SubmissionStatus,
 } from "../../db/schema.ts";
-import { speakerFacingSubmissionStatus } from "../../shared/api.ts";
+import { submitterFacingSubmissionStatus } from "../../shared/api.ts";
 import type { AuthSession } from "../auth.ts";
 import { sentDecisionLetter } from "../speaker-access.ts";
 
@@ -24,25 +24,6 @@ type SubmitterEnvironment = {
 type SubmitterDatabase = ReturnType<typeof drizzle>;
 
 const submitterRoutes = new Hono<SubmitterEnvironment>();
-
-function displayedSubmissionStatus(
-  status: SubmissionStatus,
-  decisionNotified: boolean,
-): SubmissionStatus {
-  const speakerStatus = speakerFacingSubmissionStatus({
-    status,
-    decisionNotified,
-    hasOwnSession: false,
-  });
-  switch (speakerStatus) {
-    case "in_review":
-      return "under_review";
-    case "not_selected":
-      return "declined";
-    default:
-      return speakerStatus;
-  }
-}
 
 async function readDisplayedSubmissionStatus(
   database: SubmitterDatabase,
@@ -60,7 +41,7 @@ async function readDisplayedSubmissionStatus(
     .where(and(eq(people.userId, userId), eq(submissions.id, submissionId)));
   return item === undefined
     ? null
-    : displayedSubmissionStatus(item.status, item.sentDecisionNoticeId !== null);
+    : submitterFacingSubmissionStatus(item.status, item.sentDecisionNoticeId !== null);
 }
 
 submitterRoutes.get("/submitter/submissions", async (context) => {
@@ -90,7 +71,7 @@ submitterRoutes.get("/submitter/submissions", async (context) => {
   return context.json({
     items: items.map(({ sentDecisionNoticeId, status, ...item }) => ({
       ...item,
-      status: displayedSubmissionStatus(status, sentDecisionNoticeId !== null),
+      status: submitterFacingSubmissionStatus(status, sentDecisionNoticeId !== null),
     })),
   });
 });
