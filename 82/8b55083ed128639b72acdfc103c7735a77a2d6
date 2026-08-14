@@ -1,0 +1,21 @@
+worker/submission-decision.ts
+  s_e3f3e39dba9889::t_646bccd1abbc8d 172-177
+tests/integration/submission-participants.test.ts
+  s_e3f3e39dba9889::t_a931d81e23b461 447-458
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "828b55083ed128639b72acdfc103c7735a77a2d6",
+  "prompts": {},
+  "sessions": {
+    "s_e3f3e39dba9889": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffe3b-d895-7c03-8bcd-216fdc06109f",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
