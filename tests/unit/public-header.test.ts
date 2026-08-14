@@ -83,6 +83,14 @@ describe("public header account area", () => {
     }
   });
 
+  it("falls back to the landing area for a return path that will not resolve", () => {
+    // Sign-in has already succeeded by the time this is asked, so an unparseable authority
+    // has to answer with a destination rather than throw the person back onto the form.
+    for (const malformed of ["//%", "//[", "//]", "/\\[", "//a%2"]) {
+      expect(twoHatsDestination(malformed)).toBe("/reviewer");
+    }
+  });
+
   it("judges the area a return path resolves to, not the one it spells", () => {
     // The browser removes dot segments when it navigates, so a path that reads as a
     // granted area but lands outside one must be refused on where it actually lands.

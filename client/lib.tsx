@@ -91,8 +91,9 @@ const sameOriginBase = "https://greenroom.invalid";
 
 /**
  * The return path is resolved before it is judged and returned in that resolved form, so
- * the area the check reads is the area the browser lands on. A reference that resolves off
- * this origin, or into an area no live grant opens, gives way to the predictable home.
+ * the area the check reads is the area the browser lands on. Every answer is a destination:
+ * a reference that will not resolve at all, resolves off this origin, or resolves into an
+ * area no live grant opens gives way to the predictable home rather than failing the sign-in.
  */
 export function signedInDestination(
   account: Pick<SessionUser, "role" | "roles">,
@@ -100,7 +101,12 @@ export function signedInDestination(
 ): string {
   const home = roleAreas[account.role].href;
   if (returnTo === null || !returnTo.startsWith("/")) return home;
-  const target = new URL(returnTo, sameOriginBase);
+  let target: URL;
+  try {
+    target = new URL(returnTo, sameOriginBase);
+  } catch {
+    return home;
+  }
   if (target.origin !== sameOriginBase) return home;
   const reachableAreaRoots = ["/submitter", ...account.roles.map((role) => roleAreas[role].href)];
   if (!reachableAreaRoots.some((areaRoot) => pathIsInsideArea(target.pathname, areaRoot))) return home;
