@@ -87,6 +87,24 @@ queue with work in it. **Committee setup** in the review workspace lists every
 granted reviewer, including one who still has no remit, and is where an existing
 remit is changed.
 
+## Speaker directory
+
+Organizers can open **Speaker directory** at `/organizer/directory` to search
+the private, cross-event record of everyone who has submitted or spoken. Each
+person's detail page shows their proposals, sessions, event history, and saved
+profile information without changing the event-specific roster.
+
+Greenroom flags conservative duplicate candidates when normalized email
+addresses match, or when both normalized name and organization match. A merge
+requires the organizer to choose the record to keep and confirm the choice. The
+other record is archived with an attributed merge log, while its proposal,
+session, onboarding-task, and file relationships move to the kept record.
+Greenroom refuses to merge records owned by two different accounts.
+
+This is the first directory slice. CSV import, tags, segments, custom fields,
+segment outreach, and directory analytics remain separate follow-up work. The
+existing **Speakers** roster remains the workflow view for the active event.
+
 ## Commands
 
 The standard project commands cover database evolution, verification, and
@@ -154,6 +172,8 @@ built by Vite and served by the Worker.
 
 - `db/schema.ts` is the authoritative domain and authentication schema.
 - `shared/api.ts` exports the typed route map and shared response summaries.
+- `shared/speaker-directory.ts` defines the private cross-event directory
+  contract.
 - `worker/access.ts` owns role and direct-resource access policy.
 - `worker/seed.ts` imports `fixtures/sample-data.json` and seeds it idempotently.
 - `client/components/ui.tsx` provides the shared M0 UI primitives.

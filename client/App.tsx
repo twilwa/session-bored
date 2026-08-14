@@ -27,6 +27,7 @@ import { EmbedsPage } from "./pages/embeds/EmbedsPage.tsx";
 import { EmbedFramePage } from "./pages/embeds/EmbedFramePage.tsx";
 import { SignUpPage } from "./pages/account/SignUpPage.tsx";
 import { PeoplePage } from "./pages/people/PeoplePage.tsx";
+import { SpeakerDirectoryPage } from "./pages/directory/SpeakerDirectoryPage.tsx";
 
 type Role = "organizer" | "reviewer" | "speaker" | "attendee";
 interface SessionPayload {
@@ -176,6 +177,7 @@ function RoleShell({ role, children }: { role: Role; children: ReactNode }) {
       ["Overview", "/organizer"], ["Call for speakers", "/organizer/cfp"],
       ["Review", "/organizer/review"],
       ["Disposition", "/organizer/disposition"],
+      ["Speaker directory", "/organizer/directory"],
       ["Speakers", "/organizer/roster"], ["Missing info", "/organizer/roster/missing"],
       ["Deliverables", "/organizer/content"],
       ["Agenda", "/organizer/agenda"],
@@ -345,6 +347,10 @@ function RoutedPage({ path }: { path: string }) {
   if (path === "/organizer/exports") return <RoleShell role="organizer"><ExportsPage /></RoleShell>;
   if (path === "/organizer/embeds") return <RoleShell role="organizer"><EmbedsPage /></RoleShell>;
   if (path === "/organizer/people") return <RoleShell role="organizer"><PeoplePage /></RoleShell>;
+  if (path === "/organizer/directory") return <RoleShell role="organizer"><SpeakerDirectoryPage /></RoleShell>;
+  if (hasOnePathSegment(path, "/organizer/directory/")) {
+    return <RoleShell role="organizer"><SpeakerDirectoryPage personId={path.split("/")[3]!} /></RoleShell>;
+  }
   if (path === "/organizer/content") return <RoleShell role="organizer"><ContentPage /></RoleShell>;
   if (path === "/organizer/review" || hasOnePathSegment(path, "/organizer/review/submissions/")) {
     return <RoleShell role="organizer"><OrganizerReviewPage path={path} /></RoleShell>;
