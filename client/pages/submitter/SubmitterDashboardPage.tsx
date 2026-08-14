@@ -1,4 +1,4 @@
-// ABOUTME: Renders the signed-in submitter's account-owned proposal list and live decisions.
+// ABOUTME: Renders the signed-in submitter's account-owned proposals and communicated decisions.
 // ABOUTME: Links each owned proposal back to the shared CFP edit flow without private keys.
 import { useEffect, useState } from "react";
 import type { SubmitterSubmissionSummary } from "../../../shared/api.ts";
@@ -74,9 +74,9 @@ export function SubmitterDashboardPage() {
         <header className="submitter-dashboard__heading">
           <div>
             <p className="eyebrow">SUBMITTER DASHBOARD</p>
-            <h1>Your proposals.<br /><em>Current, quietly.</em></h1>
+            <h1>Your proposals.<br /><em>Clearly tracked.</em></h1>
           </div>
-          <p>Committee decisions appear here when you choose to visit. Viewing this page never sends a notification.</p>
+          <p>Committee decisions appear here after the decision letter is sent. Viewing this page never sends a notification.</p>
         </header>
 
         {error === null ? null : (

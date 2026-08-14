@@ -861,6 +861,35 @@ export function speakerFacingSubmissionStatus(submission: {
   }
 }
 
+/**
+ * The submitter's own view of a proposal, in submission-status vocabulary. What the submitter
+ * knows is the letter that reached them, so a committee decision reads `under_review` until one
+ * is sent and then keeps reading the outcome that letter announced - a later silent
+ * re-decision is another working state, not a communication, and the submitter would otherwise
+ * watch a settled outcome change under them with no letter explaining it. A sent `maybe` letter
+ * says the proposal is still under consideration, which is exactly `under_review`. The states
+ * the submitter owns themselves pass through untouched. The submitter dashboard and the public
+ * CFP proposal read and save responses all project through this, so no submitter-facing surface
+ * can announce a decision the committee has not communicated.
+ */
+export function submitterFacingSubmissionStatus(
+  status: SubmissionStatus,
+  sentDecisionOutcome: DecisionStatus | null,
+): SubmissionStatus {
+  switch (status) {
+    case "draft":
+      return "draft";
+    case "submitted":
+      return "submitted";
+    case "withdrawn":
+      return "withdrawn";
+    default:
+      return sentDecisionOutcome === "accepted" || sentDecisionOutcome === "declined"
+        ? sentDecisionOutcome
+        : "under_review";
+  }
+}
+
 export interface PortalSubmissionSummary {
   id: `sub_${string}`;
   title: string | null;

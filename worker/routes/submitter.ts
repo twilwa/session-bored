@@ -1,10 +1,12 @@
 // ABOUTME: Serves the signed-in submitter dashboard from account-owned proposal records.
 // ABOUTME: Scopes every lookup to the authenticated user's linked person identity.
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { Hono } from "hono";
-import { forms, people, submissions } from "../../db/schema.ts";
+import { decisionNotices, forms, people, submissions } from "../../db/schema.ts";
+import { submitterFacingSubmissionStatus } from "../../shared/api.ts";
 import type { AuthSession } from "../auth.ts";
+import { sentDecisionLetter } from "../speaker-access.ts";
 
 type SubmitterEnvironment = {
   Bindings: CloudflareBindings;
@@ -29,12 +31,22 @@ submitterRoutes.get("/submitter/submissions", async (context) => {
       isDraft: submissions.isDraft,
       submittedAt: submissions.submittedAt,
       updatedAt: submissions.updatedAt,
+      sentDecisionOutcome: decisionNotices.outcome,
     })
     .from(submissions)
     .innerJoin(people, eq(submissions.submitterPersonId, people.id))
     .innerJoin(forms, eq(submissions.formId, forms.id))
+    .leftJoin(
+      decisionNotices,
+      and(eq(decisionNotices.submissionId, submissions.id), sentDecisionLetter()),
+    )
     .where(eq(people.userId, user.id));
-  return context.json({ items });
+  return context.json({
+    items: items.map(({ sentDecisionOutcome, status, ...item }) => ({
+      ...item,
+      status: submitterFacingSubmissionStatus(status, sentDecisionOutcome),
+    })),
+  });
 });
 
 export default submitterRoutes;

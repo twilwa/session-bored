@@ -1,7 +1,10 @@
 // ABOUTME: Exercises submitter account ownership and dashboard access through the real Worker.
 // ABOUTME: Proves anonymous author keys and signed-in proposal ownership never cross implicitly.
 import { env } from "cloudflare:workers";
+import { eq } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/d1";
 import { describe, expect, it } from "vitest";
+import { decisionNotices } from "../../db/schema.ts";
 import worker from "../../worker/index.ts";
 
 async function request(path: string, init?: RequestInit): Promise<Response> {
@@ -42,6 +45,48 @@ function anonymousDraft(email: string, title = "An anonymous proposal") {
       answers: {},
     },
   };
+}
+
+async function decide(
+  submissionId: string,
+  status: "accepted" | "maybe" | "declined",
+  organizerCookie: string,
+): Promise<void> {
+  const response = await request("/api/events/evt_devflow_conf_2027/disposition", {
+    method: "PATCH",
+    headers: { "content-type": "application/json", cookie: organizerCookie },
+    body: JSON.stringify({ submissionIds: [submissionId], status }),
+  });
+  expect(response.status).toBe(200);
+}
+
+/** Queues the letter the committee's current decision would send, and lands it on its recipient. */
+async function sendDecisionLetter(submissionId: string, organizerCookie: string): Promise<void> {
+  const previewResponse = await request("/api/events/evt_devflow_conf_2027/decision-batches", {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie: organizerCookie },
+    body: JSON.stringify({ submissionIds: [submissionId] }),
+  });
+  expect(previewResponse.status).toBe(201);
+  const preview = await previewResponse.json<{ id: string }>();
+  const dispatchResponse = await request(
+    `/api/events/evt_devflow_conf_2027/decision-batches/${preview.id}/dispatch`,
+    { method: "POST", headers: { cookie: organizerCookie } },
+  );
+  expect(dispatchResponse.status).toBe(200);
+  await drizzle(env.DB)
+    .update(decisionNotices)
+    .set({ deliveryStatus: "sent", sentAt: new Date() })
+    .where(eq(decisionNotices.submissionId, submissionId));
+}
+
+async function listedStatus(submissionId: string, submitterCookie: string): Promise<string | undefined> {
+  const response = await request("/api/submitter/submissions", {
+    headers: { cookie: submitterCookie },
+  });
+  expect(response.status).toBe(200);
+  const payload = await response.json<{ items: { id: string; status: string }[] }>();
+  return payload.items.find((item) => item.id === submissionId)?.status;
 }
 
 describe("submitter account ownership", () => {
@@ -418,7 +463,7 @@ describe("submitter account ownership", () => {
     expect(await response.json()).toMatchObject({ error: "account_sign_in_required" });
   });
 
-  it("shows the current silent decision status on the submitter dashboard", async () => {
+  it("keeps a decision in review until its letter is sent", async () => {
     await request("/api/health");
     const draft = anonymousDraft("decision-owner@example.com", "Decision-ready proposal");
     const submitterCookie = await createAccount("Decision Owner", draft.speaker.email);
@@ -429,20 +474,178 @@ describe("submitter account ownership", () => {
     });
     const created = await createResponse.json<{ submission: { id: string } }>();
     const organizerCookie = await signIn("sbek-organizer@example.com", "SbekTest!2027-org");
-    const decisionResponse = await request("/api/events/evt_devflow_conf_2027/disposition", {
-      method: "PATCH",
+
+    for (const status of ["accepted", "maybe", "declined"] as const) {
+      await decide(created.submission.id, status, organizerCookie);
+      expect(await listedStatus(created.submission.id, submitterCookie)).toBe("under_review");
+    }
+
+    const previewResponse = await request("/api/events/evt_devflow_conf_2027/decision-batches", {
+      method: "POST",
       headers: { "content-type": "application/json", cookie: organizerCookie },
-      body: JSON.stringify({ submissionIds: [created.submission.id], status: "maybe" }),
+      body: JSON.stringify({ submissionIds: [created.submission.id] }),
     });
-    expect(decisionResponse.status).toBe(200);
+    expect(previewResponse.status).toBe(201);
+    const preview = await previewResponse.json<{ id: string }>();
+    const dispatchResponse = await request(
+      `/api/events/evt_devflow_conf_2027/decision-batches/${preview.id}/dispatch`,
+      { method: "POST", headers: { cookie: organizerCookie } },
+    );
+    expect(dispatchResponse.status).toBe(200);
 
-    const response = await request("/api/submitter/submissions", {
-      headers: { cookie: submitterCookie },
+    expect(await listedStatus(created.submission.id, submitterCookie)).toBe("under_review");
+
+    await drizzle(env.DB)
+      .update(decisionNotices)
+      .set({ deliveryStatus: "sent", sentAt: new Date() })
+      .where(eq(decisionNotices.submissionId, created.submission.id));
+
+    expect(await listedStatus(created.submission.id, submitterCookie)).toBe("declined");
+  });
+
+  it("keeps a sent maybe letter reading under review", async () => {
+    await request("/api/health");
+    const draft = anonymousDraft("maybe-decision@example.com", "Still-considered proposal");
+    const cookie = await createAccount("Maybe Decision Owner", draft.speaker.email);
+    const createResponse = await request("/api/public/cfp/devflow-conf-2027/submissions", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify(draft),
     });
+    expect(createResponse.status).toBe(201);
+    const created = await createResponse.json<{ accessPath: string; submission: { id: string } }>();
+    const organizerCookie = await signIn("sbek-organizer@example.com", "SbekTest!2027-org");
+    await decide(created.submission.id, "maybe", organizerCookie);
+    await sendDecisionLetter(created.submission.id, organizerCookie);
 
+    expect(await listedStatus(created.submission.id, cookie)).toBe("under_review");
+    const readResponse = await request(created.accessPath, { headers: { cookie } });
+    expect(readResponse.status).toBe(200);
+    expect(await readResponse.json()).toMatchObject({ submission: { status: "under_review" } });
+  });
+
+  it("masks a live decision on the proposal read and save until the letter is sent", async () => {
+    await request("/api/health");
+    const draft = anonymousDraft("cfp-decision-owner@example.com", "Live-decision proposal");
+    const cookie = await createAccount("CFP Decision Owner", draft.speaker.email);
+    const createResponse = await request("/api/public/cfp/devflow-conf-2027/submissions", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify(draft),
+    });
+    expect(createResponse.status).toBe(201);
+    const created = await createResponse.json<{ accessPath: string; submission: { id: string } }>();
+    const organizerCookie = await signIn("sbek-organizer@example.com", "SbekTest!2027-org");
+    await decide(created.submission.id, "accepted", organizerCookie);
+
+    const readResponse = await request(created.accessPath, { headers: { cookie } });
+    expect(readResponse.status).toBe(200);
+    expect(await readResponse.json()).toMatchObject({ submission: { status: "under_review" } });
+
+    const saveResponse = await request(created.accessPath, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({
+        ...draft,
+        proposal: { ...draft.proposal, title: "Live-decision proposal, edited" },
+      }),
+    });
+    expect(saveResponse.status).toBe(200);
+    expect(await saveResponse.json()).toMatchObject({ submission: { status: "under_review" } });
+
+    await sendDecisionLetter(created.submission.id, organizerCookie);
+
+    const decidedResponse = await request(created.accessPath, { headers: { cookie } });
+    expect(decidedResponse.status).toBe(200);
+    expect(await decidedResponse.json()).toMatchObject({ submission: { status: "accepted" } });
+  });
+
+  it("keeps showing the outcome the sent letter carried after a silent re-decision", async () => {
+    await request("/api/health");
+    const draft = anonymousDraft("resent-decision@example.com", "Re-decided proposal");
+    const cookie = await createAccount("Resent Decision Owner", draft.speaker.email);
+    const createResponse = await request("/api/public/cfp/devflow-conf-2027/submissions", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify(draft),
+    });
+    expect(createResponse.status).toBe(201);
+    const created = await createResponse.json<{ accessPath: string; submission: { id: string } }>();
+    const organizerCookie = await signIn("sbek-organizer@example.com", "SbekTest!2027-org");
+    await decide(created.submission.id, "accepted", organizerCookie);
+    await sendDecisionLetter(created.submission.id, organizerCookie);
+
+    // The letter said accepted, so every submitter surface says accepted.
+    expect(await listedStatus(created.submission.id, cookie)).toBe("accepted");
+    const readResponse = await request(created.accessPath, { headers: { cookie } });
+    expect(await readResponse.json()).toMatchObject({ submission: { status: "accepted" } });
+
+    // The committee silently reverses itself. No second letter can reach anyone.
+    await decide(created.submission.id, "declined", organizerCookie);
+
+    expect(await listedStatus(created.submission.id, cookie)).toBe("accepted");
+    const afterResponse = await request(created.accessPath, { headers: { cookie } });
+    expect(afterResponse.status).toBe(200);
+    expect(await afterResponse.json()).toMatchObject({ submission: { status: "accepted" } });
+    const saveResponse = await request(created.accessPath, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({
+        ...draft,
+        proposal: { ...draft.proposal, title: "Re-decided proposal, edited" },
+      }),
+    });
+    expect(saveResponse.status).toBe(200);
+    expect(await saveResponse.json()).toMatchObject({
+      submission: { title: "Re-decided proposal, edited", status: "accepted" },
+    });
+  });
+
+  it("does not reveal a silent acceptance after a declined letter was sent", async () => {
+    await request("/api/health");
+    const draft = anonymousDraft("resent-rejection@example.com", "Re-considered proposal");
+    const cookie = await createAccount("Resent Rejection Owner", draft.speaker.email);
+    const createResponse = await request("/api/public/cfp/devflow-conf-2027/submissions", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify(draft),
+    });
+    expect(createResponse.status).toBe(201);
+    const created = await createResponse.json<{ accessPath: string; submission: { id: string } }>();
+    const organizerCookie = await signIn("sbek-organizer@example.com", "SbekTest!2027-org");
+    await decide(created.submission.id, "declined", organizerCookie);
+    await sendDecisionLetter(created.submission.id, organizerCookie);
+    expect(await listedStatus(created.submission.id, cookie)).toBe("declined");
+
+    await decide(created.submission.id, "accepted", organizerCookie);
+
+    expect(await listedStatus(created.submission.id, cookie)).toBe("declined");
+    const readResponse = await request(created.accessPath, { headers: { cookie } });
+    expect(readResponse.status).toBe(200);
+    expect(await readResponse.json()).toMatchObject({ submission: { status: "declined" } });
+  });
+
+  it("masks a live decision on an anonymous proposal read through its author key", async () => {
+    await request("/api/health");
+    const draft = anonymousDraft("anonymous-decision@example.com", "Anonymous decided proposal");
+    const createResponse = await request("/api/public/cfp/devflow-conf-2027/submissions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(draft),
+    });
+    expect(createResponse.status).toBe(201);
+    const created = await createResponse.json<{
+      accessPath: string;
+      editKey: string;
+      submission: { id: string };
+    }>();
+    const organizerCookie = await signIn("sbek-organizer@example.com", "SbekTest!2027-org");
+    await decide(created.submission.id, "declined", organizerCookie);
+
+    const response = await request(
+      `${created.accessPath}?key=${encodeURIComponent(created.editKey)}`,
+    );
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({
-      items: [{ id: created.submission.id, status: "maybe" }],
-    });
+    expect(await response.json()).toMatchObject({ submission: { status: "under_review" } });
   });
 });

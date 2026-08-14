@@ -57,7 +57,7 @@
 .submitter-proposals__status { justify-self: end; padding: 6px 10px; background: #e6e2d8; border: 1px solid var(--ink); font: 0.7rem "SFMono-Regular", Consolas, monospace; text-transform: uppercase; }
 .submitter-proposals__status--accepted { background: var(--signal); }
 .submitter-proposals__status--declined { color: #7c1512; background: #ffe0db; }
-.submitter-proposals__status--maybe { color: #142caa; background: #dce2ff; }
+.submitter-proposals__status--under_review { color: var(--muted); background: #e6e2d8; }
 
 @media (max-width: 760px) {
   .submitter-account,

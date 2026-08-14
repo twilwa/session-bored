@@ -378,10 +378,11 @@ lifecycle and relationships are fixed as follows:
 - Submitter accounts use Better Auth's `speaker` role. A submission created while
   signed in belongs to the account through `submission.submitterPersonId` and
   `person.userId`, receives no anonymous author key, and appears on the submitter
-  dashboard with its live status. Dashboard access follows this person-to-user
-  ownership link rather than the account's role. Existing anonymous people remain
-  unlinked and cannot be claimed by email; their proposals stay accessible only
-  through the private author key.
+  dashboard under the `submitterFacingSubmissionStatus` projection described in
+  the speaker portal contract, never the live committee status. Dashboard access
+  follows this person-to-user ownership link rather than the account's role.
+  Existing anonymous people remain unlinked and cannot be claimed by email;
+  their proposals stay accessible only through the private author key.
 
 - The agenda (`/agenda`), itinerary (`/schedule`), and speaker gallery (`/gallery`)
   pages read through the same public sessions/speakers endpoints as `/program` and
@@ -437,8 +438,16 @@ enriched `tasks` (`taskType`, `instructions`, `acceptedFileTypes`,
   cancelled one never will; showing any of them tells the speaker an outcome the
   product has not sent, which is the whole point of deciding freely and sending
   once. An acceptance that already produced the speaker's own session still reads
-  as accepted - they are working on it. The submitter dashboard is the deliberate
-  exception: it shows the live silent status by design and by test.
+  as accepted - they are working on it. The submitter dashboard and every CFP
+  proposal read and save project through `submitterFacingSubmissionStatus` beside
+  it, keeping submission-status vocabulary (`under_review`, `declined`) rather than
+  the portal's presentation labels, and reading the decision from the sent
+  `decision_notice.outcome` rather than from `submission.status`. A status change is
+  silent and a delivered letter cannot be corrected, so a later re-decision would
+  otherwise reach the submitter as a settled outcome changing under them with no
+  letter to explain it; a sent `maybe` letter says "still under consideration", which
+  is `under_review`. `draft`, `submitted`, and `withdrawn` are the submitter's own
+  states and pass through.
 - Uploading to a `file_request` task marks that speaker's `task_assignee`
   row `completed` — this is the same row the organizer/roster side must read,
   so no separate completion signal exists. General tasks complete only through
