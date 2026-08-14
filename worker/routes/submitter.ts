@@ -31,7 +31,7 @@ submitterRoutes.get("/submitter/submissions", async (context) => {
       isDraft: submissions.isDraft,
       submittedAt: submissions.submittedAt,
       updatedAt: submissions.updatedAt,
-      sentDecisionNoticeId: decisionNotices.id,
+      sentDecisionOutcome: decisionNotices.outcome,
     })
     .from(submissions)
     .innerJoin(people, eq(submissions.submitterPersonId, people.id))
@@ -42,9 +42,9 @@ submitterRoutes.get("/submitter/submissions", async (context) => {
     )
     .where(eq(people.userId, user.id));
   return context.json({
-    items: items.map(({ sentDecisionNoticeId, status, ...item }) => ({
+    items: items.map(({ sentDecisionOutcome, status, ...item }) => ({
       ...item,
-      status: submitterFacingSubmissionStatus(status, sentDecisionNoticeId !== null),
+      status: submitterFacingSubmissionStatus(status, sentDecisionOutcome),
     })),
   });
 });

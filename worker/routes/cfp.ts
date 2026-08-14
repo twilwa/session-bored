@@ -701,7 +701,7 @@ async function readSubmission(
       organization: people.organization,
       bio: people.bio,
       format: formats.name,
-      sentDecisionNoticeId: decisionNotices.id,
+      sentDecisionOutcome: decisionNotices.outcome,
     })
     .from(submissions)
     .innerJoin(people, eq(submissions.submitterPersonId, people.id))
@@ -734,7 +734,7 @@ async function readSubmission(
   return {
     id: item.id,
     formVersion: item.formVersion,
-    status: submitterFacingSubmissionStatus(item.status, item.sentDecisionNoticeId !== null),
+    status: submitterFacingSubmissionStatus(item.status, item.sentDecisionOutcome),
     isDraft: item.isDraft,
     title: item.title,
     abstract: item.abstract,

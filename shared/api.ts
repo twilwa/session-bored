@@ -862,28 +862,31 @@ export function speakerFacingSubmissionStatus(submission: {
 }
 
 /**
- * The same sent-letter gate in the submitter's own submission-status vocabulary: a decision
- * reads `under_review` until its letter is sent, and a communicated rejection reads
- * `declined`. The submitter dashboard and the public CFP proposal read and save responses
- * all project through this, so no submitter-facing surface can announce a decision the
- * committee has not communicated.
+ * The submitter's own view of a proposal, in submission-status vocabulary. What the submitter
+ * knows is the letter that reached them, so a committee decision reads `under_review` until one
+ * is sent and then keeps reading the outcome that letter announced - a later silent
+ * re-decision is another working state, not a communication, and the submitter would otherwise
+ * watch a settled outcome change under them with no letter explaining it. A sent `maybe` letter
+ * says the proposal is still under consideration, which is exactly `under_review`. The states
+ * the submitter owns themselves pass through untouched. The submitter dashboard and the public
+ * CFP proposal read and save responses all project through this, so no submitter-facing surface
+ * can announce a decision the committee has not communicated.
  */
 export function submitterFacingSubmissionStatus(
   status: SubmissionStatus,
-  decisionNotified: boolean,
+  sentDecisionOutcome: DecisionStatus | null,
 ): SubmissionStatus {
-  const speakerStatus = speakerFacingSubmissionStatus({
-    status,
-    decisionNotified,
-    hasOwnSession: false,
-  });
-  switch (speakerStatus) {
-    case "in_review":
-      return "under_review";
-    case "not_selected":
-      return "declined";
+  switch (status) {
+    case "draft":
+      return "draft";
+    case "submitted":
+      return "submitted";
+    case "withdrawn":
+      return "withdrawn";
     default:
-      return speakerStatus;
+      return sentDecisionOutcome === "accepted" || sentDecisionOutcome === "declined"
+        ? sentDecisionOutcome
+        : "under_review";
   }
 }
 
