@@ -1,0 +1,48 @@
+client/pages/cfp/CfpPage.tsx
+  s_00e2adaa83bc04::t_e86d48dc7e1701 74-77,462-464,475-476,485-489
+client/pages/submitter/SubmitterDashboardPage.tsx
+  s_00e2adaa83bc04::t_7796987b035281 1,77,79
+AGENTS.md
+  s_00e2adaa83bc04::t_a72b06cf70c9f0 440-442
+tests/integration/submitter-account.test.ts
+  s_00e2adaa83bc04::t_f21cb89b75e98e 4-5,7,424,461-462,464,466-472,476-480
+  s_4bc7725c7d1762::t_d43ad172b59a52 435-459,474,481
+  s_92dcb99c12dfd6::t_6bb698543cc718 460
+worker/routes/submitter.ts
+  s_00e2adaa83bc04::t_7796987b035281 3,15,28-31,39,42,44,64-65,80,85-88,90-95
+  s_4bc7725c7d1762::t_d43ad172b59a52 13,32-38,40-41,43
+  s_00e2adaa83bc04::t_b984023bd81418 24-25,45-63,96-110
+  s_00e2adaa83bc04::t_09988def025f72 6-12
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "45472fa9ce9376b3abfd1689af933ba5060f7667",
+  "prompts": {},
+  "sessions": {
+    "s_00e2adaa83bc04": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffe28-affd-71c2-8342-a7e3b4ac3653",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    },
+    "s_4bc7725c7d1762": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffe3b-c8d4-7f63-b971-29be3b652e64",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    },
+    "s_92dcb99c12dfd6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dc4ac9be-2c65-4393-9f80-eaacd060dd71",
+        "model": "claude-fable-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
