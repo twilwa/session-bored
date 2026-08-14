@@ -73,9 +73,31 @@ describe("public header account area", () => {
   });
 
   it("refuses a return path that leaves this origin", () => {
-    for (const hostile of ["//evil.example/speaker", "https://evil.example/speaker", "speaker"]) {
+    for (const hostile of [
+      "//evil.example/speaker",
+      "https://evil.example/speaker",
+      "/\\evil.example/speaker",
+      "speaker",
+    ]) {
       expect(twoHatsDestination(hostile)).toBe("/reviewer");
     }
+  });
+
+  it("judges the area a return path resolves to, not the one it spells", () => {
+    // The browser removes dot segments when it navigates, so a path that reads as a
+    // granted area but lands outside one must be refused on where it actually lands.
+    for (const crafted of [
+      "/submitter/../organizer",
+      "/speaker/%2e%2e/organizer",
+      "/reviewer/../../organizer/people",
+    ]) {
+      expect(twoHatsDestination(crafted)).toBe("/reviewer");
+    }
+  });
+
+  it("returns the resolved form of a return path it accepts", () => {
+    expect(twoHatsDestination("/organizer/../speaker")).toBe("/speaker");
+    expect(twoHatsDestination("/speaker/./files#latest")).toBe("/speaker/files#latest");
   });
 
   it("keeps the submitter dashboard a valid return for any authenticated account", () => {
