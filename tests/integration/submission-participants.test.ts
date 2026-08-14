@@ -473,6 +473,15 @@ describe("the program team's own hold on the participant list", () => {
     expect(afterAdd.participants.find((participant) => participant.name === "Pending Presenter"))
       .toMatchObject({ onSession: true, publicationPending: true });
 
+    // Re-applying the decision is a silent status change the product allows at any time, and it
+    // must not stand in for the republish that confirms a held participant.
+    const acceptedAgainWhilePending = await request(`/api/events/${eventId}/disposition`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie: organizerCookie },
+      body: JSON.stringify({ submissionIds: [created.submission.id], status: "accepted" }),
+    });
+    expect(acceptedAgainWhilePending.status).toBe(200);
+
     const publicBefore = await request(`/api/public/events/${eventId}/sessions`);
     const publicBeforeText = await publicBefore.text();
     expect(publicBeforeText).toContain("What a panel actually owes its audience");
@@ -533,6 +542,81 @@ describe("the program team's own hold on the participant list", () => {
     }).then((response) => response.json<{ items: Array<{ name: string; status: string }> }>());
     expect(rosterAfter.items.find((speaker) => speaker.name === "Pending Presenter"))
       .toMatchObject({ status: "onboarding" });
+  });
+
+  it("offers no republish for a session the publish route would skip", async () => {
+    const created = await createPanel("rosa.unpublishable@example.test");
+    const decide = (status: string) =>
+      request(`/api/events/${eventId}/disposition`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json", cookie: organizerCookie },
+        body: JSON.stringify({ submissionIds: [created.submission.id], status }),
+      });
+    await decide("accepted");
+    const session = await env.DB.prepare("select id from program_session where submission_id = ?")
+      .bind(created.submission.id).first<{ id: string }>();
+    await request(`/api/events/${eventId}/agenda/sessions/${session?.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie: organizerCookie },
+      body: JSON.stringify({ scheduleStatus: "tbd", scheduledDate: "2027-05-13" }),
+    });
+    await request(`/api/events/${eventId}/agenda/sessions/${session?.id}/content`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie: organizerCookie },
+      body: JSON.stringify({ contentStatus: "approved" }),
+    });
+    expect((await request(`/api/events/${eventId}/agenda/publish`, {
+      method: "POST",
+      headers: { cookie: organizerCookie },
+    })).status).toBe(200);
+
+    // Un-accepting returns the session's content to draft and keeps its schedule and publication
+    // marker, so from here on publish skips it however many participants are waiting.
+    expect((await decide("maybe")).status).toBe(200);
+    const participantsPath = `/api/events/${eventId}/submissions/${created.submission.id}/participants`;
+    const added = await request(participantsPath, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: organizerCookie },
+      body: JSON.stringify({
+        name: "Unpublishable Addition",
+        email: "unpublishable.addition@example.test",
+        roleLabel: "co-speaker",
+      }),
+    });
+    expect(added.status).toBe(201);
+    expect((await decide("accepted")).status).toBe(200);
+
+    const agenda = await request(`/api/events/${eventId}/agenda`, { headers: { cookie: organizerCookie } })
+      .then((response) =>
+        response.json<{ sessions: Array<{ id: string; contentStatus: string; pendingSpeakerCount: number }> }>()
+      );
+    expect(agenda.sessions.find((item) => item.id === session?.id))
+      .toMatchObject({ contentStatus: "draft", pendingSpeakerCount: 0 });
+
+    const roster = await request(`/api/events/${eventId}/roster`, { headers: { cookie: organizerCookie } })
+      .then((response) =>
+        response.json<{ items: Array<{ name: string; pendingPublicationSessions: unknown[] }> }>()
+      );
+    expect(roster.items.find((speaker) => speaker.name === "Unpublishable Addition")?.pendingPublicationSessions)
+      .toEqual([]);
+
+    const listed = await request(participantsPath, { headers: { cookie: organizerCookie } })
+      .then((response) =>
+        response.json<{ participants: Array<{ name: string; onSession: boolean; publicationPending: boolean }> }>()
+      );
+    expect(listed.participants.find((participant) => participant.name === "Unpublishable Addition"))
+      .toMatchObject({ onSession: true, publicationPending: false });
+
+    // The publish route agrees: it skips the session rather than revealing anybody on it.
+    const publish = await request(`/api/events/${eventId}/agenda/publish`, {
+      method: "POST",
+      headers: { cookie: organizerCookie },
+    });
+    expect(publish.status).toBe(200);
+    const publishBody = await publish.json<{ skipped: Array<{ id: string; reasons: string[] }> }>();
+    expect(publishBody.skipped.find((skip) => skip.id === session?.id)?.reasons).toContain("content_not_approved");
+    const directory = await request(`/api/public/events/${eventId}/speakers`);
+    expect(await directory.text()).not.toContain("Unpublishable Addition");
   });
 
   it("reports that a removed participant remains an event speaker", async () => {

@@ -109,9 +109,15 @@ async function resolveOnboardingTasks(
 /**
  * Carries one named participant onto a session: adopts their event speaker identity, links
  * them to the session under their own role label, and gives them the same onboarding work as
- * everybody else on it. A late addition to a published session stays invited until republish;
- * archived links are restored rather than duplicated, so a participant who is removed and
- * named again keeps their completion history.
+ * everybody else on it. A participant who is not already part of a published session's public
+ * lineup stays invited until republish; archived links are restored rather than duplicated, so
+ * a participant who is removed and named again keeps their completion history.
+ *
+ * The hold is decided here, from the session's publication and this participant's own link,
+ * rather than by the caller, so acceptance, a repeated acceptance, and a late organizer
+ * addition all resolve it the same way. Only a live link the last publish already stamped
+ * escapes the hold: a pending link is still waiting for its republish, and an archived one is
+ * a re-addition whose public place has to be confirmed again.
  */
 async function attachParticipant(
   database: DecisionDatabase,
@@ -122,14 +128,27 @@ async function attachParticipant(
     roleLabel: string;
     sortOrder: number;
     onboardingTasks: OnboardingTask[];
-    holdForRepublish?: boolean;
+    sessionPublishedAt: Date | null;
   },
 ): Promise<string> {
-  const { eventId, sessionId, personId, roleLabel, sortOrder, holdForRepublish = false } = participant;
+  const { eventId, sessionId, personId, roleLabel, sortOrder, sessionPublishedAt } = participant;
   let [speaker] = await database
     .select()
     .from(speakers)
     .where(and(eq(speakers.personId, personId), eq(speakers.eventId, eventId)));
+  const [existingLink] = speaker === undefined
+    ? []
+    : await database
+      .select({ publishedAt: sessionSpeakers.publishedAt, deletedAt: sessionSpeakers.deletedAt })
+      .from(sessionSpeakers)
+      .where(and(
+        eq(sessionSpeakers.sessionId, sessionId),
+        eq(sessionSpeakers.speakerId, speaker.id),
+      ));
+  const alreadyInPublicLineup = existingLink !== undefined
+    && existingLink.deletedAt === null
+    && existingLink.publishedAt !== null;
+  const holdForRepublish = sessionPublishedAt !== null && !alreadyInPublicLineup;
   if (speaker === undefined) {
     await database
       .insert(speakers)
@@ -238,7 +257,7 @@ export async function carryParticipantIntoSession(
     roleLabel: participant.roleLabel,
     sortOrder: participant.sortOrder,
     onboardingTasks: await resolveOnboardingTasks(database, eventId, sessionId),
-    holdForRepublish: session.publishedAt !== null,
+    sessionPublishedAt: session.publishedAt,
   });
 }
 
@@ -487,6 +506,7 @@ async function ensureAcceptedHandoff(
       roleLabel: participant.roleLabel,
       sortOrder: participant.sortOrder,
       onboardingTasks,
+      sessionPublishedAt: session.publishedAt,
     });
     acceptedSpeakers.push({
       id: speakerId,

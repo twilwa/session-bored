@@ -116,7 +116,18 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   `invited`, and therefore off the public directory, until republish stamps the
   link and starts onboarding; an already-public event speaker stays public while
   their new session participation is pending, so adding them does not make the
-  public site lose information either. A collaborator is named, not
+  public site lose information either. That hold is decided inside
+  `attachParticipant`, from the session's `published_at` and the participant's
+  own link, never by the caller: only a live link the last publish already
+  stamped escapes it, so acceptance, a *repeated* acceptance, and a late
+  organizer addition all resolve it identically, and re-applying `accepted`
+  cannot promote somebody the organizer has not published yet. Publish stamps
+  only the links still waiting and promotes exactly the speakers that update
+  returns, so the column keeps recording when a participant first became public.
+  A participant is offered as pending only for a session that is publicly live
+  (`isPubliclyLiveSession`, beside `PUBLIC_SESSION_GATE`): a session publish will
+  skip has no republish to offer, or the roster prompt and the agenda's
+  "Republish agenda" stay stuck on forever. A collaborator is named, not
   admitted: naming somebody mints no author key, grants no dashboard, and never
   overwrites the profile an existing person already has.
 - A sessionless task with no `task_scope` row is an event-wide onboarding

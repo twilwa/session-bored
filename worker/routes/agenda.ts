@@ -17,6 +17,7 @@ import {
   type Role,
 } from "../../db/schema.ts";
 import { holdsAccess } from "../access.ts";
+import { isPubliclyLiveSession } from "../public-queries.ts";
 import type {
   AgendaConflict,
   AgendaPlacement,
@@ -225,7 +226,7 @@ async function readAgenda(binding: D1Database, eventId: string): Promise<AgendaS
     startsAt: session.startsAt?.getTime() ?? null,
     endsAt: session.endsAt?.getTime() ?? null,
     publishedAt: session.publishedAt?.getTime() ?? null,
-    pendingSpeakerCount: session.publishedAt === null ? 0 : (pendingSpeakersBySession.get(session.id) ?? 0),
+    pendingSpeakerCount: isPubliclyLiveSession(session) ? (pendingSpeakersBySession.get(session.id) ?? 0) : 0,
     durationMinutes: session.durationMinutes ?? 30,
     track: session.trackId === null || session.trackName === null
       ? null
@@ -439,35 +440,29 @@ agendaRoutes.post("/api/events/:eventId/agenda/publish", async (context) => {
   const publishedAt = new Date();
   if (eligible.length > 0) {
     const database = drizzle(context.env.DB);
-    const publishableSpeakerLinks = await database
-      .select({
-        id: sessionSpeakers.id,
-        speakerId: sessionSpeakers.speakerId,
-        publishedAt: sessionSpeakers.publishedAt,
-      })
-      .from(sessionSpeakers)
-      .where(and(
-        inArray(sessionSpeakers.sessionId, eligible.map((session) => session.id)),
-        isNull(sessionSpeakers.deletedAt),
-      ));
     await database
       .update(sessions)
       .set({ publishedAt })
       .where(inArray(sessions.id, eligible.map((session) => session.id)));
-    if (publishableSpeakerLinks.length > 0) {
+    // Only the links still waiting are stamped, so the column keeps recording when a
+    // participant first became public, and what it returns is exactly who this publish reveals.
+    const revealedLinks = await database
+      .update(sessionSpeakers)
+      .set({ publishedAt })
+      .where(and(
+        inArray(sessionSpeakers.sessionId, eligible.map((session) => session.id)),
+        isNull(sessionSpeakers.deletedAt),
+        isNull(sessionSpeakers.publishedAt),
+      ))
+      .returning({ speakerId: sessionSpeakers.speakerId });
+    if (revealedLinks.length > 0) {
       await database
-        .update(sessionSpeakers)
-        .set({ publishedAt })
-        .where(inArray(sessionSpeakers.id, publishableSpeakerLinks.map((link) => link.id)));
-      const pendingSpeakerIds = publishableSpeakerLinks
-        .filter((link) => link.publishedAt === null)
-        .map((link) => link.speakerId);
-      if (pendingSpeakerIds.length > 0) {
-        await database
-          .update(speakers)
-          .set({ status: "onboarding" })
-          .where(and(inArray(speakers.id, pendingSpeakerIds), eq(speakers.status, "invited")));
-      }
+        .update(speakers)
+        .set({ status: "onboarding" })
+        .where(and(
+          inArray(speakers.id, revealedLinks.map((link) => link.speakerId)),
+          eq(speakers.status, "invited"),
+        ));
     }
   }
   const result: AgendaPublishResult = {

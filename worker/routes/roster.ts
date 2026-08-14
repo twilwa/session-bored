@@ -1,6 +1,6 @@
 // ABOUTME: Manages the organizer speaker roster, onboarding assignments, and missing-information worklist.
 // ABOUTME: Derives workflow visibility from event-scoped speakers, accepted sessions, and task assignments.
-import { and, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { Hono } from "hono";
 import { createMiddleware } from "hono/factory";
@@ -19,6 +19,7 @@ import {
 } from "../../db/schema.ts";
 import { holdsAccess } from "../access.ts";
 import { sendPortalInvitationEmail } from "../email/portal-invitation.ts";
+import { PUBLIC_SESSION_GATE } from "../public-queries.ts";
 import { deriveRosterWorkSummary } from "../roster-work.ts";
 
 type RosterEnvironment = {
@@ -105,8 +106,7 @@ rosterRoutes.get("/api/events/:eventId/roster", async (context) => {
         inArray(sessionSpeakers.speakerId, items.map((item) => item.id)),
         isNull(sessionSpeakers.publishedAt),
         isNull(sessionSpeakers.deletedAt),
-        isNotNull(sessions.publishedAt),
-        isNull(sessions.deletedAt),
+        PUBLIC_SESSION_GATE,
       ));
 
   const assignments = items.length === 0

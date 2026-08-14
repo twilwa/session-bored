@@ -17,7 +17,7 @@ import { chunkIds } from "./d1-limits.ts";
 
 // ABOUTME: A session is public only after explicit publication, while its content and source decision remain live.
 // Schedule status is intentionally not a gate because published TBD sessions remain visible.
-const PUBLIC_SESSION_GATE = and(
+export const PUBLIC_SESSION_GATE = and(
   eq(sessions.contentStatus, "approved"),
   isNotNull(sessions.publishedAt),
   isNull(sessions.deletedAt),
@@ -30,6 +30,19 @@ const PUBLIC_SESSION_GATE = and(
     )`,
   ),
 );
+
+/**
+ * Whether a session is on the public site right now, asked of a row the caller has already
+ * limited to accepted or directly entered sessions. It is the in-memory form of the two columns
+ * `PUBLIC_SESSION_GATE` reads there, for the organizer surfaces that offer to publish a pending
+ * participant: a session the publish route will skip has nothing pending to reveal, so offering
+ * a republish that cannot run leaves the prompt stuck on.
+ */
+export function isPubliclyLiveSession(
+  session: { contentStatus: string; publishedAt: Date | null },
+): boolean {
+  return session.contentStatus === "approved" && session.publishedAt !== null;
+}
 
 // ABOUTME: Public speakers have cleared invitation and employer-approval states.
 // Confirmed, onboarding, and ready speakers remain visible even when their profiles are incomplete.

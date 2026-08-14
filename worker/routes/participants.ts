@@ -16,7 +16,7 @@ import {
 } from "../../db/schema.ts";
 import type { ParticipantRemovalOutcome } from "../../shared/api.ts";
 import { holdsAccess } from "../access.ts";
-import { isPublicSpeaker } from "../public-queries.ts";
+import { isPublicSpeaker, isPubliclyLiveSession } from "../public-queries.ts";
 import {
   carryParticipantIntoSession,
   releaseParticipantFromSession,
@@ -173,6 +173,8 @@ async function participantsResponse(
     .innerJoin(speakers, eq(sessionSpeakers.speakerId, speakers.id))
     .where(and(eq(sessionSpeakers.sessionId, sessionId), isNull(sessionSpeakers.deletedAt)));
   const carried = new Map(onSessionPeople.map((row) => [row.personId, row.publishedAt]));
+  const sessionIsPubliclyLive = sessionContentStatus !== null
+    && isPubliclyLiveSession({ contentStatus: sessionContentStatus, publishedAt: sessionPublishedAt });
   return {
     submissionId,
     sessionId,
@@ -183,7 +185,7 @@ async function participantsResponse(
       ...row,
       isSubmitter: row.personId === submitterPersonId,
       onSession: carried.has(row.personId),
-      publicationPending: sessionPublishedAt !== null
+      publicationPending: sessionIsPubliclyLive
         && carried.has(row.personId)
         && carried.get(row.personId) === null,
     })),
