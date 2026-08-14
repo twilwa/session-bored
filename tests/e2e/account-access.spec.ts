@@ -131,8 +131,50 @@ test("an invitation is recorded as pending, not as access", async ({ page }) => 
   expect((await resendResponse).status()).toBe(200);
   await expect(page.locator(".toast")).toContainText("Invitation is still open, but no email sender is connected");
 
+  // Re-entering an address that is already invited says so, and names the action just above.
+  await page.getByLabel("Invite a reviewer by email").fill(invited);
+  await page.getByRole("button", { name: "Send invitation", exact: true }).click();
+  await expect(page.locator(".toast")).toContainText("already has an open invitation");
+  await expect(page.locator(".toast")).toContainText("Resend invitation");
+  await expect(page.locator(".people-invite-list li").filter({ hasText: invited })).toHaveCount(1);
+
   await invite.getByRole("button", { name: "Withdraw" }).click();
   await expect(page.locator(".toast")).toContainText("was withdrawn");
+});
+
+test("a slow invitation send cannot be fired twice by an impatient organizer", async ({ page }) => {
+  await page.goto("/login");
+  await page.getByLabel("Email").fill("sbek-organizer@example.com");
+  await page.getByLabel("Password").fill("SbekTest!2027-org");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page).toHaveURL(/\/organizer$/);
+
+  // The invitation POST now waits on a live provider call, so hold it open the way a slow
+  // sender would and confirm the button cannot be clicked into a second invitation.
+  let attempts = 0;
+  let release = (): void => {};
+  const held = new Promise<void>((resolve) => { release = resolve; });
+  await page.route("**/reviewer-invites", async (route) => {
+    attempts += 1;
+    await held;
+    await route.continue();
+  });
+
+  const invited = uniqueEmail("slow-invite");
+  await page.goto("/organizer/people");
+  await page.getByLabel("Invite a reviewer by email").fill(invited);
+  const send = page.getByRole("button", { name: "Send invitation", exact: true });
+  await send.click();
+
+  const sending = page.getByRole("button", { name: "Sending…", exact: true });
+  await expect(sending).toBeVisible();
+  await expect(sending).toBeDisabled();
+  await sending.click({ force: true });
+
+  release();
+  await expect(page.locator(".toast")).toContainText("no email sender is connected");
+  expect(attempts).toBe(1);
+  await expect(page.locator(".people-invite-list li").filter({ hasText: invited })).toHaveCount(1);
 });
 
 test("an account granted two areas can reach both of them from the header", async ({ page }) => {

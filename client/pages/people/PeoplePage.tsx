@@ -2,7 +2,7 @@
 // ABOUTME: Shows the evidence behind every grant so nobody is promoted or revoked blind.
 import { useEffect, useState } from "react";
 import { Button, EmptyState, LoadingState, SelectField, StatusChip, TextField, Toast } from "../../components/ui.tsx";
-import { getJson, requestJson } from "../../lib.tsx";
+import { getJson, RequestFailure, requestJson } from "../../lib.tsx";
 import type { PersonAccountSummary } from "../../../shared/api.ts";
 import { effectiveRoleOf, evidenceSummary } from "../../../shared/people.ts";
 import "./people.css";
@@ -40,6 +40,14 @@ function formatDate(value: string): string {
   return new Date(value).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
 }
 
+/** Prefers what the server said about a refusal, and never swallows a request that gave up. */
+function failureMessage(error: unknown, fallback: string): string {
+  if (error instanceof RequestFailure) {
+    return error.payload?.note ?? fallback;
+  }
+  return error instanceof Error && error.message.includes("timed out") ? error.message : fallback;
+}
+
 export function PeoplePage() {
   const [data, setData] = useState<PeoplePayload | null>(null);
   const [reviewerGrantOptions, setReviewerGrantOptions] = useState<ReviewerGrantOptions | null>(null);
@@ -48,6 +56,7 @@ export function PeoplePage() {
   const [filter, setFilter] = useState<"all" | "awaiting">("all");
   const [search, setSearch] = useState("");
   const [inviteEmail, setInviteEmail] = useState("");
+  const [inviting, setInviting] = useState(false);
   const [resendingInviteId, setResendingInviteId] = useState<string | null>(null);
   const [notify, setNotify] = useState(false);
   const [reload, setReload] = useState(0);
@@ -104,20 +113,16 @@ export function PeoplePage() {
   }
 
   async function invite(): Promise<void> {
+    setInviting(true);
     try {
-      const response = await fetch(`/api/events/${eventId}/reviewer-invites`, {
-        credentials: "same-origin",
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email: inviteEmail }),
-      });
-      const result = await response
-        .json<{ emailDelivery?: "sent" | "failed" | "not_configured"; note?: string }>()
-        .catch(() => ({ emailDelivery: undefined, note: undefined }));
-      if (!response.ok) {
-        setMessage(result.note ?? "That invitation could not be recorded.");
-        return;
-      }
+      const result = await requestJson<{ emailDelivery: "sent" | "failed" | "not_configured" }>(
+        `/api/events/${eventId}/reviewer-invites`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ email: inviteEmail }),
+        },
+      );
       setMessage(result.emailDelivery === "sent"
         ? `Invitation sent to ${inviteEmail}. They become a reviewer once they confirm that address.`
         : result.emailDelivery === "failed"
@@ -125,8 +130,10 @@ export function PeoplePage() {
         : "Invitation recorded, but no email sender is connected. Connect one before asking them to respond.");
       setInviteEmail("");
       setReload((token) => token + 1);
-    } catch {
-      setMessage("That invitation could not be recorded.");
+    } catch (error) {
+      setMessage(failureMessage(error, "That invitation could not be recorded."));
+    } finally {
+      setInviting(false);
     }
   }
 
@@ -153,8 +160,8 @@ export function PeoplePage() {
         ? "Invitation is still open, but email delivery failed. Open Communications for the failure details."
         : "Invitation is still open, but no email sender is connected. Connect one and resend it here.");
       setReload((token) => token + 1);
-    } catch {
-      setMessage("That invitation could not be resent.");
+    } catch (error) {
+      setMessage(failureMessage(error, "That invitation could not be resent."));
     } finally {
       setResendingInviteId(null);
     }
@@ -381,8 +388,8 @@ export function PeoplePage() {
             type="email"
             value={inviteEmail}
           />
-          <Button disabled={!inviteEmail.includes("@")} onClick={() => void invite()} tone="signal">
-            Send invitation
+          <Button disabled={inviting || !inviteEmail.includes("@")} onClick={() => void invite()} tone="signal">
+            {inviting ? "Sending…" : "Send invitation"}
           </Button>
         </div>
         {data.invites.length === 0 ? (

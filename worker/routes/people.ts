@@ -427,13 +427,15 @@ peopleRoutes.post("/api/events/:eventId/reviewer-invites", requireOrganizer, asy
         error: "account_already_confirmed",
         userId: confirmedAccount.id,
         note:
-          `${confirmedAccount.name} has already confirmed this address, so an invitation has nothing left to redeem. Grant reviewer access on their account instead.`,
+          `${confirmedAccount.name} has already confirmed this address, so an invitation has nothing left to redeem. `
+          + "Grant reviewer access on their account instead. That grant is not an invitation: it carries no remit, "
+          + "so give them tracks and a round on Committee setup afterwards or their queue stays empty.",
       },
       409,
     );
   }
   const [existing] = await database
-    .select({ id: reviewerInvites.id })
+    .select({ id: reviewerInvites.id, createdAt: reviewerInvites.createdAt })
     .from(reviewerInvites)
     .where(
       and(
@@ -444,7 +446,22 @@ peopleRoutes.post("/api/events/:eventId/reviewer-invites", requireOrganizer, asy
       ),
     );
   if (existing !== undefined) {
-    return context.json({ error: "invite_already_open", inviteId: existing.id }, 409);
+    const openInvite = { id: existing.id, email, eventId, createdAt: existing.createdAt };
+    const alreadySent = reviewerInvitationDeliveryFor(
+      openInvite,
+      await readReviewerInvitationDispatches(database, [eventId], existing.createdAt),
+    ) === "sent";
+    return context.json(
+      {
+        error: "invite_already_open",
+        inviteId: existing.id,
+        note: alreadySent
+          ? `${email} already has an open invitation and it reached them. They become a reviewer once they confirm that address.`
+          : `${email} already has an open invitation, so nothing new was recorded. `
+            + "Use Resend invitation on its row below if the first one never arrived.",
+      },
+      409,
+    );
   }
   // An invitation that names no remit carries the same default a directly provisioned
   // reviewer gets - every event track and the first open round - so redemption opens a queue

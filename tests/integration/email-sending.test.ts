@@ -563,6 +563,29 @@ describe("reviewer invitation dispatch", () => {
       templateKey: "reviewer_invitation",
       failureReason: null,
     }));
+
+    // Inviting the same address again is refused, and because this one really reached them the
+    // refusal does not offer a resend the row no longer carries.
+    const duplicate = await requestWithSenderConnected(`/api/events/${eventId}/reviewer-invites`, {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ email: recipientEmail }),
+    });
+    expect(duplicate.status).toBe(409);
+    const refusal = await duplicate.json<{ error: string; inviteId: string; note: string }>();
+    expect(refusal.error).toBe("invite_already_open");
+    expect(refusal.note).toContain("reached them");
+    expect(refusal.note).not.toContain("Resend invitation");
+    expect(resend.calls).toHaveLength(1);
+
+    // And the send door agrees: a letter that arrived is never sent twice.
+    const resent = await requestWithSenderConnected(
+      `/api/events/${eventId}/reviewer-invites/${refusal.inviteId}/resend`,
+      { method: "POST", headers: { cookie } },
+    );
+    expect(resent.status).toBe(409);
+    await expect(resent.json()).resolves.toMatchObject({ error: "invitation_already_sent" });
+    expect(resend.calls).toHaveLength(1);
   });
 
   it("resends a failed open invitation through tracked delivery", async () => {
