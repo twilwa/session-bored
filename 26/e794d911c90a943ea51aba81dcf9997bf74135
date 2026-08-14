@@ -1,0 +1,40 @@
+worker/routes/people.ts
+  s_f7135886cf3a96::t_bee2393d1cd265 28,56-85,218-223,240-263
+  s_d375ba064e67f3::t_eff045c0cc923b 264-269
+client/pages/people/people.css
+  s_f7135886cf3a96::t_bdb96b52c5e82b 45-60
+AGENTS.md
+  s_f7135886cf3a96::t_142f7191b8ee3f 166-168,170-172
+  s_d375ba064e67f3::t_bf5a7075f8f3bf 169
+tests/integration/people.test.ts
+  s_f7135886cf3a96::t_be4b0d60794f3f 228,233,236,241-243,245-250,254-255,258-263,266-267,269
+client/pages/people/PeoplePage.tsx
+  s_f7135886cf3a96::t_d6508bcdb9feb0 26-36,43-44,57-59,63-67,71-79,86,187-188,224-231,240-245,250-305
+  s_f7135886cf3a96::t_bdb96b52c5e82b 246-249
+tests/e2e/account-access.spec.ts
+  s_f7135886cf3a96::t_3dca4a4e6c0620 135-140,154
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "26e794d911c90a943ea51aba81dcf9997bf74135",
+  "prompts": {},
+  "sessions": {
+    "s_d375ba064e67f3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffe3b-bef9-7e22-9ae5-f0ceb8f388fc",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    },
+    "s_f7135886cf3a96": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffe28-9a28-77a0-b27f-27624c2caa2e",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
