@@ -144,6 +144,11 @@ export function PeoplePage() {
     return person.name.toLowerCase().includes(term) || person.email.toLowerCase().includes(term);
   });
   const awaiting = data.items.filter((person) => person.grants.length === 0).length;
+  const openRounds = reviewerGrantOptions?.rounds.filter((round) => round.status === "open") ?? [];
+  const remitBlockers = reviewerGrantOptions === null ? [] : [
+    ...(reviewerGrantOptions.tracks.length === 0 ? ["no tracks"] : []),
+    ...(openRounds.length === 0 ? ["no open review round"] : []),
+  ];
 
   return (
     <>
@@ -249,58 +254,71 @@ export function PeoplePage() {
                           });
                         }}
                       >
-                        <p>Choose what this reviewer can read now.</p>
-                        <fieldset>
-                          <legend>Track remit</legend>
-                          {reviewerGrantOptions.tracks.map((track) => (
-                            <label key={track.id}>
-                              <input
-                                checked={reviewerGrant.trackIds.includes(track.id)}
-                                onChange={(event) => setReviewerGrant((selection) => selection === null
-                                  ? null
-                                  : {
-                                    ...selection,
-                                    trackIds: event.target.checked
-                                      ? [...selection.trackIds, track.id]
-                                      : selection.trackIds.filter((id) => id !== track.id),
-                                  })}
-                                type="checkbox"
-                              />
-                              {track.name}
-                            </label>
-                          ))}
-                        </fieldset>
-                        <fieldset>
-                          <legend>Review round</legend>
-                          {reviewerGrantOptions.rounds
-                            .filter((round) => round.status === "open")
-                            .map((round) => (
-                              <label key={round.id}>
-                                <input
-                                  checked={reviewerGrant.roundIds.includes(round.id)}
-                                  onChange={(event) => setReviewerGrant((selection) => selection === null
-                                    ? null
-                                    : {
-                                      ...selection,
-                                      roundIds: event.target.checked
-                                        ? [...selection.roundIds, round.id]
-                                        : selection.roundIds.filter((id) => id !== round.id),
-                                    })}
-                                  type="checkbox"
-                                />
-                                {round.name}
-                              </label>
-                            ))}
-                        </fieldset>
-                        <div>
-                          <Button
-                            disabled={reviewerGrant.trackIds.length === 0 || reviewerGrant.roundIds.length === 0}
-                            type="submit"
-                          >
-                            Grant reviewer with remit
-                          </Button>
-                          <Button onClick={() => setReviewerGrant(null)} tone="quiet" type="button">Cancel</Button>
-                        </div>
+                        {remitBlockers.length > 0 ? (
+                          <>
+                            <p>
+                              Granting reviewer access is blocked: this event has {remitBlockers.join(" and ")},
+                              and a reviewer needs at least one of each. Set that up on{" "}
+                              <a href="/organizer/review">Committee setup</a>, then grant from here.
+                            </p>
+                            <div>
+                              <Button onClick={() => setReviewerGrant(null)} tone="quiet" type="button">Cancel</Button>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <p>Choose what this reviewer can read now.</p>
+                            <fieldset>
+                              <legend>Track remit</legend>
+                              {reviewerGrantOptions.tracks.map((track) => (
+                                <label key={track.id}>
+                                  <input
+                                    checked={reviewerGrant.trackIds.includes(track.id)}
+                                    onChange={(event) => setReviewerGrant((selection) => selection === null
+                                      ? null
+                                      : {
+                                        ...selection,
+                                        trackIds: event.target.checked
+                                          ? [...selection.trackIds, track.id]
+                                          : selection.trackIds.filter((id) => id !== track.id),
+                                      })}
+                                    type="checkbox"
+                                  />
+                                  {track.name}
+                                </label>
+                              ))}
+                            </fieldset>
+                            <fieldset>
+                              <legend>Review round</legend>
+                              {openRounds.map((round) => (
+                                <label key={round.id}>
+                                  <input
+                                    checked={reviewerGrant.roundIds.includes(round.id)}
+                                    onChange={(event) => setReviewerGrant((selection) => selection === null
+                                      ? null
+                                      : {
+                                        ...selection,
+                                        roundIds: event.target.checked
+                                          ? [...selection.roundIds, round.id]
+                                          : selection.roundIds.filter((id) => id !== round.id),
+                                      })}
+                                    type="checkbox"
+                                  />
+                                  {round.name}
+                                </label>
+                              ))}
+                            </fieldset>
+                            <div>
+                              <Button
+                                disabled={reviewerGrant.trackIds.length === 0 || reviewerGrant.roundIds.length === 0}
+                                type="submit"
+                              >
+                                Grant reviewer with remit
+                              </Button>
+                              <Button onClick={() => setReviewerGrant(null)} tone="quiet" type="button">Cancel</Button>
+                            </div>
+                          </>
+                        )}
                       </form>
                     ) : null}
                   </div>

@@ -551,9 +551,9 @@ reviewRoutes.get(
         .from(reviewerRoundPools)
         .innerJoin(users, eq(reviewerRoundPools.reviewerUserId, users.id))
         .where(inArray(reviewerRoundPools.roundId, roundIds));
-    // And a reviewer with neither still belongs here. Granting reviewer from People opens the
-    // area without writing a track or a round, so this is the only screen that can complete
-    // the grant - leaving them off it would ship a role no organizer can make work (#147).
+    // And a reviewer with neither still belongs here. A live reviewer grant can predate its
+    // remit rows, and this screen is where such a reviewer stays visible and editable -
+    // leaving them off it would ship a role no organizer can make work (#147).
     const grantedReviewers = await listAccountsHoldingRole(database, "reviewer");
     const eventReviewers = [...new Map(
       [...trackReviewers, ...poolReviewers, ...grantedReviewers].map((reviewer) => [reviewer.id, reviewer]),
