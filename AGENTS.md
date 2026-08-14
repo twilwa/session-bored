@@ -293,6 +293,16 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   summaries have separate content-keyed cache entries. Generation requires an
   explicit reviewer request, and `worker/routes/review.ts` rejects an unchanged
   AI score starting point. The Worker secret is `ANTHROPIC_API_KEY`.
+- `worker/speaker-directory.ts` and `worker/routes/speaker-directory.ts` own the
+  organizer-only, all-event speaker directory. The directory is a read model
+  over canonical `person`, proposal, event-speaker, and session rows; the event
+  roster remains the active event's workflow surface. Duplicate detection is
+  deliberately conservative: normalized email, or normalized name plus a
+  non-empty matching organization. A confirmed merge keeps both person rows,
+  archives the duplicate, records the attributed profile snapshot in
+  `directory_merge`, and moves its live proposal, session, task, and file links
+  to the organizer-selected canonical record. Two different owned accounts are
+  never collapsed.
 
 ## Accounts and access
 

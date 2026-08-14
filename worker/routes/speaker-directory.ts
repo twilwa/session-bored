@@ -1,0 +1,244 @@
+// ABOUTME: Serves organizer-only all-event speaker directory list, detail, and merge actions.
+// ABOUTME: Archives detected duplicates while atomically preserving their active product relationships.
+import { and, eq, isNull } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/d1";
+import { Hono } from "hono";
+import { createMiddleware } from "hono/factory";
+import { people, speakers, type Role, type SpeakerStatus } from "../../db/schema.ts";
+import type {
+  SpeakerDirectoryDetailResponse,
+  SpeakerDirectoryDuplicate,
+  SpeakerDirectoryListResponse,
+  SpeakerDirectoryMergeResult,
+} from "../../shared/speaker-directory.ts";
+import { holdsAccess } from "../access.ts";
+import type { AuthSession } from "../auth.ts";
+import { duplicateReasonsFor, loadSpeakerDirectory } from "../speaker-directory.ts";
+
+type SpeakerDirectoryEnvironment = {
+  Bindings: CloudflareBindings;
+  Variables: {
+    authUser: AuthSession["user"] | null;
+    roles: Role[] | null;
+  };
+};
+
+const speakerDirectoryRoutes = new Hono<SpeakerDirectoryEnvironment>();
+
+const requireOrganizer = createMiddleware<SpeakerDirectoryEnvironment>(async (context, next) => {
+  const roles = context.get("roles");
+  if (roles === null) return context.json({ error: "authentication_required" }, 401);
+  if (!holdsAccess(roles, "organizer")) return context.json({ error: "forbidden" }, 403);
+  await next();
+});
+
+speakerDirectoryRoutes.get("/api/speaker-directory", requireOrganizer, async (context) => {
+  const directory = await loadSpeakerDirectory(drizzle(context.env.DB));
+  const response: SpeakerDirectoryListResponse = {
+    items: directory.items,
+    possibleDuplicateGroups: directory.groups.length,
+  };
+  return context.json(response);
+});
+
+speakerDirectoryRoutes.get("/api/speaker-directory/:personId", requireOrganizer, async (context) => {
+  const directory = await loadSpeakerDirectory(drizzle(context.env.DB));
+  const personId = context.req.param("personId");
+  const summary = directory.items.find((item) => item.id === personId);
+  const person = directory.people.find((item) => item.id === personId);
+  if (summary === undefined || person === undefined) return context.json({ error: "not_found" }, 404);
+
+  const possibleDuplicates: SpeakerDirectoryDuplicate[] = directory.people.flatMap((candidate) => {
+    const reasons = duplicateReasonsFor(person, candidate);
+    if (reasons.length === 0) return [];
+    const candidateSummary = directory.items.find((item) => item.id === candidate.id)!;
+    return [{
+      id: candidate.id,
+      name: candidate.name,
+      email: candidate.email,
+      organization: candidate.organization,
+      eventCount: candidateSummary.eventCount,
+      sessionCount: candidateSummary.sessionCount,
+      proposalCount: candidateSummary.proposalCount,
+      reasons,
+      accountConflict: person.userId !== null && candidate.userId !== null && person.userId !== candidate.userId,
+    }];
+  });
+  const response: SpeakerDirectoryDetailResponse = {
+    person: {
+      ...summary,
+      twitter: person.twitter,
+      linkedin: person.linkedin,
+      socialLinks: person.socialLinks,
+      events: directory.eventHistory.get(personId) ?? [],
+    },
+    possibleDuplicates,
+  };
+  return context.json(response);
+});
+
+const speakerStatusOrder: Record<SpeakerStatus, number> = {
+  withdrawn: 0,
+  invited: 1,
+  pending_employer_approval: 2,
+  confirmed: 3,
+  onboarding: 4,
+  ready: 5,
+};
+
+function preferredText(kept: string | null, merged: string | null): string | null {
+  return kept !== null && kept.trim() !== "" ? kept : merged;
+}
+
+speakerDirectoryRoutes.post("/api/speaker-directory/:personId/merge", requireOrganizer, async (context) => {
+  const organizer = context.get("authUser");
+  if (organizer === null) return context.json({ error: "authentication_required" }, 401);
+  const payload = await context.req.json<{ duplicatePersonId?: unknown }>();
+  const keptPersonId = context.req.param("personId");
+  if (typeof payload.duplicatePersonId !== "string" || payload.duplicatePersonId === keptPersonId) {
+    return context.json({ error: "invalid_merge" }, 400);
+  }
+
+  const database = drizzle(context.env.DB);
+  const [keptPerson, mergedPerson] = await Promise.all([
+    database.select().from(people).where(and(eq(people.id, keptPersonId), isNull(people.deletedAt))).then((rows) => rows[0]),
+    database.select().from(people)
+      .where(and(eq(people.id, payload.duplicatePersonId as string), isNull(people.deletedAt)))
+      .then((rows) => rows[0]),
+  ]);
+  if (keptPerson === undefined || mergedPerson === undefined) return context.json({ error: "not_found" }, 404);
+  const reasons = duplicateReasonsFor(keptPerson, mergedPerson);
+  if (reasons.length === 0) return context.json({ error: "not_duplicate_candidate" }, 409);
+  if (
+    keptPerson.userId !== null
+    && mergedPerson.userId !== null
+    && keptPerson.userId !== mergedPerson.userId
+  ) {
+    return context.json({ error: "account_conflict" }, 409);
+  }
+
+  const [mergedSpeakers, keptSpeakers] = await Promise.all([
+    database.select().from(speakers)
+      .where(and(eq(speakers.personId, mergedPerson.id), isNull(speakers.deletedAt))),
+    database.select().from(speakers).where(eq(speakers.personId, keptPerson.id)),
+  ]);
+  const now = Date.now();
+  const statements: D1PreparedStatement[] = [];
+
+  if (mergedPerson.userId !== null) {
+    statements.push(context.env.DB.prepare(
+      "update person set user_id = null, updated_at = ? where id = ? and deleted_at is null",
+    ).bind(now, mergedPerson.id));
+  }
+
+  const socialLinks = {
+    ...(mergedPerson.socialLinks ?? {}),
+    ...(keptPerson.socialLinks ?? {}),
+  };
+  statements.push(context.env.DB.prepare(
+    "update person set user_id = ?, job_title = ?, organization = ?, bio = ?, headshot_url = ?, twitter = ?, linkedin = ?, social_links = ?, updated_at = ? where id = ? and deleted_at is null",
+  ).bind(
+    keptPerson.userId ?? mergedPerson.userId,
+    preferredText(keptPerson.jobTitle, mergedPerson.jobTitle),
+    preferredText(keptPerson.organization, mergedPerson.organization),
+    preferredText(keptPerson.bio, mergedPerson.bio),
+    preferredText(keptPerson.headshotUrl, mergedPerson.headshotUrl),
+    preferredText(keptPerson.twitter, mergedPerson.twitter),
+    preferredText(keptPerson.linkedin, mergedPerson.linkedin),
+    Object.keys(socialLinks).length === 0 ? null : JSON.stringify(socialLinks),
+    now,
+    keptPerson.id,
+  ));
+  statements.push(
+    context.env.DB.prepare(
+      "update submission set submitter_person_id = ?, updated_at = ? where submitter_person_id = ?",
+    ).bind(keptPerson.id, now, mergedPerson.id),
+    context.env.DB.prepare(
+      "update submission_speaker as kept set deleted_at = null, updated_at = ? where kept.person_id = ? and exists (select 1 from submission_speaker as merged where merged.submission_id = kept.submission_id and merged.person_id = ? and merged.deleted_at is null)",
+    ).bind(now, keptPerson.id, mergedPerson.id),
+    context.env.DB.prepare(
+      "update submission_speaker as merged set deleted_at = ?, updated_at = ? where merged.person_id = ? and merged.deleted_at is null and exists (select 1 from submission_speaker as kept where kept.submission_id = merged.submission_id and kept.person_id = ?)",
+    ).bind(now, now, mergedPerson.id, keptPerson.id),
+    context.env.DB.prepare(
+      "update submission_speaker as merged set person_id = ?, updated_at = ? where merged.person_id = ? and not exists (select 1 from submission_speaker as kept where kept.submission_id = merged.submission_id and kept.person_id = ?)",
+    ).bind(keptPerson.id, now, mergedPerson.id, keptPerson.id),
+  );
+
+  for (const mergedSpeaker of mergedSpeakers) {
+    const keptSpeaker = keptSpeakers.find((speaker) => speaker.eventId === mergedSpeaker.eventId);
+    if (keptSpeaker === undefined) {
+      statements.push(context.env.DB.prepare(
+        "update speaker set person_id = ?, updated_at = ? where id = ? and deleted_at is null",
+      ).bind(keptPerson.id, now, mergedSpeaker.id));
+      continue;
+    }
+
+    const status = speakerStatusOrder[mergedSpeaker.status] > speakerStatusOrder[keptSpeaker.status]
+      ? mergedSpeaker.status
+      : keptSpeaker.status;
+    const customFields = {
+      ...(mergedSpeaker.customFields ?? {}),
+      ...(keptSpeaker.customFields ?? {}),
+    };
+    statements.push(
+      context.env.DB.prepare(
+        "update speaker set status = ?, custom_fields = ?, deleted_at = null, updated_at = ? where id = ?",
+      ).bind(
+        status,
+        Object.keys(customFields).length === 0 ? null : JSON.stringify(customFields),
+        now,
+        keptSpeaker.id,
+      ),
+      context.env.DB.prepare(
+        "update session_speaker as kept set deleted_at = null, updated_at = ? where kept.speaker_id = ? and exists (select 1 from session_speaker as merged where merged.session_id = kept.session_id and merged.speaker_id = ? and merged.deleted_at is null)",
+      ).bind(now, keptSpeaker.id, mergedSpeaker.id),
+      context.env.DB.prepare(
+        "update session_speaker as merged set deleted_at = ?, updated_at = ? where merged.speaker_id = ? and merged.deleted_at is null and exists (select 1 from session_speaker as kept where kept.session_id = merged.session_id and kept.speaker_id = ?)",
+      ).bind(now, now, mergedSpeaker.id, keptSpeaker.id),
+      context.env.DB.prepare(
+        "update session_speaker set speaker_id = ?, updated_at = ? where speaker_id = ? and deleted_at is null",
+      ).bind(keptSpeaker.id, now, mergedSpeaker.id),
+      context.env.DB.prepare(
+        "update task_assignee as kept set status = case when kept.status = 'completed' or exists (select 1 from task_assignee as merged where merged.task_id = kept.task_id and merged.speaker_id = ? and merged.status = 'completed') then 'completed' when kept.status = 'in_progress' or exists (select 1 from task_assignee as merged where merged.task_id = kept.task_id and merged.speaker_id = ? and merged.status = 'in_progress') then 'in_progress' else 'assigned' end, completed_at = coalesce(kept.completed_at, (select merged.completed_at from task_assignee as merged where merged.task_id = kept.task_id and merged.speaker_id = ?)), deleted_at = null, updated_at = ? where kept.speaker_id = ? and exists (select 1 from task_assignee as merged where merged.task_id = kept.task_id and merged.speaker_id = ? and merged.deleted_at is null)",
+      ).bind(mergedSpeaker.id, mergedSpeaker.id, mergedSpeaker.id, now, keptSpeaker.id, mergedSpeaker.id),
+      context.env.DB.prepare(
+        "update task_assignee as merged set deleted_at = ?, updated_at = ? where merged.speaker_id = ? and merged.deleted_at is null and exists (select 1 from task_assignee as kept where kept.task_id = merged.task_id and kept.speaker_id = ?)",
+      ).bind(now, now, mergedSpeaker.id, keptSpeaker.id),
+      context.env.DB.prepare(
+        "update task_assignee set speaker_id = ?, updated_at = ? where speaker_id = ? and deleted_at is null",
+      ).bind(keptSpeaker.id, now, mergedSpeaker.id),
+      context.env.DB.prepare("update file set speaker_id = ?, updated_at = ? where speaker_id = ?")
+        .bind(keptSpeaker.id, now, mergedSpeaker.id),
+      context.env.DB.prepare("update speaker set deleted_at = ?, updated_at = ? where id = ?")
+        .bind(now, now, mergedSpeaker.id),
+    );
+  }
+
+  const mergeId = `pmg_${crypto.randomUUID().replaceAll("-", "")}`;
+  statements.push(
+    context.env.DB.prepare(
+      "insert into directory_merge (id, kept_person_id, merged_person_id, merged_by_user_id, reasons, merged_profile, created_at) values (?, ?, ?, ?, ?, ?, ?)",
+    ).bind(
+      mergeId,
+      keptPerson.id,
+      mergedPerson.id,
+      organizer.id,
+      JSON.stringify(reasons),
+      JSON.stringify(mergedPerson),
+      now,
+    ),
+    context.env.DB.prepare(
+      "update person set deleted_at = ?, updated_at = ? where id = ? and deleted_at is null",
+    ).bind(now, now, mergedPerson.id),
+  );
+
+  await context.env.DB.batch(statements);
+  const response: SpeakerDirectoryMergeResult = {
+    keptPersonId: keptPerson.id,
+    mergedPersonId: mergedPerson.id,
+    reasons,
+  };
+  return context.json(response);
+});
+
+export default speakerDirectoryRoutes;

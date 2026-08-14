@@ -794,3 +794,4 @@ export * from "./schema/cfp-builder.ts";
 export * from "./schema/roster.ts";
 export * from "./schema/ai-review.ts";
 export * from "./schema/communications.ts";
+export * from "./schema/directory.ts";

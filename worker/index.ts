@@ -53,6 +53,7 @@ import embedRoutes from "./routes/embeds.ts";
 import eventSettingsRoutes from "./routes/event-settings.ts";
 import peopleRoutes from "./routes/people.ts";
 import personalScheduleRoutes from "./routes/personal-schedule.ts";
+import speakerDirectoryRoutes from "./routes/speaker-directory.ts";
 import { protectedPageRoutes } from "./page-routes.ts";
 
 type SessionUser = AuthSession["user"];
@@ -153,6 +154,7 @@ app.route("/", contentRoutes);
 app.route("/", embedRoutes);
 app.route("/", eventSettingsRoutes);
 app.route("/", peopleRoutes);
+app.route("/", speakerDirectoryRoutes);
 app.on(["GET", "POST"], "/api/auth/*", (context) => createAuth(context.env).handler(context.req.raw));
 app.route("/api/public/cfp", cfpRoutes);
 app.route("/api/cfp-builder", cfpBuilderRoutes);
