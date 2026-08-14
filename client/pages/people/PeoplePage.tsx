@@ -16,6 +16,8 @@ interface OpenInvite {
   email: string;
   eventId: string;
   createdAt: string;
+  emailDelivery: "sent" | "failed" | "not_attempted";
+  canResend: boolean;
 }
 
 interface PeoplePayload {
@@ -46,6 +48,7 @@ export function PeoplePage() {
   const [filter, setFilter] = useState<"all" | "awaiting">("all");
   const [search, setSearch] = useState("");
   const [inviteEmail, setInviteEmail] = useState("");
+  const [resendingInviteId, setResendingInviteId] = useState<string | null>(null);
   const [notify, setNotify] = useState(false);
   const [reload, setReload] = useState(0);
 
@@ -129,6 +132,26 @@ export function PeoplePage() {
       setReload((token) => token + 1);
     } catch {
       setMessage("That invitation could not be withdrawn.");
+    }
+  }
+
+  async function resendInvite(openInvite: OpenInvite): Promise<void> {
+    setResendingInviteId(openInvite.id);
+    try {
+      const result = await requestJson<{ emailDelivery: "sent" | "failed" | "not_configured" }>(
+        `/api/events/${openInvite.eventId}/reviewer-invites/${openInvite.id}/resend`,
+        { method: "POST" },
+      );
+      setMessage(result.emailDelivery === "sent"
+        ? `Invitation resent to ${openInvite.email}.`
+        : result.emailDelivery === "failed"
+        ? "Invitation is still open, but email delivery failed. Open Communications for the failure details."
+        : "Invitation is still open, but no email sender is connected. Connect one and resend it here.");
+      setReload((token) => token + 1);
+    } catch {
+      setMessage("That invitation could not be resent.");
+    } finally {
+      setResendingInviteId(null);
     }
   }
 
@@ -365,9 +388,28 @@ export function PeoplePage() {
               <li key={openInvite.id}>
                 <div>
                   <strong>{openInvite.email}</strong>
-                  <small>Invited {formatDate(openInvite.createdAt)} · waiting on confirmation</small>
+                  <small>
+                    Invited {formatDate(openInvite.createdAt)} · waiting on confirmation · {
+                      openInvite.emailDelivery === "sent"
+                        ? "email sent"
+                        : openInvite.emailDelivery === "failed"
+                        ? "email failed"
+                        : "email not sent"
+                    }
+                  </small>
                 </div>
-                <Button onClick={() => void revokeInvite(openInvite)} tone="quiet">Withdraw</Button>
+                <div className="people-invite-list__actions">
+                  {openInvite.canResend ? (
+                    <Button
+                      disabled={resendingInviteId === openInvite.id}
+                      onClick={() => void resendInvite(openInvite)}
+                      tone="signal"
+                    >
+                      {resendingInviteId === openInvite.id ? "Sending…" : "Resend invitation"}
+                    </Button>
+                  ) : null}
+                  <Button onClick={() => void revokeInvite(openInvite)} tone="quiet">Withdraw</Button>
+                </div>
               </li>
             ))}
           </ul>

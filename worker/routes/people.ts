@@ -6,6 +6,7 @@ import { Hono } from "hono";
 import { createMiddleware } from "hono/factory";
 import {
   authAccounts,
+  emailDispatches,
   type GrantableRole,
   grantableRoles,
   people,
@@ -24,7 +25,10 @@ import {
 import { holdsAccess } from "../access.ts";
 import type { PersonAccountEvidence, PersonAccountSummary } from "../../shared/api.ts";
 import type { AuthSession } from "../auth.ts";
-import { sendReviewerInvitationEmail } from "../email/reviewer-invitation.ts";
+import {
+  reviewerInvitationTemplateKey,
+  sendReviewerInvitationEmail,
+} from "../email/reviewer-invitation.ts";
 import { sendRoleGrantEmail } from "../email/role-grant.ts";
 import { applyReviewerRemit, normalizeInviteEmail } from "../reviewer-invites.ts";
 import { grantRole, listLiveGrants, revokeRole } from "../roles.ts";
@@ -38,6 +42,40 @@ type PeopleEnvironment = {
 };
 
 const peopleRoutes = new Hono<PeopleEnvironment>();
+
+type OpenReviewerInvite = {
+  id: string;
+  email: string;
+  eventId: string;
+  createdAt: Date;
+};
+
+type ReviewerInvitationDispatch = {
+  eventId: string;
+  recipients: Array<{ email: string }>;
+  status: "draft" | "queued" | "sent" | "failed";
+  createdAt: Date;
+};
+
+type ReviewerInvitationDelivery = "sent" | "failed" | "not_attempted";
+
+function reviewerInvitationDeliveryFor(
+  invite: OpenReviewerInvite,
+  dispatches: readonly ReviewerInvitationDispatch[],
+): ReviewerInvitationDelivery {
+  const attempts = dispatches.filter((dispatch) =>
+    dispatch.eventId === invite.eventId &&
+    dispatch.createdAt >= invite.createdAt &&
+    dispatch.recipients.some((recipient) => recipient.email === invite.email)
+  );
+  if (attempts.some((dispatch) => dispatch.status === "sent")) {
+    return "sent";
+  }
+  if (attempts.some((dispatch) => dispatch.status === "failed")) {
+    return "failed";
+  }
+  return "not_attempted";
+}
 
 const requireOrganizer = createMiddleware<PeopleEnvironment>(async (context, next) => {
   const roles = context.get("roles");
@@ -204,14 +242,35 @@ peopleRoutes.get("/api/people", requireOrganizer, async (context) => {
     .from(reviewerInvites)
     .where(and(isNull(reviewerInvites.redeemedAt), isNull(reviewerInvites.revokedAt)))
     .orderBy(asc(reviewerInvites.createdAt));
+  const inviteEventIds = [...new Set(openInvites.map((invite) => invite.eventId))];
+  const invitationDispatches = inviteEventIds.length === 0
+    ? []
+    : await database
+      .select({
+        eventId: emailDispatches.eventId,
+        recipients: emailDispatches.recipients,
+        status: emailDispatches.status,
+        createdAt: emailDispatches.createdAt,
+      })
+      .from(emailDispatches)
+      .where(and(
+        inArray(emailDispatches.eventId, inviteEventIds),
+        eq(emailDispatches.templateKey, reviewerInvitationTemplateKey),
+        isNull(emailDispatches.deletedAt),
+      ));
   return context.json({
     items,
-    invites: openInvites.map((invite) => ({
-      id: invite.id,
-      email: invite.email,
-      eventId: invite.eventId,
-      createdAt: invite.createdAt.toISOString(),
-    })),
+    invites: openInvites.map((invite) => {
+      const emailDelivery = reviewerInvitationDeliveryFor(invite, invitationDispatches);
+      return {
+        id: invite.id,
+        email: invite.email,
+        eventId: invite.eventId,
+        createdAt: invite.createdAt.toISOString(),
+        emailDelivery,
+        canResend: emailDelivery !== "sent",
+      };
+    }),
   });
 });
 
@@ -377,6 +436,63 @@ peopleRoutes.post("/api/events/:eventId/reviewer-invites", requireOrganizer, asy
     },
     201,
   );
+});
+
+peopleRoutes.post("/api/events/:eventId/reviewer-invites/:inviteId/resend", requireOrganizer, async (context) => {
+  const organizer = context.get("authUser");
+  if (organizer === null) {
+    return context.json({ error: "authentication_required" }, 401);
+  }
+  const database = drizzle(context.env.DB);
+  const eventId = context.req.param("eventId");
+  const [invite] = await database
+    .select({
+      id: reviewerInvites.id,
+      email: reviewerInvites.email,
+      eventId: reviewerInvites.eventId,
+      createdAt: reviewerInvites.createdAt,
+    })
+    .from(reviewerInvites)
+    .where(and(
+      eq(reviewerInvites.id, context.req.param("inviteId")),
+      eq(reviewerInvites.eventId, eventId),
+      isNull(reviewerInvites.redeemedAt),
+      isNull(reviewerInvites.revokedAt),
+    ));
+  if (invite === undefined) {
+    return context.json({ error: "invite_not_found" }, 404);
+  }
+  const dispatches = await database
+    .select({
+      eventId: emailDispatches.eventId,
+      recipients: emailDispatches.recipients,
+      status: emailDispatches.status,
+      createdAt: emailDispatches.createdAt,
+    })
+    .from(emailDispatches)
+    .where(and(
+      eq(emailDispatches.eventId, eventId),
+      eq(emailDispatches.templateKey, reviewerInvitationTemplateKey),
+      isNull(emailDispatches.deletedAt),
+    ));
+  if (reviewerInvitationDeliveryFor(invite, dispatches) === "sent") {
+    return context.json({ error: "invitation_already_sent" }, 409);
+  }
+  const delivery = await sendReviewerInvitationEmail({
+    database,
+    env: context.env,
+    eventId: eventId as `evt_${string}`,
+    recipientEmail: invite.email,
+    createdByUserId: organizer.id,
+  });
+  if (delivery.status === "event_not_found") {
+    return context.json({ error: "event_not_found" }, 404);
+  }
+  return context.json({
+    invite: { id: invite.id, email: invite.email, eventId },
+    emailDelivery: delivery.status === "provider_not_configured" ? "not_configured" : delivery.status,
+    ...(delivery.status === "failed" ? { failureReason: delivery.error ?? "send_failed" } : {}),
+  });
 });
 
 peopleRoutes.delete("/api/reviewer-invites/:inviteId", requireOrganizer, async (context) => {

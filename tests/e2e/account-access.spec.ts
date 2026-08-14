@@ -114,12 +114,22 @@ test("an invitation is recorded as pending, not as access", async ({ page }) => 
   const invited = uniqueEmail("invited-reviewer");
   await page.goto("/organizer/people");
   await page.getByLabel("Invite a reviewer by email").fill(invited);
-  await page.getByRole("button", { name: "Send invitation" }).click();
+  await page.getByRole("button", { name: "Send invitation", exact: true }).click();
 
   await expect(page.locator(".toast")).toContainText("no email sender is connected");
   const invite = page.locator(".people-invite-list li").filter({ hasText: invited });
   await expect(invite).toBeVisible();
   await expect(invite.getByText("waiting on confirmation")).toBeVisible();
+  await expect(invite.getByText("email not sent")).toBeVisible();
+
+  const resendResponse = page.waitForResponse((response) =>
+    response.request().method() === "POST" &&
+    response.url().includes("/reviewer-invites/") &&
+    response.url().endsWith("/resend")
+  );
+  await invite.getByRole("button", { name: "Resend invitation" }).click();
+  expect((await resendResponse).status()).toBe(200);
+  await expect(page.locator(".toast")).toContainText("Invitation is still open, but no email sender is connected");
 
   await invite.getByRole("button", { name: "Withdraw" }).click();
   await expect(page.locator(".toast")).toContainText("was withdrawn");

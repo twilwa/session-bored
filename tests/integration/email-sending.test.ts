@@ -516,12 +516,12 @@ describe("reviewer invitation dispatch", () => {
     vi.unstubAllGlobals();
   });
 
-  async function readInvitationDispatch(recipientEmail: string): Promise<{
+  async function readInvitationDispatches(recipientEmail: string): Promise<Array<{
     status: string;
     templateKey: string | null;
     failureReason: string | null;
     recipients: Array<{ email: string }>;
-  } | undefined> {
+  }>> {
     const response = await request(`/api/events/${eventId}/email-dispatches`, { headers: { cookie } });
     expect(response.status).toBe(200);
     const payload = await response.json<{
@@ -532,7 +532,7 @@ describe("reviewer invitation dispatch", () => {
         recipients: Array<{ email: string }>;
       }>;
     }>();
-    return payload.items.find((item) =>
+    return payload.items.filter((item) =>
       item.templateKey === "reviewer_invitation" &&
       item.recipients.some((recipient) => recipient.email === recipientEmail)
     );
@@ -558,14 +558,14 @@ describe("reviewer invitation dispatch", () => {
       from: senderSecrets.RESEND_FROM_ADDRESS,
     });
     expect(resend.calls[0]?.text).toContain(`/signup?email=${encodeURIComponent(recipientEmail)}`);
-    expect(await readInvitationDispatch(recipientEmail)).toMatchObject({
+    expect(await readInvitationDispatches(recipientEmail)).toContainEqual(expect.objectContaining({
       status: "sent",
       templateKey: "reviewer_invitation",
       failureReason: null,
-    });
+    }));
   });
 
-  it("returns the failed outcome and lists the provider rejection in Communications", async () => {
+  it("resends a failed open invitation through tracked delivery", async () => {
     const recipientEmail = `reviewer-invite-failure-${crypto.randomUUID()}@greenroom-mail.dev`;
     const resend = interceptResend({ ok: false });
     const response = await requestWithSenderConnected(`/api/events/${eventId}/reviewer-invites`, {
@@ -575,17 +575,34 @@ describe("reviewer invitation dispatch", () => {
     });
 
     expect(response.status).toBe(201);
-    await expect(response.json()).resolves.toMatchObject({
+    const failedPayload = await response.json<{ invite: { id: string } } & Record<string, unknown>>();
+    expect(failedPayload).toMatchObject({
       invite: { email: recipientEmail, eventId },
       emailDelivery: "failed",
       failureReason: expect.stringContaining("resend_403"),
     });
     expect(resend.calls).toHaveLength(1);
-    expect(await readInvitationDispatch(recipientEmail)).toMatchObject({
+    expect(await readInvitationDispatches(recipientEmail)).toContainEqual(expect.objectContaining({
       status: "failed",
-      templateKey: "reviewer_invitation",
       failureReason: expect.stringContaining("resend_403"),
+    }));
+
+    vi.unstubAllGlobals();
+    const retry = interceptResend({ ok: true, id: "resend_reviewer_invitation_retry" });
+    const retryResponse = await requestWithSenderConnected(
+      `/api/events/${eventId}/reviewer-invites/${failedPayload.invite.id}/resend`,
+      { method: "POST", headers: { cookie } },
+    );
+
+    expect(retryResponse.status).toBe(200);
+    await expect(retryResponse.json()).resolves.toMatchObject({
+      invite: { id: failedPayload.invite.id, email: recipientEmail, eventId },
+      emailDelivery: "sent",
     });
+    expect(retry.calls).toHaveLength(1);
+    expect(retry.calls[0]).toMatchObject({ to: [recipientEmail] });
+    expect((await readInvitationDispatches(recipientEmail)).map((dispatch) => dispatch.status))
+      .toEqual(expect.arrayContaining(["failed", "sent"]));
   });
 });
 
