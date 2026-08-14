@@ -378,10 +378,11 @@ lifecycle and relationships are fixed as follows:
 - Submitter accounts use Better Auth's `speaker` role. A submission created while
   signed in belongs to the account through `submission.submitterPersonId` and
   `person.userId`, receives no anonymous author key, and appears on the submitter
-  dashboard with its live status. Dashboard access follows this person-to-user
-  ownership link rather than the account's role. Existing anonymous people remain
-  unlinked and cannot be claimed by email; their proposals stay accessible only
-  through the private author key.
+  dashboard under the `submitterFacingSubmissionStatus` projection described in
+  the speaker portal contract, never the live committee status. Dashboard access
+  follows this person-to-user ownership link rather than the account's role.
+  Existing anonymous people remain unlinked and cannot be claimed by email;
+  their proposals stay accessible only through the private author key.
 
 - The agenda (`/agenda`), itinerary (`/schedule`), and speaker gallery (`/gallery`)
   pages read through the same public sessions/speakers endpoints as `/program` and
