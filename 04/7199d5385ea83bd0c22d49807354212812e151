@@ -1,0 +1,23 @@
+worker/reviewer-invites.ts
+  s_162e4f4bfa87a8::t_ec558d5bab5c31 21-22
+README.md
+  s_162e4f4bfa87a8::t_ef68ea8c76fe13 76-80
+worker/roles.ts
+  s_162e4f4bfa87a8::t_ceaa70cadd3c33 108-111
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "047199d5385ea83bd0c22d49807354212812e151",
+  "prompts": {},
+  "sessions": {
+    "s_162e4f4bfa87a8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "92276268-6168-4cc8-9b9d-2ca59010ca47",
+        "model": "claude-fable-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
