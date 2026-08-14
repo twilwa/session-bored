@@ -173,6 +173,31 @@ export function Brand() {
   );
 }
 
+/**
+ * A page outside every granted area selects the placeholder, never a real area: the
+ * control must not claim a location the person is not at, and every area option has to
+ * stay selectable so each one fires a real change and navigates.
+ */
+function AreaSwitcher({ areas }: { areas: AccountArea[] }) {
+  const currentAreaHref =
+    areas.find((area) => pathIsInsideArea(window.location.pathname, area.href))?.href ?? "";
+  return (
+    <label className="nav-area-switcher">
+      <span>Area</span>
+      <select
+        aria-label="Switch area"
+        onChange={(event) => navigate(event.target.value)}
+        value={currentAreaHref}
+      >
+        {currentAreaHref === "" && <option disabled value="">Go to...</option>}
+        {areas.map((area) => (
+          <option key={area.href} value={area.href}>{area.label}</option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 export function PublicHeader({
   signedOutHref,
   navigationLinkPrefix,
@@ -259,19 +284,7 @@ export function PublicHeader({
             {account.areas.length === 1 ? (
               <Link className="nav-signin" href={account.areas[0]!.href}>{account.areas[0]!.label}</Link>
             ) : (
-              <label className="nav-area-switcher">
-                <span>Area</span>
-                <select
-                  aria-label="Switch area"
-                  onChange={(event) => navigate(event.target.value)}
-                  value={account.areas.find((area) => pathIsInsideArea(window.location.pathname, area.href))?.href
-                    ?? account.areas[0]!.href}
-                >
-                  {account.areas.map((area) => (
-                    <option key={area.href} value={area.href}>{area.label}</option>
-                  ))}
-                </select>
-              </label>
+              <AreaSwitcher areas={account.areas} />
             )}
             <button className="nav-signout" onClick={() => void signOut()} type="button">Sign out</button>
           </>

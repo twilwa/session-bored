@@ -138,7 +138,8 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   gets the branded page in `worker/access-page.ts`, everything else keeps the
   JSON error. Both carry the same 401 or 403, so never assert a page route's
   refusal by content type alone. `/login?returnTo=` is honoured only for
-  same-origin paths inside the signer-in's own role area or `/submitter`.
+  same-origin paths inside an area opened by the signer-in's full live grant
+  union or `/submitter`.
 - `worker/routes/review.ts` owns the F-4 review contract. It reads submissions
   through `submission`, `submission_track`, and `submission_speaker`; the CFP
   lane must preserve their stable IDs, event ID, title, abstract, status,

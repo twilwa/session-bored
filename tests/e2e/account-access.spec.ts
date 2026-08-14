@@ -162,6 +162,20 @@ test("an account granted two areas can reach both of them from the header", asyn
   await expect(page).toHaveURL(/\/reviewer$/);
   await expect(page.getByText("YOUR COMMITTEE DESK")).toBeVisible();
 
+  // A public page sits outside every granted area: the switcher claims no location
+  // there, and the first granted area still navigates when chosen.
+  await page.goto("/program");
+  const publicAreaSwitcher = page.getByLabel("Switch area");
+  await expect(publicAreaSwitcher).toHaveValue("");
+  expect(await publicAreaSwitcher.locator("option").allTextContents()).toEqual([
+    "Go to...",
+    "Reviewer area",
+    "Speaker area",
+  ]);
+  await publicAreaSwitcher.selectOption("/reviewer");
+  await expect(page).toHaveURL(/\/reviewer$/);
+  await expect(page.getByText("YOUR COMMITTEE DESK")).toBeVisible();
+
   // And only the two areas that were granted: the third stays shut.
   await page.goto("/organizer");
   await expect(page.getByText("403 · WRONG WORKSPACE")).toBeVisible();
