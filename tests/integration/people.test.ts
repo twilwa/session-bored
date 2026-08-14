@@ -225,60 +225,51 @@ describe("organizer People surface", () => {
     expect(stored?.roundIds).toEqual([openRoundIds[0]]);
   });
 
-  it("takes a reviewer granted from People all the way to having work, without leaving the product", async () => {
-    // Granting reviewer here opens the committee area and writes no remit, which is the whole
-    // point of keeping the grant platform-wide. What it must never do is strand the account:
-    // Committee setup has to list it so the organizer can finish what People started (#147).
+  it("requires a remit when People grants reviewer and opens that reviewer's queue", async () => {
     await request("/api/health");
     const cookie = await organizerCookie();
     const eventId = "evt_devflow_conf_2027";
     const email = "granted-from-people@example.com";
-    await signUp("Granted From People", email);
+    const attendeeCookie = await signUp("Granted From People", email);
     const userId = await userIdFor(email);
 
-    const granted = await request(`/api/people/${userId}/grants`, {
+    const missingRemit = await request(`/api/people/${userId}/grants`, {
       method: "POST",
       headers: { cookie, "content-type": "application/json" },
       body: JSON.stringify({ role: "reviewer" }),
     });
-    expect(granted.status).toBe(200);
-    expect(await granted.json()).toMatchObject({ granted: true, role: "reviewer" });
+    expect(missingRemit.status).toBe(400);
+    expect(await missingRemit.json()).toEqual({ error: "reviewer_remit_required" });
+    expect((await request("/api/review/queue", { headers: { cookie: attendeeCookie } })).status).toBe(403);
 
-    // The grant on its own is a desk with nothing on it.
-    const reviewerCookie = await signIn(email, "Greenroom!2027");
-    const emptyQueue = await request("/api/review/queue", { headers: { cookie: reviewerCookie } });
-    expect(emptyQueue.status).toBe(200);
-    expect((await emptyQueue.json<{ items: unknown[] }>()).items).toHaveLength(0);
-
-    const readConfig = async () => {
-      const response = await request(`/api/review/events/${eventId}/config`, { headers: { cookie } });
-      expect(response.status).toBe(200);
-      return response.json<{
-        tracks: Array<{ id: string }>;
-        rounds: Array<{ id: string; status: string }>;
-        reviewers: Array<{ id: string; trackIds: string[] }>;
-      }>();
-    };
-    const config = await readConfig();
-    expect(config.reviewers.find((reviewer) => reviewer.id === userId)).toMatchObject({ trackIds: [] });
+    const configResponse = await request(`/api/review/events/${eventId}/config`, { headers: { cookie } });
+    expect(configResponse.status).toBe(200);
+    const config = await configResponse.json<{
+      tracks: Array<{ id: string }>;
+      rounds: Array<{ id: string; status: string }>;
+    }>();
 
     const openRound = config.rounds.find((round) => round.status === "open");
     expect(openRound).toBeDefined();
-    const remit = await request(`/api/review/events/${eventId}/reviewers/${userId}`, {
-      method: "PATCH",
+    const granted = await request(`/api/people/${userId}/grants`, {
+      method: "POST",
       headers: { cookie, "content-type": "application/json" },
       body: JSON.stringify({
-        trackIds: config.tracks.map((track) => track.id),
-        roundIds: [openRound?.id],
+        role: "reviewer",
+        reviewerRemit: {
+          eventId,
+          trackIds: config.tracks.map((track) => track.id),
+          roundIds: [openRound?.id],
+        },
       }),
     });
-    expect(remit.status).toBe(200);
+    expect(granted.status).toBe(200);
+    expect(await granted.json()).toMatchObject({ granted: true, role: "reviewer" });
 
+    const reviewerCookie = await signIn(email, "Greenroom!2027");
     const queue = await request("/api/review/queue", { headers: { cookie: reviewerCookie } });
     expect(queue.status).toBe(200);
     expect((await queue.json<{ items: unknown[] }>()).items.length).toBeGreaterThan(0);
-    expect((await readConfig()).reviewers.find((reviewer) => reviewer.id === userId)?.trackIds)
-      .toEqual(config.tracks.map((track) => track.id));
   });
 
   it("still lets an organizer invite a reviewer to no tracks at all", async () => {

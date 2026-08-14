@@ -105,10 +105,10 @@ export interface GrantedAccount {
 
 /**
  * Every account holding a live grant of this role, with the identity a screen shows. Committee
- * setup reads it so an account granted reviewer from People is listed and editable there even
- * before it has a single track or round: a grant that no screen can complete is a role that
- * cannot be made to work (issue #147). Grants are platform-wide for now, so this answers the
- * same list for every event until #120 scopes them.
+ * setup reads it so a reviewer whose grant predates its remit rows is listed and editable
+ * there even without a single track or round: a grant that no screen can complete is a role
+ * that cannot be made to work (issue #147). Grants are platform-wide for now, so this answers
+ * the same list for every event until #120 scopes them.
  */
 export async function listAccountsHoldingRole(
   database: Database,

@@ -23,12 +23,25 @@ interface PeoplePayload {
   invites: OpenInvite[];
 }
 
+interface ReviewerGrantOptions {
+  tracks: Array<{ id: string; name: string }>;
+  rounds: Array<{ id: string; name: string; status: "draft" | "open" | "closed" }>;
+}
+
+interface ReviewerGrantSelection {
+  personId: string;
+  trackIds: string[];
+  roundIds: string[];
+}
+
 function formatDate(value: string): string {
   return new Date(value).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
 }
 
 export function PeoplePage() {
   const [data, setData] = useState<PeoplePayload | null>(null);
+  const [reviewerGrantOptions, setReviewerGrantOptions] = useState<ReviewerGrantOptions | null>(null);
+  const [reviewerGrant, setReviewerGrant] = useState<ReviewerGrantSelection | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | "awaiting">("all");
   const [search, setSearch] = useState("");
@@ -41,20 +54,36 @@ export function PeoplePage() {
     getJson<PeoplePayload>("/api/people")
       .then((payload) => { if (active) setData(payload); })
       .catch(() => { if (active) setMessage("People could not be loaded."); });
+    getJson<ReviewerGrantOptions>(`/api/review/events/${eventId}/config`)
+      .then((payload) => { if (active) setReviewerGrantOptions(payload); })
+      .catch(() => { if (active) setMessage("Reviewer remit options could not be loaded."); });
     return () => { active = false; };
   }, [reload]);
 
-  async function grant(person: PersonAccountSummary, role: GrantableRole): Promise<void> {
+  async function grant(
+    person: PersonAccountSummary,
+    role: GrantableRole,
+    remit?: Omit<ReviewerGrantSelection, "personId">,
+  ): Promise<void> {
     try {
       const result = await requestJson<{ granted: boolean; notified: boolean }>(
         `/api/people/${person.id}/grants`,
-        { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ role, notify }) },
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            role,
+            notify,
+            ...(remit === undefined ? {} : { reviewerRemit: { eventId, ...remit } }),
+          }),
+        },
       );
       setMessage(
         result.granted
           ? `${person.name} is now a ${role}.${result.notified ? " They were emailed." : ""}`
           : `${person.name} already had ${role} access.`,
       );
+      setReviewerGrant(null);
       setReload((token) => token + 1);
     } catch {
       setMessage(`${person.name} could not be granted ${role}.`);
@@ -115,6 +144,11 @@ export function PeoplePage() {
     return person.name.toLowerCase().includes(term) || person.email.toLowerCase().includes(term);
   });
   const awaiting = data.items.filter((person) => person.grants.length === 0).length;
+  const openRounds = reviewerGrantOptions?.rounds.filter((round) => round.status === "open") ?? [];
+  const remitBlockers = reviewerGrantOptions === null ? [] : [
+    ...(reviewerGrantOptions.tracks.length === 0 ? ["no tracks"] : []),
+    ...(openRounds.length === 0 ? ["no open review round"] : []),
+  ];
 
   return (
     <>
@@ -155,9 +189,8 @@ export function PeoplePage() {
           <h2>Accounts</h2>
           <p>A grant opens an area everywhere, for now. Removing one keeps its history.</p>
           <p>
-            Reviewer opens the committee area but sets nobody's remit. Give them tracks and a
-            round on <a href="/organizer/review">Committee setup</a>, where every granted
-            reviewer is listed, or their queue stays empty.
+            Reviewer access requires tracks and a review round here. Existing reviewer remit can
+            be changed on <a href="/organizer/review">Committee setup</a>.
           </p>
         </div>
         {visible.length === 0 ? (
@@ -193,7 +226,14 @@ export function PeoplePage() {
                     {grantableRoles
                       .filter((role) => !person.grants.some((grant) => grant.role === role))
                       .map((role) => (
-                        <Button key={role} onClick={() => void grant(person, role)} tone="quiet">
+                        <Button
+                          disabled={role === "reviewer" && reviewerGrantOptions === null}
+                          key={role}
+                          onClick={() => role === "reviewer"
+                            ? setReviewerGrant({ personId: person.id, trackIds: [], roundIds: [] })
+                            : void grant(person, role)}
+                          tone="quiet"
+                        >
                           Grant {role}
                         </Button>
                       ))}
@@ -202,6 +242,85 @@ export function PeoplePage() {
                         Remove {grant.role}
                       </Button>
                     ))}
+                    {reviewerGrant?.personId === person.id && reviewerGrantOptions !== null ? (
+                      <form
+                        aria-label={`Reviewer remit for ${person.name}`}
+                        className="reviewer-grant"
+                        onSubmit={(event) => {
+                          event.preventDefault();
+                          void grant(person, "reviewer", {
+                            trackIds: reviewerGrant.trackIds,
+                            roundIds: reviewerGrant.roundIds,
+                          });
+                        }}
+                      >
+                        {remitBlockers.length > 0 ? (
+                          <>
+                            <p>
+                              Granting reviewer access is blocked: this event has {remitBlockers.join(" and ")},
+                              and a reviewer needs at least one of each. Set that up on{" "}
+                              <a href="/organizer/review">Committee setup</a>, then grant from here.
+                            </p>
+                            <div>
+                              <Button onClick={() => setReviewerGrant(null)} tone="quiet" type="button">Cancel</Button>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <p>Choose what this reviewer can read now.</p>
+                            <fieldset>
+                              <legend>Track remit</legend>
+                              {reviewerGrantOptions.tracks.map((track) => (
+                                <label key={track.id}>
+                                  <input
+                                    checked={reviewerGrant.trackIds.includes(track.id)}
+                                    onChange={(event) => setReviewerGrant((selection) => selection === null
+                                      ? null
+                                      : {
+                                        ...selection,
+                                        trackIds: event.target.checked
+                                          ? [...selection.trackIds, track.id]
+                                          : selection.trackIds.filter((id) => id !== track.id),
+                                      })}
+                                    type="checkbox"
+                                  />
+                                  {track.name}
+                                </label>
+                              ))}
+                            </fieldset>
+                            <fieldset>
+                              <legend>Review round</legend>
+                              {openRounds.map((round) => (
+                                <label key={round.id}>
+                                  <input
+                                    checked={reviewerGrant.roundIds.includes(round.id)}
+                                    onChange={(event) => setReviewerGrant((selection) => selection === null
+                                      ? null
+                                      : {
+                                        ...selection,
+                                        roundIds: event.target.checked
+                                          ? [...selection.roundIds, round.id]
+                                          : selection.roundIds.filter((id) => id !== round.id),
+                                      })}
+                                    type="checkbox"
+                                  />
+                                  {round.name}
+                                </label>
+                              ))}
+                            </fieldset>
+                            <div>
+                              <Button
+                                disabled={reviewerGrant.trackIds.length === 0 || reviewerGrant.roundIds.length === 0}
+                                type="submit"
+                              >
+                                Grant reviewer with remit
+                              </Button>
+                              <Button onClick={() => setReviewerGrant(null)} tone="quiet" type="button">Cancel</Button>
+                            </div>
+                          </>
+                        )}
+                      </form>
+                    ) : null}
                   </div>
                 </li>
               );

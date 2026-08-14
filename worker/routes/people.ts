@@ -25,7 +25,7 @@ import { holdsAccess } from "../access.ts";
 import type { PersonAccountEvidence, PersonAccountSummary } from "../../shared/api.ts";
 import type { AuthSession } from "../auth.ts";
 import { sendRoleGrantEmail } from "../email/role-grant.ts";
-import { normalizeInviteEmail } from "../reviewer-invites.ts";
+import { applyReviewerRemit, normalizeInviteEmail } from "../reviewer-invites.ts";
 import { grantRole, listLiveGrants, revokeRole } from "../roles.ts";
 
 type PeopleEnvironment = {
@@ -51,6 +51,36 @@ const requireOrganizer = createMiddleware<PeopleEnvironment>(async (context, nex
 
 function isGrantableRole(value: unknown): value is GrantableRole {
   return typeof value === "string" && (grantableRoles as readonly string[]).includes(value);
+}
+
+interface ReviewerRemitInput {
+  eventId: string;
+  trackIds: string[];
+  roundIds: string[];
+}
+
+function readReviewerRemit(value: unknown): ReviewerRemitInput | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return null;
+  }
+  const remit = value as Record<string, unknown>;
+  if (
+    typeof remit.eventId !== "string" ||
+    remit.eventId.length === 0 ||
+    !Array.isArray(remit.trackIds) ||
+    remit.trackIds.length === 0 ||
+    !remit.trackIds.every((id) => typeof id === "string") ||
+    !Array.isArray(remit.roundIds) ||
+    remit.roundIds.length === 0 ||
+    !remit.roundIds.every((id) => typeof id === "string")
+  ) {
+    return null;
+  }
+  return {
+    eventId: remit.eventId,
+    trackIds: [...new Set(remit.trackIds)],
+    roundIds: [...new Set(remit.roundIds)],
+  };
 }
 
 /**
@@ -185,7 +215,12 @@ peopleRoutes.get("/api/people", requireOrganizer, async (context) => {
 });
 
 peopleRoutes.post("/api/people/:userId/grants", requireOrganizer, async (context) => {
-  const payload = await context.req.json<{ role?: unknown; note?: unknown; notify?: unknown }>();
+  const payload = await context.req.json<{
+    role?: unknown;
+    note?: unknown;
+    notify?: unknown;
+    reviewerRemit?: unknown;
+  }>();
   if (!isGrantableRole(payload.role)) {
     return context.json({ error: "invalid_role" }, 400);
   }
@@ -201,6 +236,36 @@ peopleRoutes.post("/api/people/:userId/grants", requireOrganizer, async (context
     .where(eq(users.id, userId));
   if (account === undefined) {
     return context.json({ error: "not_found" }, 404);
+  }
+  const reviewerRemit = payload.role === "reviewer" ? readReviewerRemit(payload.reviewerRemit) : null;
+  if (payload.role === "reviewer" && reviewerRemit === null) {
+    return context.json({ error: "reviewer_remit_required" }, 400);
+  }
+  if (reviewerRemit !== null) {
+    const [availableTracks, availableRounds] = await Promise.all([
+      database
+        .select({ id: tracks.id })
+        .from(tracks)
+        .where(eq(tracks.eventId, reviewerRemit.eventId)),
+      database
+        .select({ id: reviewRounds.id })
+        .from(reviewRounds)
+        .where(and(eq(reviewRounds.eventId, reviewerRemit.eventId), eq(reviewRounds.status, "open"))),
+    ]);
+    const availableTrackIds = new Set(availableTracks.map((track) => track.id));
+    if (reviewerRemit.trackIds.some((trackId) => !availableTrackIds.has(trackId))) {
+      return context.json({ error: "invalid_reviewer_tracks" }, 400);
+    }
+    const availableRoundIds = new Set(availableRounds.map((round) => round.id));
+    if (reviewerRemit.roundIds.some((roundId) => !availableRoundIds.has(roundId))) {
+      return context.json({ error: "invalid_reviewer_rounds" }, 400);
+    }
+  }
+  if (reviewerRemit !== null) {
+    await applyReviewerRemit(database, {
+      ...reviewerRemit,
+      reviewerUserId: userId,
+    });
   }
   const { granted } = await grantRole(database, {
     userId,

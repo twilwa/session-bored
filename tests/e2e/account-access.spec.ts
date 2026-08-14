@@ -132,6 +132,12 @@ test("an account granted two areas can open both of them in the browser", async 
   const row = page.locator(".people-row").filter({ hasText: email });
   await expect(row).toBeVisible();
   await row.getByRole("button", { name: "Grant reviewer" }).click();
+  const reviewerGrant = row.getByRole("form", { name: "Reviewer remit" });
+  await expect(reviewerGrant).toBeVisible();
+  await expect(reviewerGrant.getByRole("button", { name: "Grant reviewer with remit" })).toBeDisabled();
+  await reviewerGrant.getByRole("group", { name: "Track remit" }).getByRole("checkbox").first().check();
+  await reviewerGrant.getByRole("group", { name: "Review round" }).getByRole("checkbox").first().check();
+  await reviewerGrant.getByRole("button", { name: "Grant reviewer with remit" }).click();
   await expect(page.locator(".toast")).toContainText("is now a reviewer");
   await row.getByRole("button", { name: "Grant speaker" }).click();
   await expect(page.locator(".toast")).toContainText("is now a speaker");
@@ -145,6 +151,7 @@ test("an account granted two areas can open both of them in the browser", async 
   await page.waitForURL(/\/reviewer$/);
 
   await expect(page.getByText("YOUR COMMITTEE DESK")).toBeVisible();
+  await expect(page.getByRole("region", { name: "Your review queue" }).locator(".reviewer-row").first()).toBeVisible();
 
   await page.goto("/speaker");
   await expect(page.getByText("403 · WRONG WORKSPACE")).toHaveCount(0);

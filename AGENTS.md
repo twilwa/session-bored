@@ -163,13 +163,13 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   confirmation message. The organizer config route lists a
   reviewer by track responsibility, round pool, **or a live reviewer
   `role_grant`** (`listAccountsHoldingRole` in `worker/roles.ts`), so a reviewer
-  narrowed to zero tracks — and one granted from People, which resolves no remit
-  at all — stays visible and editable. That third door is deliberately not given
-  a default remit: the grant is platform-wide (#120) and the default is
-  event-scoped, so refusing or guessing an event would make a role grant hostage
-  to one event's rounds. Committee setup completes it instead, and its card says
-  the reviewer is in no review round while their round pool is empty, because a
-  queue is built from that pool and tracks alone earn nothing (issue #147).
+  narrowed to zero tracks — or historical data with no remit rows — stays visible
+  and editable. The People grant door requires the organizer to choose an explicit
+  event remit with at least one valid track and one open round; it validates that
+  remit and persists it before writing the platform-wide grant (#120).
+  This makes new role-only reviewers unrepresentable while Committee setup remains
+  the repair door for existing data. A queue is built from the round pool, and
+  tracks alone earn nothing (issue #147).
 - `POST /api/review/submissions/:submissionId/recusal` is the reviewer's own action
   and the only writer of `review_assignment.status = 'recused'`. It keeps the same
   assignment row, creating one first if the proposal was readable through track

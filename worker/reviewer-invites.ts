@@ -18,7 +18,8 @@ export function normalizeInviteEmail(email: string): string {
 
 /**
  * Gives a reviewer their readable remit for one event. Shared by direct organizer
- * provisioning and invitation redemption so both produce the same rows.
+ * provisioning, invitation redemption, and the People grant door so all three
+ * produce the same rows.
  */
 export async function applyReviewerRemit(
   database: Database,
