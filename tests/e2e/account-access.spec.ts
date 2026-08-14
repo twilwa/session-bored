@@ -30,7 +30,9 @@ test("the submitter gate explains sign-in and then admits an authenticated accou
 
   await expect(page.getByRole("heading", { name: /Your proposals/ })).toBeVisible();
   await expect(page.getByText("403 · WRONG WORKSPACE")).toHaveCount(0);
-  // One area is a destination, not a choice: this account's dashboard chrome is unchanged.
+  // The nav names the account only once it has resolved one, so an absent switcher means
+  // something. One area is a destination, not a choice: this chrome is unchanged.
+  await expect(page.locator(".submitter-dashboard__identity")).toHaveText("Submitter Account");
   await expect(page.getByLabel("Switch area")).toHaveCount(0);
 });
 
@@ -39,8 +41,10 @@ test("a new account signs up, lands on its own schedule, and reaches no workspac
   await signUp(page, "Rowan Ellis", email);
 
   await expect(page).toHaveURL(/\/schedule\/mine$/);
-  await expect(page.getByLabel("Switch area")).toHaveCount(0);
+  // Until the header names this account's one area it reads "Sign in" and carries no
+  // switcher either way, so the resolved state has to come first.
   await expect(page.locator(".nav-signin")).toHaveText("My schedule");
+  await expect(page.getByLabel("Switch area")).toHaveCount(0);
 
   // The page said what the account would become, and the session agrees.
   const session = await page.request.get("/api/session");
@@ -203,6 +207,7 @@ test("an account granted two areas can reach both of them from the header", asyn
   await expect(page.getByText("403 · WRONG WORKSPACE")).toBeVisible();
 
   await page.goto("/reviewer");
+  await expect(page.getByText("YOUR COMMITTEE DESK")).toBeVisible();
   if (await page.getByRole("button", { name: "Open navigation" }).isVisible()) {
     await page.getByRole("button", { name: "Open navigation" }).click();
   }

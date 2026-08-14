@@ -84,7 +84,7 @@ export function accountAreasFor(
 function pathIsInsideArea(path: string, areaRoot: string): boolean {
   if (path === areaRoot) return true;
   if (!path.startsWith(areaRoot)) return false;
-  return ["/", "?", "#"].includes(path.charAt(areaRoot.length));
+  return path.charAt(areaRoot.length) === "/";
 }
 
 const sameOriginBase = "https://greenroom.invalid";
