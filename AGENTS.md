@@ -302,7 +302,16 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   archives the duplicate, records the attributed profile snapshot in
   `directory_merge`, and moves its live proposal, session, task, and file links
   to the organizer-selected canonical record. Two different owned accounts are
-  never collapsed.
+  never collapsed. A merge is the only writer of `person.deleted_at`, and
+  `person_email_unique` still holds the archived row's address, so every door
+  that adopts a person by email — CFP author and collaborator, organizer
+  participants, roster — resolves through
+  `worker/speaker-directory.ts#resolvePersonByEmail`, which follows the recorded
+  merge to the kept person rather than attaching live work to an archived
+  record. The merge also never gives the kept speaker a second `headshot` file:
+  a merged speaker's headshot moves only when the kept speaker has none, and an
+  adopted `headshot_url` is rewritten to name the speaker row that owns the
+  file after the batch.
 
 ## Accounts and access
 

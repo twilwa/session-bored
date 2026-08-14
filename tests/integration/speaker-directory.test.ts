@@ -257,6 +257,160 @@ describe("speaker directory", () => {
       .toHaveLength(0);
   });
 
+  it("attaches work adopted through a merged person's email to the person the organizer kept", async () => {
+    await request("/api/health");
+    const now = Date.now();
+    await env.DB.batch([
+      env.DB.prepare(
+        "insert into person (id, name, email, organization, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
+      ).bind("psn_directory_adopt_kept", "Rowan Adopt", "rowan.kept@example.com", "Adopt Systems", now, now),
+      env.DB.prepare(
+        "insert into person (id, name, email, organization, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
+      ).bind("psn_directory_adopt_merged", "Rowan Adopt", "rowan.duplicate@example.com", "Adopt Systems", now, now),
+    ]);
+    const cookie = await organizerCookie();
+    const merged = await request("/api/speaker-directory/psn_directory_adopt_kept/merge", {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ duplicatePersonId: "psn_directory_adopt_merged" }),
+    });
+    expect(merged.status).toBe(200);
+
+    const createResponse = await request("/api/public/cfp/devflow-conf-2027/submissions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        intent: "draft",
+        speaker: { name: "Rowan Adopt", email: "rowan.duplicate@example.com", organization: "Adopt Systems" },
+        proposal: { title: "Adopted after a merge", answers: {} },
+      }),
+    });
+    expect(createResponse.status).toBe(201);
+    const created = await createResponse.json<{ submission: { id: string; speaker: { id: string } } }>();
+    expect(created.submission.speaker.id).toBe("psn_directory_adopt_kept");
+
+    const organizerDoor = await request(
+      `/api/events/evt_devflow_conf_2027/submissions/${created.submission.id}/participants`,
+      {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ name: "Rowan Adopt", email: "rowan.duplicate@example.com" }),
+      },
+    );
+    expect(organizerDoor.status).toBe(409);
+    await expect(organizerDoor.json()).resolves.toMatchObject({ error: "participant_already_named" });
+  });
+
+  it("carries a merged speaker's only headshot to the kept speaker with a URL that still serves", async () => {
+    await request("/api/health");
+    const database = drizzle(env.DB);
+    const now = Date.now();
+    const anyUser = await env.DB.prepare("select id from user limit 1").first<{ id: string }>();
+    const storageKey =
+      "portal/evt_devflow_conf_2027/spk_directory_photo_merged/fil_directory_photo_merged/fver_directory_photo_merged-headshot.png";
+    await env.FILES.put(storageKey, new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]));
+    await env.DB.batch([
+      env.DB.prepare(
+        "insert into person (id, name, email, organization, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
+      ).bind("psn_directory_photo_kept", "Devon Photo", "devon.kept@example.com", "Photo Systems", now, now),
+      env.DB.prepare(
+        "insert into person (id, name, email, organization, headshot_url, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?)",
+      ).bind(
+        "psn_directory_photo_merged",
+        "Devon Photo",
+        "devon.duplicate@example.com",
+        "Photo Systems",
+        "/api/public/portal/speakers/spk_directory_photo_merged/headshot?version=1",
+        now,
+        now,
+      ),
+      env.DB.prepare(
+        "insert into speaker (id, person_id, event_id, status, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
+      ).bind("spk_directory_photo_kept", "psn_directory_photo_kept", "evt_devflow_conf_2027", "confirmed", now, now),
+      env.DB.prepare(
+        "insert into speaker (id, person_id, event_id, status, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
+      ).bind("spk_directory_photo_merged", "psn_directory_photo_merged", "evt_devflow_conf_2027", "ready", now, now),
+      env.DB.prepare(
+        "insert into file (id, event_id, speaker_id, kind, display_name, created_at, updated_at) values (?, ?, ?, 'headshot', ?, ?, ?)",
+      ).bind("fil_directory_photo_merged", "evt_devflow_conf_2027", "spk_directory_photo_merged", "headshot.png", now, now),
+      env.DB.prepare(
+        "insert into file_version (id, file_id, version, storage_key, mime_type, size_bytes, latest, uploaded_by_user_id, created_at, updated_at) values (?, ?, 1, ?, 'image/png', 11, 1, ?, ?, ?)",
+      ).bind("fver_directory_photo_merged", "fil_directory_photo_merged", storageKey, anyUser?.id, now, now),
+    ]);
+
+    const merged = await request("/api/speaker-directory/psn_directory_photo_kept/merge", {
+      method: "POST",
+      headers: { cookie: await organizerCookie(), "content-type": "application/json" },
+      body: JSON.stringify({ duplicatePersonId: "psn_directory_photo_merged" }),
+    });
+    expect(merged.status).toBe(200);
+
+    const [keptPerson] = await database.select().from(people).where(eq(people.id, "psn_directory_photo_kept"));
+    expect(keptPerson?.headshotUrl).toBe("/api/public/portal/speakers/spk_directory_photo_kept/headshot?version=1");
+    expect((await database.select().from(files).where(eq(files.id, "fil_directory_photo_merged")))[0]?.speakerId)
+      .toBe("spk_directory_photo_kept");
+    const served = await request(keptPerson!.headshotUrl!);
+    expect(served.status).toBe(200);
+    expect(served.headers.get("content-type")).toBe("image/png");
+  });
+
+  it("keeps the kept speaker's own headshot when both merge sides have one", async () => {
+    await request("/api/health");
+    const database = drizzle(env.DB);
+    const now = Date.now();
+    const keptUrl = "/api/public/portal/speakers/spk_directory_photo2_kept/headshot?version=1";
+    await env.DB.batch([
+      env.DB.prepare(
+        "insert into person (id, name, email, organization, headshot_url, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?)",
+      ).bind("psn_directory_photo2_kept", "Sasha Frames", "sasha.kept@example.com", "Frame Works", keptUrl, now, now),
+      env.DB.prepare(
+        "insert into person (id, name, email, organization, headshot_url, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?)",
+      ).bind(
+        "psn_directory_photo2_merged",
+        "Sasha Frames",
+        "sasha.duplicate@example.com",
+        "Frame Works",
+        "/api/public/portal/speakers/spk_directory_photo2_merged/headshot?version=1",
+        now,
+        now,
+      ),
+      env.DB.prepare(
+        "insert into speaker (id, person_id, event_id, status, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
+      ).bind("spk_directory_photo2_kept", "psn_directory_photo2_kept", "evt_devflow_conf_2027", "confirmed", now, now),
+      env.DB.prepare(
+        "insert into speaker (id, person_id, event_id, status, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
+      ).bind("spk_directory_photo2_merged", "psn_directory_photo2_merged", "evt_devflow_conf_2027", "ready", now, now),
+      env.DB.prepare(
+        "insert into file (id, event_id, speaker_id, kind, display_name, created_at, updated_at) values (?, ?, ?, 'headshot', ?, ?, ?)",
+      ).bind("fil_directory_photo2_kept", "evt_devflow_conf_2027", "spk_directory_photo2_kept", "kept.png", now, now),
+      env.DB.prepare(
+        "insert into file (id, event_id, speaker_id, kind, display_name, created_at, updated_at) values (?, ?, ?, 'headshot', ?, ?, ?)",
+      ).bind("fil_directory_photo2_merged", "evt_devflow_conf_2027", "spk_directory_photo2_merged", "merged.png", now, now),
+      env.DB.prepare(
+        "insert into file (id, event_id, speaker_id, kind, display_name, created_at, updated_at) values (?, ?, ?, 'deliverable', ?, ?, ?)",
+      ).bind("fil_directory_photo2_slides", "evt_devflow_conf_2027", "spk_directory_photo2_merged", "slides.pdf", now, now),
+    ]);
+
+    const merged = await request("/api/speaker-directory/psn_directory_photo2_kept/merge", {
+      method: "POST",
+      headers: { cookie: await organizerCookie(), "content-type": "application/json" },
+      body: JSON.stringify({ duplicatePersonId: "psn_directory_photo2_merged" }),
+    });
+    expect(merged.status).toBe(200);
+
+    const keptHeadshots = await database.select().from(files).where(and(
+      eq(files.speakerId, "spk_directory_photo2_kept"),
+      eq(files.kind, "headshot"),
+    ));
+    expect(keptHeadshots.map((file) => file.id)).toEqual(["fil_directory_photo2_kept"]);
+    expect((await database.select().from(files).where(eq(files.id, "fil_directory_photo2_merged")))[0]?.speakerId)
+      .toBe("spk_directory_photo2_merged");
+    expect((await database.select().from(files).where(eq(files.id, "fil_directory_photo2_slides")))[0]?.speakerId)
+      .toBe("spk_directory_photo2_kept");
+    expect((await database.select().from(people).where(eq(people.id, "psn_directory_photo2_kept")))[0]?.headshotUrl)
+      .toBe(keptUrl);
+  });
+
   it("refuses to collapse two distinct accounts", async () => {
     await request("/api/health");
     const accountCookie = await request("/api/auth/sign-up/email", {

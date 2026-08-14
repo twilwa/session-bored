@@ -1,10 +1,10 @@
 // ABOUTME: Serves organizer-only all-event speaker directory list, detail, and merge actions.
 // ABOUTME: Archives detected duplicates while atomically preserving their active product relationships.
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { Hono } from "hono";
 import { createMiddleware } from "hono/factory";
-import { people, speakers, type Role, type SpeakerStatus } from "../../db/schema.ts";
+import { files, people, speakers, type Role, type SpeakerStatus } from "../../db/schema.ts";
 import type {
   SpeakerDirectoryDetailResponse,
   SpeakerDirectoryDuplicate,
@@ -122,6 +122,12 @@ speakerDirectoryRoutes.post("/api/speaker-directory/:personId/merge", requireOrg
       .where(and(eq(speakers.personId, mergedPerson.id), isNull(speakers.deletedAt))),
     database.select().from(speakers).where(eq(speakers.personId, keptPerson.id)),
   ]);
+  const speakerIds = [...new Set([...mergedSpeakers, ...keptSpeakers].map((speaker) => speaker.id))];
+  const headshotOwners = speakerIds.length === 0 ? [] : await database
+    .select({ speakerId: files.speakerId })
+    .from(files)
+    .where(and(eq(files.kind, "headshot"), inArray(files.speakerId, speakerIds)));
+  const speakersWithHeadshot = new Set(headshotOwners.map((row) => row.speakerId));
   const now = Date.now();
   const statements: D1PreparedStatement[] = [];
 
@@ -135,6 +141,21 @@ speakerDirectoryRoutes.post("/api/speaker-directory/:personId/merge", requireOrg
     ...(mergedPerson.socialLinks ?? {}),
     ...(keptPerson.socialLinks ?? {}),
   };
+  const keptHasHeadshotUrl = keptPerson.headshotUrl !== null && keptPerson.headshotUrl.trim() !== "";
+  let headshotUrl = keptHasHeadshotUrl ? keptPerson.headshotUrl : mergedPerson.headshotUrl;
+  if (!keptHasHeadshotUrl && headshotUrl !== null) {
+    const urlSpeakerId = /^\/api\/public\/portal\/speakers\/([^/?]+)\/headshot/.exec(headshotUrl)?.[1];
+    const archivedSpeaker = mergedSpeakers.find((speaker) => speaker.id === urlSpeakerId);
+    const successor = archivedSpeaker === undefined
+      ? undefined
+      : keptSpeakers.find((speaker) => speaker.eventId === archivedSpeaker.eventId);
+    if (
+      archivedSpeaker !== undefined && successor !== undefined
+      && speakersWithHeadshot.has(archivedSpeaker.id) && !speakersWithHeadshot.has(successor.id)
+    ) {
+      headshotUrl = headshotUrl.replace(`/speakers/${archivedSpeaker.id}/`, `/speakers/${successor.id}/`);
+    }
+  }
   statements.push(context.env.DB.prepare(
     "update person set user_id = ?, job_title = ?, organization = ?, bio = ?, headshot_url = ?, twitter = ?, linkedin = ?, social_links = ?, updated_at = ? where id = ? and deleted_at is null",
   ).bind(
@@ -142,7 +163,7 @@ speakerDirectoryRoutes.post("/api/speaker-directory/:personId/merge", requireOrg
     preferredText(keptPerson.jobTitle, mergedPerson.jobTitle),
     preferredText(keptPerson.organization, mergedPerson.organization),
     preferredText(keptPerson.bio, mergedPerson.bio),
-    preferredText(keptPerson.headshotUrl, mergedPerson.headshotUrl),
+    headshotUrl,
     preferredText(keptPerson.twitter, mergedPerson.twitter),
     preferredText(keptPerson.linkedin, mergedPerson.linkedin),
     Object.keys(socialLinks).length === 0 ? null : JSON.stringify(socialLinks),
@@ -207,8 +228,12 @@ speakerDirectoryRoutes.post("/api/speaker-directory/:personId/merge", requireOrg
       context.env.DB.prepare(
         "update task_assignee set speaker_id = ?, updated_at = ? where speaker_id = ? and deleted_at is null",
       ).bind(keptSpeaker.id, now, mergedSpeaker.id),
-      context.env.DB.prepare("update file set speaker_id = ?, updated_at = ? where speaker_id = ?")
-        .bind(keptSpeaker.id, now, mergedSpeaker.id),
+      context.env.DB.prepare(
+        "update file set speaker_id = ?, updated_at = ? where speaker_id = ? and kind != 'headshot'",
+      ).bind(keptSpeaker.id, now, mergedSpeaker.id),
+      context.env.DB.prepare(
+        "update file set speaker_id = ?, updated_at = ? where speaker_id = ? and kind = 'headshot' and not exists (select 1 from file as kept_headshot where kept_headshot.speaker_id = ? and kept_headshot.kind = 'headshot')",
+      ).bind(keptSpeaker.id, now, mergedSpeaker.id, keptSpeaker.id),
       context.env.DB.prepare("update speaker set deleted_at = ?, updated_at = ? where id = ?")
         .bind(now, now, mergedSpeaker.id),
     );
