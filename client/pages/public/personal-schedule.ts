@@ -15,6 +15,10 @@ interface PersonalSchedulePayload {
   sessionIds: string[];
 }
 
+interface PublicSessionListPayload {
+  items: Array<{ id: string }>;
+}
+
 function storageKey(eventId: string): string {
   return `${STORAGE_PREFIX}:${eventId}`;
 }
@@ -58,16 +62,17 @@ function rememberMigration(userId: string, eventId: string): void {
   }
 }
 
-function forgetMigration(userId: string, eventId: string): void {
-  try {
-    window.localStorage.removeItem(migrationKey(userId, eventId));
-  } catch {
-    // A later page load can still retry from whatever device storage remains available.
-  }
-}
-
 function accountSchedulePath(eventId: string): string {
   return `/api/attendee/events/${eventId}/schedule`;
+}
+
+async function fetchPublicSessionIds(eventId: string): Promise<Set<string>> {
+  const response = await fetch(`/api/public/events/${eventId}/sessions`, { credentials: "same-origin" });
+  if (!response.ok) {
+    throw new Error("public_sessions_load_failed");
+  }
+  const payload = await response.json<PublicSessionListPayload>();
+  return new Set(payload.items.map((session) => session.id));
 }
 
 async function updateAccountSchedule(
@@ -91,10 +96,13 @@ export function usePersonalSchedule(eventId: string) {
   const [storageStatus, setStorageStatus] = useState<StorageStatus>("checking");
   const currentSessionIds = useRef(sessionIds);
   const accountUserId = useRef<string | null>(null);
+  const deviceMode = useRef(false);
 
   function replaceSessionIds(next: string[]): void {
     currentSessionIds.current = next;
-    persistSessionIds(eventId, next);
+    if (deviceMode.current) {
+      persistSessionIds(eventId, next);
+    }
     setSessionIds(next);
   }
 
@@ -104,6 +112,8 @@ export function usePersonalSchedule(eventId: string) {
       try {
         const sessionResponse = await fetch("/api/session", { credentials: "same-origin" });
         if (sessionResponse.status === 401) {
+          deviceMode.current = true;
+          persistSessionIds(eventId, currentSessionIds.current);
           if (active) setStorageStatus("device");
           return;
         }
@@ -112,16 +122,21 @@ export function usePersonalSchedule(eventId: string) {
         }
         const session = await sessionResponse.json<SessionPayload>();
         accountUserId.current = session.user.id;
+        deviceMode.current = false;
         const scheduleResponse = await fetch(accountSchedulePath(eventId), { credentials: "same-origin" });
         if (!scheduleResponse.ok) {
           throw new Error("personal_schedule_load_failed");
         }
         let accountSchedule = await scheduleResponse.json<PersonalSchedulePayload>();
         if (!hasMigrated(session.user.id, eventId)) {
-          accountSchedule = await updateAccountSchedule(eventId, {
-            add: currentSessionIds.current,
-            remove: [],
-          });
+          const devicePicks = currentSessionIds.current;
+          if (devicePicks.length > 0) {
+            const publicIds = await fetchPublicSessionIds(eventId);
+            const additions = devicePicks.filter((sessionId) => publicIds.has(sessionId));
+            if (additions.length > 0) {
+              accountSchedule = await updateAccountSchedule(eventId, { add: additions, remove: [] });
+            }
+          }
           rememberMigration(session.user.id, eventId);
         }
         if (active) {
@@ -145,8 +160,7 @@ export function usePersonalSchedule(eventId: string) {
       ? currentSessionIds.current.filter((id) => id !== sessionId)
       : [...currentSessionIds.current, sessionId];
     replaceSessionIds(next);
-    const userId = accountUserId.current;
-    if (userId === null) {
+    if (accountUserId.current === null) {
       return;
     }
     void updateAccountSchedule(eventId, {
@@ -156,7 +170,6 @@ export function usePersonalSchedule(eventId: string) {
       replaceSessionIds(accountSchedule.sessionIds);
       setStorageStatus("account");
     }).catch(() => {
-      forgetMigration(userId, eventId);
       setStorageStatus("error");
     });
   }

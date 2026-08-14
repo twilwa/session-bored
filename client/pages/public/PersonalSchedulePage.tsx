@@ -69,7 +69,7 @@ export function PersonalSchedulePage() {
   const storageDescription = storageStatus === "account"
     ? "Saved to your account · available on any device"
     : storageStatus === "error"
-      ? "Saved on this device · account sync needs retry"
+      ? "Account sync needs retry · your latest change may not be saved"
       : storageStatus === "checking"
         ? "Checking for your account…"
         : "Saved on this device · no account needed";
