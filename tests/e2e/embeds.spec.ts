@@ -30,6 +30,16 @@ async function expectPublicDeliveryStatus(
   }
 }
 
+async function fetchPublicJson(
+  page: import("@playwright/test").Page,
+  publicToken: string,
+): Promise<{ status: number; payload: { embed?: { name: string; widgetType: string }; error?: string } }> {
+  return page.evaluate(async (token) => {
+    const response = await fetch(`/api/public/embeds/${token}.json`);
+    return { status: response.status, payload: await response.json() };
+  }, publicToken);
+}
+
 test("organizer manages the full embed lifecycle without leaving a live token", async ({ page, context, browser }) => {
   const runId = Date.now();
   const initialName = `Homepage programme ${runId}`;
@@ -67,6 +77,15 @@ test("organizer manages the full embed lifecycle without leaving a live token", 
   await expect(frame.getByText("Docs That Answer Back", { exact: false })).toBeVisible();
   await host.close();
 
+  const returningVisitorContext = await browser.newContext();
+  const returningVisitor = await returningVisitorContext.newPage();
+  await returningVisitor.goto(`/embed/${publicToken}`);
+  await expect(returningVisitor.getByRole("heading", { name: initialName })).toBeVisible();
+  expect(await fetchPublicJson(returningVisitor, publicToken)).toMatchObject({
+    status: 200,
+    payload: { embed: { name: initialName, widgetType: "sessions" } },
+  });
+
   await embedRow.getByRole("button", { name: "Edit" }).click();
   await expect(page.getByRole("heading", { name: "Edit embed" })).toBeVisible();
   await page.getByLabel("Name").fill(editedName);
@@ -77,6 +96,12 @@ test("organizer manages the full embed lifecycle without leaving a live token", 
   const editedPayload = await (await page.request.get(`/api/public/embeds/${publicToken}.json`)).json();
   expect(editedPayload.embed).toMatchObject({ name: editedName, widgetType: "agenda" });
   expect(editedPayload.embed.config).toEqual({ track: "Developer Experience" });
+  expect(await fetchPublicJson(returningVisitor, publicToken)).toMatchObject({
+    status: 200,
+    payload: { embed: { name: editedName, widgetType: "agenda" } },
+  });
+  await returningVisitor.goto(`/embed/${publicToken}`);
+  await expect(returningVisitor.getByRole("heading", { name: editedName })).toBeVisible();
   const builderPreview = page.frameLocator(`iframe[title='Preview ${editedName}']`);
   await expect(builderPreview.getByRole("heading", { name: editedName })).toBeVisible();
   const freshContext = await browser.newContext();
@@ -102,6 +127,13 @@ test("organizer manages the full embed lifecycle without leaving a live token", 
   await deleteDialog.getByRole("button", { name: "Delete embed" }).click();
   await expect(editedRow).toBeHidden();
   await expectPublicDeliveryStatus(page, publicToken, 404);
+  expect(await fetchPublicJson(returningVisitor, publicToken)).toEqual({
+    status: 404,
+    payload: { error: "not_found" },
+  });
+  await returningVisitor.goto(`/embed/${publicToken}`);
+  await expect(returningVisitor.getByRole("alert")).toHaveText("This embed is not available.");
+  await returningVisitorContext.close();
 });
 
 test("embed builder remains usable at phone width", async ({ page }) => {
