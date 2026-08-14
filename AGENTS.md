@@ -271,6 +271,13 @@ longer projects it into the session at all.
   `/schedule/mine`, keeps `/submitter` (gated on `authenticated` and scoped by
   `person.user_id`, so they see only their own proposals), and is refused every
   role-scoped area.
+- Personal schedules remain device-local for anonymous visitors and persist in
+  `personal_schedule_session` for signed-in accounts. On an account's first
+  use per device and event, `client/pages/public/personal-schedule.ts` adds the
+  device picks to the account picks, so neither side wins by replacement.
+  `worker/routes/personal-schedule.ts` returns only sessions admitted by
+  `fetchPublicSessions`; the calendar URL remains an explicit selection
+  snapshot rather than an account subscription.
 - `worker/routes/people.ts` is the organizer's gate at `/organizer/people`. It
   shows each account's **evidence** - programmed, proposal only, or no records -
   because a `speaker` row is minted at first CFP draft, not at acceptance, so a

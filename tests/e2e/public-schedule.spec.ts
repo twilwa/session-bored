@@ -14,6 +14,19 @@ const PLACED_DAY = "2027-05-13";
 // browser run proves the public surfaces render the event's own timezone, not the raw UTC instant.
 const PLACED_STARTS_AT_ISO = "2027-05-13T17:00:00Z";
 
+function uniqueEmail(prefix: string): string {
+  return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1e6)}@example.com`;
+}
+
+async function signOut(page: Page): Promise<void> {
+  const menuButton = page.locator(".public-header__menu");
+  if (await menuButton.isVisible()) {
+    await menuButton.click();
+  }
+  await page.getByRole("banner").getByRole("button", { name: "Sign out" }).click();
+  await expect(page).toHaveURL(/\/$/);
+}
+
 type Placement =
   | { scheduleStatus: "tbd"; scheduledDate: string }
   | { scheduleStatus: "placed"; scheduledDate: string; roomId: string; startsAt: number };
@@ -137,6 +150,7 @@ test("an attendee can save a personal schedule, keep it across reloads, copy a l
     roomId: MAIN_STAGE_ROOM_ID,
     startsAt: new Date(PLACED_STARTS_AT_ISO).getTime(),
   });
+  await signOut(page);
   await page.goto("/schedule");
   await page.evaluate(() => localStorage.clear());
   await page.reload();
@@ -161,6 +175,44 @@ test("an attendee can save a personal schedule, keep it across reloads, copy a l
   await page.getByRole("button", { name: /Remove Docs That Answer Back.*from my schedule/ }).click();
   await expect(page.getByRole("heading", { name: "No picks", exact: true })).toBeVisible();
   await expect(page.getByText("Nothing saved yet")).toBeVisible();
+});
+
+test("an anonymous schedule joins a new attendee account and follows them to another browser", async ({ browser, page }) => {
+  await placeDocsSession(page, {
+    scheduleStatus: "placed",
+    scheduledDate: PLACED_DAY,
+    roomId: MAIN_STAGE_ROOM_ID,
+    startsAt: new Date(PLACED_STARTS_AT_ISO).getTime(),
+  });
+  await signOut(page);
+  await page.goto("/schedule");
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await selectPlacedDay(page);
+  await page.getByRole("button", { name: /Save Docs That Answer Back.*to my schedule/ }).click();
+
+  const email = uniqueEmail("agenda-attendee");
+  await page.goto("/signup");
+  await page.getByLabel("Name").fill("Agenda Attendee");
+  await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Password").fill("Greenroom!2027");
+  await page.getByRole("button", { name: "Create account" }).click();
+
+  await expect(page).toHaveURL(/\/schedule\/mine$/);
+  await expect(page.getByText("Saved to your account · available on any device", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "1 pick", exact: true })).toBeVisible();
+
+  const otherBrowser = await browser.newContext();
+  const otherPage = await otherBrowser.newPage();
+  await otherPage.goto("/login");
+  await otherPage.getByLabel("Email").fill(email);
+  await otherPage.getByLabel("Password").fill("Greenroom!2027");
+  await otherPage.getByRole("button", { name: "Sign in" }).click();
+  await expect(otherPage).toHaveURL(/\/schedule\/mine$/);
+  await expect(otherPage.getByText("Saved to your account · available on any device", { exact: true })).toBeVisible();
+  await expect(otherPage.getByRole("heading", { name: "1 pick", exact: true })).toBeVisible();
+  await expect(otherPage.locator(".itinerary-item", { hasText: "Docs That Answer Back" })).toBeVisible();
+  await otherBrowser.close();
 });
 
 test("speaker gallery is alphabetized by surname, searches, and opens a speaker detail", async ({ page }) => {
