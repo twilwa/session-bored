@@ -55,12 +55,20 @@ export function accountAreaFor(role: Role, hasPortalWork: boolean, hasProposals:
   return roleAreas[role];
 }
 
+/**
+ * The switcher lists the areas the grant union itself opens, so every live grant is
+ * reachable and no option leads to a page the header cannot bring the person back from.
+ * The submitter dashboard is not a granted area - every authenticated account reaches it -
+ * so it stands in only where it always has: for an account whose one area is its landing.
+ */
 export function accountAreasFor(
   roles: readonly Role[],
   hasPortalWork: boolean,
   hasProposals: boolean,
 ): AccountArea[] {
-  return roles.map((role) => accountAreaFor(role, hasPortalWork, hasProposals));
+  const onlyRole = roles.length === 1 ? roles[0] : undefined;
+  if (onlyRole !== undefined) return [accountAreaFor(onlyRole, hasPortalWork, hasProposals)];
+  return roles.map((role) => roleAreas[role]);
 }
 
 function pathIsInsideArea(path: string, areaRoot: string): boolean {

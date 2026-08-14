@@ -155,6 +155,12 @@ test("an account granted two areas can reach both of them from the header", asyn
 
   await areaSwitcher.selectOption("/speaker");
   await expect(page).toHaveURL(/\/speaker$/);
+  await expect(page.getByText("No speaker profile is linked to this account yet.")).toBeVisible();
+
+  // The client route proves nothing about the gate: ask the server for the narrower
+  // grant's area directly, which is where the refusal in #149 appeared.
+  const speakerVisit = await page.goto("/speaker");
+  expect(speakerVisit?.status()).toBe(200);
   await expect(page.getByText("403 · WRONG WORKSPACE")).toHaveCount(0);
   await expect(page.getByText("No speaker profile is linked to this account yet.")).toBeVisible();
 

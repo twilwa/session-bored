@@ -22,6 +22,21 @@ describe("public header account area", () => {
     ]);
   });
 
+  it("keeps offering the speaker area to a multi-grant account that owns proposals", () => {
+    // The submitter dashboard carries no switcher, so sending a multi-grant account there
+    // would strand them and would hide the speaker area their live grant opens.
+    expect(accountAreasFor(["reviewer", "speaker"], false, true)).toEqual([
+      { href: "/reviewer", label: "Reviewer area" },
+      { href: "/speaker", label: "Speaker area" },
+    ]);
+  });
+
+  it("keeps a single-area proposal-only speaker on their submitter dashboard", () => {
+    expect(accountAreasFor(["speaker"], false, true)).toEqual([
+      { href: "/submitter", label: "Submitter area" },
+    ]);
+  });
+
   it("returns a multi-grant account to the granted area it asked for", () => {
     expect(signedInDestination(
       { role: "reviewer", roles: ["reviewer", "speaker"] },
