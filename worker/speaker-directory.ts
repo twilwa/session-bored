@@ -34,46 +34,84 @@ function normalized(value: string): string {
   return value.normalize("NFKC").trim().replaceAll(/\s+/g, " ").toLocaleLowerCase("en-US");
 }
 
+function sharedEmailKey(person: DuplicateIdentity): string {
+  return normalized(person.email);
+}
+
+function sharedNameAndOrganizationKey(person: DuplicateIdentity): string | null {
+  if (person.organization === null) return null;
+  const organization = normalized(person.organization);
+  if (organization === "") return null;
+  return JSON.stringify([normalized(person.name), organization]);
+}
+
 export function duplicateReasonsFor(
   first: DuplicateIdentity,
   second: DuplicateIdentity,
 ): SpeakerDirectoryDuplicateReason[] {
   if (first.id === second.id) return [];
   const reasons: SpeakerDirectoryDuplicateReason[] = [];
-  if (normalized(first.email) === normalized(second.email)) {
+  if (sharedEmailKey(first) === sharedEmailKey(second)) {
     reasons.push("same_email");
   }
-  if (
-    normalized(first.name) === normalized(second.name)
-    && first.organization !== null
-    && second.organization !== null
-    && normalized(first.organization) !== ""
-    && normalized(first.organization) === normalized(second.organization)
-  ) {
+  const nameAndOrganization = sharedNameAndOrganizationKey(first);
+  if (nameAndOrganization !== null && nameAndOrganization === sharedNameAndOrganizationKey(second)) {
     reasons.push("same_name_and_organization");
   }
   return reasons;
 }
 
-export function possibleDuplicateGroups(peopleToCompare: DuplicateIdentity[]): PossibleDuplicateGroup[] {
-  const adjacency = new Map<string, Set<string>>(peopleToCompare.map((person) => [person.id, new Set()]));
-  const reasonsByPair = new Map<string, SpeakerDirectoryDuplicateReason[]>();
-  for (let firstIndex = 0; firstIndex < peopleToCompare.length; firstIndex += 1) {
-    for (let secondIndex = firstIndex + 1; secondIndex < peopleToCompare.length; secondIndex += 1) {
-      const first = peopleToCompare[firstIndex]!;
-      const second = peopleToCompare[secondIndex]!;
-      const reasons = duplicateReasonsFor(first, second);
-      if (reasons.length === 0) continue;
-      adjacency.get(first.id)?.add(second.id);
-      adjacency.get(second.id)?.add(first.id);
-      reasonsByPair.set([first.id, second.id].sort().join("\u0000"), reasons);
+export interface DuplicateIndex {
+  groups: PossibleDuplicateGroup[];
+  reasonsByPersonId: Map<string, Map<string, SpeakerDirectoryDuplicateReason[]>>;
+}
+
+function bucketsSharing(
+  peopleToCompare: DuplicateIdentity[],
+  keyOf: (person: DuplicateIdentity) => string | null,
+): string[][] {
+  const buckets = new Map<string, string[]>();
+  for (const person of peopleToCompare) {
+    const key = keyOf(person);
+    if (key === null) continue;
+    const bucket = buckets.get(key);
+    if (bucket === undefined) buckets.set(key, [person.id]);
+    else bucket.push(person.id);
+  }
+  return [...buckets.values()].filter((bucket) => bucket.length > 1);
+}
+
+/**
+ * Collects everyone sharing each comparison key, so a person's duplicates are found by lookup
+ * rather than by measuring them against every other record. The reasons recorded for a pair are
+ * the same ones `duplicateReasonsFor` answers for it.
+ */
+export function indexPossibleDuplicates(peopleToCompare: DuplicateIdentity[]): DuplicateIndex {
+  const reasonsByPersonId = new Map<string, Map<string, SpeakerDirectoryDuplicateReason[]>>(
+    peopleToCompare.map((person) => [person.id, new Map<string, SpeakerDirectoryDuplicateReason[]>()]),
+  );
+  const matches: Array<[SpeakerDirectoryDuplicateReason, string[][]]> = [
+    ["same_email", bucketsSharing(peopleToCompare, sharedEmailKey)],
+    ["same_name_and_organization", bucketsSharing(peopleToCompare, sharedNameAndOrganizationKey)],
+  ];
+  for (const [reason, buckets] of matches) {
+    for (const bucket of buckets) {
+      for (const personId of bucket) {
+        const pairs = reasonsByPersonId.get(personId)!;
+        for (const otherId of bucket) {
+          if (otherId === personId) continue;
+          const reasons = pairs.get(otherId);
+          if (reasons === undefined) pairs.set(otherId, [reason]);
+          else if (!reasons.includes(reason)) reasons.push(reason);
+        }
+      }
     }
   }
 
   const visited = new Set<string>();
   const groups: PossibleDuplicateGroup[] = [];
-  for (const personId of [...adjacency.keys()].sort()) {
-    if (visited.has(personId) || adjacency.get(personId)?.size === 0) continue;
+  for (const personId of [...reasonsByPersonId.keys()].sort()) {
+    if (visited.has(personId) || reasonsByPersonId.get(personId)!.size === 0) continue;
     const pending = [personId];
     const personIds: string[] = [];
     const groupReasons = new Set<SpeakerDirectoryDuplicateReason>();
@@ -82,8 +120,7 @@ export function possibleDuplicateGroups(peopleToCompare: DuplicateIdentity[]): P
       if (visited.has(current)) continue;
       visited.add(current);
       personIds.push(current);
-      for (const neighbor of adjacency.get(current) ?? []) {
-        const pairReasons = reasonsByPair.get([current, neighbor].sort().join("\u0000")) ?? [];
+      for (const [neighbor, pairReasons] of reasonsByPersonId.get(current) ?? []) {
         for (const reason of pairReasons) groupReasons.add(reason);
         if (!visited.has(neighbor)) pending.push(neighbor);
       }
@@ -93,7 +130,11 @@ export function possibleDuplicateGroups(peopleToCompare: DuplicateIdentity[]): P
       reasons: [...groupReasons].sort(),
     });
   }
-  return groups;
+  return { groups, reasonsByPersonId };
+}
+
+export function possibleDuplicateGroups(peopleToCompare: DuplicateIdentity[]): PossibleDuplicateGroup[] {
+  return indexPossibleDuplicates(peopleToCompare).groups;
 }
 
 type Database = ReturnType<typeof drizzle>;
@@ -128,16 +169,31 @@ export async function resolvePersonByEmail(
   return current;
 }
 
+type DirectoryPerson = DuplicateIdentity & {
+  userId: string | null;
+  twitter: string | null;
+  linkedin: string | null;
+  socialLinks: Record<string, string> | null;
+};
+
 interface DirectorySnapshot {
   items: SpeakerDirectoryListItem[];
-  people: Array<DuplicateIdentity & {
-    userId: string | null;
-    twitter: string | null;
-    linkedin: string | null;
-    socialLinks: Record<string, string> | null;
-  }>;
+  people: DirectoryPerson[];
+  itemsById: Map<string, SpeakerDirectoryListItem>;
+  peopleById: Map<string, DirectoryPerson>;
   eventHistory: Map<string, SpeakerDirectoryEvent[]>;
+  duplicateReasonsByPersonId: Map<string, Map<string, SpeakerDirectoryDuplicateReason[]>>;
   groups: PossibleDuplicateGroup[];
+}
+
+function byPersonId<Row extends { personId: string }>(rows: Row[]): Map<string, Row[]> {
+  const grouped = new Map<string, Row[]>();
+  for (const row of rows) {
+    const existing = grouped.get(row.personId);
+    if (existing === undefined) grouped.set(row.personId, [row]);
+    else existing.push(row);
+  }
+  return grouped;
 }
 
 export async function loadSpeakerDirectory(database: Database): Promise<DirectorySnapshot> {
@@ -210,12 +266,12 @@ export async function loadSpeakerDirectory(database: Database): Promise<Director
       )),
   ]);
 
-  const eligibleIds = new Set([
-    ...speakerRows.map((row) => row.personId),
-    ...proposalRows.map((row) => row.personId),
-  ]);
+  const speakerRowsByPersonId = byPersonId(speakerRows);
+  const proposalRowsByPersonId = byPersonId(proposalRows);
+  const sessionRowsByPersonId = byPersonId(sessionRows);
+  const eligibleIds = new Set([...speakerRowsByPersonId.keys(), ...proposalRowsByPersonId.keys()]);
   const directoryPeople = personRows.filter((person) => eligibleIds.has(person.id));
-  const groups = possibleDuplicateGroups(directoryPeople);
+  const { groups, reasonsByPersonId } = indexPossibleDuplicates(directoryPeople);
   const duplicateCountById = new Map<string, number>();
   for (const group of groups) {
     for (const personId of group.personIds) duplicateCountById.set(personId, group.personIds.length - 1);
@@ -223,9 +279,9 @@ export async function loadSpeakerDirectory(database: Database): Promise<Director
 
   const eventHistory = new Map<string, SpeakerDirectoryEvent[]>();
   for (const person of directoryPeople) {
-    const speakerEvents = speakerRows.filter((row) => row.personId === person.id);
-    const proposalEvents = proposalRows.filter((row) => row.personId === person.id);
-    const sessionEvents = sessionRows.filter((row) => row.personId === person.id);
+    const speakerEvents = speakerRowsByPersonId.get(person.id) ?? [];
+    const proposalEvents = proposalRowsByPersonId.get(person.id) ?? [];
+    const sessionEvents = sessionRowsByPersonId.get(person.id) ?? [];
     const eventIds = new Set([
       ...speakerEvents.map((row) => row.eventId),
       ...proposalEvents.map((row) => row.eventId),
@@ -272,5 +328,13 @@ export async function loadSpeakerDirectory(database: Database): Promise<Director
     };
   });
 
-  return { items, people: directoryPeople, eventHistory, groups };
+  return {
+    items,
+    people: directoryPeople,
+    itemsById: new Map(items.map((item) => [item.id, item])),
+    peopleById: new Map(directoryPeople.map((person) => [person.id, person])),
+    eventHistory,
+    duplicateReasonsByPersonId: reasonsByPersonId,
+    groups,
+  };
 }
