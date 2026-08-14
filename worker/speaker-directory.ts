@@ -1,6 +1,6 @@
 // ABOUTME: Builds the private all-event speaker index and conservative duplicate groups.
 // ABOUTME: Aggregates canonical people, proposals, event speakers, and sessions without changing roster rules.
-import { and, asc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import {
   directoryMerges,
@@ -143,6 +143,11 @@ type Database = ReturnType<typeof drizzle>;
  * Resolves a normalized email to the person new work should attach to. When the email's
  * person row was merged away, the recorded merge leads to the person the organizer kept,
  * so adopting a duplicate's address never links live work to an archived record.
+ *
+ * Every writer stores an address already lowercased, so the match is an equality against the
+ * column `person_email_unique` covers. Comparing `lower(email)` instead would read past that
+ * index on every person-adoption door, and against a column whose uniqueness is not
+ * case-folded it could answer a different row than a caller's own lookup did.
  */
 export async function resolvePersonByEmail(
   database: Database,
@@ -151,7 +156,7 @@ export async function resolvePersonByEmail(
   const [person] = await database
     .select()
     .from(people)
-    .where(sql`lower(${people.email}) = ${normalizedEmail}`);
+    .where(eq(people.email, normalizedEmail.trim().toLowerCase()));
   if (person === undefined) return undefined;
   const visited = new Set([person.id]);
   let current = person;

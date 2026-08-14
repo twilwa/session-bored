@@ -219,8 +219,8 @@ speakerDirectoryRoutes.post("/api/speaker-directory/:personId/merge", requireOrg
         "update session_speaker as merged set deleted_at = ?, updated_at = ? where merged.speaker_id = ? and merged.deleted_at is null and exists (select 1 from session_speaker as kept where kept.session_id = merged.session_id and kept.speaker_id = ?)",
       ).bind(now, now, mergedSpeaker.id, keptSpeaker.id),
       context.env.DB.prepare(
-        "update session_speaker set speaker_id = ?, updated_at = ? where speaker_id = ? and deleted_at is null",
-      ).bind(keptSpeaker.id, now, mergedSpeaker.id),
+        "update session_speaker as merged set speaker_id = ?, updated_at = ? where merged.speaker_id = ? and not exists (select 1 from session_speaker as kept where kept.session_id = merged.session_id and kept.speaker_id = ?)",
+      ).bind(keptSpeaker.id, now, mergedSpeaker.id, keptSpeaker.id),
       context.env.DB.prepare(
         "update task_assignee as kept set status = case when kept.status = 'completed' or exists (select 1 from task_assignee as merged where merged.task_id = kept.task_id and merged.speaker_id = ? and merged.status = 'completed') then 'completed' when kept.status = 'in_progress' or exists (select 1 from task_assignee as merged where merged.task_id = kept.task_id and merged.speaker_id = ? and merged.status = 'in_progress') then 'in_progress' else 'assigned' end, completed_at = coalesce(kept.completed_at, (select merged.completed_at from task_assignee as merged where merged.task_id = kept.task_id and merged.speaker_id = ?)), deleted_at = null, updated_at = ? where kept.speaker_id = ? and exists (select 1 from task_assignee as merged where merged.task_id = kept.task_id and merged.speaker_id = ? and merged.deleted_at is null)",
       ).bind(mergedSpeaker.id, mergedSpeaker.id, mergedSpeaker.id, now, keptSpeaker.id, mergedSpeaker.id),
@@ -228,8 +228,8 @@ speakerDirectoryRoutes.post("/api/speaker-directory/:personId/merge", requireOrg
         "update task_assignee as merged set deleted_at = ?, updated_at = ? where merged.speaker_id = ? and merged.deleted_at is null and exists (select 1 from task_assignee as kept where kept.task_id = merged.task_id and kept.speaker_id = ?)",
       ).bind(now, now, mergedSpeaker.id, keptSpeaker.id),
       context.env.DB.prepare(
-        "update task_assignee set speaker_id = ?, updated_at = ? where speaker_id = ? and deleted_at is null",
-      ).bind(keptSpeaker.id, now, mergedSpeaker.id),
+        "update task_assignee as merged set speaker_id = ?, updated_at = ? where merged.speaker_id = ? and not exists (select 1 from task_assignee as kept where kept.task_id = merged.task_id and kept.speaker_id = ?)",
+      ).bind(keptSpeaker.id, now, mergedSpeaker.id, keptSpeaker.id),
       context.env.DB.prepare(
         "update file set speaker_id = ?, updated_at = ? where speaker_id = ? and kind != 'headshot'",
       ).bind(keptSpeaker.id, now, mergedSpeaker.id),

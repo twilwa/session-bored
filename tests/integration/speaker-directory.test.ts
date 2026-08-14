@@ -130,6 +130,8 @@ describe("speaker directory", () => {
     const sessionId = "ses_directory_duplicate";
     const taskId = "tsk_directory_duplicate";
     const fileId = "fil_directory_duplicate";
+    const releasedSessionId = "ses_directory_released";
+    const releasedTaskId = "tsk_directory_released";
     await env.DB.batch([
       env.DB.prepare(
         "insert into person (id, name, email, job_title, organization, bio, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -206,6 +208,40 @@ describe("speaker directory", () => {
       env.DB.prepare(
         "insert into file (id, event_id, task_id, speaker_id, kind, display_name, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?)",
       ).bind(fileId, "evt_devflow_conf_2027", taskId, duplicateSpeakerId, "deliverable", "slides.pdf", now, now),
+      // A session the duplicate was removed from after finishing its onboarding work. Removal
+      // archives both links precisely so the completion survives being restored later.
+      env.DB.prepare(
+        "insert into program_session (id, event_id, title, content_status, schedule_status, direct_entry, ics_uid, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      ).bind(
+        releasedSessionId,
+        "evt_devflow_conf_2027",
+        "A session the duplicate was removed from",
+        "draft",
+        "tbd",
+        1,
+        "ses_directory_released@session-bored",
+        now,
+        now,
+      ),
+      env.DB.prepare(
+        "insert into session_speaker (id, session_id, speaker_id, role_label, sort_order, created_at, updated_at, deleted_at) values (?, ?, ?, ?, ?, ?, ?, ?)",
+      ).bind("ssnr_directory_released", releasedSessionId, duplicateSpeakerId, "speaker", 0, now, now, now),
+      env.DB.prepare(
+        "insert into task (id, event_id, session_id, title, status, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?)",
+      ).bind(releasedTaskId, "evt_devflow_conf_2027", releasedSessionId, "Released session task", "active", now, now),
+      env.DB.prepare(
+        "insert into task_assignee (id, task_id, speaker_id, granted_by_session_id, status, completed_at, created_at, updated_at, deleted_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      ).bind(
+        "tassn_directory_released",
+        releasedTaskId,
+        duplicateSpeakerId,
+        releasedSessionId,
+        "completed",
+        now,
+        now,
+        now,
+        now,
+      ),
     ]);
 
     const cookie = await organizerCookie();
@@ -249,6 +285,20 @@ describe("speaker directory", () => {
       .toBe("spk_priya_devflow_2027");
     expect((await database.select().from(files).where(eq(files.id, fileId)))[0]?.speakerId)
       .toBe("spk_priya_devflow_2027");
+    const [releasedSessionLink] = await database.select().from(sessionSpeakers)
+      .where(eq(sessionSpeakers.id, "ssnr_directory_released"));
+    expect(releasedSessionLink).toMatchObject({
+      speakerId: "spk_priya_devflow_2027",
+      deletedAt: expect.any(Date),
+    });
+    const [releasedAssignment] = await database.select().from(taskAssignees)
+      .where(eq(taskAssignees.id, "tassn_directory_released"));
+    expect(releasedAssignment).toMatchObject({
+      speakerId: "spk_priya_devflow_2027",
+      status: "completed",
+      completedAt: expect.any(Date),
+      deletedAt: expect.any(Date),
+    });
     expect(await database.select().from(directoryMerges).where(and(
       eq(directoryMerges.keptPersonId, "psn_priya_raman"),
       eq(directoryMerges.mergedPersonId, duplicatePersonId),
