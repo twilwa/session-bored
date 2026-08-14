@@ -1,11 +1,43 @@
 // ABOUTME: Keeps anonymous personal schedules on-device and signed-in schedules on the account.
 // ABOUTME: Migrates each device's existing picks additively so signing in never discards them.
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useSyncExternalStore } from "react";
 
 const STORAGE_PREFIX = "greenroom.personal-schedule.v1";
 const MIGRATION_PREFIX = "greenroom.personal-schedule-account.v1";
 
-type StorageStatus = "checking" | "device" | "account" | "error";
+export const ACCOUNT_UPDATE_LIMIT = 100;
+
+export type StorageStatus = "checking" | "device" | "account" | "error";
+
+export interface PersonalScheduleChange {
+  add: string[];
+  remove: string[];
+}
+
+export interface PersonalScheduleSnapshot {
+  sessionIds: string[];
+  storageStatus: StorageStatus;
+}
+
+export interface PersonalScheduleEnvironment {
+  readStored(key: string): string | null;
+  writeStored(key: string, value: string): void;
+  accountUserId(): Promise<string | null>;
+  readAccountSchedule(eventId: string): Promise<string[]>;
+  updateAccountSchedule(eventId: string, change: PersonalScheduleChange): Promise<string[]>;
+  publicSessionIds(eventId: string): Promise<Set<string>>;
+}
+
+export interface PersonalScheduleStore {
+  subscribe(listener: () => void): () => void;
+  snapshot(): PersonalScheduleSnapshot;
+  settle(): Promise<void>;
+  toggle(sessionId: string): Promise<void>;
+}
+
+// A change the server will refuse however often it is retried, so the store drops it
+// instead of holding it against every later save.
+export class PersonalScheduleRejected extends Error {}
 
 interface SessionPayload {
   user: { id: string };
@@ -23,158 +55,235 @@ function storageKey(eventId: string): string {
   return `${STORAGE_PREFIX}:${eventId}`;
 }
 
-function readSessionIds(eventId: string): string[] {
-  try {
-    const parsed: unknown = JSON.parse(window.localStorage.getItem(storageKey(eventId)) ?? "[]");
-    return Array.isArray(parsed)
-      ? [...new Set(parsed.filter((value): value is string => typeof value === "string" && value !== ""))]
-      : [];
-  } catch {
-    return [];
-  }
-}
-
-function persistSessionIds(eventId: string, sessionIds: string[]): void {
-  try {
-    window.localStorage.setItem(storageKey(eventId), JSON.stringify(sessionIds));
-  } catch {
-    // The in-memory selection still works when a browser blocks device storage.
-  }
-}
-
 function migrationKey(userId: string, eventId: string): string {
   return `${MIGRATION_PREFIX}:${userId}:${eventId}`;
-}
-
-function hasMigrated(userId: string, eventId: string): boolean {
-  try {
-    return window.localStorage.getItem(migrationKey(userId, eventId)) === "done";
-  } catch {
-    return false;
-  }
-}
-
-function rememberMigration(userId: string, eventId: string): void {
-  try {
-    window.localStorage.setItem(migrationKey(userId, eventId), "done");
-  } catch {
-    // The account copy still works when a browser blocks device storage.
-  }
 }
 
 function accountSchedulePath(eventId: string): string {
   return `/api/attendee/events/${eventId}/schedule`;
 }
 
-async function fetchPublicSessionIds(eventId: string): Promise<Set<string>> {
-  const response = await fetch(`/api/public/events/${eventId}/sessions`, { credentials: "same-origin" });
-  if (!response.ok) {
-    throw new Error("public_sessions_load_failed");
+export function accountScheduleBatches(change: PersonalScheduleChange): PersonalScheduleChange[] {
+  const batches: PersonalScheduleChange[] = [];
+  for (let index = 0; index < change.remove.length; index += ACCOUNT_UPDATE_LIMIT) {
+    batches.push({ add: [], remove: change.remove.slice(index, index + ACCOUNT_UPDATE_LIMIT) });
   }
-  const payload = await response.json<PublicSessionListPayload>();
-  return new Set(payload.items.map((session) => session.id));
+  for (let index = 0; index < change.add.length; index += ACCOUNT_UPDATE_LIMIT) {
+    batches.push({ add: change.add.slice(index, index + ACCOUNT_UPDATE_LIMIT), remove: [] });
+  }
+  return batches;
 }
 
-async function updateAccountSchedule(
+export function browserPersonalScheduleEnvironment(): PersonalScheduleEnvironment {
+  return {
+    readStored(key) {
+      try {
+        return window.localStorage.getItem(key);
+      } catch {
+        return null;
+      }
+    },
+    writeStored(key, value) {
+      try {
+        window.localStorage.setItem(key, value);
+      } catch {
+        // The in-memory selection still works when a browser blocks device storage.
+      }
+    },
+    async accountUserId() {
+      const response = await fetch("/api/session", { credentials: "same-origin" });
+      if (response.status === 401) {
+        return null;
+      }
+      if (!response.ok) {
+        throw new Error("session_load_failed");
+      }
+      return (await response.json<SessionPayload>()).user.id;
+    },
+    async readAccountSchedule(eventId) {
+      const response = await fetch(accountSchedulePath(eventId), { credentials: "same-origin" });
+      if (!response.ok) {
+        throw new Error("personal_schedule_load_failed");
+      }
+      return (await response.json<PersonalSchedulePayload>()).sessionIds;
+    },
+    async updateAccountSchedule(eventId, change) {
+      const response = await fetch(accountSchedulePath(eventId), {
+        method: "PATCH",
+        credentials: "same-origin",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(change),
+      });
+      if (response.status === 400) {
+        throw new PersonalScheduleRejected("personal_schedule_rejected");
+      }
+      if (!response.ok) {
+        throw new Error("personal_schedule_sync_failed");
+      }
+      return (await response.json<PersonalSchedulePayload>()).sessionIds;
+    },
+    async publicSessionIds(eventId) {
+      const response = await fetch(`/api/public/events/${eventId}/sessions`, { credentials: "same-origin" });
+      if (!response.ok) {
+        throw new Error("public_sessions_load_failed");
+      }
+      const payload = await response.json<PublicSessionListPayload>();
+      return new Set(payload.items.map((session) => session.id));
+    },
+  };
+}
+
+export function createPersonalScheduleStore(
   eventId: string,
-  change: { add: string[]; remove: string[] },
-): Promise<PersonalSchedulePayload> {
-  const response = await fetch(accountSchedulePath(eventId), {
-    method: "PATCH",
-    credentials: "same-origin",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(change),
-  });
-  if (!response.ok) {
-    throw new Error("personal_schedule_sync_failed");
+  environment: PersonalScheduleEnvironment = browserPersonalScheduleEnvironment(),
+): PersonalScheduleStore {
+  const devicePicks = readDevicePicks();
+  const pending = new Map<string, boolean>();
+  const listeners = new Set<() => void>();
+  let sessionIds = devicePicks;
+  let mode: "checking" | "device" | "account" = "checking";
+  let failed = false;
+  let accountUserId: string | null = null;
+  let accountLoaded = false;
+  let snapshot: PersonalScheduleSnapshot = { sessionIds, storageStatus: "checking" };
+  let queue: Promise<void> = Promise.resolve();
+
+  function readDevicePicks(): string[] {
+    try {
+      const parsed: unknown = JSON.parse(environment.readStored(storageKey(eventId)) ?? "[]");
+      return Array.isArray(parsed)
+        ? [...new Set(parsed.filter((value): value is string => typeof value === "string" && value !== ""))]
+        : [];
+    } catch {
+      return [];
+    }
   }
-  return response.json<PersonalSchedulePayload>();
+
+  function persistDevicePicks(): void {
+    environment.writeStored(storageKey(eventId), JSON.stringify(sessionIds));
+  }
+
+  function publish(): void {
+    snapshot = { sessionIds, storageStatus: failed ? "error" : mode };
+    for (const listener of listeners) {
+      listener();
+    }
+  }
+
+  function withPending(saved: string[]): string[] {
+    const next = saved.filter((sessionId) => pending.get(sessionId) !== false);
+    for (const [sessionId, keep] of pending) {
+      if (keep && !next.includes(sessionId)) {
+        next.push(sessionId);
+      }
+    }
+    return next;
+  }
+
+  async function applyChange(change: PersonalScheduleChange, current: string[]): Promise<string[]> {
+    let saved = current;
+    for (const batch of accountScheduleBatches(change)) {
+      saved = await environment.updateAccountSchedule(eventId, batch);
+    }
+    return saved;
+  }
+
+  async function loadAccountSchedule(userId: string): Promise<string[]> {
+    let saved = await environment.readAccountSchedule(eventId);
+    if (environment.readStored(migrationKey(userId, eventId)) !== "done") {
+      const publicIds = await environment.publicSessionIds(eventId);
+      const known = new Set(saved);
+      const additions = devicePicks.filter((sessionId) => publicIds.has(sessionId) && !known.has(sessionId));
+      saved = await applyChange({ add: additions, remove: [] }, saved);
+      environment.writeStored(migrationKey(userId, eventId), "done");
+    }
+    return saved;
+  }
+
+  async function runSettle(): Promise<void> {
+    try {
+      if (mode === "checking") {
+        accountUserId = await environment.accountUserId();
+        mode = accountUserId === null ? "device" : "account";
+      }
+      if (mode === "device") {
+        persistDevicePicks();
+        pending.clear();
+        failed = false;
+        publish();
+        return;
+      }
+      if (!accountLoaded) {
+        sessionIds = withPending(await loadAccountSchedule(accountUserId!));
+        accountLoaded = true;
+        publish();
+      }
+      const add = [...pending].filter(([, keep]) => keep).map(([sessionId]) => sessionId);
+      const remove = [...pending].filter(([, keep]) => !keep).map(([sessionId]) => sessionId);
+      if (add.length > 0 || remove.length > 0) {
+        sessionIds = await applyChange({ add, remove }, sessionIds);
+        pending.clear();
+      }
+      failed = false;
+      publish();
+    } catch (error) {
+      if (error instanceof PersonalScheduleRejected) {
+        pending.clear();
+        accountLoaded = false;
+      }
+      failed = true;
+      publish();
+    }
+  }
+
+  function settle(): Promise<void> {
+    queue = queue.then(runSettle);
+    return queue;
+  }
+
+  function toggle(sessionId: string): Promise<void> {
+    const saved = sessionIds.includes(sessionId);
+    sessionIds = saved ? sessionIds.filter((id) => id !== sessionId) : [...sessionIds, sessionId];
+    if (mode === "device") {
+      persistDevicePicks();
+      publish();
+      return Promise.resolve();
+    }
+    pending.set(sessionId, !saved);
+    publish();
+    return settle();
+  }
+
+  return {
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    snapshot() {
+      return snapshot;
+    },
+    settle,
+    toggle,
+  };
 }
 
 export function usePersonalSchedule(eventId: string) {
-  const [sessionIds, setSessionIds] = useState<string[]>(() => readSessionIds(eventId));
-  const [storageStatus, setStorageStatus] = useState<StorageStatus>("checking");
-  const currentSessionIds = useRef(sessionIds);
-  const accountUserId = useRef<string | null>(null);
-  const deviceMode = useRef(false);
-
-  function replaceSessionIds(next: string[]): void {
-    currentSessionIds.current = next;
-    if (deviceMode.current) {
-      persistSessionIds(eventId, next);
-    }
-    setSessionIds(next);
-  }
+  const store = useMemo(() => createPersonalScheduleStore(eventId), [eventId]);
+  const snapshot = useSyncExternalStore(store.subscribe, store.snapshot, store.snapshot);
 
   useEffect(() => {
-    let active = true;
-    async function loadSchedule(): Promise<void> {
-      try {
-        const sessionResponse = await fetch("/api/session", { credentials: "same-origin" });
-        if (sessionResponse.status === 401) {
-          deviceMode.current = true;
-          persistSessionIds(eventId, currentSessionIds.current);
-          if (active) setStorageStatus("device");
-          return;
-        }
-        if (!sessionResponse.ok) {
-          throw new Error("session_load_failed");
-        }
-        const session = await sessionResponse.json<SessionPayload>();
-        accountUserId.current = session.user.id;
-        deviceMode.current = false;
-        const scheduleResponse = await fetch(accountSchedulePath(eventId), { credentials: "same-origin" });
-        if (!scheduleResponse.ok) {
-          throw new Error("personal_schedule_load_failed");
-        }
-        let accountSchedule = await scheduleResponse.json<PersonalSchedulePayload>();
-        if (!hasMigrated(session.user.id, eventId)) {
-          const devicePicks = currentSessionIds.current;
-          if (devicePicks.length > 0) {
-            const publicIds = await fetchPublicSessionIds(eventId);
-            const additions = devicePicks.filter((sessionId) => publicIds.has(sessionId));
-            if (additions.length > 0) {
-              accountSchedule = await updateAccountSchedule(eventId, { add: additions, remove: [] });
-            }
-          }
-          rememberMigration(session.user.id, eventId);
-        }
-        if (active) {
-          replaceSessionIds(accountSchedule.sessionIds);
-          setStorageStatus("account");
-        }
-      } catch {
-        accountUserId.current = null;
-        if (active) setStorageStatus("error");
-      }
-    }
-    void loadSchedule();
-    return () => {
-      active = false;
-    };
-  }, [eventId]);
+    void store.settle();
+  }, [store]);
 
-  function toggleSession(sessionId: string): void {
-    const saved = currentSessionIds.current.includes(sessionId);
-    const next = saved
-      ? currentSessionIds.current.filter((id) => id !== sessionId)
-      : [...currentSessionIds.current, sessionId];
-    replaceSessionIds(next);
-    if (accountUserId.current === null) {
-      return;
-    }
-    void updateAccountSchedule(eventId, {
-      add: saved ? [] : [sessionId],
-      remove: saved ? [sessionId] : [],
-    }).then((accountSchedule) => {
-      replaceSessionIds(accountSchedule.sessionIds);
-      setStorageStatus("account");
-    }).catch(() => {
-      setStorageStatus("error");
-    });
-  }
-
-  return { sessionIds, storageStatus, toggleSession };
+  return {
+    sessionIds: snapshot.sessionIds,
+    storageStatus: snapshot.storageStatus,
+    toggleSession: (sessionId: string): void => {
+      void store.toggle(sessionId);
+    },
+  };
 }
 
 export function personalScheduleSnapshotPath(eventId: string, sessionIds: string[]): string {

@@ -35,9 +35,8 @@ function sessionIds(value: unknown): string[] | null {
 async function readSchedule(
   database: DrizzleD1Database,
   userId: string,
-  eventId: string,
+  publicSessions: Awaited<ReturnType<typeof fetchPublicSessions>>,
 ): Promise<string[]> {
-  const publicSessions = await fetchPublicSessions(database, eventId, publicSessionFilters);
   if (publicSessions.length === 0) {
     return [];
   }
@@ -57,8 +56,9 @@ personalScheduleRoutes.get("/attendee/events/:eventId/schedule", async (context)
   if (user === null) {
     return context.json({ error: "authentication_required" }, 401);
   }
-  const sessionIds = await readSchedule(drizzle(context.env.DB), user.id, context.req.param("eventId"));
-  return context.json({ sessionIds });
+  const database = drizzle(context.env.DB);
+  const publicSessions = await fetchPublicSessions(database, context.req.param("eventId"), publicSessionFilters);
+  return context.json({ sessionIds: await readSchedule(database, user.id, publicSessions) });
 });
 
 personalScheduleRoutes.patch("/attendee/events/:eventId/schedule", async (context) => {
@@ -80,9 +80,8 @@ personalScheduleRoutes.patch("/attendee/events/:eventId/schedule", async (contex
 
   const database = drizzle(context.env.DB);
   const eventId = context.req.param("eventId");
-  const publicIds = new Set(
-    (await fetchPublicSessions(database, eventId, publicSessionFilters)).map((session) => session.id),
-  );
+  const publicSessions = await fetchPublicSessions(database, eventId, publicSessionFilters);
+  const publicIds = new Set(publicSessions.map((session) => session.id));
   if (add.some((sessionId) => !publicIds.has(sessionId))) {
     return context.json({ error: "invalid_personal_schedule" }, 400);
   }
@@ -102,7 +101,7 @@ personalScheduleRoutes.patch("/attendee/events/:eventId/schedule", async (contex
       .onConflictDoNothing();
   }
 
-  return context.json({ sessionIds: await readSchedule(database, user.id, eventId) });
+  return context.json({ sessionIds: await readSchedule(database, user.id, publicSessions) });
 });
 
 export default personalScheduleRoutes;
