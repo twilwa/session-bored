@@ -437,8 +437,9 @@ enriched `tasks` (`taskType`, `instructions`, `acceptedFileTypes`,
   cancelled one never will; showing any of them tells the speaker an outcome the
   product has not sent, which is the whole point of deciding freely and sending
   once. An acceptance that already produced the speaker's own session still reads
-  as accepted - they are working on it. The submitter dashboard is the deliberate
-  exception: it shows the live silent status by design and by test.
+  as accepted - they are working on it. The submitter dashboard follows the
+  sent-letter gate too, while keeping its submission-status vocabulary
+  (`under_review`, `declined`) rather than the speaker portal's presentation labels.
 - Uploading to a `file_request` task marks that speaker's `task_assignee`
   row `completed` — this is the same row the organizer/roster side must read,
   so no separate completion signal exists. General tasks complete only through

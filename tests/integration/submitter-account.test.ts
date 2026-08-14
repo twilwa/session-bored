@@ -1,7 +1,10 @@
 // ABOUTME: Exercises submitter account ownership and dashboard access through the real Worker.
 // ABOUTME: Proves anonymous author keys and signed-in proposal ownership never cross implicitly.
 import { env } from "cloudflare:workers";
+import { eq } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/d1";
 import { describe, expect, it } from "vitest";
+import { decisionNotices } from "../../db/schema.ts";
 import worker from "../../worker/index.ts";
 
 async function request(path: string, init?: RequestInit): Promise<Response> {
@@ -418,7 +421,7 @@ describe("submitter account ownership", () => {
     expect(await response.json()).toMatchObject({ error: "account_sign_in_required" });
   });
 
-  it("shows the current silent decision status on the submitter dashboard", async () => {
+  it("keeps a decision in review until its letter is sent", async () => {
     await request("/api/health");
     const draft = anonymousDraft("decision-owner@example.com", "Decision-ready proposal");
     const submitterCookie = await createAccount("Decision Owner", draft.speaker.email);
@@ -429,20 +432,52 @@ describe("submitter account ownership", () => {
     });
     const created = await createResponse.json<{ submission: { id: string } }>();
     const organizerCookie = await signIn("sbek-organizer@example.com", "SbekTest!2027-org");
-    const decisionResponse = await request("/api/events/evt_devflow_conf_2027/disposition", {
-      method: "PATCH",
+    async function expectDisplayedStatus(status: "under_review" | "declined"): Promise<void> {
+      const listResponse = await request("/api/submitter/submissions", {
+        headers: { cookie: submitterCookie },
+      });
+      expect(listResponse.status).toBe(200);
+      expect(await listResponse.json()).toMatchObject({
+        items: [{ id: created.submission.id, status }],
+      });
+      const detailResponse = await request(
+        `/api/submitter/submissions/${created.submission.id}`,
+        { headers: { cookie: submitterCookie } },
+      );
+      expect(detailResponse.status).toBe(200);
+      await expect(detailResponse.json()).resolves.toEqual({ status });
+    }
+
+    for (const status of ["accepted", "maybe", "declined"] as const) {
+      const decisionResponse = await request("/api/events/evt_devflow_conf_2027/disposition", {
+        method: "PATCH",
+        headers: { "content-type": "application/json", cookie: organizerCookie },
+        body: JSON.stringify({ submissionIds: [created.submission.id], status }),
+      });
+      expect(decisionResponse.status).toBe(200);
+      await expectDisplayedStatus("under_review");
+    }
+
+    const previewResponse = await request("/api/events/evt_devflow_conf_2027/decision-batches", {
+      method: "POST",
       headers: { "content-type": "application/json", cookie: organizerCookie },
-      body: JSON.stringify({ submissionIds: [created.submission.id], status: "maybe" }),
+      body: JSON.stringify({ submissionIds: [created.submission.id] }),
     });
-    expect(decisionResponse.status).toBe(200);
+    expect(previewResponse.status).toBe(201);
+    const preview = await previewResponse.json<{ id: string }>();
+    const dispatchResponse = await request(
+      `/api/events/evt_devflow_conf_2027/decision-batches/${preview.id}/dispatch`,
+      { method: "POST", headers: { cookie: organizerCookie } },
+    );
+    expect(dispatchResponse.status).toBe(200);
 
-    const response = await request("/api/submitter/submissions", {
-      headers: { cookie: submitterCookie },
-    });
+    await expectDisplayedStatus("under_review");
 
-    expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({
-      items: [{ id: created.submission.id, status: "maybe" }],
-    });
+    await drizzle(env.DB)
+      .update(decisionNotices)
+      .set({ deliveryStatus: "sent", sentAt: new Date() })
+      .where(eq(decisionNotices.submissionId, created.submission.id));
+
+    await expectDisplayedStatus("declined");
   });
 });

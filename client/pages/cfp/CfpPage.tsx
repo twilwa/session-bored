@@ -71,6 +71,10 @@ interface SubmissionResponse {
   submission: CfpOwnSubmission;
 }
 
+interface SubmitterStatusResponse {
+  status: CfpOwnSubmission["status"];
+}
+
 interface SavedReference {
   id: string;
   editUrl: string;
@@ -455,6 +459,9 @@ export function CfpPage({ path }: { path: string }) {
       : readJson<SubmissionResponse>(
         `/api/public/cfp/${slug}/submissions/${submissionId}${key === null ? "" : `?key=${encodeURIComponent(key)}`}`,
       );
+    const submitterStatusRequest = submissionId === null || isPreview || key !== null
+      ? Promise.resolve(null)
+      : readJson<SubmitterStatusResponse>(`/api/submitter/submissions/${submissionId}`);
     if (!isPreview) {
       fetch("/api/session", { credentials: "same-origin" })
         .then((response) => response.ok ? response.json<{ user: SubmitterAccountUser }>() : null)
@@ -465,8 +472,8 @@ export function CfpPage({ path }: { path: string }) {
         })
         .catch(() => undefined);
     }
-    Promise.all([cfpRequest, submissionRequest])
-      .then(([cfpData, ownSubmission]) => {
+    Promise.all([cfpRequest, submissionRequest, submitterStatusRequest])
+      .then(([cfpData, ownSubmission, submitterStatus]) => {
         setCfp(ownSubmission?.form === undefined
           ? cfpData
           : { ...cfpData, form: ownSubmission.form, fields: ownSubmission.form.fields });
@@ -475,8 +482,11 @@ export function CfpPage({ path }: { path: string }) {
           : ownSubmission?.availability ?? localAvailability(cfpData.form));
         setNewerVersionAvailable(ownSubmission?.newerVersionAvailable ?? null);
         if (ownSubmission !== null) {
-          setSubmission(ownSubmission.submission);
-          setState(stateFromSubmission(ownSubmission.submission));
+          const displayedSubmission = submitterStatus === null
+            ? ownSubmission.submission
+            : { ...ownSubmission.submission, status: submitterStatus.status };
+          setSubmission(displayedSubmission);
+          setState(stateFromSubmission(displayedSubmission));
           setPrivateUrl(window.location.href);
         }
       })
