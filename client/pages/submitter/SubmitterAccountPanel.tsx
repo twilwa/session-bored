@@ -1,14 +1,10 @@
 // ABOUTME: Offers Better Auth password account creation directly inside the public CFP portal.
 // ABOUTME: Keeps anonymous submission available while explaining account-owned proposal tracking.
 import { useState, type FormEvent } from "react";
+import type { SessionUser } from "../../lib.tsx";
 import "./submitter.css";
 
-export interface SubmitterAccountUser {
-  id: string;
-  name: string;
-  email: string;
-  role: "organizer" | "reviewer" | "speaker" | "attendee";
-}
+export type SubmitterAccountUser = SessionUser;
 
 interface SessionPayload {
   user: SubmitterAccountUser;

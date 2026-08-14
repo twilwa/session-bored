@@ -9,6 +9,7 @@ export interface SessionUser {
   name: string;
   email: string;
   role: Role;
+  roles: Role[];
 }
 
 interface SessionPayload {
@@ -54,9 +55,33 @@ export function accountAreaFor(role: Role, hasPortalWork: boolean, hasProposals:
   return roleAreas[role];
 }
 
-async function loadAccountArea(session: SessionPayload): Promise<AccountArea> {
-  if (session.user.role !== "speaker") {
-    return accountAreaFor(session.user.role, false, false);
+export function accountAreasFor(
+  roles: readonly Role[],
+  hasPortalWork: boolean,
+  hasProposals: boolean,
+): AccountArea[] {
+  return roles.map((role) => accountAreaFor(role, hasPortalWork, hasProposals));
+}
+
+function pathIsInsideArea(path: string, areaRoot: string): boolean {
+  if (path === areaRoot) return true;
+  if (!path.startsWith(areaRoot)) return false;
+  return ["/", "?", "#"].includes(path.charAt(areaRoot.length));
+}
+
+export function signedInDestination(
+  account: Pick<SessionUser, "role" | "roles">,
+  returnTo: string | null,
+): string {
+  const home = roleAreas[account.role].href;
+  if (returnTo === null || !returnTo.startsWith("/") || returnTo.startsWith("//")) return home;
+  const reachableAreaRoots = ["/submitter", ...account.roles.map((role) => roleAreas[role].href)];
+  return reachableAreaRoots.some((areaRoot) => pathIsInsideArea(returnTo, areaRoot)) ? returnTo : home;
+}
+
+async function loadAccountAreas(session: SessionPayload): Promise<AccountArea[]> {
+  if (!session.user.roles.includes("speaker")) {
+    return accountAreasFor(session.user.roles, false, false);
   }
 
   const [speakerResponse, submissionResponse] = await Promise.all([
@@ -70,7 +95,7 @@ async function loadAccountArea(session: SessionPayload): Promise<AccountArea> {
     ? await submissionResponse.json<{ items: unknown[] }>()
     : { items: [] };
   const hasPortalWork = speaker.sessions.length > 0 || speaker.tasks.length > 0;
-  return accountAreaFor(session.user.role, hasPortalWork, ownedSubmissions.items.length > 0);
+  return accountAreasFor(session.user.roles, hasPortalWork, ownedSubmissions.items.length > 0);
 }
 
 export function navigate(path: string): void {
@@ -155,7 +180,7 @@ export function PublicHeader({
   signedOutHref?: string;
   navigationLinkPrefix?: string;
 } = {}) {
-  const [account, setAccount] = useState<{ session: SessionPayload; area: AccountArea } | null>(null);
+  const [account, setAccount] = useState<{ session: SessionPayload; areas: AccountArea[] } | null>(null);
   const [navigationOpen, setNavigationOpen] = useState(false);
 
   useEffect(() => {
@@ -168,8 +193,8 @@ export function PublicHeader({
         return;
       }
       const session = { user };
-      const area = await loadAccountArea(session);
-      if (active && resolution === currentResolution) setAccount({ session, area });
+      const areas = await loadAccountAreas(session);
+      if (active && resolution === currentResolution) setAccount({ session, areas });
     }
     const stopObservingSession = observePublicSession((user) => void resolveAccount(user));
     fetch("/api/session", { credentials: "same-origin" })
@@ -231,7 +256,23 @@ export function PublicHeader({
         ) : (
           <>
             <span className="nav-identity">{account.session.user.name}</span>
-            <Link className="nav-signin" href={account.area.href}>{account.area.label}</Link>
+            {account.areas.length === 1 ? (
+              <Link className="nav-signin" href={account.areas[0]!.href}>{account.areas[0]!.label}</Link>
+            ) : (
+              <label className="nav-area-switcher">
+                <span>Area</span>
+                <select
+                  aria-label="Switch area"
+                  onChange={(event) => navigate(event.target.value)}
+                  value={account.areas.find((area) => pathIsInsideArea(window.location.pathname, area.href))?.href
+                    ?? account.areas[0]!.href}
+                >
+                  {account.areas.map((area) => (
+                    <option key={area.href} value={area.href}>{area.label}</option>
+                  ))}
+                </select>
+              </label>
+            )}
             <button className="nav-signout" onClick={() => void signOut()} type="button">Sign out</button>
           </>
         )}

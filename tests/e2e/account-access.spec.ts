@@ -37,6 +37,8 @@ test("a new account signs up, lands on its own schedule, and reaches no workspac
   await signUp(page, "Rowan Ellis", email);
 
   await expect(page).toHaveURL(/\/schedule\/mine$/);
+  await expect(page.getByLabel("Switch area")).toHaveCount(0);
+  await expect(page.locator(".nav-signin")).toHaveText("My schedule");
 
   // The page said what the account would become, and the session agrees.
   const session = await page.request.get("/api/session");
@@ -115,7 +117,7 @@ test("an invitation is recorded as pending, not as access", async ({ page }) => 
   await expect(page.locator(".toast")).toContainText("was withdrawn");
 });
 
-test("an account granted two areas can open both of them in the browser", async ({ page }) => {
+test("an account granted two areas can reach both of them from the header", async ({ page }) => {
   const email = uniqueEmail("two-hats");
   await signUp(page, "Wren Adeyemi", email);
   await page.waitForURL(/\/schedule\/mine$/);
@@ -141,16 +143,43 @@ test("an account granted two areas can open both of them in the browser", async 
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password").fill("Greenroom!2027");
   await page.getByRole("button", { name: "Sign in" }).click();
-  // The widest grant chooses the landing area; the narrower one must still open.
+  // The widest grant chooses the landing area; the header must expose the full union.
   await page.waitForURL(/\/reviewer$/);
-
   await expect(page.getByText("YOUR COMMITTEE DESK")).toBeVisible();
+  const areaSwitcher = page.getByLabel("Switch area");
+  await expect(areaSwitcher).toBeVisible();
+  expect(await areaSwitcher.locator("option").allTextContents()).toEqual([
+    "Reviewer area",
+    "Speaker area",
+  ]);
 
-  await page.goto("/speaker");
+  await areaSwitcher.selectOption("/speaker");
+  await expect(page).toHaveURL(/\/speaker$/);
   await expect(page.getByText("403 · WRONG WORKSPACE")).toHaveCount(0);
   await expect(page.getByText("No speaker profile is linked to this account yet.")).toBeVisible();
+
+  await page.getByLabel("Switch area").selectOption("/reviewer");
+  await expect(page).toHaveURL(/\/reviewer$/);
+  await expect(page.getByText("YOUR COMMITTEE DESK")).toBeVisible();
 
   // And only the two areas that were granted: the third stays shut.
   await page.goto("/organizer");
   await expect(page.getByText("403 · WRONG WORKSPACE")).toBeVisible();
+
+  await page.goto("/reviewer");
+  if (await page.getByRole("button", { name: "Open navigation" }).isVisible()) {
+    await page.getByRole("button", { name: "Open navigation" }).click();
+  }
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await expect(page).toHaveURL(/\/$/);
+  const denied = await page.goto("/speaker");
+  expect(denied?.status()).toBe(401);
+  await page.locator("main").getByRole("link", { name: "Sign in" }).click();
+  await expect(page).toHaveURL(/\/login\?returnTo=%2Fspeaker$/);
+  await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Password").fill("Greenroom!2027");
+  await page.getByRole("button", { name: "Sign in" }).click();
+
+  await expect(page).toHaveURL(/\/speaker$/);
+  await expect(page.getByText("No speaker profile is linked to this account yet.")).toBeVisible();
 });

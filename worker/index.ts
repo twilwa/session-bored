@@ -162,11 +162,12 @@ app.get("/api/health", (context) =>
 
 app.get("/api/session", requireAccess("authenticated"), (context) => {
   const user = context.get("authUser");
+  const roles = context.get("roles") ?? [];
   // The role the client sees describes the account by its widest grant, so a signed-in
   // attendee is described as an attendee rather than by the `user.role` column nothing reads
   // any more. It chooses a landing area; it decides no access.
   return context.json({
-    user: user === null ? null : { ...user, role: describingRole(context.get("roles") ?? []) },
+    user: user === null ? null : { ...user, role: describingRole(roles), roles },
     session: context.get("authSession"),
   });
 });

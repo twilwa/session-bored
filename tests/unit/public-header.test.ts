@@ -1,7 +1,7 @@
 // ABOUTME: Specifies the public header destination for each authenticated account context.
 // ABOUTME: Keeps proposal-only submitters distinct from speakers with active portal work.
 import { describe, expect, it } from "vitest";
-import { accountAreaFor } from "../../client/lib.tsx";
+import { accountAreaFor, accountAreasFor, signedInDestination } from "../../client/lib.tsx";
 
 describe("public header account area", () => {
   it("maps staff roles to their own work areas", () => {
@@ -13,6 +13,20 @@ describe("public header account area", () => {
       href: "/reviewer",
       label: "Reviewer area",
     });
+  });
+
+  it("maps every granted role to a reachable area", () => {
+    expect(accountAreasFor(["reviewer", "speaker"], false, false)).toEqual([
+      { href: "/reviewer", label: "Reviewer area" },
+      { href: "/speaker", label: "Speaker area" },
+    ]);
+  });
+
+  it("returns a multi-grant account to the granted area it asked for", () => {
+    expect(signedInDestination(
+      { role: "reviewer", roles: ["reviewer", "speaker"] },
+      "/speaker#tasks",
+    )).toBe("/speaker#tasks");
   });
 
   it("keeps a speaker with portal work in the speaker area", () => {

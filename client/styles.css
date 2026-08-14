@@ -34,6 +34,9 @@ a { color: inherit; text-decoration: none; }
 .brand { display: inline-flex; align-items: center; gap: 10px; font-family: Georgia, "Times New Roman", serif; font-size: 1.35rem; font-weight: 700; }
 .brand__light { color: var(--signal); font-size: 1.8rem; filter: drop-shadow(0 0 0 var(--ink)); -webkit-text-stroke: 1px var(--ink); }
 .nav-signin { border: 1px solid var(--ink); padding: 8px 14px; }
+.nav-area-switcher { display: inline-flex; align-items: center; gap: 8px; }
+.nav-area-switcher > span { font: 0.68rem "SFMono-Regular", Consolas, monospace; letter-spacing: 0.08em; }
+.nav-area-switcher select { min-width: 0; min-height: 38px; border: 1px solid currentColor; border-radius: 0; background: var(--paper); color: var(--ink); padding: 7px 28px 7px 10px; font-weight: 800; text-transform: uppercase; }
 
 .hero { min-height: calc(100vh - 120px); display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(300px, 0.6fr); gap: 6vw; align-items: center; padding: clamp(60px, 9vw, 130px) 7vw; position: relative; }
 .hero::before { content: ""; width: 44vw; height: 44vw; max-width: 620px; max-height: 620px; border: 1px solid var(--ink); border-radius: 50%; position: absolute; left: -24vw; top: 10%; opacity: 0.18; }
@@ -426,9 +429,13 @@ a { color: inherit; text-decoration: none; }
   .public-header__menu { display: inline-flex; margin-left: auto; }
   .public-header nav { flex: 0 0 auto; gap: 0; width: auto; overflow: visible; }
   .public-header nav:not(.public-header__nav--open) > * { display: none; }
-  .public-header nav:not(.public-header__nav--open) > .nav-signin { display: inline-flex; padding: 8px 10px; white-space: nowrap; }
+  .public-header nav:not(.public-header__nav--open) > .nav-signin,
+  .public-header nav:not(.public-header__nav--open) > .nav-area-switcher { display: inline-flex; padding: 8px 10px; white-space: nowrap; }
+  .public-header nav:not(.public-header__nav--open) > .nav-area-switcher { border: 0; padding: 0; }
+  .public-header nav:not(.public-header__nav--open) > .nav-area-switcher > span { display: none; }
   .public-header nav.public-header__nav--open { display: grid; flex: 0 0 100%; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; border-top: 1px solid currentColor; }
-  .public-header nav a, .public-header nav button, .nav-identity { min-width: 0; padding: 12px 8px; border-bottom: 1px solid currentColor; white-space: normal; overflow-wrap: anywhere; text-align: left; }
+  .public-header nav a, .public-header nav button, .nav-identity, .nav-area-switcher { min-width: 0; padding: 12px 8px; border-bottom: 1px solid currentColor; white-space: normal; overflow-wrap: anywhere; text-align: left; }
+  .nav-area-switcher select { width: 100%; }
   .public-header nav .nav-signin { border: 0; border-bottom: 1px solid currentColor; }
   .hero { grid-template-columns: 1fr; padding: 70px 22px 90px; }
   .hero h1 { font-size: clamp(3.4rem, 17vw, 5rem); }
