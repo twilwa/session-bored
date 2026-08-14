@@ -1,7 +1,16 @@
 // ABOUTME: Specifies the public header destination for each authenticated account context.
 // ABOUTME: Keeps proposal-only submitters distinct from speakers with active portal work.
 import { describe, expect, it } from "vitest";
-import { accountAreaFor, accountAreasFor, signedInDestination } from "../../client/lib.tsx";
+import {
+  accountAreaFor,
+  accountAreasFor,
+  signedInDestination,
+  switchableAreasFor,
+} from "../../client/lib.tsx";
+
+function twoHatsDestination(returnTo: string | null): string {
+  return signedInDestination({ role: "reviewer", roles: ["reviewer", "speaker"] }, returnTo);
+}
 
 describe("public header account area", () => {
   it("maps staff roles to their own work areas", () => {
@@ -23,8 +32,8 @@ describe("public header account area", () => {
   });
 
   it("keeps offering the speaker area to a multi-grant account that owns proposals", () => {
-    // The submitter dashboard carries no switcher, so sending a multi-grant account there
-    // would strand them and would hide the speaker area their live grant opens.
+    // The submitter dashboard is reachable by every authenticated account rather than
+    // granted, so it never stands in for the speaker area a live grant opens.
     expect(accountAreasFor(["reviewer", "speaker"], false, true)).toEqual([
       { href: "/reviewer", label: "Reviewer area" },
       { href: "/speaker", label: "Speaker area" },
@@ -37,11 +46,40 @@ describe("public header account area", () => {
     ]);
   });
 
+  it("offers a switcher only to an account with more than one area", () => {
+    expect(switchableAreasFor(["reviewer", "speaker"])).toEqual([
+      { href: "/reviewer", label: "Reviewer area" },
+      { href: "/speaker", label: "Speaker area" },
+    ]);
+    expect(switchableAreasFor(["speaker"])).toEqual([]);
+    expect(switchableAreasFor(["attendee"])).toEqual([]);
+  });
+
   it("returns a multi-grant account to the granted area it asked for", () => {
-    expect(signedInDestination(
-      { role: "reviewer", roles: ["reviewer", "speaker"] },
-      "/speaker#tasks",
-    )).toBe("/speaker#tasks");
+    expect(twoHatsDestination("/speaker#tasks")).toBe("/speaker#tasks");
+  });
+
+  it("falls back to the landing area for a return path outside the grant union", () => {
+    expect(twoHatsDestination("/organizer/people")).toBe("/reviewer");
+    expect(twoHatsDestination(null)).toBe("/reviewer");
+  });
+
+  it("refuses a return path that only shares a prefix with a granted area", () => {
+    // The public speaker directory is not the speaker workspace, and no granted root ends
+    // mid-segment, so a prefix match alone must not open a return.
+    expect(twoHatsDestination("/speakers/ada-lovelace")).toBe("/reviewer");
+    expect(twoHatsDestination("/speaker")).toBe("/speaker");
+    expect(twoHatsDestination("/speaker/files?version=2")).toBe("/speaker/files?version=2");
+  });
+
+  it("refuses a return path that leaves this origin", () => {
+    for (const hostile of ["//evil.example/speaker", "https://evil.example/speaker", "speaker"]) {
+      expect(twoHatsDestination(hostile)).toBe("/reviewer");
+    }
+  });
+
+  it("keeps the submitter dashboard a valid return for any authenticated account", () => {
+    expect(signedInDestination({ role: "attendee", roles: ["attendee"] }, "/submitter")).toBe("/submitter");
   });
 
   it("keeps a speaker with portal work in the speaker area", () => {

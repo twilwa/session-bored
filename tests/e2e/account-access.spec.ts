@@ -30,6 +30,8 @@ test("the submitter gate explains sign-in and then admits an authenticated accou
 
   await expect(page.getByRole("heading", { name: /Your proposals/ })).toBeVisible();
   await expect(page.getByText("403 · WRONG WORKSPACE")).toHaveCount(0);
+  // One area is a destination, not a choice: this account's dashboard chrome is unchanged.
+  await expect(page.getByLabel("Switch area")).toHaveCount(0);
 });
 
 test("a new account signs up, lands on its own schedule, and reaches no workspace", async ({ page }) => {
@@ -181,6 +183,20 @@ test("an account granted two areas can reach both of them from the header", asyn
   await publicAreaSwitcher.selectOption("/reviewer");
   await expect(page).toHaveURL(/\/reviewer$/);
   await expect(page.getByText("YOUR COMMITTEE DESK")).toBeVisible();
+
+  // The submitter dashboard is signed-in chrome of its own, and it leads back too.
+  await page.goto("/submitter");
+  await expect(page.getByRole("heading", { name: /Your proposals/ })).toBeVisible();
+  const dashboardSwitcher = page.getByLabel("Switch area");
+  await expect(dashboardSwitcher).toHaveValue("");
+  expect(await dashboardSwitcher.locator("option").allTextContents()).toEqual([
+    "Go to...",
+    "Reviewer area",
+    "Speaker area",
+  ]);
+  await dashboardSwitcher.selectOption("/speaker");
+  await expect(page).toHaveURL(/\/speaker$/);
+  await expect(page.getByText("No speaker profile is linked to this account yet.")).toBeVisible();
 
   // And only the two areas that were granted: the third stays shut.
   await page.goto("/organizer");

@@ -56,6 +56,15 @@ export function accountAreaFor(role: Role, hasPortalWork: boolean, hasProposals:
 }
 
 /**
+ * The areas a person can switch between, read straight off the grant union so a later
+ * grant appears here without anything naming it. One area is a destination rather than a
+ * choice, so an account with a single area has nothing to switch to and gets no switcher.
+ */
+export function switchableAreasFor(roles: readonly Role[]): AccountArea[] {
+  return roles.length > 1 ? roles.map((role) => roleAreas[role]) : [];
+}
+
+/**
  * The switcher lists the areas the grant union itself opens, so every live grant is
  * reachable and no option leads to a page the header cannot bring the person back from.
  * The submitter dashboard is not a granted area - every authenticated account reaches it -
@@ -66,9 +75,10 @@ export function accountAreasFor(
   hasPortalWork: boolean,
   hasProposals: boolean,
 ): AccountArea[] {
-  const onlyRole = roles.length === 1 ? roles[0] : undefined;
-  if (onlyRole !== undefined) return [accountAreaFor(onlyRole, hasPortalWork, hasProposals)];
-  return roles.map((role) => roleAreas[role]);
+  const switchable = switchableAreasFor(roles);
+  if (switchable.length > 0) return switchable;
+  const onlyRole = roles[0];
+  return onlyRole === undefined ? [] : [accountAreaFor(onlyRole, hasPortalWork, hasProposals)];
 }
 
 function pathIsInsideArea(path: string, areaRoot: string): boolean {
@@ -87,9 +97,14 @@ export function signedInDestination(
   return reachableAreaRoots.some((areaRoot) => pathIsInsideArea(returnTo, areaRoot)) ? returnTo : home;
 }
 
+/**
+ * Portal work and owned proposals move the area of exactly one account shape - the one
+ * whose single grant is the speaker area - so only that shape pays for the two reads.
+ */
 async function loadAccountAreas(session: SessionPayload): Promise<AccountArea[]> {
-  if (!session.user.roles.includes("speaker")) {
-    return accountAreasFor(session.user.roles, false, false);
+  const roles = session.user.roles;
+  if (roles.length !== 1 || roles[0] !== "speaker") {
+    return accountAreasFor(roles, false, false);
   }
 
   const [speakerResponse, submissionResponse] = await Promise.all([
@@ -103,7 +118,7 @@ async function loadAccountAreas(session: SessionPayload): Promise<AccountArea[]>
     ? await submissionResponse.json<{ items: unknown[] }>()
     : { items: [] };
   const hasPortalWork = speaker.sessions.length > 0 || speaker.tasks.length > 0;
-  return accountAreasFor(session.user.roles, hasPortalWork, ownedSubmissions.items.length > 0);
+  return accountAreasFor(roles, hasPortalWork, ownedSubmissions.items.length > 0);
 }
 
 export function navigate(path: string): void {
@@ -186,7 +201,7 @@ export function Brand() {
  * control must not claim a location the person is not at, and every area option has to
  * stay selectable so each one fires a real change and navigates.
  */
-function AreaSwitcher({ areas }: { areas: AccountArea[] }) {
+export function AreaSwitcher({ areas }: { areas: AccountArea[] }) {
   const currentAreaHref =
     areas.find((area) => pathIsInsideArea(window.location.pathname, area.href))?.href ?? "";
   return (

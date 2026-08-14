@@ -2,15 +2,11 @@
 // ABOUTME: Links each owned proposal back to the shared CFP edit flow without private keys.
 import { useEffect, useState } from "react";
 import type { SubmitterSubmissionSummary } from "../../../shared/api.ts";
+import { AreaSwitcher, switchableAreasFor, type SessionUser } from "../../lib.tsx";
 import "./submitter.css";
 
 interface SubmitterListPayload {
   items: SubmitterSubmissionSummary[];
-}
-
-interface SignedInAccount {
-  name: string;
-  email: string;
 }
 
 function statusLabel(status: SubmitterSubmissionSummary["status"]): string {
@@ -20,11 +16,11 @@ function statusLabel(status: SubmitterSubmissionSummary["status"]): string {
 export function SubmitterDashboardPage() {
   const [items, setItems] = useState<SubmitterSubmissionSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [account, setAccount] = useState<SignedInAccount | null>(null);
+  const [account, setAccount] = useState<SessionUser | null>(null);
 
   useEffect(() => {
     fetch("/api/session", { credentials: "same-origin" })
-      .then(async (response) => (response.ok ? (await response.json<{ user: SignedInAccount }>()).user : null))
+      .then(async (response) => (response.ok ? (await response.json<{ user: SessionUser | null }>()).user : null))
       .then((user) => setAccount(user))
       .catch(() => setAccount(null));
   }, []);
@@ -55,6 +51,8 @@ export function SubmitterDashboardPage() {
       .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : "Your proposals could not be loaded."));
   }, []);
 
+  const switchableAreas = switchableAreasFor(account?.roles ?? []);
+
   return (
     <div className="submitter-dashboard">
       <header className="submitter-dashboard__nav">
@@ -64,6 +62,7 @@ export function SubmitterDashboardPage() {
           {account === null ? <a href="/login?returnTo=/submitter">Sign in</a> : (
             <>
               <span className="submitter-dashboard__identity" title={account.email}>{account.name}</span>
+              {switchableAreas.length === 0 ? null : <AreaSwitcher areas={switchableAreas} />}
               <a href="/login?returnTo=/submitter">Switch account</a>
               <button onClick={() => void signOut()} type="button">Sign out</button>
             </>
