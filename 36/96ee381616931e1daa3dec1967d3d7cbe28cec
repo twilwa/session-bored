@@ -1,0 +1,22 @@
+worker/routes/review.ts
+  s_2577cee8e77516::t_5ead69b7cb739e 554-556
+client/pages/people/PeoplePage.tsx
+  s_2577cee8e77516::t_0ab9a0423dfc39 147-151
+  s_2577cee8e77516::t_efe72369ddc683 257-321
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "3696ee381616931e1daa3dec1967d3d7cbe28cec",
+  "prompts": {},
+  "sessions": {
+    "s_2577cee8e77516": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "66378c36-7ef9-4f05-afef-aaca07fd670a",
+        "model": "claude-fable-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
