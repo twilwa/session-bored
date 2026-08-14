@@ -29,8 +29,14 @@ const widgetTypes = ["sessions", "speakers", "agenda", "itinerary", "gallery"] a
 const statuses = ["draft", "published"] as const;
 const publicHeaders = {
   "access-control-allow-origin": "*",
-  "cache-control": "public, max-age=60",
+  "cache-control": "public, no-cache, must-revalidate",
 };
+
+async function publicJsonEtag(payload: unknown): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(payload)));
+  const hash = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return `"${hash}"`;
+}
 
 const requireOrganizer = createMiddleware<EmbedEnvironment>(async (context, next) => {
   if (!holdsAccess(context.get("roles") ?? [], "organizer")) {
@@ -233,8 +239,14 @@ embedRoutes.get("/api/public/embeds/:delivery", async (context) => {
   const database = drizzle(context.env.DB);
   const { publicToken, format } = parseDelivery(context.req.param("delivery"));
   const payload = await readPublicEmbed(database, publicToken);
-  if (payload === null) return context.json({ error: "not_found" }, 404);
-  if (format === "json") return context.json(payload, 200, publicHeaders);
+  if (payload === null) return context.json({ error: "not_found" }, 404, publicHeaders);
+  if (format === "json") {
+    const etag = await publicJsonEtag(payload);
+    if (context.req.header("if-none-match") === etag) {
+      return context.body(null, 304, { ...publicHeaders, etag });
+    }
+    return context.json(payload, 200, { ...publicHeaders, etag });
+  }
   if (payload.embed.widgetType === "speakers" || payload.embed.widgetType === "gallery") {
     return context.json({ error: "not_found" }, 404);
   }

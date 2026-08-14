@@ -167,6 +167,55 @@ describe("organizer embed builder", () => {
     await expectPublicDeliveryStatus(embed.publicToken, 404);
   });
 
+  it("revalidates stored public JSON after an edit or deletion", async () => {
+    const embed = await createEmbed(organizerCookie, {
+      name: "Stored programme",
+      widgetType: "sessions",
+      status: "published",
+    });
+    const path = `/api/public/embeds/${embed.publicToken}.json`;
+
+    const initialResponse = await request(path);
+    expect(initialResponse.status).toBe(200);
+    expect(initialResponse.headers.get("cache-control")).toBe("public, no-cache, must-revalidate");
+    const initialEtag = initialResponse.headers.get("etag");
+    expect(initialEtag).toMatch(/^"[a-f0-9]{64}"$/);
+    expect(await initialResponse.json()).toMatchObject({ embed: { name: "Stored programme" } });
+
+    const unchangedResponse = await request(path, { headers: { "if-none-match": initialEtag! } });
+    expect(unchangedResponse.status).toBe(304);
+    expect(unchangedResponse.headers.get("etag")).toBe(initialEtag);
+
+    const updateResponse = await request(`/api/events/${eventId}/embeds/${embed.id}`, {
+      method: "PATCH",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({
+        name: "Stored agenda",
+        widgetType: "agenda",
+        status: "published",
+      }),
+    });
+    expect(updateResponse.status).toBe(200);
+
+    const editedResponse = await request(path, { headers: { "if-none-match": initialEtag! } });
+    expect(editedResponse.status).toBe(200);
+    expect(editedResponse.headers.get("etag")).not.toBe(initialEtag);
+    expect(await editedResponse.json()).toMatchObject({
+      embed: { name: "Stored agenda", widgetType: "agenda" },
+    });
+
+    const removeResponse = await request(`/api/events/${eventId}/embeds/${embed.id}`, {
+      method: "DELETE",
+      headers: { cookie: organizerCookie },
+    });
+    expect(removeResponse.status).toBe(204);
+
+    const removedResponse = await request(path, { headers: { "if-none-match": initialEtag! } });
+    expect(removedResponse.status).toBe(404);
+    expect(removedResponse.headers.get("cache-control")).toBe("public, no-cache, must-revalidate");
+    expect(await removedResponse.json()).toEqual({ error: "not_found" });
+  });
+
   it("delivers filtered JSON and iCal without leaking hidden sessions", async () => {
     const now = Date.now();
     await env.DB.batch([
