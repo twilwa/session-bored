@@ -139,7 +139,8 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   JSON error. Both carry the same 401 or 403, so never assert a page route's
   refusal by content type alone. `/login?returnTo=` is honoured only for
   same-origin paths inside an area opened by the signer-in's full live grant
-  union or `/submitter`.
+  union or `/submitter`; `signedInDestination` in `client/lib.tsx` is the one
+  place that decides it, and it always answers with a destination.
 - `worker/routes/review.ts` owns the F-4 review contract. It reads submissions
   through `submission`, `submission_track`, and `submission_speaker`; the CFP
   lane must preserve their stable IDs, event ID, title, abstract, status,

@@ -67,6 +67,14 @@ keep their own schedule and their own proposals, and reach no speaker, reviewer,
 or organizer area. Only an organizer opens those, from **People** in the
 organizer workspace, where each grant records who made it and can be taken back.
 
+An account can hold more than one of these. When it does, the signed-in header
+carries an **Area** switcher naming every area those grants open, on public pages
+and inside every workspace, so a second grant is reachable from wherever the
+person happens to be. An account with a single area keeps the plain link to it.
+Signing in from a page that turned you away returns you to that page whenever it
+sits inside an area your account reaches; anything else lands you on your home
+area.
+
 An organizer can also invite a reviewer by email. The invitation becomes reviewer
 access only once that person confirms the address, so knowing an invited address
 is never enough to claim it. Confirmation mail needs an email sender; until one
