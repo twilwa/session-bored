@@ -1,0 +1,19 @@
+worker/routes/submitter.ts
+  s_7cbb4a718cda67::t_e41e42f8e1e119 6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "8e28f76bb2690f99ebec4ae5081becb124f983cb",
+  "prompts": {},
+  "sessions": {
+    "s_7cbb4a718cda67": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4a908889-8e65-4c7b-903b-89c687d1fced",
+        "model": "claude-fable-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}

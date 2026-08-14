@@ -1,0 +1,32 @@
+worker/routes/submitter.ts
+  s_7cbb4a718cda67::t_2dd5d481e918d6 44
+  s_7cbb4a718cda67::t_5ed92b66ea7ed6 13
+  s_7cbb4a718cda67::t_65a55bffd35f9b 74
+tests/integration/submitter-account.test.ts
+  s_7cbb4a718cda67::t_b38c29bf93a900 483-567
+shared/api.ts
+  s_7cbb4a718cda67::t_ed68aa065e7f09 864-889
+worker/routes/cfp.ts
+  s_7cbb4a718cda67::t_6771c90490bd7e 977-978
+  s_7cbb4a718cda67::t_102fa150de62ca 737
+  s_7cbb4a718cda67::t_539f99eed70614 8,26,28
+  s_7cbb4a718cda67::t_758ac3b273ab55 704,709-712
+client/pages/cfp/CfpPage.tsx
+  s_7cbb4a718cda67::t_d26798640a3421 468-469,478-479
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "59d26939de4d6482598595a4148e134be5ac6269",
+  "prompts": {},
+  "sessions": {
+    "s_7cbb4a718cda67": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4a908889-8e65-4c7b-903b-89c687d1fced",
+        "model": "claude-fable-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
