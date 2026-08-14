@@ -1,0 +1,46 @@
+tests/unit/public-header.test.ts
+  s_ec0ee485707380::t_06f15c4e940660 49-57,60-62,65-69,73-76,78-82
+  s_ec0ee485707380::t_4531cd2298bd9f 35-36
+  s_ec0ee485707380::t_ae2bf989069ef6 4-9
+  s_ec0ee485707380::t_66833b47dc6dd2 11-13
+  s_ec0ee485707380::t_519d81eaf715c2 59,63-64,70-72,77
+  s_ec0ee485707380::t_cc524d42af6c01 10
+client/lib.tsx
+  s_ec0ee485707380::t_e40bf55521bf36 58,100-103,105-107
+  s_ec0ee485707380::t_4474ffdec9e191 59-66,78-81
+  s_ec0ee485707380::t_ae965c64801de6 121
+  s_ec0ee485707380::t_dea0d71ba20c64 204
+client/pages/submitter/SubmitterDashboardPage.tsx
+  s_ec0ee485707380::t_749a1e780c2c55 5,19,23
+  s_ec0ee485707380::t_fa8476f81655c9 54-55,65
+client/pages/submitter/submitter.css
+  s_ec0ee485707380::t_c4a0713f9dbd4c 41-42
+tests/e2e/account-access.spec.ts
+  s_ec0ee485707380::t_7cc84d92ad7827 187-199
+  s_ec0ee485707380::t_f7ca14fd199857 33-34
+  s_3a79969d781133::t_47adf06f9c05de 186
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "c1d10c8e323cdfae121549cefe16c1be707d4932",
+  "prompts": {},
+  "sessions": {
+    "s_3a79969d781133": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f43b60c0-1d66-4cff-9e7a-a84eebe2624c",
+        "model": "claude-opus-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    },
+    "s_ec0ee485707380": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "af836feb-49df-4543-9523-9cd23f8a32af",
+        "model": "claude-opus-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
