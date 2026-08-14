@@ -438,7 +438,16 @@ portalRoutes.post("/portal/tasks/:taskId/files", requireSpeaker, async (context)
   if (assignment.taskType !== "file_request") {
     return context.json({ error: "task_not_file_request" }, 400);
   }
-  const file = readUploadedFile(await context.req.formData().catch(() => null));
+  const formData = await context.req.formData().catch(() => null);
+  const displayedRequestKind = formData?.get("displayedRequestKind");
+  const currentRequestKind = isPictureRequest(assignment) ? "picture" : "document";
+  if (displayedRequestKind !== currentRequestKind) {
+    return context.json({
+      error: "request_changed",
+      message: "This request changed. Reload the portal to review how your file will be used before uploading.",
+    }, 409);
+  }
+  const file = readUploadedFile(formData);
   if (file === null) {
     return context.json({ error: "file_required", message: "Choose a file to upload." }, 400);
   }
