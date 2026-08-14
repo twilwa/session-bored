@@ -1,0 +1,32 @@
+worker/routes/personal-schedule.ts
+  s_30ecb3989968d2::t_60680ecb5782fe 104
+  s_30ecb3989968d2::t_bf18e23a0969d4 59-61
+  s_30ecb3989968d2::t_a0441d0800bdd1 38
+  s_30ecb3989968d2::t_e1f0ee88f4a017 83-84
+tests/unit/personal-schedule.test.ts
+  s_30ecb3989968d2::t_739f89ad16accb 158-159,163,166
+  s_30ecb3989968d2::t_869e0004e9c2a5 1-157,160-162,164-165,167-198,200-202,204-209
+  s_30ecb3989968d2::t_a40bf8ac1d3065 199,203
+client/pages/public/personal-schedule.ts
+  s_30ecb3989968d2::t_935cdc0b90b7ea 3,8-34,36-40,58-63,66-72,74,77-133,136-159,162-163,166-171,173-180,183-188,191-198,200,203-219,221-235,237-238,257-266,269-282,286
+  s_30ecb3989968d2::t_bbc72a8ccf8b1c 35
+  s_30ecb3989968d2::t_568fc6f9ceab6e 239-243,245-249,252-253,267-268
+  s_30ecb3989968d2::t_39fbc503bc3d97 244,250,254
+  s_30ecb3989968d2::t_3b2ee1b95d0520 283-285
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "42f4c81175bbcbe2a286250208bef1317e27890d",
+  "prompts": {},
+  "sessions": {
+    "s_30ecb3989968d2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a8f53bda-a14c-486c-91b0-f4ed8c79cc45",
+        "model": "claude-opus-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
