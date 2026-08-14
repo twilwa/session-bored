@@ -444,6 +444,18 @@ describe("the program team's own hold on the participant list", () => {
     });
     expect(firstPublish.status).toBe(200);
 
+    const repeatedAcceptance = await request(`/api/events/${eventId}/disposition`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie: organizerCookie },
+      body: JSON.stringify({ submissionIds: [created.submission.id], status: "accepted" }),
+    });
+    expect(repeatedAcceptance.status).toBe(200);
+    const publicAfterRepeatedAcceptance = await request(`/api/public/events/${eventId}/sessions`);
+    const publicAfterRepeatedAcceptanceText = await publicAfterRepeatedAcceptance.text();
+    for (const participantName of ["Rosa Okonkwo", "Dev Malhotra", "Ines Brenner"]) {
+      expect(publicAfterRepeatedAcceptanceText).toContain(participantName);
+    }
+
     const participantsPath = `/api/events/${eventId}/submissions/${created.submission.id}/participants`;
     const added = await request(participantsPath, {
       method: "POST",

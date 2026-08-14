@@ -169,7 +169,12 @@ async function attachParticipant(
     .onConflictDoNothing();
   await database
     .update(sessionSpeakers)
-    .set({ roleLabel, sortOrder, publishedAt: null, deletedAt: null })
+    .set({
+      roleLabel,
+      sortOrder,
+      ...(holdForRepublish ? { publishedAt: null } : {}),
+      deletedAt: null,
+    })
     .where(and(eq(sessionSpeakers.sessionId, sessionId), eq(sessionSpeakers.speakerId, speaker.id)));
   for (const task of participant.onboardingTasks) {
     // Only an assignment this handoff actually creates records the session that granted it.
