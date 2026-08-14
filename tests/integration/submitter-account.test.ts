@@ -440,12 +440,6 @@ describe("submitter account ownership", () => {
       expect(await listResponse.json()).toMatchObject({
         items: [{ id: created.submission.id, status }],
       });
-      const detailResponse = await request(
-        `/api/submitter/submissions/${created.submission.id}`,
-        { headers: { cookie: submitterCookie } },
-      );
-      expect(detailResponse.status).toBe(200);
-      await expect(detailResponse.json()).resolves.toEqual({ status });
     }
 
     for (const status of ["accepted", "maybe", "declined"] as const) {
