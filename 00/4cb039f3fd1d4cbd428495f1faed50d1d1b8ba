@@ -1,0 +1,23 @@
+tests/e2e/embeds.spec.ts
+  s_13fa8da0ac18e6::t_25cfdfc3a7a4bf 33-42,80-88,99-104,130-136
+worker/routes/embeds.ts
+  s_13fa8da0ac18e6::t_175fdf93b208de 32,35-40,242-249
+tests/integration/embeds.test.ts
+  s_13fa8da0ac18e6::t_645a03dacd1b44 170-218
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "004cb039f3fd1d4cbd428495f1faed50d1d1b8ba",
+  "prompts": {},
+  "sessions": {
+    "s_13fa8da0ac18e6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffe28-d779-7480-95f6-356efcec0045",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
