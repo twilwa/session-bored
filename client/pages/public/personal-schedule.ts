@@ -35,8 +35,8 @@ export interface PersonalScheduleStore {
   toggle(sessionId: string): Promise<void>;
 }
 
-// A change the server will refuse however often it is retried, so the store drops it
-// instead of holding it against every later save.
+// A batch the server refuses outright. Only the picks the programme no longer offers are
+// dropped from it; every still-public pick in the same batch is kept and sent again.
 export class PersonalScheduleRejected extends Error {}
 
 interface SessionPayload {
@@ -184,13 +184,13 @@ export function createPersonalScheduleStore(
   ): Promise<string[]> {
     let saved = current;
     for (const batch of accountScheduleBatches(change)) {
+      saved = await environment.updateAccountSchedule(eventId, batch);
       for (const sessionId of batch.add) {
         sent?.set(sessionId, true);
       }
       for (const sessionId of batch.remove) {
         sent?.set(sessionId, false);
       }
-      saved = await environment.updateAccountSchedule(eventId, batch);
     }
     return saved;
   }
@@ -198,6 +198,15 @@ export function createPersonalScheduleStore(
   function forgetSent(sent: Map<string, boolean>): void {
     for (const [sessionId, keep] of sent) {
       if (pending.get(sessionId) === keep) {
+        pending.delete(sessionId);
+      }
+    }
+  }
+
+  async function dropPicksOffTheProgramme(): Promise<void> {
+    const publicIds = await environment.publicSessionIds(eventId);
+    for (const [sessionId, keep] of pending) {
+      if (keep && !publicIds.has(sessionId)) {
         pending.delete(sessionId);
       }
     }
@@ -217,6 +226,12 @@ export function createPersonalScheduleStore(
     } catch (error) {
       if (error instanceof PersonalScheduleRejected) {
         forgetSent(sent);
+        try {
+          await dropPicksOffTheProgramme();
+        } catch {
+          // Without the live programme there is no telling which pick was refused, so every
+          // one of them waits for the next attempt.
+        }
       }
       throw error;
     }

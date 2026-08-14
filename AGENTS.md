@@ -277,7 +277,18 @@ longer projects it into the session at all.
   device picks to the account picks, so neither side wins by replacement.
   `worker/routes/personal-schedule.ts` returns only sessions admitted by
   `fetchPublicSessions`; the calendar URL remains an explicit selection
-  snapshot rather than an account subscription.
+  snapshot rather than an account subscription. The route refuses a whole
+  request that names one non-public session, so the client answers a refusal by
+  re-reading the live programme and dropping only the picks it no longer offers:
+  a stale id never takes its batch peers with it.
+- **A query whose parameter count follows the data goes through
+  `worker/d1-limits.ts#chunkIds`.** D1 binds at most 100 per statement, so an
+  `inArray` over rows the event owns - the speaker join behind
+  `fetchPublicSessions`, the session counts behind `fetchPublicSpeakers`, a
+  personal schedule's writes - fails outright once an event passes about a
+  hundred public sessions or speakers, taking every public programme read with
+  it. `boundParameterBudget` stays under the ceiling so the predicates bound
+  beside the list fit too.
 - `worker/routes/people.ts` is the organizer's gate at `/organizer/people`. It
   shows each account's **evidence** - programmed, proposal only, or no records -
   because a `speaker` row is minted at first CFP draft, not at acceptance, so a

@@ -6,6 +6,7 @@ import { Hono } from "hono";
 import { personalScheduleSessions } from "../../db/schema.ts";
 import { personalScheduleUpdateLimit, type PersonalScheduleResponse } from "../../shared/api.ts";
 import type { AuthSession } from "../auth.ts";
+import { boundParameterBudget, chunkIds } from "../d1-limits.ts";
 import { fetchPublicSessions } from "../public-queries.ts";
 
 type PersonalScheduleEnvironment = {
@@ -25,21 +26,11 @@ const publicSessionFilters = {
   day: undefined,
 };
 
-// D1 binds at most 100 parameters per query, so a request that fits the route's own id
-// limit still reaches the database as several smaller statements.
-const boundParameterLimit = 100;
+// A request that fits the route's own id limit still reaches the database as several
+// smaller statements, each within D1's bound-parameter budget.
 const insertRowLimit = Math.floor(
-  boundParameterLimit / Object.keys(getTableColumns(personalScheduleSessions)).length,
+  boundParameterBudget / Object.keys(getTableColumns(personalScheduleSessions)).length,
 );
-const removeIdLimit = boundParameterLimit - 1;
-
-function chunk<Item>(values: Item[], size: number): Item[][] {
-  const chunks: Item[][] = [];
-  for (let index = 0; index < values.length; index += size) {
-    chunks.push(values.slice(index, index + size));
-  }
-  return chunks;
-}
 
 function sessionIds(value: unknown): string[] | null {
   if (!Array.isArray(value) || value.length > personalScheduleUpdateLimit) {
@@ -102,7 +93,7 @@ personalScheduleRoutes.patch("/attendee/events/:eventId/schedule", async (contex
     return context.json({ error: "invalid_personal_schedule" }, 400);
   }
 
-  for (const batch of chunk(remove, removeIdLimit)) {
+  for (const batch of chunkIds(remove)) {
     await database.delete(personalScheduleSessions).where(and(
       eq(personalScheduleSessions.userId, user.id),
       inArray(personalScheduleSessions.sessionId, batch),
@@ -110,7 +101,7 @@ personalScheduleRoutes.patch("/attendee/events/:eventId/schedule", async (contex
   }
   const removed = new Set(remove);
   const additions = add.filter((sessionId) => !removed.has(sessionId));
-  for (const batch of chunk(additions, insertRowLimit)) {
+  for (const batch of chunkIds(additions, insertRowLimit)) {
     await database
       .insert(personalScheduleSessions)
       .values(batch.map((sessionId) => ({ userId: user.id, sessionId })))

@@ -38,6 +38,7 @@ class FakeSchedule implements PersonalScheduleEnvironment {
   userIdFailure: Error | null = null;
   failNextUpdate: Error | null = null;
   updateFailure: Error | null = null;
+  publicSessionIdsFailure: Error | null = null;
   blockNextUpdate: { started: Deferred<void>; release: Deferred<void> } | null = null;
 
   constructor(devicePicks: string[] = []) {
@@ -96,6 +97,9 @@ class FakeSchedule implements PersonalScheduleEnvironment {
   }
 
   async publicSessionIds(): Promise<Set<string>> {
+    if (this.publicSessionIdsFailure !== null) {
+      throw this.publicSessionIdsFailure;
+    }
     return new Set(this.publicIds);
   }
 }
@@ -288,7 +292,7 @@ describe("when the account check cannot be answered", () => {
 });
 
 describe("a flush the server refuses part of", () => {
-  it("keeps the picks whose batch never left the browser", async () => {
+  it("drops only the pick that left the programme and keeps its batch peers", async () => {
     const environment = new FakeSchedule([]);
     environment.publicIds = new Set(manyPicks(150));
     const store = createPersonalScheduleStore(EVENT_ID, environment);
@@ -300,6 +304,8 @@ describe("a flush the server refuses part of", () => {
     }
     expect(environment.account).toEqual([]);
 
+    // One session stops being public while 150 picks are still waiting to be saved. The
+    // first batch of 100 carries it, and the server refuses that whole batch.
     environment.updateFailure = null;
     environment.publicIds.delete("ses_0");
     await store.settle();
@@ -308,8 +314,31 @@ describe("a flush the server refuses part of", () => {
 
     await store.settle();
 
-    expect(environment.account).toEqual(manyPicks(150).slice(100));
-    expect(store.snapshot().sessionIds).toEqual(manyPicks(150).slice(100));
+    expect(environment.account).toEqual(manyPicks(150).slice(1));
+    expect(store.snapshot().sessionIds).toEqual(manyPicks(150).slice(1));
+    expect(store.snapshot().sessionIds).not.toContain("ses_0");
+    expect(store.snapshot().storageStatus).toBe("account");
+  });
+
+  it("holds every pick when the programme cannot be read to tell which one was refused", async () => {
+    const environment = new FakeSchedule([]);
+    environment.publicIds = new Set(manyPicks(3));
+    const store = createPersonalScheduleStore(EVENT_ID, environment);
+    await store.settle();
+
+    environment.updateFailure = new PersonalScheduleRejected("invalid_personal_schedule");
+    environment.publicSessionIdsFailure = new Error("public_sessions_load_failed");
+    await store.toggle("ses_0");
+    await store.toggle("ses_1");
+
+    expect(store.snapshot().storageStatus).toBe("error");
+
+    environment.updateFailure = null;
+    environment.publicSessionIdsFailure = null;
+    await store.settle();
+
+    expect(environment.account).toEqual(["ses_0", "ses_1"]);
+    expect(store.snapshot().sessionIds).toEqual(["ses_0", "ses_1"]);
     expect(store.snapshot().storageStatus).toBe("account");
   });
 });

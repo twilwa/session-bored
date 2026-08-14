@@ -6,6 +6,7 @@ import { Hono } from "hono";
 import { and, eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { reviewerInvites, roleGrants, type Role, sessions, users } from "../../db/schema.ts";
+import { personalScheduleUpdateLimit } from "../../shared/api.ts";
 import { createAuth, type AuthSession } from "../../worker/auth.ts";
 import type { EmailDelivery, EmailMessage } from "../../worker/email.ts";
 import { applyReviewerRemit, redeemReviewerInvites } from "../../worker/reviewer-invites.ts";
@@ -137,12 +138,15 @@ describe("account-backed personal schedule", () => {
     }
   });
 
-  it("saves and clears a batch larger than one database statement writes", async () => {
+  it("saves and clears a request holding the most ids the route accepts", async () => {
     await request("/api/health");
     const path = "/api/attendee/events/evt_devflow_conf_2027/schedule";
     const cookie = await signUp("Batch Session Picker", "batch-session-picker@example.com");
     const database = drizzle(env.DB);
-    const batchIds = Array.from({ length: 40 }, (_, index) => `ses_batch_${index}`);
+    const batchIds = Array.from(
+      { length: personalScheduleUpdateLimit },
+      (_, index) => `ses_batch_${index}`,
+    );
     for (let index = 0; index < batchIds.length; index += 5) {
       await database.insert(sessions).values(batchIds.slice(index, index + 5).map((id, offset) => ({
         id,
@@ -155,6 +159,14 @@ describe("account-backed personal schedule", () => {
         publishedAt: new Date("2027-04-01T12:00:00Z"),
       })));
     }
+
+    // The event now offers more public sessions than D1 will bind in a single query, and
+    // every read of the programme - public or account-scoped - has to survive that.
+    const programme = await request("/api/public/events/evt_devflow_conf_2027/sessions");
+    expect(programme.status).toBe(200);
+    const listed = (await programme.json<{ items: Array<{ id: string; speakers: unknown[] }> }>()).items;
+    expect(listed.length).toBeGreaterThan(personalScheduleUpdateLimit);
+    expect(listed.find((item) => item.id === "ses_docs_retrieval")?.speakers.length).toBeGreaterThan(0);
 
     const saved = await request(path, {
       method: "PATCH",
