@@ -17,6 +17,7 @@ import {
 import type { ParticipantRemovalOutcome } from "../../shared/api.ts";
 import { holdsAccess } from "../access.ts";
 import { PUBLIC_SPEAKER_STATUSES } from "../public-queries.ts";
+import { resolvePersonByEmail } from "../speaker-directory.ts";
 import {
   carryParticipantIntoSession,
   releaseParticipantFromSession,
@@ -218,7 +219,7 @@ participantRoutes.post("/api/events/:eventId/submissions/:submissionId/participa
     return context.json({ error: "invalid_participant" }, 400);
   }
 
-  let [person] = await database.select({ id: people.id }).from(people).where(eq(people.email, email));
+  let person: { id: string } | undefined = await resolvePersonByEmail(database, email);
   if (person === undefined) {
     const personId = createPublicId("psn");
     await database.insert(people).values({

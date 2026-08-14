@@ -20,6 +20,7 @@ import {
 import { holdsAccess } from "../access.ts";
 import { sendPortalInvitationEmail } from "../email/portal-invitation.ts";
 import { deriveRosterWorkSummary } from "../roster-work.ts";
+import { resolvePersonByEmail } from "../speaker-directory.ts";
 
 type RosterEnvironment = {
   Bindings: CloudflareBindings;
@@ -153,10 +154,7 @@ rosterRoutes.post("/api/events/:eventId/speakers", async (context) => {
   const eventId = context.req.param("eventId");
   const email = payload.email.trim().toLowerCase();
   const database = drizzle(context.env.DB);
-  let [person] = await database
-    .select()
-    .from(people)
-    .where(sql`lower(${people.email}) = ${email}`);
+  let person = await resolvePersonByEmail(database, email);
   const adoptedExistingPerson = person !== undefined;
   if (person === undefined) {
     const personId = createPublicId("psn");

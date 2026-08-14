@@ -26,6 +26,7 @@ import {
 import { submitterFacingSubmissionStatus } from "../../shared/api.ts";
 import { sendSubmissionConfirmationEmail } from "../email/submission-confirmation.ts";
 import { sentDecisionLetter } from "../speaker-access.ts";
+import { resolvePersonByEmail } from "../speaker-directory.ts";
 import { carryParticipantIntoSession, releaseParticipantFromSession } from "../submission-decision.ts";
 
 export interface CfpAvailability {
@@ -454,7 +455,7 @@ async function findOrCreateSpeaker(
   userId?: string,
 ): Promise<{ personId: string; speakerId: string }> {
   const email = input.speaker.email?.trim().toLowerCase() ?? "";
-  let [person] = await database.select().from(people).where(eq(people.email, email));
+  let person = await resolvePersonByEmail(database, email);
   if (person === undefined) {
     const personId = createPublicId("psn");
     await database.insert(people).values({
@@ -496,7 +497,7 @@ async function findOrCreateCollaboratorPerson(
   collaborator: CfpCollaboratorEntry,
 ): Promise<string> {
   const email = collaborator.email?.trim().toLowerCase() ?? "";
-  const [existing] = await database.select({ id: people.id }).from(people).where(eq(people.email, email));
+  const existing = await resolvePersonByEmail(database, email);
   if (existing !== undefined) {
     return existing.id;
   }
@@ -804,10 +805,7 @@ cfpRoutes.post("/:slug/submissions", async (context) => {
       fields: { speakerEmail: "This email must match your signed-in account." },
     }, 422);
   }
-  const [personWithEmail] = await database
-    .select({ userId: people.userId })
-    .from(people)
-    .where(eq(people.email, normalizedEmail));
+  const personWithEmail = await resolvePersonByEmail(database, normalizedEmail);
   if (authUser !== null && personWithEmail !== undefined && personWithEmail.userId !== authUser.id) {
     return context.json({
       error: "anonymous_identity_exists",

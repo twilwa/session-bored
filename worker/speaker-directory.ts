@@ -1,8 +1,9 @@
 // ABOUTME: Builds the private all-event speaker index and conservative duplicate groups.
 // ABOUTME: Aggregates canonical people, proposals, event speakers, and sessions without changing roster rules.
-import { and, asc, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import {
+  directoryMerges,
   events,
   people,
   sessions,
@@ -96,6 +97,36 @@ export function possibleDuplicateGroups(peopleToCompare: DuplicateIdentity[]): P
 }
 
 type Database = ReturnType<typeof drizzle>;
+
+/**
+ * Resolves a normalized email to the person new work should attach to. When the email's
+ * person row was merged away, the recorded merge leads to the person the organizer kept,
+ * so adopting a duplicate's address never links live work to an archived record.
+ */
+export async function resolvePersonByEmail(
+  database: Database,
+  normalizedEmail: string,
+): Promise<typeof people.$inferSelect | undefined> {
+  const [person] = await database
+    .select()
+    .from(people)
+    .where(sql`lower(${people.email}) = ${normalizedEmail}`);
+  if (person === undefined) return undefined;
+  const visited = new Set([person.id]);
+  let current = person;
+  while (current.deletedAt !== null) {
+    const [merge] = await database
+      .select({ keptPersonId: directoryMerges.keptPersonId })
+      .from(directoryMerges)
+      .where(eq(directoryMerges.mergedPersonId, current.id));
+    if (merge === undefined || visited.has(merge.keptPersonId)) return current;
+    visited.add(merge.keptPersonId);
+    const [kept] = await database.select().from(people).where(eq(people.id, merge.keptPersonId));
+    if (kept === undefined) return current;
+    current = kept;
+  }
+  return current;
+}
 
 interface DirectorySnapshot {
   items: SpeakerDirectoryListItem[];
