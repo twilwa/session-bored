@@ -547,6 +547,14 @@ reason - tests inject a fake one instead of touching the network.
   `worker/email/portal-invitation.ts`. It owns its own lookup and template
   rendering - the roster lane only needs an event ID and speaker ID, and must
   trigger it from a deliberate organizer action, never a status-change hook.
+- **Reviewer invitation**: the People invite route
+  (`POST /api/events/:eventId/reviewer-invites`) sends
+  `worker/email/reviewer-invitation.ts#sendReviewerInvitationEmail` through
+  `sendTrackedEmail` (template key `reviewer_invitation`), so every attempt
+  lands in the shared `email_dispatch` communications log and the route answers
+  `emailDelivery` (`sent` | `failed` | `not_configured`) for People to report.
+  The mail links `/signup?email=<invited address>`, which prefills the sign-up
+  form; redemption stays address-confirmation only (see Accounts and access).
 - **Reminders** (F-11.7) are drafted, never sent, by
   `worker/email/reminders.ts#draftOverdueTaskReminders` into `email_dispatch`
   rows with `status = 'draft'`. An organizer reviews, optionally edits
