@@ -290,7 +290,7 @@ describe("organizer People surface", () => {
     expect((await queue.json<{ items: unknown[] }>()).items.length).toBeGreaterThan(0);
   });
 
-  it("refuses an invitation to a confirmed address and names the grant that does work", async () => {
+  it("refuses an invitation to a confirmed address and names the door that is actually open", async () => {
     await request("/api/health");
     const cookie = await organizerCookie();
     const database = drizzle(env.DB);
@@ -320,19 +320,39 @@ describe("organizer People surface", () => {
     // sit open forever. The organizer is told that, and told what to do instead.
     const refused = await inviteReviewer("Confirmed-Account-Invite@Example.com");
     expect(refused.status).toBe(409);
-    const refusal = await refused.json<{ error: string; userId: string; note: string }>();
-    expect(refusal).toMatchObject({ error: "account_already_confirmed", userId });
+    const refusal = await refused.json<{ error: string; userId: string; holdsReviewer: boolean; note: string }>();
+    expect(refusal).toMatchObject({ error: "account_already_confirmed", userId, holdsReviewer: false });
+    // An account without the grant is sent to People's own grant, which takes the remit with it,
+    // so this refusal has no separate Committee setup step to name.
     expect(refusal.note).toContain("Grant reviewer access");
-    expect(refusal.note).toContain("Committee setup");
+    expect(refusal.note).not.toContain("Committee setup");
 
     // Nothing was recorded, so no invitation waits on a confirmation that already happened.
     expect((await loadPeople(cookie)).invites.map((invite) => invite.email)).not.toContain(invited);
 
-    // The recourse the refusal names opens the committee area.
+    // The recourse the refusal names opens the committee area, and People's grant asks for this
+    // event's remit in the same step (#166), so the note can promise a queue with work in it.
+    const readCommittee = async () => {
+      const response = await request(`/api/review/events/${eventId}/config`, { headers: { cookie } });
+      expect(response.status).toBe(200);
+      return response.json<{
+        tracks: Array<{ id: string }>;
+        rounds: Array<{ id: string; status: string }>;
+        reviewers: Array<{ id: string }>;
+      }>();
+    };
+    const committee = await readCommittee();
     const granted = await request(`/api/people/${userId}/grants`, {
       method: "POST",
       headers: { cookie, "content-type": "application/json" },
-      body: JSON.stringify({ role: "reviewer" }),
+      body: JSON.stringify({
+        role: "reviewer",
+        reviewerRemit: {
+          eventId,
+          trackIds: committee.tracks.map((track) => track.id),
+          roundIds: [committee.rounds.find((round) => round.status === "open")?.id],
+        },
+      }),
     });
     expect(granted.status).toBe(200);
     const reviewerCookie = await signIn(invited, "Greenroom!2027");
@@ -342,28 +362,35 @@ describe("organizer People surface", () => {
       return (await response.json<{ items: unknown[] }>()).items;
     };
 
-    // But it is not the invitation it replaces: that grant carries no remit, so the queue is
-    // empty until Committee setup gives them tracks and a round - which is what the note says.
-    expect(await readQueue()).toHaveLength(0);
+    // So the recourse lands the person exactly where the invitation would have.
+    expect((await readQueue()).length).toBeGreaterThan(0);
 
-    const config = await request(`/api/review/events/${eventId}/config`, { headers: { cookie } });
-    expect(config.status).toBe(200);
-    const committee = await config.json<{
-      tracks: Array<{ id: string }>;
-      rounds: Array<{ id: string; status: string }>;
-      reviewers: Array<{ id: string }>;
-    }>();
-    expect(committee.reviewers.map((reviewer) => reviewer.id)).toContain(userId);
+    // This is how every reviewer onboarded by an invitation looks when an organizer invites them
+    // to another committee: confirmed, and already holding the grant. Naming that grant would
+    // name a button People does not render for them, so the refusal names the remaining step.
+    expect((await loadPeople(cookie)).items.find((person) => person.id === userId)?.grants
+      .map((grant) => grant.role)).toContain("reviewer");
+    const refusedAgain = await inviteReviewer(invited);
+    expect(refusedAgain.status).toBe(409);
+    const secondRefusal = await refusedAgain.json<{ error: string; holdsReviewer: boolean; note: string }>();
+    expect(secondRefusal).toMatchObject({ error: "account_already_confirmed", holdsReviewer: true });
+    expect(secondRefusal.note).toContain("already has reviewer access");
+    expect(secondRefusal.note).toContain("Committee setup");
+    expect(secondRefusal.note).not.toContain("Grant reviewer access");
+
+    // And that step is real: Committee setup lists them and owns the remit from here, so
+    // narrowing it to no tracks empties the queue the grant had filled.
+    expect((await readCommittee()).reviewers.map((reviewer) => reviewer.id)).toContain(userId);
     const remit = await request(`/api/review/events/${eventId}/reviewers/${userId}`, {
       method: "PATCH",
       headers: { cookie, "content-type": "application/json" },
       body: JSON.stringify({
-        trackIds: committee.tracks.map((track) => track.id),
+        trackIds: [],
         roundIds: [committee.rounds.find((round) => round.status === "open")?.id],
       }),
     });
     expect(remit.status).toBe(200);
-    expect((await readQueue()).length).toBeGreaterThan(0);
+    expect(await readQueue()).toHaveLength(0);
   });
 
   it("keeps an invitation resendable while no email sender is connected", async () => {

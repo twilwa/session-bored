@@ -32,7 +32,7 @@ import {
 } from "../email/reviewer-invitation.ts";
 import { sendRoleGrantEmail } from "../email/role-grant.ts";
 import { applyReviewerRemit, normalizeInviteEmail } from "../reviewer-invites.ts";
-import { grantRole, listLiveGrants, revokeRole } from "../roles.ts";
+import { grantRole, hasLiveGrant, listLiveGrants, revokeRole } from "../roles.ts";
 
 type PeopleEnvironment = {
   Bindings: CloudflareBindings;
@@ -134,6 +134,23 @@ async function confirmedAccountFor(
     .from(users)
     .where(and(sql`lower(${users.email}) = ${email}`, eq(users.emailVerified, true)));
   return account;
+}
+
+/**
+ * Names the door that is actually open. A reviewer onboarded by an earlier invitation is a
+ * confirmed account that already holds the grant, and People offers no second grant for it, so
+ * for them the only step left is this event's remit, which Committee setup owns. An account
+ * without the grant goes through People's own grant, which asks for that remit in the same step.
+ */
+function confirmedAddressRefusalNote(accountName: string, holdsReviewer: boolean): string {
+  if (holdsReviewer) {
+    return `${accountName} already has reviewer access and has confirmed this address, so there is `
+      + "no invitation left to redeem. Give them this event's tracks and a review round on "
+      + "Committee setup to put its proposals in their queue.";
+  }
+  return `${accountName} has already confirmed this address, so an invitation has nothing left to `
+    + "redeem. Grant reviewer access on their account, choosing this event's tracks and a review "
+    + "round in the same step, and its proposals are in their queue when they sign in.";
 }
 
 const requireOrganizer = createMiddleware<PeopleEnvironment>(async (context, next) => {
@@ -422,14 +439,13 @@ peopleRoutes.post("/api/events/:eventId/reviewer-invites", requireOrganizer, asy
   const eventId = context.req.param("eventId");
   const confirmedAccount = await confirmedAccountFor(database, email);
   if (confirmedAccount !== undefined) {
+    const holdsReviewer = await hasLiveGrant(database, confirmedAccount.id, "reviewer");
     return context.json(
       {
         error: "account_already_confirmed",
         userId: confirmedAccount.id,
-        note:
-          `${confirmedAccount.name} has already confirmed this address, so an invitation has nothing left to redeem. `
-          + "Grant reviewer access on their account instead. That grant is not an invitation: it carries no remit, "
-          + "so give them tracks and a round on Committee setup afterwards or their queue stays empty.",
+        holdsReviewer,
+        note: confirmedAddressRefusalNote(confirmedAccount.name, holdsReviewer),
       },
       409,
     );
