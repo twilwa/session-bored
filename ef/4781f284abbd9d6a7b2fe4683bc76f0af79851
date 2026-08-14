@@ -1,0 +1,44 @@
+worker/public-queries.ts
+  s_edc466d4e6f0f1::t_f0aee296c5adcb 16
+  s_edc466d4e6f0f1::t_076af4d8f8c33e 189-210,213
+  s_edc466d4e6f0f1::t_12952ddfd64125 285-303,306
+worker/routes/personal-schedule.ts
+  s_edc466d4e6f0f1::t_504f3f47367d7c 29-30,32
+  s_edc466d4e6f0f1::t_27d4153623c28f 104
+  s_edc466d4e6f0f1::t_fe123107f9da44 9
+  s_edc466d4e6f0f1::t_0bf77062550c9c 96
+tests/unit/personal-schedule.test.ts
+  s_edc466d4e6f0f1::t_8c48cb5f08d88c 41
+  s_edc466d4e6f0f1::t_2fa4ebf7c262b6 295,307-308,317-328,330-335,337-341
+  s_edc466d4e6f0f1::t_fc713141f6a151 329,336
+  s_edc466d4e6f0f1::t_ad77f3c54e41eb 100-102
+AGENTS.md
+  s_edc466d4e6f0f1::t_c4b06807a2a64f 272-283
+client/pages/public/personal-schedule.ts
+  s_edc466d4e6f0f1::t_9185a46d86ef6e 187
+  s_edc466d4e6f0f1::t_fd23157a8a8894 206-214
+  s_edc466d4e6f0f1::t_1467b21739732d 229-234
+  s_edc466d4e6f0f1::t_6b92f7f03d47b1 38-39
+tests/integration/account-access.test.ts
+  s_edc466d4e6f0f1::t_ee92f4ab42dc0f 163-170
+  s_edc466d4e6f0f1::t_a6d255258084c4 141,146-149
+  s_edc466d4e6f0f1::t_c134a0fc7b6731 9
+worker/d1-limits.ts
+  s_edc466d4e6f0f1::t_70e006c53598d1 1-14
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "ef4781f284abbd9d6a7b2fe4683bc76f0af79851",
+  "prompts": {},
+  "sessions": {
+    "s_edc466d4e6f0f1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "49498c92-fa6b-4162-8888-1a1629eb526f",
+        "model": "claude-opus-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
