@@ -1,0 +1,37 @@
+shared/api.ts
+  s_2fea63c77340f0::t_b25d9be6684206 887-888
+  s_2fea63c77340f0::t_6841c5201c37df 865-873,877,879-885,889
+AGENTS.md
+  s_2fea63c77340f0::t_f87f8f66a68bb1 440-449
+tests/integration/submitter-account.test.ts
+  s_2fea63c77340f0::t_fb0d77e176522c 539
+  s_2fea63c77340f0::t_32d40c5ef00cc5 563-627
+  s_2fea63c77340f0::t_2c5bae11357f40 479-480,496,503-524
+  s_2fea63c77340f0::t_cbb4f14cd8ac2a 50-91
+  s_2fea63c77340f0::t_74c219700b49e1 643
+  s_2fea63c77340f0::t_85b775b20940c2 556
+worker/routes/cfp.ts
+  s_2fea63c77340f0::t_f59b57ed584b44 704
+  s_2fea63c77340f0::t_143a13cf0973ce 737
+worker/routes/submitter.ts
+  s_2fea63c77340f0::t_42a11c3fadf513 34
+  s_2fea63c77340f0::t_047ee4728a6cb0 45,47
+client/pages/submitter/submitter.css
+  s_2fea63c77340f0::t_d70ed8c0efbd16 60
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "a9ad0f26bb3032cdac95569944b3e177daed7cb0",
+  "prompts": {},
+  "sessions": {
+    "s_2fea63c77340f0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2a4e5a62-de9b-4c4b-8714-f1bea4c5f611",
+        "model": "claude-opus-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
