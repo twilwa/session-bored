@@ -1,0 +1,23 @@
+client/lib.tsx
+  s_ec0ee485707380::t_d5bd66831b2d51 58-63,69-71
+tests/unit/public-header.test.ts
+  s_ec0ee485707380::t_cf843b1c61a288 25-39
+tests/e2e/account-access.spec.ts
+  s_ec0ee485707380::t_b3c0d3de20f026 158-163
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "76417282a7f4ab3275a889b86c1261129775239b",
+  "prompts": {},
+  "sessions": {
+    "s_ec0ee485707380": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "af836feb-49df-4543-9523-9cd23f8a32af",
+        "model": "claude-opus-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
