@@ -305,10 +305,16 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   never collapsed. A merge is the only writer of `person.deleted_at`, and
   `person_email_unique` still holds the archived row's address, so every door
   that adopts a person by email — CFP author and collaborator, organizer
-  participants, roster — resolves through
+  participants, roster, and the decision letter's recipient correction —
+  resolves through
   `worker/speaker-directory.ts#resolvePersonByEmail`, which follows the recorded
   merge to the kept person rather than attaching live work to an archived
-  record. The merge also never gives the kept speaker a second `headshot` file:
+  record. A row answering to an address is therefore never by itself a
+  different person: `cancelDecisionNotice` refuses `recipient_taken` only when
+  the address *resolves* elsewhere, and when it resolves back to the letter's
+  own person the two rows trade addresses, because that index is not partial
+  and both addresses must keep leading to the live record.
+  The merge also never gives the kept speaker a second `headshot` file:
   a merged speaker's headshot moves only when the kept speaker has none, and an
   adopted `headshot_url` is rewritten to name the speaker row that owns the
   file after the batch.
