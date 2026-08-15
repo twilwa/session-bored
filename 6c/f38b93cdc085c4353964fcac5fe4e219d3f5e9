@@ -1,0 +1,64 @@
+AGENTS.md
+  s_7e51d21061003b::t_6ccfbb007a9cd4 90-92,275-321
+db/schema/directory.ts
+  s_7e51d21061003b::t_6ccfbb007a9cd4 1-26
+db/schema.ts
+  s_7e51d21061003b::t_6ccfbb007a9cd4 670-675,803
+client/pages/directory/speaker-directory.css
+  s_7e51d21061003b::t_6ccfbb007a9cd4 1-84
+worker/email/decision-notices.ts
+  s_7e51d21061003b::t_6ccfbb007a9cd4 3,7,348,355,358-368,420-437
+tests/unit/speaker-directory.test.ts
+  s_7e51d21061003b::t_6ccfbb007a9cd4 1-83
+tests/integration/speaker-directory.test.ts
+  s_7e51d21061003b::t_6ccfbb007a9cd4 1-828
+worker/index.ts
+  s_7e51d21061003b::t_6ccfbb007a9cd4 56,157,429-433
+tests/e2e/speaker-directory.spec.ts
+  s_7e51d21061003b::t_6ccfbb007a9cd4 1-146
+tests/integration/decision-notice-correction.test.ts
+  s_7e51d21061003b::t_6ccfbb007a9cd4 690-812
+worker/routes/portal.ts
+  s_7e51d21061003b::t_6ccfbb007a9cd4 463
+client/pages/directory/SpeakerDirectoryPage.tsx
+  s_7e51d21061003b::t_6ccfbb007a9cd4 1-328
+migrations/meta/0023_snapshot.json
+  s_7e51d21061003b::t_c7ec965b7a7078 1-5434
+worker/routes/roster.ts
+  s_7e51d21061003b::t_6ccfbb007a9cd4 25,196
+client/App.tsx
+  s_7e51d21061003b::t_6ccfbb007a9cd4 31,181,354-357
+worker/speaker-directory.ts
+  s_7e51d21061003b::t_6ccfbb007a9cd4 1-345
+migrations/0023_flowery_dorian_gray.sql
+  s_7e51d21061003b::t_c7ec965b7a7078 1-16
+worker/routes/cfp.ts
+  s_7e51d21061003b::t_6ccfbb007a9cd4 29,458,500,808
+worker/routes/participants.ts
+  s_7e51d21061003b::t_0068f30b02b7c7 19-24
+  s_7e51d21061003b::t_6ccfbb007a9cd4 25,258
+worker/routes/speaker-directory.ts
+  s_7e51d21061003b::t_6ccfbb007a9cd4 1-339
+migrations/meta/_journal.json
+  s_7e51d21061003b::t_c7ec965b7a7078 165-171
+README.md
+  s_7e51d21061003b::t_6ccfbb007a9cd4 100-123,191-192
+shared/speaker-directory.ts
+  s_7e51d21061003b::t_6ccfbb007a9cd4 1-68
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "6cf38b93cdc085c4353964fcac5fe4e219d3f5e9",
+  "prompts": {},
+  "sessions": {
+    "s_7e51d21061003b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a00785-eca6-7013-9891-57aa78a6e70b",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
