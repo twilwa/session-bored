@@ -1,9 +1,10 @@
-// ABOUTME: Serves organizer deliverable tracking and role-scoped discussion on uploaded content.
+// ABOUTME: Serves organizer deliverable tracking, bulk archives, and role-scoped discussion on uploaded content.
 // ABOUTME: Reads canonical task, file, session, and comment records without changing their lifecycle meanings.
-import { and, asc, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { Hono } from "hono";
 import { createMiddleware } from "hono/factory";
+import type { FileArchiveRequest } from "../../shared/api.ts";
 import {
   comments,
   createPublicId,
@@ -20,9 +21,12 @@ import {
 } from "../../db/schema.ts";
 import { holdsAccess } from "../access.ts";
 import type { AuthSession } from "../auth.ts";
+import { streamContentArchive } from "../content-archive.ts";
+import { chunkIds } from "../d1-limits.ts";
 import { deriveDeliverableStatus } from "../deliverable-status.ts";
 import { resolveEffectiveRoles } from "../roles.ts";
 import { filenameForVersion } from "../storage/file-versions.ts";
+import { getFileObject } from "../storage/files.ts";
 
 type ContentEnvironment = {
   Bindings: CloudflareBindings;
@@ -89,6 +93,8 @@ contentRoutes.get("/api/events/:eventId/deliverables", requireOrganizer, async (
       taskTitle: tasks.title,
       instructions: tasks.instructions,
       dueAt: tasks.dueAt,
+      sessionId: sessions.id,
+      sessionTitle: sessions.title,
       speakerId: speakers.id,
       speakerName: people.name,
       speakerEmail: people.email,
@@ -103,6 +109,7 @@ contentRoutes.get("/api/events/:eventId/deliverables", requireOrganizer, async (
     .innerJoin(tasks, eq(taskAssignees.taskId, tasks.id))
     .innerJoin(speakers, eq(taskAssignees.speakerId, speakers.id))
     .innerJoin(people, eq(speakers.personId, people.id))
+    .leftJoin(sessions, and(eq(tasks.sessionId, sessions.id), isNull(sessions.deletedAt)))
     .leftJoin(files, and(
       eq(files.taskId, tasks.id),
       eq(files.speakerId, speakers.id),
@@ -163,7 +170,12 @@ contentRoutes.get("/api/events/:eventId/deliverables", requireOrganizer, async (
       assignmentId: row.assignmentId,
       taskId: row.taskId,
       speaker: { id: row.speakerId, name: row.speakerName, email: row.speakerEmail },
-      task: { title: row.taskTitle, instructions: row.instructions, dueAt: row.dueAt },
+      task: {
+        title: row.taskTitle,
+        instructions: row.instructions,
+        dueAt: row.dueAt,
+        session: row.sessionId === null ? null : { id: row.sessionId, title: row.sessionTitle },
+      },
       assignment: { status: row.assignmentStatus, completedAt: row.completedAt },
       status,
       file: !delivered
@@ -236,6 +248,92 @@ contentRoutes.get("/api/events/:eventId/deliverables", requireOrganizer, async (
     },
     items,
     sessionsAwaitingApproval,
+  });
+});
+
+contentRoutes.post("/api/events/:eventId/files/archive", requireOrganizer, async (context) => {
+  const payload = await context.req.json<FileArchiveRequest>().catch(() => null);
+  if (
+    payload === null
+    || !Array.isArray(payload.fileIds)
+    || payload.fileIds.length === 0
+    || payload.fileIds.some((fileId) => typeof fileId !== "string")
+  ) {
+    return context.json({ error: "file_selection_required", message: "Select at least one file." }, 400);
+  }
+  const fileIds = [...new Set(payload.fileIds)];
+  const database = drizzle(context.env.DB);
+  const selected = (
+    await Promise.all(chunkIds(fileIds).map((batch) =>
+      database
+        .select({
+          id: fileVersions.id,
+          fileId: files.id,
+          displayName: files.displayName,
+          storageKey: fileVersions.storageKey,
+          uploadedAt: fileVersions.createdAt,
+          speakerName: people.name,
+          taskTitle: tasks.title,
+        })
+        .from(files)
+        .innerJoin(fileVersions, and(
+          eq(fileVersions.fileId, files.id),
+          eq(fileVersions.latest, true),
+          isNull(fileVersions.deletedAt),
+        ))
+        .innerJoin(tasks, eq(files.taskId, tasks.id))
+        .innerJoin(taskAssignees, and(
+          eq(taskAssignees.taskId, tasks.id),
+          eq(taskAssignees.speakerId, files.speakerId),
+          isNull(taskAssignees.deletedAt),
+        ))
+        .innerJoin(speakers, eq(files.speakerId, speakers.id))
+        .innerJoin(people, eq(speakers.personId, people.id))
+        .where(and(
+          eq(tasks.eventId, context.req.param("eventId")),
+          eq(tasks.taskType, "file_request"),
+          eq(tasks.status, "active"),
+          eq(files.kind, "deliverable"),
+          inArray(files.id, batch),
+          isNull(tasks.deletedAt),
+          isNull(files.deletedAt),
+          isNull(speakers.deletedAt),
+          isNull(people.deletedAt),
+        )),
+    ))
+  ).flat();
+  const selectedById = new Map(selected.map((file) => [file.fileId, file]));
+  if (selectedById.size !== fileIds.length) {
+    return context.json({ error: "invalid_file_selection", message: "One or more selected files are unavailable." }, 400);
+  }
+
+  const archiveEntries = fileIds.map((fileId) => {
+    const file = selectedById.get(fileId);
+    if (file === undefined) {
+      throw new Error(`Selected file ${fileId} disappeared while building its archive`);
+    }
+    return {
+      fileId: file.fileId,
+      displayName: filenameForVersion(file, file.displayName),
+      speakerName: file.speakerName,
+      taskTitle: file.taskTitle,
+      uploadedAt: file.uploadedAt,
+      openBody: async () => {
+        const object = await getFileObject(context.env.FILES, file.storageKey);
+        if (object === null) throw new Error(`Stored file ${file.fileId} is missing`);
+        return object.body;
+      },
+    };
+  });
+  const archive = streamContentArchive(archiveEntries);
+  const archiveEvent = context.req.param("eventId").replace(/[^a-zA-Z0-9._-]+/g, "-") || "event";
+  const archiveName = `${archiveEvent}-files.zip`;
+  return new Response(archive, {
+    headers: {
+      "content-type": "application/zip",
+      "content-disposition": `attachment; filename="${archiveName}"`,
+      "x-content-type-options": "nosniff",
+    },
   });
 });
 

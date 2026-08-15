@@ -1,5 +1,5 @@
-// ABOUTME: Walks a real speaker upload and comment into the organizer's filterable deliverables board.
-// ABOUTME: Verifies cross-role visibility, download discovery, and phone-width containment without mocked data.
+// ABOUTME: Walks real speaker uploads into the organizer's filterable deliverables board and latest-file library.
+// ABOUTME: Verifies cross-role comments, bulk ZIP download, and phone-width containment without mocked data.
 import { expect, test, type Page } from "@playwright/test";
 
 async function signIn(page: Page, email: string, password: string, landingPath: string): Promise<void> {
@@ -81,4 +81,27 @@ test("speaker and organizer discuss a delivered file from the content board", as
     scrollWidth: document.documentElement.scrollWidth,
   }));
   expect(dimensions.scrollWidth).toBe(dimensions.clientWidth);
+});
+
+test("organizer selects a latest file and downloads its ZIP without leaving the library", async ({ page }) => {
+  await signIn(page, "sbek-speaker@example.com", "SbekTest!2027-spk", "/speaker");
+  const slidesTask = page.locator("li.task-row", { hasText: "Upload final slides" });
+  await slidesTask.locator("input[type='file']").setInputFiles("fixtures/slides.pdf");
+  await expect(page.getByText("File uploaded. Task marked complete.")).toBeVisible();
+
+  await page.context().clearCookies();
+  await signIn(page, "sbek-organizer@example.com", "SbekTest!2027-org", "/organizer");
+  await page.goto("/organizer/content");
+  await expect(page.getByRole("heading", { name: "Latest files" })).toBeVisible();
+
+  const latestSlides = page.getByRole("row", { name: /slides\.pdf/i });
+  await latestSlides.getByRole("checkbox", { name: "Select slides.pdf" }).check();
+  const libraryUrl = page.url();
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download 1 file" }).click();
+  const download = await downloadPromise;
+
+  expect(download.suggestedFilename()).toBe("evt_devflow_conf_2027-files.zip");
+  await expect(page).toHaveURL(libraryUrl);
+  await expect(page.getByText("1 file selected")).toBeVisible();
 });

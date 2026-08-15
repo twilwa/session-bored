@@ -68,6 +68,12 @@ describe("typed route map", () => {
       access: "public",
     });
     expect(routeMap.deliverables).toMatchObject({ method: "GET", module: "files", access: "organizer" });
+    expect(routeMap.downloadFiles).toEqual({
+      method: "POST",
+      path: "/api/events/:eventId/files/archive",
+      module: "files",
+      access: "organizer",
+    });
     expect(routeMap.fileComments).toMatchObject({ method: "GET", module: "files", access: "authenticated" });
     expect(routeMap.createFileComment).toMatchObject({ method: "POST", module: "files", access: "authenticated" });
     expect(routeMap.embeds).toMatchObject({ method: "GET", module: "embeds", access: "organizer" });

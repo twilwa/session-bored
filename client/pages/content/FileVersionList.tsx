@@ -3,7 +3,7 @@
 import type { PortalFileVersion } from "../../../shared/api.ts";
 import "./file-versions.css";
 
-function formatUploadedAt(uploadedAt: string): string {
+export function formatUploadedAt(uploadedAt: string): string {
   return new Date(uploadedAt).toLocaleString(undefined, {
     month: "short",
     day: "numeric",

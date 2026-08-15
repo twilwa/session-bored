@@ -1,11 +1,11 @@
 // ABOUTME: Gives organizers one filterable view of requested, overdue, completed, delivered, and approval-ready content.
-// ABOUTME: Links canonical uploads and their cross-role comment threads without duplicating task or file state.
+// ABOUTME: Links canonical uploads, bulk latest-version archives, and cross-role comments without duplicating file state.
 import { useEffect, useMemo, useState } from "react";
-import type { DeliverablesPayload, DeliverableStatus } from "../../../shared/api.ts";
+import type { DeliverablesPayload, DeliverableStatus, FileArchiveRequest } from "../../../shared/api.ts";
 import { LoadingState, StatusChip, TextField } from "../../components/ui.tsx";
 import { Link } from "../../lib.tsx";
 import { FileComments } from "./FileComments.tsx";
-import { FileVersionList } from "./FileVersionList.tsx";
+import { FileVersionList, formatFileSize, formatUploadedAt } from "./FileVersionList.tsx";
 import "./content.css";
 
 const eventId = "evt_devflow_conf_2027";
@@ -35,6 +35,9 @@ export function ContentPage() {
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
   const [query, setQuery] = useState("");
+  const [selectedFileIds, setSelectedFileIds] = useState<Set<string>>(() => new Set());
+  const [archiveError, setArchiveError] = useState<string | null>(null);
+  const [downloadingArchive, setDownloadingArchive] = useState(false);
 
   useEffect(() => {
     void loadDeliverables().then(setData).catch((caught: unknown) => {
@@ -48,10 +51,71 @@ export function ContentPage() {
     return data.items.filter((item) => {
       if (filter !== "all" && item.status !== filter) return false;
       if (normalizedQuery.length === 0) return true;
-      return [item.speaker.name, item.speaker.email, item.task.title, item.file?.displayName ?? ""]
+      return [
+        item.speaker.name,
+        item.speaker.email,
+        item.task.title,
+        item.task.session?.title ?? "",
+        item.file?.displayName ?? "",
+      ]
         .some((value) => value.toLowerCase().includes(normalizedQuery));
     });
   }, [data, filter, query]);
+
+  const latestFiles = useMemo(
+    () => visibleItems.flatMap((item) => item.file === null ? [] : [{ item, file: item.file }]),
+    [visibleItems],
+  );
+
+  function setFileSelected(fileId: string, selected: boolean): void {
+    setSelectedFileIds((current) => {
+      const next = new Set(current);
+      if (selected) next.add(fileId);
+      else next.delete(fileId);
+      return next;
+    });
+  }
+
+  function setShownFilesSelected(selected: boolean): void {
+    setSelectedFileIds((current) => {
+      const next = new Set(current);
+      for (const { file } of latestFiles) {
+        if (selected) next.add(file.id);
+        else next.delete(file.id);
+      }
+      return next;
+    });
+  }
+
+  async function downloadSelectedFiles(): Promise<void> {
+    const fileIds = [...selectedFileIds] as FileArchiveRequest["fileIds"];
+    if (fileIds.length === 0) return;
+    setArchiveError(null);
+    setDownloadingArchive(true);
+    try {
+      const response = await fetch(`/api/events/${eventId}/files/archive`, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ fileIds } satisfies FileArchiveRequest),
+      });
+      if (!response.ok) {
+        throw new Error(`The selected files could not be downloaded (${response.status}).`);
+      }
+      const archiveUrl = URL.createObjectURL(await response.blob());
+      const link = document.createElement("a");
+      link.href = archiveUrl;
+      link.download = `${eventId}-files.zip`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(archiveUrl), 0);
+    } catch (caught: unknown) {
+      setArchiveError(caught instanceof Error ? caught.message : "The selected files could not be downloaded.");
+    } finally {
+      setDownloadingArchive(false);
+    }
+  }
 
   if (data === null) {
     return error === null ? <LoadingState label="Loading deliverables" /> : <p role="alert">{error}</p>;
@@ -99,6 +163,70 @@ export function ContentPage() {
               </li>
             ))}
           </ul>
+        )}
+      </section>
+
+      <section className="workspace-section" aria-labelledby="file-library-heading">
+        <div className="section-heading content-library-heading">
+          <div><p className="section-label">FILE LIBRARY</p><h2 id="file-library-heading">Latest files</h2></div>
+          <div className="content-library-actions">
+            <span aria-live="polite">
+              {selectedFileIds.size} {selectedFileIds.size === 1 ? "file" : "files"} selected
+            </span>
+            <button
+              className="content-download-button"
+              disabled={selectedFileIds.size === 0 || downloadingArchive}
+              onClick={() => void downloadSelectedFiles()}
+              type="button"
+            >
+              {downloadingArchive
+                ? "Preparing ZIP…"
+                : `Download ${selectedFileIds.size} ${selectedFileIds.size === 1 ? "file" : "files"}`}
+            </button>
+          </div>
+        </div>
+        {archiveError === null ? null : <p role="alert">{archiveError}</p>}
+        {latestFiles.length === 0 ? <p className="quiet-copy">No uploaded files match this view.</p> : (
+          <div className="content-file-library">
+            <table>
+              <thead>
+                <tr>
+                  <th className="content-file-library__select" scope="col">
+                    <input
+                      aria-label="Select all shown files"
+                      checked={latestFiles.every(({ file }) => selectedFileIds.has(file.id))}
+                      onChange={(event) => setShownFilesSelected(event.target.checked)}
+                      type="checkbox"
+                    />
+                  </th>
+                  <th scope="col">File</th>
+                  <th scope="col">Speaker</th>
+                  <th scope="col">Session</th>
+                  <th scope="col">Request</th>
+                  <th scope="col">Uploaded</th>
+                </tr>
+              </thead>
+              <tbody>
+                {latestFiles.map(({ item, file }) => (
+                  <tr key={file.id}>
+                    <td className="content-file-library__select">
+                      <input
+                        aria-label={`Select ${file.displayName}`}
+                        checked={selectedFileIds.has(file.id)}
+                        onChange={(event) => setFileSelected(file.id, event.target.checked)}
+                        type="checkbox"
+                      />
+                    </td>
+                    <td><a href={file.downloadUrl}>{file.displayName}</a><small>Version {file.version} · {formatFileSize(file.sizeBytes)}</small></td>
+                    <td><strong>{item.speaker.name}</strong><small>{item.speaker.email}</small></td>
+                    <td>{item.task.session?.title ?? "Event-wide"}</td>
+                    <td>{item.task.title}</td>
+                    <td>{formatUploadedAt(file.uploadedAt)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
 
