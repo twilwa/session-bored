@@ -2,7 +2,7 @@
 // ABOUTME: Exercises the archive module directly without storage or route concerns.
 import { unzipSync } from "fflate";
 import { describe, expect, it } from "vitest";
-import { contentArchivePath, createContentArchive, type ContentArchiveEntry } from "../../worker/content-archive.ts";
+import { contentArchivePath, streamContentArchive, type ContentArchiveEntry } from "../../worker/content-archive.ts";
 
 const uploadedAt = new Date("2026-08-15T12:00:00.000Z");
 
@@ -13,17 +13,21 @@ function entry(fileId: string, displayName: string, bytes: number[]): ContentArc
     speakerName: "Priya Raman",
     taskTitle: "Upload final slides",
     uploadedAt,
-    bytes: new Uint8Array(bytes),
+    openBody: async () => new Response(new Uint8Array(bytes)).body!,
   };
 }
 
+async function archiveBytes(entries: ContentArchiveEntry[]): Promise<Uint8Array<ArrayBuffer>> {
+  return new Uint8Array(await new Response(streamContentArchive(entries)).arrayBuffer());
+}
+
 describe("content archives", () => {
-  it("sorts selected files by stable id while preserving their exact bytes", () => {
+  it("sorts selected files by stable id while preserving their exact bytes", async () => {
     const later = entry("fil_z", "deck.pdf", [9, 8, 7]);
     const earlier = entry("fil_a", "deck.pdf", [1, 2, 3]);
 
-    const firstArchive = createContentArchive([later, earlier]);
-    const secondArchive = createContentArchive([earlier, later]);
+    const firstArchive = await archiveBytes([later, earlier]);
+    const secondArchive = await archiveBytes([earlier, later]);
     expect(firstArchive).toEqual(secondArchive);
 
     const files = unzipSync(firstArchive);

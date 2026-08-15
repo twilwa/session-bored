@@ -1,6 +1,6 @@
-// ABOUTME: Packages selected event deliverables into one deterministic ZIP of current file versions.
+// ABOUTME: Streams selected event deliverables into one deterministic ZIP of current file versions.
 // ABOUTME: Keeps archive paths safe, readable, and collision-free without exposing storage keys.
-import { zipSync, type Zippable } from "fflate";
+import { Zip, ZipPassThrough } from "fflate";
 
 export interface ContentArchiveEntry {
   fileId: string;
@@ -8,7 +8,7 @@ export interface ContentArchiveEntry {
   speakerName: string;
   taskTitle: string;
   uploadedAt: Date;
-  bytes: Uint8Array<ArrayBuffer>;
+  openBody: () => Promise<ReadableStream<Uint8Array>>;
 }
 
 function archivePathSegment(value: string, fallback: string): string {
@@ -30,10 +30,50 @@ export function contentArchivePath(
   return `${speaker}/${task}/${entry.fileId}-${filename}`;
 }
 
-export function createContentArchive(entries: ContentArchiveEntry[]): Uint8Array<ArrayBuffer> {
-  const files: Zippable = {};
-  for (const entry of [...entries].sort((first, second) => first.fileId.localeCompare(second.fileId))) {
-    files[contentArchivePath(entry)] = [entry.bytes, { level: 0, mtime: entry.uploadedAt }];
-  }
-  return zipSync(files, { level: 0 });
+export function streamContentArchive(entries: ContentArchiveEntry[]): ReadableStream<Uint8Array> {
+  const output = new TransformStream<Uint8Array, Uint8Array>();
+  const writer = output.writable.getWriter();
+  let outputWrites = Promise.resolve();
+  const archive = new Zip((error, chunk, final) => {
+    outputWrites = outputWrites.then(async () => {
+      if (error !== null) throw error;
+      if (chunk.byteLength > 0) await writer.write(chunk);
+      if (final) await writer.close();
+    });
+  });
+
+  void (async () => {
+    try {
+      const orderedEntries = [...entries].sort((first, second) => first.fileId.localeCompare(second.fileId));
+      for (const entry of orderedEntries) {
+        const body = await entry.openBody();
+        const input = new ZipPassThrough(contentArchivePath(entry));
+        input.mtime = entry.uploadedAt;
+        archive.add(input);
+        const reader = body.getReader();
+        let complete = false;
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            input.push(value);
+            await outputWrites;
+          }
+          input.push(new Uint8Array(), true);
+          await outputWrites;
+          complete = true;
+        } finally {
+          if (!complete) await reader.cancel().catch(() => undefined);
+          reader.releaseLock();
+        }
+      }
+      archive.end();
+      await outputWrites;
+    } catch (error) {
+      archive.terminate();
+      await writer.abort(error).catch(() => undefined);
+    }
+  })();
+
+  return output.readable;
 }

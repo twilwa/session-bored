@@ -20,9 +20,13 @@ async function signIn(email: string, password: string): Promise<string> {
   return response.headers.get("set-cookie")?.split(";")[0] ?? "";
 }
 
-function pdfUpload(name: string, bytes: number[] = [1, 2, 3, 4]): FormData {
+function pdfUpload(
+  name: string,
+  bytes: number[] | Uint8Array<ArrayBuffer> = [1, 2, 3, 4],
+): FormData {
   const formData = new FormData();
-  formData.append("file", new File([new Uint8Array(bytes)], name, { type: "application/pdf" }));
+  const contents = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  formData.append("file", new File([contents], name, { type: "application/pdf" }));
   formData.append("displayedRequestKind", "document");
   return formData;
 }
@@ -332,6 +336,71 @@ describe("content management", () => {
       expect([...files[file.path]!]).toEqual(file.bytes);
     }
     expect(Object.keys(files).join("\n")).not.toContain("draft-deck.pdf");
+  });
+
+  it("streams several large selected deliverables instead of buffering the archive", async () => {
+    const fileSize = 4 * 1024 * 1024;
+    const selectedFiles: Array<{ fileId: string; marker: number }> = [];
+    for (const [index, marker] of [17, 34, 51].entries()) {
+      const taskResponse = await request(`/api/events/${eventId}/tasks`, {
+        method: "POST",
+        headers: { cookie: organizerCookie, "content-type": "application/json" },
+        body: JSON.stringify({
+          taskType: "file_request",
+          title: `Upload large archive file ${index + 1}`,
+          speakerIds: ["spk_priya_devflow_2027"],
+        }),
+      });
+      expect(taskResponse.status).toBe(201);
+      const task = await taskResponse.json<{ id: string }>();
+      const contents = new Uint8Array(fileSize);
+      contents.fill(marker);
+      const uploadResponse = await request(`/api/portal/tasks/${task.id}/files`, {
+        method: "POST",
+        headers: { cookie: priyaCookie },
+        body: pdfUpload(`large-${index + 1}.pdf`, contents),
+      });
+      expect(uploadResponse.status).toBe(201);
+      const uploaded = await uploadResponse.json<{ fileId: string }>();
+      selectedFiles.push({ fileId: uploaded.fileId, marker });
+    }
+
+    const archive = await request(`/api/events/${eventId}/files/archive`, {
+      method: "POST",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({ fileIds: selectedFiles.map((file) => file.fileId) }),
+    });
+
+    expect(archive.status).toBe(200);
+    expect(archive.headers.get("content-length")).toBeNull();
+    const reader = archive.body?.getReader();
+    expect(reader).toBeDefined();
+    const chunks: Uint8Array<ArrayBuffer>[] = [];
+    while (true) {
+      const { done, value } = await reader!.read();
+      if (done) break;
+      chunks.push(value);
+    }
+    expect(chunks.length).toBeGreaterThan(selectedFiles.length);
+    expect(chunks[0]!.byteLength).toBeLessThan(fileSize);
+
+    const totalBytes = chunks.reduce((total, chunk) => total + chunk.byteLength, 0);
+    const archiveBytes = new Uint8Array(totalBytes);
+    let offset = 0;
+    for (const chunk of chunks) {
+      archiveBytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    const files = unzipSync(archiveBytes);
+    expect(Object.keys(files)).toHaveLength(selectedFiles.length);
+    for (const selected of selectedFiles) {
+      const path = Object.keys(files).find((name) => name.includes(selected.fileId));
+      expect(path).toBeDefined();
+      const contents = files[path!]!;
+      expect(contents.byteLength).toBe(fileSize);
+      expect(contents[0]).toBe(selected.marker);
+      expect(contents.at(-1)).toBe(selected.marker);
+    }
   });
 
   it("enforces organizer and event scope when generating a file archive", async () => {

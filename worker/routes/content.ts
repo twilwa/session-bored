@@ -21,7 +21,7 @@ import {
 } from "../../db/schema.ts";
 import { holdsAccess } from "../access.ts";
 import type { AuthSession } from "../auth.ts";
-import { createContentArchive } from "../content-archive.ts";
+import { streamContentArchive } from "../content-archive.ts";
 import { chunkIds } from "../d1-limits.ts";
 import { deriveDeliverableStatus } from "../deliverable-status.ts";
 import { resolveEffectiveRoles } from "../roles.ts";
@@ -307,33 +307,31 @@ contentRoutes.post("/api/events/:eventId/files/archive", requireOrganizer, async
     return context.json({ error: "invalid_file_selection", message: "One or more selected files are unavailable." }, 400);
   }
 
-  const archiveEntries = await Promise.all(fileIds.map(async (fileId) => {
+  const archiveEntries = fileIds.map((fileId) => {
     const file = selectedById.get(fileId);
     if (file === undefined) {
       throw new Error(`Selected file ${fileId} disappeared while building its archive`);
     }
-    const object = await getFileObject(context.env.FILES, file.storageKey);
-    if (object === null) return null;
     return {
       fileId: file.fileId,
       displayName: filenameForVersion(file, file.displayName),
       speakerName: file.speakerName,
       taskTitle: file.taskTitle,
       uploadedAt: file.uploadedAt,
-      bytes: new Uint8Array(await object.arrayBuffer()),
+      openBody: async () => {
+        const object = await getFileObject(context.env.FILES, file.storageKey);
+        if (object === null) throw new Error(`Stored file ${file.fileId} is missing`);
+        return object.body;
+      },
     };
-  }));
-  if (archiveEntries.some((entry) => entry === null)) {
-    return context.json({ error: "file_object_missing", message: "One or more selected files could not be read." }, 404);
-  }
-  const archive = createContentArchive(archiveEntries.filter((entry) => entry !== null));
+  });
+  const archive = streamContentArchive(archiveEntries);
   const archiveEvent = context.req.param("eventId").replace(/[^a-zA-Z0-9._-]+/g, "-") || "event";
   const archiveName = `${archiveEvent}-files.zip`;
   return new Response(archive, {
     headers: {
       "content-type": "application/zip",
       "content-disposition": `attachment; filename="${archiveName}"`,
-      "content-length": String(archive.byteLength),
       "x-content-type-options": "nosniff",
     },
   });
