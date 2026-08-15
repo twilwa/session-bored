@@ -1,0 +1,21 @@
+tests/e2e/public-schedule.spec.ts
+  s_edc466d4e6f0f1::t_72a37dc7f829c5 247-248,255
+client/pages/public/PersonalSchedulePage.tsx
+  s_edc466d4e6f0f1::t_03f4f26bcd0133 72
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "dbeb52f1e3496792900b17575ee1760c8ea3e845",
+  "prompts": {},
+  "sessions": {
+    "s_edc466d4e6f0f1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "49498c92-fa6b-4162-8888-1a1629eb526f",
+        "model": "claude-opus-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
