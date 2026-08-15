@@ -1,0 +1,31 @@
+worker/routes/agenda.ts
+  s_810cc89dc7b90f::t_e15a0511f4ac78 275-276,298-299
+  s_810cc89dc7b90f::t_da0958fef76fef 277-297
+tests/integration/agenda.test.ts
+  s_810cc89dc7b90f::t_68e45ff98e4623 4,6,754-784
+  s_7e51d21061003b::t_4f4fa71001cf43 785-786
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "1ddf99710911e02e88710380e5744545e50df58e",
+  "prompts": {},
+  "sessions": {
+    "s_7e51d21061003b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a00785-eca6-7013-9891-57aa78a6e70b",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    },
+    "s_810cc89dc7b90f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a007a0-0d12-75c3-a0c0-619ad39b0cc7",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
