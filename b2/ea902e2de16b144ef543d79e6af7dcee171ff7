@@ -1,0 +1,21 @@
+tests/integration/people.test.ts
+  s_89b108d05b94d9::t_dc634638957398 485-513
+worker/routes/people.ts
+  s_89b108d05b94d9::t_dae0642ed6559b 526-527,683
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "b2ea902e2de16b144ef543d79e6af7dcee171ff7",
+  "prompts": {},
+  "sessions": {
+    "s_89b108d05b94d9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a00396-c836-7c43-87b0-74d23fa3588c",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
