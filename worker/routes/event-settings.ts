@@ -1,6 +1,6 @@
 // ABOUTME: Lets organizers manage event identity, branding, rooms, and tracks from one route group.
 // ABOUTME: Validates public brand assets and keeps destructive taxonomy changes reference-safe.
-import { and, eq, gt, isNotNull, isNull, lt, ne, or } from "drizzle-orm";
+import { and, eq, gt, inArray, isNotNull, isNull, lt, ne, or } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { Hono } from "hono";
 import { createMiddleware } from "hono/factory";
@@ -10,12 +10,20 @@ import {
   reviewerTracks,
   rooms,
   sessions,
+  submissions,
   submissionTracks,
   tracks,
   type Role,
 } from "../../db/schema.ts";
 import { holdsAccess } from "../access.ts";
-import { getFileObject, headshotLimits, putFileObject, validateUpload } from "../storage/files.ts";
+import {
+  getFileObject,
+  headshotLimits,
+  putFileObject,
+  readUploadedFile,
+  validateUpload,
+  validationErrorStatus,
+} from "../storage/files.ts";
 
 type EventSettingsEnvironment = {
   Bindings: CloudflareBindings;
@@ -159,13 +167,21 @@ function eventSetupInput(payload: unknown, eventId: string): EventSetupValidatio
   };
 }
 
-function uploadedFile(formData: FormData | null): File | null {
-  const value = formData?.get("file");
-  return value instanceof File ? value : null;
-}
-
-function fileErrorStatus(error: "file_required" | "file_too_large" | "unsupported_file_type"): 400 | 413 | 415 {
-  return error === "file_too_large" ? 413 : error === "unsupported_file_type" ? 415 : 400;
+/**
+ * The sessions the agenda still shows: a directly entered one, or one whose proposal is
+ * still accepted. Un-accepting keeps every schedule field on purpose, so a session read
+ * without this gate can hold dates the organizer has no board affordance left to move.
+ */
+function liveEventSessions(database: ReturnType<typeof drizzle>, eventId: string) {
+  return database
+    .select({ id: sessions.id })
+    .from(sessions)
+    .leftJoin(submissions, eq(sessions.submissionId, submissions.id))
+    .where(and(
+      eq(sessions.eventId, eventId),
+      isNull(sessions.deletedAt),
+      or(eq(sessions.directEntry, true), eq(submissions.status, "accepted")),
+    ));
 }
 
 function brandingAsset(value: string): "background" | "logo" | null {
@@ -218,7 +234,7 @@ eventSettingsRoutes.patch("/api/events/:eventId", requireOrganizer, async (conte
   const [slugOwner] = await database
     .select({ id: events.id })
     .from(events)
-    .where(and(eq(events.slug, input.slug), ne(events.id, eventId), isNull(events.deletedAt)))
+    .where(and(eq(events.slug, input.slug), ne(events.id, eventId)))
     .limit(1);
   if (slugOwner !== undefined) {
     return context.json({
@@ -231,8 +247,7 @@ eventSettingsRoutes.patch("/api/events/:eventId", requireOrganizer, async (conte
     .select({ id: sessions.id })
     .from(sessions)
     .where(and(
-      eq(sessions.eventId, eventId),
-      isNull(sessions.deletedAt),
+      inArray(sessions.id, liveEventSessions(database, eventId)),
       isNotNull(sessions.scheduledDate),
       or(lt(sessions.scheduledDate, input.startDate), gt(sessions.scheduledDate, input.endDate)),
     ))
@@ -271,9 +286,8 @@ eventSettingsRoutes.patch("/api/events/:eventId", requireOrganizer, async (conte
         .update(sessions)
         .set({ publishedAt: null, updatedAt })
         .where(and(
-          eq(sessions.eventId, eventId),
+          inArray(sessions.id, liveEventSessions(database, eventId)),
           eq(sessions.scheduleStatus, "placed"),
-          isNull(sessions.deletedAt),
           isNotNull(sessions.publishedAt),
         ))
         .returning({ id: sessions.id }),
@@ -299,14 +313,14 @@ eventSettingsRoutes.post("/api/events/:eventId/branding/:asset", async (context)
   if (event === undefined) {
     return context.json({ error: "event_not_found", message: "This event could not be found." }, 404);
   }
-  const file = uploadedFile(await context.req.formData().catch(() => null));
+  const file = readUploadedFile(await context.req.formData().catch(() => null));
   if (file === null) {
     return context.json({ error: "file_required", message: "Choose an image to upload." }, 400);
   }
   const bytes = await file.arrayBuffer();
   const validationError = validateUpload(file, headshotLimits, bytes);
   if (validationError !== null) {
-    return context.json(validationError, fileErrorStatus(validationError.error));
+    return context.json(validationError, validationErrorStatus(validationError.error));
   }
   await putFileObject(
     context.env.FILES,

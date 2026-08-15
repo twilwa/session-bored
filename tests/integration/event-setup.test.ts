@@ -154,6 +154,48 @@ describe("organizer event setup", () => {
     });
   });
 
+  it("ignores a scheduled session the agenda no longer carries", async () => {
+    const cookie = await organizerCookie();
+    await env.DB.prepare(
+      "update program_session set schedule_status = ?, scheduled_date = ? where id = ?",
+    ).bind("tbd", "2027-05-12", "ses_docs_retrieval").run();
+    await env.DB.prepare("update submission set status = ? where id = ?")
+      .bind("under_review", "sub_docs_retrieval")
+      .run();
+    const agenda = await request("/api/events/evt_devflow_conf_2027/agenda", { headers: { cookie } });
+    expect((await agenda.json<{ sessions: Array<{ id: string }> }>()).sessions).not.toContainEqual(
+      expect.objectContaining({ id: "ses_docs_retrieval" }),
+    );
+
+    try {
+      const response = await request("/api/events/evt_devflow_conf_2027", {
+        method: "PATCH",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify({
+          name: "DevFlow Conf 2027",
+          slug: "devflow-conf-2027",
+          tagline: null,
+          description: null,
+          startDate: "2027-05-13",
+          endDate: "2027-05-15",
+          venue: "Moscone West",
+          timezone: "America/Los_Angeles",
+          branding: { primaryColor: "#173B57", accentColor: "#F4B942" },
+        }),
+      });
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toMatchObject({
+        startDate: "2027-05-13",
+        endDate: "2027-05-15",
+      });
+    } finally {
+      await env.DB.prepare("update submission set status = ? where id = ?")
+        .bind("accepted", "sub_docs_retrieval")
+        .run();
+    }
+  });
+
   it("unpublishes placed sessions when the event timezone changes", async () => {
     const cookie = await organizerCookie();
     const now = Date.now();

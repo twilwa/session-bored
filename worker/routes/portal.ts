@@ -29,8 +29,10 @@ import {
   isPictureRequest,
   limitsForTask,
   putFileObject,
+  readUploadedFile,
   type UploadLimits,
   validateUpload,
+  validationErrorStatus,
 } from "../storage/files.ts";
 
 type PortalEnvironment = {
@@ -162,11 +164,6 @@ async function recordFileVersion(
   return { fileId, version };
 }
 
-function readUploadedFile(formData: FormData | null): File | null {
-  const value = formData?.get("file");
-  return value instanceof File ? value : null;
-}
-
 // A `?version=` value is caller-supplied text; anything but a whole number names no
 // stored version, so it yields no filter rather than a query for NaN.
 function fileVersionFilter(requestedVersion: string | undefined) {
@@ -175,12 +172,6 @@ function fileVersionFilter(requestedVersion: string | undefined) {
   }
   const version = Number(requestedVersion);
   return Number.isInteger(version) ? eq(fileVersions.version, version) : null;
-}
-
-function validationErrorStatus(error: "file_required" | "file_too_large" | "unsupported_file_type"): 400 | 413 | 415 {
-  if (error === "file_too_large") return 413;
-  if (error === "unsupported_file_type") return 415;
-  return 400;
 }
 
 portalRoutes.patch("/portal/profile", requireSpeaker, async (context) => {

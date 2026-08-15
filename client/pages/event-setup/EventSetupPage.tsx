@@ -173,7 +173,7 @@ export function EventSetupPage() {
                 {errorText(fields, "slug")}
               </div>
               <TextField label="Tagline" name="event-tagline" onChange={(input) => update("tagline", input.target.value)} value={event.tagline ?? ""} />
-              <TextField label="Venue" name="event-venue" onChange={(input) => update("venue", input.target.value)} required value={event.venue ?? ""} />
+              <TextField label="Venue" name="event-venue" onChange={(input) => update("venue", input.target.value)} value={event.venue ?? ""} />
               <label className="field event-setup__wide" htmlFor="event-description">
                 <span className="field__label">Description</span>
                 <textarea className="field__control" id="event-description" onChange={(input) => update("description", input.target.value)} rows={5} value={event.description ?? ""} />
