@@ -699,7 +699,7 @@ describe("review engine", () => {
         reviewerIds.push((await response.json<{ reviewer: { id: string } }>()).reviewer.id);
       }
 
-      const response = await request(
+      const responses = await Promise.all([request(
         endpoint,
         {
           method: "POST",
@@ -709,26 +709,37 @@ describe("review engine", () => {
             maxAssignmentsPerReviewer: 1,
           }),
         },
-      );
-      expect(response.status).toBe(201);
-      const result = await response.json<{
+      ), request(
+        endpoint,
+        {
+          method: "POST",
+          headers: organizerHeaders,
+          body: JSON.stringify({
+            trackId: track.id,
+            maxAssignmentsPerReviewer: 1,
+          }),
+        },
+      )]);
+      for (const response of responses) {
+        expect([200, 201]).toContain(response.status);
+      }
+      const results = await Promise.all(responses.map((response) => response.json<{
         assignments: Array<{ assignmentId: string; reviewerUserId: string; submissionId: string }>;
         unfilled: Array<{ submissionId: string; remainingAssignments: number }>;
         reviewerLoads: Array<{ reviewerUserId: string; assignmentCount: number; cap: number }>;
-      }>();
-      expect(result.assignments).toHaveLength(2);
-      expect(new Set(result.assignments.map((assignment) => assignment.submissionId))).toEqual(
+      }>()));
+      const assignments = results.flatMap((result) => result.assignments);
+      expect(assignments).toHaveLength(2);
+      expect(new Set(assignments.map((assignment) => assignment.submissionId))).toEqual(
         new Set(["sub_docs_retrieval", "sub_ai_verification"]),
       );
-      expect(result.reviewerLoads).toEqual(expect.arrayContaining(reviewerIds.map((reviewerUserId) => ({
+      const persistedLoads = await env.DB.prepare(
+        "select reviewer_user_id as reviewerUserId, count(*) as assignmentCount from review_assignment where round_id = ? and status <> 'recused' and deleted_at is null group by reviewer_user_id order by reviewer_user_id",
+      ).bind(round.id).all<{ reviewerUserId: string; assignmentCount: number }>();
+      expect(persistedLoads.results).toEqual(reviewerIds.sort().map((reviewerUserId) => ({
         reviewerUserId,
         assignmentCount: 1,
-        cap: 1,
-      }))));
-      expect(result.unfilled).toEqual(expect.arrayContaining([
-        { submissionId: "sub_docs_retrieval", remainingAssignments: 1 },
-        { submissionId: "sub_ai_verification", remainingAssignments: 1 },
-      ]));
+      })));
 
       const repeatedResponse = await request(endpoint, {
         method: "POST",
@@ -739,7 +750,128 @@ describe("review engine", () => {
         }),
       });
       expect(repeatedResponse.status).toBe(200);
-      expect((await repeatedResponse.json<{ assignments: unknown[] }>()).assignments).toEqual([]);
+      expect(await repeatedResponse.json()).toEqual(expect.objectContaining({
+        assignments: [],
+        reviewerLoads: expect.arrayContaining(reviewerIds.map((reviewerUserId) => ({
+          reviewerUserId,
+          assignmentCount: 1,
+          cap: 1,
+        }))),
+        unfilled: expect.arrayContaining([
+          { submissionId: "sub_docs_retrieval", remainingAssignments: 1 },
+          { submissionId: "sub_ai_verification", remainingAssignments: 1 },
+        ]),
+      }));
+    } finally {
+      if (roundId !== undefined) {
+        await env.DB.prepare("delete from review_assignment where round_id = ?").bind(roundId).run();
+        await env.DB.prepare("delete from reviewer_round_pool where round_id = ?").bind(roundId).run();
+        await env.DB.prepare("delete from review_round where id = ?").bind(roundId).run();
+      }
+      await env.DB.prepare("delete from reviewer_track where track_id = ?").bind(track.id).run();
+      await env.DB.prepare("delete from submission_track where track_id = ?").bind(track.id).run();
+      const trackDeleteResponse = await request(
+        `/api/events/evt_devflow_conf_2027/tracks/${track.id}`,
+        { method: "DELETE", headers: { cookie: organizerCookie } },
+      );
+      expect(trackDeleteResponse.status).toBe(204);
+    }
+  });
+
+  it("prioritizes zero-coverage proposals and preserves completed reviews after pool removal", async () => {
+    await request("/api/health");
+    const organizerCookie = await signIn("sbek-organizer@example.com", "SbekTest!2027-org");
+    const organizerHeaders = { cookie: organizerCookie, "content-type": "application/json" };
+    const trackResponse = await request("/api/events/evt_devflow_conf_2027/tracks", {
+      method: "POST",
+      headers: organizerHeaders,
+      body: JSON.stringify({ name: "Distribution coverage test" }),
+    });
+    expect(trackResponse.status).toBe(201);
+    const track = await trackResponse.json<{ id: string }>();
+    const trackLinkIds = [
+      `strk_distribution_coverage_one_${crypto.randomUUID().slice(0, 8)}`,
+      `strk_distribution_coverage_two_${crypto.randomUUID().slice(0, 8)}`,
+    ];
+    let roundId: string | undefined;
+
+    try {
+      const now = Date.now();
+      await env.DB.batch([
+        env.DB.prepare(
+          "insert into submission_track (id, submission_id, track_id, created_at, updated_at) values (?, ?, ?, ?, ?)",
+        ).bind(trackLinkIds[0], "sub_ai_verification", track.id, now, now),
+        env.DB.prepare(
+          "insert into submission_track (id, submission_id, track_id, created_at, updated_at) values (?, ?, ?, ?, ?)",
+        ).bind(trackLinkIds[1], "sub_docs_retrieval", track.id, now, now),
+      ]);
+      const roundResponse = await request("/api/review/events/evt_devflow_conf_2027/rounds", {
+        method: "POST",
+        headers: organizerHeaders,
+        body: JSON.stringify({ name: "Distribution coverage test", status: "open" }),
+      });
+      expect(roundResponse.status).toBe(201);
+      const round = await roundResponse.json<{ id: string }>();
+      roundId = round.id;
+      const reviewerIds: string[] = [];
+      for (const suffix of ["completed", "available"]) {
+        const response = await request("/api/review/events/evt_devflow_conf_2027/reviewers", {
+          method: "POST",
+          headers: organizerHeaders,
+          body: JSON.stringify({
+            name: `Distribution Coverage Reviewer ${suffix}`,
+            email: `distribution-coverage-${suffix}-${crypto.randomUUID()}@example.com`,
+            password: "ReviewTalks!2027",
+            trackIds: [track.id],
+            roundIds: [round.id],
+          }),
+        });
+        expect(response.status).toBe(201);
+        reviewerIds.push((await response.json<{ reviewer: { id: string } }>()).reviewer.id);
+      }
+      const [completedReviewerId, availableReviewerId] = reviewerIds as [string, string];
+      const manualAssignmentResponse = await request(
+        `/api/review/rounds/${round.id}/assignments`,
+        {
+          method: "POST",
+          headers: organizerHeaders,
+          body: JSON.stringify({
+            reviewerUserId: completedReviewerId,
+            submissionIds: ["sub_ai_verification"],
+          }),
+        },
+      );
+      expect(manualAssignmentResponse.status).toBe(201);
+      await env.DB.batch([
+        env.DB.prepare(
+          "update review_assignment set status = 'completed', completed_at = ?, updated_at = ? where round_id = ? and reviewer_user_id = ? and submission_id = ?",
+        ).bind(now, now, round.id, completedReviewerId, "sub_ai_verification"),
+        env.DB.prepare(
+          "update reviewer_round_pool set deleted_at = ?, updated_at = ? where round_id = ? and reviewer_user_id = ?",
+        ).bind(now, now, round.id, completedReviewerId),
+      ]);
+
+      const response = await request(
+        `/api/review/rounds/${round.id}/assignments/distribute`,
+        {
+          method: "POST",
+          headers: organizerHeaders,
+          body: JSON.stringify({ trackId: track.id, maxAssignmentsPerReviewer: 1 }),
+        },
+      );
+      expect(response.status).toBe(201);
+      const result = await response.json<{
+        assignments: Array<{ reviewerUserId: string; submissionId: string }>;
+        unfilled: Array<{ submissionId: string; remainingAssignments: number }>;
+      }>();
+      expect(result.assignments).toEqual([expect.objectContaining({
+        reviewerUserId: availableReviewerId,
+        submissionId: "sub_docs_retrieval",
+      })]);
+      expect(result.unfilled).toEqual(expect.arrayContaining([
+        { submissionId: "sub_ai_verification", remainingAssignments: 1 },
+        { submissionId: "sub_docs_retrieval", remainingAssignments: 1 },
+      ]));
     } finally {
       if (roundId !== undefined) {
         await env.DB.prepare("delete from review_assignment where round_id = ?").bind(roundId).run();

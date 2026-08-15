@@ -20,6 +20,66 @@ type ReviewDatabase = ReturnType<typeof drizzle>;
 
 const targetReviewsPerSubmission = 2;
 
+async function claimReviewAssignment(
+  database: ReviewDatabase,
+  input: { roundId: string; submissionId: string; reviewerUserId: string; cap: number },
+): Promise<string | null> {
+  const assignmentId = createPublicId("asn");
+  const now = Date.now();
+  const claimed = await database.$client.prepare(`
+    insert into review_assignment (
+      id, round_id, submission_id, reviewer_user_id, status,
+      assigned_at, created_at, updated_at
+    )
+    select ?, ?, ?, ?, 'assigned', ?, ?, ?
+    where (
+      select count(*)
+      from review_assignment
+      where round_id = ?
+        and reviewer_user_id = ?
+        and status <> 'recused'
+        and deleted_at is null
+    ) < ?
+    on conflict do nothing
+    returning id
+  `).bind(
+    assignmentId,
+    input.roundId,
+    input.submissionId,
+    input.reviewerUserId,
+    now,
+    now,
+    now,
+    input.roundId,
+    input.reviewerUserId,
+    input.cap,
+  ).first<{ id: string }>();
+  return claimed?.id ?? null;
+}
+
+async function reviewerAssignmentLoad(
+  database: ReviewDatabase,
+  roundId: string,
+  reviewerUserId: string,
+): Promise<number> {
+  const row = await database.$client.prepare(`
+    select count(*) as assignmentCount
+    from review_assignment
+    where round_id = ?
+      and reviewer_user_id = ?
+      and status <> 'recused'
+      and deleted_at is null
+  `).bind(roundId, reviewerUserId).first<{ assignmentCount: number }>();
+  return row?.assignmentCount ?? 0;
+}
+
+function assignmentCoverage(
+  assignment: { reviewerUserId: string; status: string },
+  livePoolReviewerIds: Set<string>,
+): boolean {
+  return assignment.status === "completed" || livePoolReviewerIds.has(assignment.reviewerUserId);
+}
+
 export type DistributeReviewAssignmentsResult =
   | { status: "round_not_found" }
   | { status: "track_scope_invalid" }
@@ -129,7 +189,10 @@ export async function distributeReviewAssignments(
     if (reviewerLoads.has(assignment.reviewerUserId)) {
       reviewerLoads.set(assignment.reviewerUserId, (reviewerLoads.get(assignment.reviewerUserId) ?? 0) + 1);
     }
-    if (livePoolReviewerIds.has(assignment.reviewerUserId) && coverageBySubmission.has(assignment.submissionId)) {
+    if (
+      assignmentCoverage(assignment, livePoolReviewerIds) &&
+      coverageBySubmission.has(assignment.submissionId)
+    ) {
       coverageBySubmission.set(
         assignment.submissionId,
         (coverageBySubmission.get(assignment.submissionId) ?? 0) + 1,
@@ -140,37 +203,72 @@ export async function distributeReviewAssignments(
   const assignments: BulkReviewAssignmentResult["assignments"] = [];
   for (let pass = 0; pass < targetReviewsPerSubmission; pass += 1) {
     for (const submission of submissionRows) {
-      if ((coverageBySubmission.get(submission.id) ?? 0) >= targetReviewsPerSubmission) {
+      if ((coverageBySubmission.get(submission.id) ?? 0) !== pass) {
         continue;
       }
-      const reviewerUserId = candidateReviewerIds
+      const reviewerUserIds = candidateReviewerIds
         .filter((candidateId) =>
           (reviewerLoads.get(candidateId) ?? 0) < input.maxAssignmentsPerReviewer &&
           !existingPairs.has(`${candidateId}:${submission.id}`)
         )
         .sort((left, right) =>
           (reviewerLoads.get(left) ?? 0) - (reviewerLoads.get(right) ?? 0) || left.localeCompare(right)
-        )[0];
-      if (reviewerUserId === undefined) {
-        continue;
-      }
-      const [created] = await database
-        .insert(reviewAssignments)
-        .values({
-          id: createPublicId("asn"),
+        );
+      for (const reviewerUserId of reviewerUserIds) {
+        const pair = `${reviewerUserId}:${submission.id}`;
+        const assignmentId = await claimReviewAssignment(database, {
           roundId: input.roundId,
           submissionId: submission.id,
           reviewerUserId,
-        })
-        .onConflictDoNothing()
-        .returning({ id: reviewAssignments.id });
-      existingPairs.add(`${reviewerUserId}:${submission.id}`);
-      if (created === undefined) {
-        continue;
+          cap: input.maxAssignmentsPerReviewer,
+        });
+        existingPairs.add(pair);
+        if (assignmentId === null) {
+          reviewerLoads.set(
+            reviewerUserId,
+            await reviewerAssignmentLoad(database, input.roundId, reviewerUserId),
+          );
+          continue;
+        }
+        reviewerLoads.set(reviewerUserId, (reviewerLoads.get(reviewerUserId) ?? 0) + 1);
+        coverageBySubmission.set(submission.id, (coverageBySubmission.get(submission.id) ?? 0) + 1);
+        assignments.push({ assignmentId, reviewerUserId, submissionId: submission.id });
+        break;
       }
-      reviewerLoads.set(reviewerUserId, (reviewerLoads.get(reviewerUserId) ?? 0) + 1);
-      coverageBySubmission.set(submission.id, (coverageBySubmission.get(submission.id) ?? 0) + 1);
-      assignments.push({ assignmentId: created.id, reviewerUserId, submissionId: submission.id });
+    }
+  }
+
+  const finalAssignmentRows = await database
+    .select({
+      reviewerUserId: reviewAssignments.reviewerUserId,
+      submissionId: reviewAssignments.submissionId,
+      status: reviewAssignments.status,
+    })
+    .from(reviewAssignments)
+    .where(and(
+      eq(reviewAssignments.roundId, input.roundId),
+      isNull(reviewAssignments.deletedAt),
+    ));
+  const finalReviewerLoads = new Map(candidateReviewerIds.map((reviewerUserId) => [reviewerUserId, 0]));
+  const finalCoverageBySubmission = new Map(submissionRows.map((submission) => [submission.id, 0]));
+  for (const assignment of finalAssignmentRows) {
+    if (assignment.status === "recused") {
+      continue;
+    }
+    if (finalReviewerLoads.has(assignment.reviewerUserId)) {
+      finalReviewerLoads.set(
+        assignment.reviewerUserId,
+        (finalReviewerLoads.get(assignment.reviewerUserId) ?? 0) + 1,
+      );
+    }
+    if (
+      assignmentCoverage(assignment, livePoolReviewerIds) &&
+      finalCoverageBySubmission.has(assignment.submissionId)
+    ) {
+      finalCoverageBySubmission.set(
+        assignment.submissionId,
+        (finalCoverageBySubmission.get(assignment.submissionId) ?? 0) + 1,
+      );
     }
   }
 
@@ -183,13 +281,13 @@ export async function distributeReviewAssignments(
       assignments,
       reviewerLoads: candidateReviewerIds.map((reviewerUserId) => ({
         reviewerUserId,
-        assignmentCount: reviewerLoads.get(reviewerUserId) ?? 0,
+        assignmentCount: finalReviewerLoads.get(reviewerUserId) ?? 0,
         cap: input.maxAssignmentsPerReviewer,
       })),
       unfilled: submissionRows.flatMap((submission) => {
         const remainingAssignments = Math.max(
           0,
-          targetReviewsPerSubmission - (coverageBySubmission.get(submission.id) ?? 0),
+          targetReviewsPerSubmission - (finalCoverageBySubmission.get(submission.id) ?? 0),
         );
         return remainingAssignments === 0 ? [] : [{ submissionId: submission.id, remainingAssignments }];
       }),
