@@ -717,4 +717,75 @@ describe("speaker directory", () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({ error: "invalid_merge" });
   });
+  it("folds an archived duplicate assignment's completion into the kept one it cannot replace", async () => {
+    await request("/api/health");
+    const database = drizzle(env.DB);
+    const now = Date.now();
+    const completedAt = now - 120_000;
+    const taskId = "tsk_probe_folded_request";
+    const [organizer] = await database.select({ id: users.id }).from(users)
+      .where(eq(users.email, "sbek-organizer@example.com"));
+    await env.DB.batch([
+      env.DB.prepare(
+        "insert into person (id, name, email, organization, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
+      ).bind("psn_probe_fold_kept", "Ira Folded", "ira.kept@example.com", "Folded Systems", now, now),
+      env.DB.prepare(
+        "insert into person (id, name, email, organization, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
+      ).bind("psn_probe_fold_dupe", "Ira Folded", "ira.duplicate@example.com", "Folded Systems", now, now),
+      env.DB.prepare(
+        "insert into speaker (id, person_id, event_id, status, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
+      ).bind("spk_probe_fold_kept", "psn_probe_fold_kept", "evt_devflow_conf_2027", "ready", now, now),
+      env.DB.prepare(
+        "insert into speaker (id, person_id, event_id, status, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
+      ).bind("spk_probe_fold_dupe", "psn_probe_fold_dupe", "evt_devflow_conf_2027", "ready", now, now),
+      env.DB.prepare(
+        "insert into task (id, event_id, task_type, title, status, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?)",
+      ).bind(taskId, "evt_devflow_conf_2027", "file_request", "Send the folded slides", "active", now, now),
+      // The kept record has never answered this request.
+      env.DB.prepare(
+        "insert into task_assignee (id, task_id, speaker_id, status, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
+      ).bind("tassn_probe_fold_kept", taskId, "spk_probe_fold_kept", "assigned", now, now),
+      // The duplicate did, and was then dropped from the task's assignees on the roster, which
+      // archives the assignment and leaves the uploaded file live.
+      env.DB.prepare(
+        "insert into task_assignee (id, task_id, speaker_id, status, completed_at, created_at, updated_at, deleted_at) values (?, ?, ?, ?, ?, ?, ?, ?)",
+      ).bind("tassn_probe_fold_dupe", taskId, "spk_probe_fold_dupe", "completed", completedAt, now, now, now),
+      env.DB.prepare(
+        "insert into file (id, event_id, task_id, speaker_id, kind, display_name, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?)",
+      ).bind("fil_probe_fold", "evt_devflow_conf_2027", taskId, "spk_probe_fold_dupe", "deliverable", "folded-slides.pdf", now, now),
+      env.DB.prepare(
+        "insert into file_version (id, file_id, version, storage_key, mime_type, size_bytes, latest, uploaded_by_user_id, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      ).bind("fver_probe_fold", "fil_probe_fold", 1, "probe/folded-slides.pdf", "application/pdf", 21, 1, organizer!.id, now, now),
+    ]);
+
+    const cookie = await organizerCookie();
+    const merged = await request("/api/speaker-directory/psn_probe_fold_kept/merge", {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ duplicatePersonId: "psn_probe_fold_dupe" }),
+    });
+    expect(merged.status).toBe(200);
+
+    const [keptAssignment] = await database.select().from(taskAssignees)
+      .where(eq(taskAssignees.id, "tassn_probe_fold_kept"));
+    expect(keptAssignment).toMatchObject({ status: "completed", deletedAt: null });
+    expect(keptAssignment?.completedAt?.getTime()).toBe(completedAt);
+
+    // The file follows the person, so the request must not read as still outstanding beside it.
+    const deliverables = await (await request("/api/events/evt_devflow_conf_2027/deliverables", {
+      headers: { cookie },
+    })).json<{
+      items: Array<{
+        taskId: string;
+        speaker: { id: string };
+        assignment: { status: string };
+        file: { displayName: string } | null;
+      }>;
+    }>();
+    const ownRows = deliverables.items.filter((item) =>
+      item.taskId === taskId && item.speaker.id === "spk_probe_fold_kept");
+    expect(ownRows).toHaveLength(1);
+    expect(ownRows[0]?.assignment.status).toBe("completed");
+    expect(ownRows[0]?.file?.displayName).toBe("folded-slides.pdf");
+  });
 });

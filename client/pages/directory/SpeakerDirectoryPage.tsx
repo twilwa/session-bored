@@ -225,7 +225,7 @@ function DirectoryDetail({
           <div className="section-heading">
             <div><p className="section-label">IDENTITY REVIEW / {detail.possibleDuplicates.length}</p><h2>Possible duplicates</h2></div>
           </div>
-          <p className="directory-duplicates__intro">Choose which record remains. Greenroom moves the archived record’s programme, proposals, tasks, and files to the one you keep.</p>
+          <p className="directory-duplicates__intro">Choose which record remains. Greenroom moves the archived record’s programme, proposals, tasks, and files to the one you keep, and resolves their roster status at any event both records speak at.</p>
           <div className="directory-duplicate-list">
             {detail.possibleDuplicates.map((candidate) => {
               const candidateIdentity: MergeIdentity = { id: candidate.id, name: candidate.name, email: candidate.email };
@@ -316,7 +316,8 @@ export function SpeakerDirectoryPage({ personId }: { personId?: string }) {
           <div className="directory-merge-confirmation">
             <p><strong>Keep {mergeChoice.kept.email}</strong> as the canonical speaker record.</p>
             <p><strong>Archive {mergeChoice.archived.email}</strong> after its event, proposal, task, and file links move to the kept record.</p>
-            <p>This preserves the archived profile in the merge log. It does not send a message or change what is publicly published.</p>
+            <p>This preserves the archived profile in the merge log and sends no message.</p>
+            <p>Where both records speak at the same event, the kept record takes the further-along roster status — and stays withdrawn if either was withdrawn. That can change whether this person is listed on the public programme for that event.</p>
             <div><Button onClick={() => setMergeChoice(null)} tone="quiet">Cancel</Button><Button disabled={merging} onClick={() => void merge()} tone="signal">{merging ? "Merging…" : `Merge and keep ${mergeChoice.kept.email}`}</Button></div>
           </div>
         )}
