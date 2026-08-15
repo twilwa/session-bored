@@ -1,0 +1,56 @@
+worker/speaker-import.ts
+  s_ff5664ed5fcfb3::t_5931388100e93d 116,122-123,127
+  s_ff5664ed5fcfb3::t_fa0f4ec9c75e0c 25-31,33-48,163-168,174-175,178-183,187-196,198-205
+  s_ff5664ed5fcfb3::t_976360549bb890 1-24,49-115,117-121,124-126,128-138,148-150,153-156,158-162,206
+  s_ff5664ed5fcfb3::t_ca2785e4312957 197
+  s_ff5664ed5fcfb3::t_1df500435e2042 32,169-173,176-177,184-186
+  s_ff5664ed5fcfb3::t_6b6bb33743443e 139-147,151-152,157
+client/pages/roster/RosterPage.tsx
+  s_ff5664ed5fcfb3::t_7101b6ed5fe108 34-40,42-66,161-172,174-229,233,240-277,279-315,328,385-388,482-487
+  s_ff5664ed5fcfb3::t_8c7a475a52c4fb 41,173
+  s_ff5664ed5fcfb3::t_8dc8588027798c 230-232,234-239,278
+tests/unit/speaker-import.test.ts
+  s_ff5664ed5fcfb3::t_edeaec3fab32d8 88-100
+  s_ff5664ed5fcfb3::t_bf2395ec5494d1 4,61-85
+  s_ff5664ed5fcfb3::t_8aac0fa2238386 1-3,5-34,101
+  s_ff5664ed5fcfb3::t_0d30c6a40c58b7 35-51
+  s_ff5664ed5fcfb3::t_4ad50cd8e59eb6 52-60,86-87
+worker/routes/roster.ts
+  s_ff5664ed5fcfb3::t_31c8a2c0ce558b 31,111-114,116-131,137-139,141-150,174,193-194,197,243,245-250
+  s_ff5664ed5fcfb3::t_ff35c1dd56ad02 10,22,26-30,32,43,64-110,115,132-136,140,151-173,175-192,195-196,198-242,244,251-253
+  s_5e9446acf4115e::t_8e69fd4b9b1433 254
+AGENTS.md
+  s_ff5664ed5fcfb3::t_f1536ec137b07a 151-156
+tests/e2e/roster.spec.ts
+  s_ff5664ed5fcfb3::t_9098288e4ebeed 73
+  s_ff5664ed5fcfb3::t_f809ceb11768db 67-72,74-104
+tests/integration/roster.test.ts
+  s_ff5664ed5fcfb3::t_001cee372884f3 445-525
+  s_ff5664ed5fcfb3::t_252c1897fb923d 526-593
+client/styles.css
+  s_ff5664ed5fcfb3::t_78b75c754a0200 247,296-311,499,511
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "80a632e08d648675d437e7712f938683bdbf2f1a",
+  "prompts": {},
+  "sessions": {
+    "s_5e9446acf4115e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a002a4-2b2b-7b21-bf14-77a1ee6ec7d3",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    },
+    "s_ff5664ed5fcfb3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a003f3-5502-7dd1-8d0b-6512ecb1b526",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
