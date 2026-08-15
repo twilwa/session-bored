@@ -1,0 +1,41 @@
+db/schema.ts
+  s_e45850ec76bd2e::t_64d4efc0a7260f 652-657
+worker/routes/portal.ts
+  s_e45850ec76bd2e::t_f3d3f553853108 463
+tests/integration/speaker-directory.test.ts
+  s_e45850ec76bd2e::t_75856f9fb7e622 561,564
+  s_e45850ec76bd2e::t_609509b35e750f 11
+  s_e45850ec76bd2e::t_b33909e677529c 505-560,562-563,565-626
+migrations/meta/0022_snapshot.json
+  s_e45850ec76bd2e::t_a2bb705c3c7fe1 1-5353
+worker/routes/speaker-directory.ts
+  s_e45850ec76bd2e::t_08d58ad791a83e 223
+  s_e45850ec76bd2e::t_30188fe595930a 257-258
+  s_e45850ec76bd2e::t_78a0c6fcc0a342 95-118
+  s_e45850ec76bd2e::t_669beefd7eeb79 230,232,234
+  s_e45850ec76bd2e::t_97c6a031342488 256
+worker/index.ts
+  s_e45850ec76bd2e::t_d9594cae921582 427-431
+migrations/0022_chemical_darkhawk.sql
+  s_e45850ec76bd2e::t_a2bb705c3c7fe1 1
+AGENTS.md
+  s_e45850ec76bd2e::t_ce9527b3bb09f3 258-272
+migrations/meta/_journal.json
+  s_e45850ec76bd2e::t_a2bb705c3c7fe1 158-164
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "129dd4317a008e37000f93b5d088dffc6b5c98dd",
+  "prompts": {},
+  "sessions": {
+    "s_e45850ec76bd2e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "13ebe572-3fd6-463d-851d-c1c4d90d010a",
+        "model": "claude-opus-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
