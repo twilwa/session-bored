@@ -596,30 +596,20 @@ reason - tests inject a fake one instead of touching the network.
   `sendTrackedEmail` (template key `reviewer_invitation`), so every attempt
   lands in the shared `email_dispatch` communications log and the route answers
   `emailDelivery` (`sent` | `failed` | `not_configured`) for People to report.
-  The mail links `/signup?email=<invited address>`, which prefills the sign-up
-  form; redemption stays address-confirmation only (see Accounts and access).
-  Because redemption is that confirmation and nothing else, an address whose
-  account has **already confirmed** is refused `account_already_confirmed`: it
-  cannot confirm a second time, so the invitation could only sit open forever.
-  The refusal names the door that is actually open, which depends on whether
-  that account already holds a live reviewer grant - a reviewer onboarded by an
-  earlier invitation always does, and People offers no second grant for them.
-  Neither door carries a default remit, and every refusal names the remit
-  itself: an account that already holds the grant is sent to Committee setup,
-  which is the only step left for it, and an account without the grant is sent
-  to People's grant (#166) *and then* to Committee setup for this event, because
-  a grant is platform-wide while a queue is per event. Both say plainly that
-  tracks and a review round must be chosen. The other two invitation refusals,
-  `invalid_email` and `open_round_required`, carry a `note` for the same reason:
-  People renders the server's note, so a refusal without one is a dead end.
-  Resending
-  (`POST /api/events/:eventId/reviewer-invites/:inviteId/resend`) is open only
-  while this invitation's own delivery reads `failed` or `not_attempted`, and
-  refuses `invitation_already_sent` once any attempt since its `createdAt`
-  succeeded. That is the same rule behind `canResend` in `GET /api/people`:
+  Every refusal it can answer - `invalid_email`, `invite_already_open`,
+  `open_round_required` - carries a `note`, because People renders the server's
+  note and a refusal without one is a dead end.
+  A never-delivered invitation is re-sent from People through
+  `POST .../reviewer-invites/:inviteId/resend`, which refuses
+  `invitation_already_sent` once any attempt since the invitation's `createdAt`
+  succeeded, and re-reads the invited address's account status so the copy still
+  fits. That is the same rule behind `canResend` in `GET /api/people`:
   `reviewerInvitationDeliveryFor` is the one reading of it, so a letter that
   reached somebody is never sent twice and one that reached nobody is never
-  stranded.
+  stranded. The mail carries whichever link still has work to do - the
+  invitation page, or `/reviewer` when the organizer already opened access - and
+  says acceptance is still required unless it was; see Accounts and access for
+  the redemption doors.
 - **Reminders** (F-11.7) are drafted, never sent, by
   `worker/email/reminders.ts#draftOverdueTaskReminders` into `email_dispatch`
   rows with `status = 'draft'`. An organizer reviews, optionally edits

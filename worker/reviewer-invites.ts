@@ -1,5 +1,5 @@
 // ABOUTME: Turns an organizer's reviewer invitation into a real grant, only once the address is proved.
-// ABOUTME: Signing up as an invited address grants nothing; confirming that address is what redeems it.
+// ABOUTME: Signing up as an invited address grants nothing; a confirmed address is what redeems it.
 import { and, eq, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import {
