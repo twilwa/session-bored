@@ -253,6 +253,23 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   `worker/public-queries.ts`
   is the only written form of the public read; route through it rather than
   growing another copy in the router.
+- `worker/routes/event-settings.ts` also owns event setup at `/organizer/event`:
+  `PATCH /api/events/:eventId` writes the active event's name, description,
+  dates, venue, IANA timezone, public slug, and branding. It is the second door
+  that clears `program_session.published_at` — a timezone change unpublishes
+  every live placed session in the same D1 batch as the event write and answers
+  `scheduleReviewRequired`, so the organizer republishes rather than leaving
+  public times read in the zone the event no longer keeps. Two saves are refused
+  whole rather than half-applied, each with field-level messages: a date range
+  that would exclude a live scheduled session, and a slug another event already
+  owns. `liveEventSessions` there is the agenda's live-decision gate, so an
+  un-accepted session — whose schedule fields survive on purpose and which the
+  board offers no affordance to move — never blocks a date change. Branding
+  images upload through `worker/storage/files.ts` into R2 at
+  `events/:eventId/branding/:asset` and serve from
+  `GET /api/public/events/:eventId/branding/:asset`. The saved timezone is what
+  the agenda grid corner (`timezoneLabel` in `client/pages/agenda/board.ts`) and
+  the public schedule formatters label; nothing may hard-code a zone abbreviation.
 - The organizer board (`client/pages/agenda/`) leads with the grid: a sticky
   command strip, day tabs, then the workbench. `board.ts` holds its pure
   helpers, and `predictDrop` there mirrors the server's room and speaker overlap
@@ -574,12 +591,16 @@ enriched `tasks` (`taskType`, `instructions`, `acceptedFileTypes`,
   no type and is a refusal, not a pass on the extension alone. Never accept a
   file because one half matches. `validateUpload` takes the bytes as a required
   argument so a new upload route cannot silently skip the signature check, and
-  the two speaker upload routes in `worker/routes/portal.ts` are the only callers
-  - the headshot picker and the file request, which is a picture request or a
-  document request depending only on its `acceptedFileTypes`. Both serving
-  routes answer `X-Content-Type-Options: nosniff`, so the public headshot's
-  extension-derived type is enforced rather than hoped for. Keep the regression
-  tests in `tests/unit/portal-uploads.test.ts` and
+  `worker/storage/files.ts` owns the whole upload door - `readUploadedFile`,
+  `validateUpload`, and `validationErrorStatus` - so every caller reads the same
+  file field and answers the same refusal status. Its callers are the two speaker
+  upload routes in `worker/routes/portal.ts` - the headshot picker and the file
+  request, which is a picture request or a document request depending only on its
+  `acceptedFileTypes` - and the organizer branding upload in
+  `worker/routes/event-settings.ts`, which reuses the headshot limits. Every
+  serving route answers `X-Content-Type-Options: nosniff`, so the public
+  headshot's extension-derived type is enforced rather than hoped for. Keep the
+  regression tests in `tests/unit/portal-uploads.test.ts` and
   `tests/integration/portal-content.test.ts` alive when widening types, and give
   any test fixture claiming to be an image a real signature.
 
