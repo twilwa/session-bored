@@ -27,6 +27,13 @@ export interface OverlapColumn {
   count: number;
 }
 
+/** Sessions whose latest placement is still published, regardless of held participant additions. */
+export function countCurrentPublicSessions(
+  sessions: Pick<AgendaSession, "publishedAt" | "pendingSpeakerCount">[],
+): number {
+  return sessions.filter((session) => session.publishedAt !== null).length;
+}
+
 function overlaps(firstStart: number, firstEnd: number, secondStart: number, secondEnd: number): boolean {
   return firstStart < secondEnd && secondStart < firstEnd;
 }

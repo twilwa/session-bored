@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEven
 import type { AgendaConflict, AgendaPlacement, AgendaPublishResult, AgendaSession, AgendaState } from "../../../shared/api.ts";
 import { Button, LoadingState, SelectField, StatusChip, TextField } from "../../components/ui.tsx";
 import {
+  countCurrentPublicSessions,
   nearestFreeStart,
   overlapColumns,
   placementOf,
@@ -559,9 +560,7 @@ export function AgendaPage() {
 
   const conflicts = agenda.conflicts;
   const pendingSpeakerCount = agenda.sessions.reduce((count, session) => count + session.pendingSpeakerCount, 0);
-  const currentSessionCount = agenda.sessions.filter((session) =>
-    session.publishedAt !== null && session.pendingSpeakerCount === 0
-  ).length;
+  const currentSessionCount = countCurrentPublicSessions(agenda.sessions);
   const conflictingSessionIds = new Set(conflicts.flatMap((conflict) => conflict.sessionIds));
   const timezone = agenda.event.timezone;
   const dayStarts = timeSlots.map((time) => zonedEpoch(activeDay, time, timezone));
