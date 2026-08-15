@@ -1,0 +1,23 @@
+tests/e2e/embeds.spec.ts
+  s_9ee3e1ba44036e::t_61e4d42e5157c1 149-176
+  s_9ee3e1ba44036e::t_8ebe0c9d1d091c 253-280
+client/pages/embeds/EmbedFramePage.tsx
+  s_9ee3e1ba44036e::t_98b6a4c24ebaf7 122
+  s_9ee3e1ba44036e::t_f17e7a78c1ed92 101
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "5f267d9605413d9920618ccb813d8e069325be61",
+  "prompts": {},
+  "sessions": {
+    "s_9ee3e1ba44036e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a007a0-6123-7780-854a-bc327213d312",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
