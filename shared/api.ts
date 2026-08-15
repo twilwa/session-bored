@@ -147,6 +147,12 @@ export const routeMap = {
     module: "files",
     access: "organizer",
   },
+  downloadFiles: {
+    method: "POST",
+    path: "/api/events/:eventId/files/archive",
+    module: "files",
+    access: "organizer",
+  },
   fileComments: {
     method: "GET",
     path: "/api/content/files/:fileId/comments",
@@ -866,7 +872,12 @@ export interface DeliverableItem {
   assignmentId: `tassn_${string}`;
   taskId: `tsk_${string}`;
   speaker: { id: `spk_${string}`; name: string; email: string };
-  task: { title: string; instructions: string | null; dueAt: string | null };
+  task: {
+    title: string;
+    instructions: string | null;
+    dueAt: string | null;
+    session: null | { id: `ses_${string}`; title: string | null };
+  };
   assignment: {
     status: "assigned" | "in_progress" | "completed";
     completedAt: string | null;
@@ -903,6 +914,10 @@ export interface DeliverablesPayload {
   };
   items: DeliverableItem[];
   sessionsAwaitingApproval: SessionAwaitingApproval[];
+}
+
+export interface FileArchiveRequest {
+  fileIds: Array<`fil_${string}`>;
 }
 
 export type PortalTaskAssigneeStatus = "assigned" | "in_progress" | "completed";

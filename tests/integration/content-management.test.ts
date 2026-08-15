@@ -1,6 +1,7 @@
-// ABOUTME: Verifies organizer deliverable tracking and cross-role file discussion through real HTTP routes.
-// ABOUTME: Proves uploads, deadlines, approval state, and speaker ownership remain connected to canonical records.
+// ABOUTME: Verifies organizer deliverable tracking, bulk archives, and cross-role discussion through real HTTP routes.
+// ABOUTME: Proves uploads, deadlines, approval state, event scope, and speaker ownership stay connected.
 import { env } from "cloudflare:workers";
+import { unzipSync } from "fflate";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { PortalFileVersion } from "../../shared/api.ts";
 import worker from "../../worker/index.ts";
@@ -19,9 +20,9 @@ async function signIn(email: string, password: string): Promise<string> {
   return response.headers.get("set-cookie")?.split(";")[0] ?? "";
 }
 
-function pdfUpload(name: string): FormData {
+function pdfUpload(name: string, bytes: number[] = [1, 2, 3, 4]): FormData {
   const formData = new FormData();
-  formData.append("file", new File([new Uint8Array([1, 2, 3, 4])], name, { type: "application/pdf" }));
+  formData.append("file", new File([new Uint8Array(bytes)], name, { type: "application/pdf" }));
   formData.append("displayedRequestKind", "document");
   return formData;
 }
@@ -263,6 +264,95 @@ describe("content management", () => {
     });
     expect(previousVersion.status).toBe(200);
     expect(previousVersion.headers.get("content-disposition")).toBe('attachment; filename="draft-deck.pdf"');
+  });
+
+  it("downloads selected deliverables as a ZIP containing their latest versions", async () => {
+    const firstUpload = await request("/api/portal/tasks/tsk_fixture_3/files", {
+      method: "POST",
+      headers: { cookie: priyaCookie },
+      body: pdfUpload("draft-deck.pdf", [1, 2, 3, 4]),
+    });
+    expect(firstUpload.status).toBe(201);
+    const first = await firstUpload.json<{ fileId: string }>();
+
+    const latestUpload = await request("/api/portal/tasks/tsk_fixture_3/files", {
+      method: "POST",
+      headers: { cookie: priyaCookie },
+      body: pdfUpload("final-deck.pdf", [5, 6, 7, 8]),
+    });
+    expect(latestUpload.status).toBe(201);
+
+    const secondTaskResponse = await request(`/api/events/${eventId}/tasks`, {
+      method: "POST",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({
+        taskType: "file_request",
+        title: "Upload speaker notes",
+        speakerIds: ["spk_priya_devflow_2027"],
+      }),
+    });
+    expect(secondTaskResponse.status).toBe(201);
+    const secondTask = await secondTaskResponse.json<{ id: string }>();
+    const secondUpload = await request(`/api/portal/tasks/${secondTask.id}/files`, {
+      method: "POST",
+      headers: { cookie: priyaCookie },
+      body: pdfUpload("speaker-notes.pdf", [9, 10, 11, 12]),
+    });
+    expect(secondUpload.status).toBe(201);
+    const second = await secondUpload.json<{ fileId: string }>();
+
+    const archive = await request(`/api/events/${eventId}/files/archive`, {
+      method: "POST",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({ fileIds: [second.fileId, first.fileId] }),
+    });
+
+    expect(archive.status).toBe(200);
+    expect(archive.headers.get("content-type")).toBe("application/zip");
+    expect(archive.headers.get("content-disposition")).toBe(
+      'attachment; filename="evt_devflow_conf_2027-files.zip"',
+    );
+    const bytes = new Uint8Array(await archive.arrayBuffer());
+    expect([...bytes.slice(0, 4)]).toEqual([0x50, 0x4b, 0x03, 0x04]);
+    const files = unzipSync(bytes);
+    const expected = [
+      {
+        fileId: first.fileId,
+        path: `Priya Raman/Upload final slides by 2027-05-01/${first.fileId}-final-deck.pdf`,
+        bytes: [5, 6, 7, 8],
+      },
+      {
+        fileId: second.fileId,
+        path: `Priya Raman/Upload speaker notes/${second.fileId}-speaker-notes.pdf`,
+        bytes: [9, 10, 11, 12],
+      },
+    ].sort((left, right) => left.fileId.localeCompare(right.fileId));
+    expect(Object.keys(files)).toEqual(expected.map((file) => file.path));
+    for (const file of expected) {
+      expect([...files[file.path]!]).toEqual(file.bytes);
+    }
+    expect(Object.keys(files).join("\n")).not.toContain("draft-deck.pdf");
+  });
+
+  it("enforces organizer and event scope when generating a file archive", async () => {
+    const upload = await request("/api/portal/tasks/tsk_fixture_3/files", {
+      method: "POST",
+      headers: { cookie: priyaCookie },
+      body: pdfUpload("event-scoped.pdf"),
+    });
+    expect(upload.status).toBe(201);
+    const file = await upload.json<{ fileId: string }>();
+    const requestArchive = (event: string, cookie: string) => request(
+      `/api/events/${event}/files/archive`,
+      {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ fileIds: [file.fileId] }),
+      },
+    );
+
+    expect((await requestArchive(eventId, priyaCookie)).status).toBe(403);
+    expect((await requestArchive("evt_another_event", organizerCookie)).status).toBe(400);
   });
 
   it("surfaces session content awaiting approval without changing its status", async () => {
