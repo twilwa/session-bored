@@ -138,7 +138,9 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   gets the branded page in `worker/access-page.ts`, everything else keeps the
   JSON error. Both carry the same 401 or 403, so never assert a page route's
   refusal by content type alone. `/login?returnTo=` is honoured only for
-  same-origin paths inside the signer-in's own role area or `/submitter`.
+  same-origin paths inside an area opened by the signer-in's full live grant
+  union or `/submitter`; `signedInDestination` in `client/lib.tsx` is the one
+  place that decides it, and it always answers with a destination.
 - `worker/routes/review.ts` owns the F-4 review contract. It reads submissions
   through `submission`, `submission_track`, and `submission_speaker`; the CFP
   lane must preserve their stable IDs, event ID, title, abstract, status,
@@ -248,7 +250,13 @@ really opens it and no role implies another. Where a handler branches on *how
 much* a caller may see - unscoped versus own-remit, identified versus blind -
 branch on `holdsAccess(roles, "organizer")`, never on which role happens to be
 widest. `describingRole` names the union's first entry for screens and for the
-landing area; it decides nothing, and a gate must never call it. A harness that
+landing area; it decides nothing, and a gate must never call it. `GET /api/session`
+carries both - the whole union as `roles`, the describing one as `role` - and the
+union is what the signed-in header reads: `switchableAreasFor` in `client/lib.tsx`
+maps it through `roleAreas` for the area switcher on `PublicHeader` and the
+submitter dashboard, so a new area appears everywhere by gaining a `roleAreas`
+entry and nothing else. That client copy still decides nothing; `worker/page-routes.ts`
+and `holdsAccess` remain the gate. A harness that
 mounts routes with an injected caller sets `roles` and nothing else -
 `tests/integration/account-access.test.ts` mounts the review routes that way on
 purpose, so a handler that reads anything else fails there. Never read

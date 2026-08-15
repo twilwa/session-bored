@@ -379,6 +379,13 @@ describe("granting and revoking", () => {
       });
     }
 
+    const session = await request("/api/session", { headers: { cookie } });
+    expect(session.status).toBe(200);
+    expect((await session.json<{ user: { role: Role; roles: Role[] } }>()).user).toMatchObject({
+      role: "reviewer",
+      roles: ["reviewer", "speaker"],
+    });
+
     // The second grant has to actually open the second area. Resolving to a single widest
     // role would answer `reviewer` here and refuse the speaker area it was just given.
     expect((await request("/api/reviewer/assignments", { headers: { cookie } })).status).toBe(200);

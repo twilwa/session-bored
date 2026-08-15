@@ -9,7 +9,7 @@ import { DispositionPage } from "./pages/disposition/DispositionPage.tsx";
 import { AgendaPage } from "./pages/agenda/AgendaPage.tsx";
 import { OrganizerReviewPage } from "./pages/review/OrganizerReviewPage.tsx";
 import { ReviewerReviewPage } from "./pages/review/ReviewerReviewPage.tsx";
-import { Link, PublicHeader, getJson, navigate } from "./lib.tsx";
+import { Link, PublicHeader, getJson, navigate, signedInDestination, type SessionUser } from "./lib.tsx";
 import { AgendaPage as PublicAgendaPage } from "./pages/public/AgendaPage.tsx";
 import { ItineraryPage } from "./pages/public/ItineraryPage.tsx";
 import { PersonalSchedulePage } from "./pages/public/PersonalSchedulePage.tsx";
@@ -30,7 +30,7 @@ import { PeoplePage } from "./pages/people/PeoplePage.tsx";
 
 type Role = "organizer" | "reviewer" | "speaker" | "attendee";
 interface SessionPayload {
-  user: { id: string; name: string; email: string; role: Role };
+  user: SessionUser;
 }
 interface EventRecord {
   id: string;
@@ -130,12 +130,7 @@ function LoginPage() {
       const session = await getJson<SessionPayload>("/api/session");
       setMessage(`Welcome, ${session.user.name}.`);
       const returnTo = new URLSearchParams(window.location.search).get("returnTo");
-      // An attendee has no workspace of their own, so their own schedule is home.
-      const home = session.user.role === "attendee" ? "/schedule/mine" : `/${session.user.role}`;
-      const ownArea = returnTo !== null
-        && !returnTo.startsWith("//")
-        && (returnTo.startsWith("/submitter") || returnTo.startsWith(home));
-      navigate(ownArea ? returnTo : home);
+      navigate(signedInDestination(session.user, returnTo));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Sign in failed.");
     } finally {

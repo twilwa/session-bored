@@ -9,6 +9,7 @@ export interface SessionUser {
   name: string;
   email: string;
   role: Role;
+  roles: Role[];
 }
 
 interface SessionPayload {
@@ -54,9 +55,72 @@ export function accountAreaFor(role: Role, hasPortalWork: boolean, hasProposals:
   return roleAreas[role];
 }
 
-async function loadAccountArea(session: SessionPayload): Promise<AccountArea> {
-  if (session.user.role !== "speaker") {
-    return accountAreaFor(session.user.role, false, false);
+/**
+ * The areas a person can switch between, read straight off the grant union so a later
+ * grant appears here without anything naming it. One area is a destination rather than a
+ * choice, so an account with a single area has nothing to switch to and gets no switcher.
+ */
+export function switchableAreasFor(roles: readonly Role[]): AccountArea[] {
+  return roles.length > 1 ? roles.map((role) => roleAreas[role]) : [];
+}
+
+/**
+ * The switcher lists the areas the grant union itself opens, so every live grant is
+ * reachable and no option leads to a page the header cannot bring the person back from.
+ * The submitter dashboard is not a granted area - every authenticated account reaches it -
+ * so it stands in only where it always has: for an account whose one area is its landing.
+ */
+export function accountAreasFor(
+  roles: readonly Role[],
+  hasPortalWork: boolean,
+  hasProposals: boolean,
+): AccountArea[] {
+  const switchable = switchableAreasFor(roles);
+  if (switchable.length > 0) return switchable;
+  const onlyRole = roles[0];
+  return onlyRole === undefined ? [] : [accountAreaFor(onlyRole, hasPortalWork, hasProposals)];
+}
+
+function pathIsInsideArea(path: string, areaRoot: string): boolean {
+  if (path === areaRoot) return true;
+  if (!path.startsWith(areaRoot)) return false;
+  return path.charAt(areaRoot.length) === "/";
+}
+
+const sameOriginBase = "https://greenroom.invalid";
+
+/**
+ * The return path is resolved before it is judged and returned in that resolved form, so
+ * the area the check reads is the area the browser lands on. Every answer is a destination:
+ * a reference that will not resolve at all, resolves off this origin, or resolves into an
+ * area no live grant opens gives way to the predictable home rather than failing the sign-in.
+ */
+export function signedInDestination(
+  account: Pick<SessionUser, "role" | "roles">,
+  returnTo: string | null,
+): string {
+  const home = roleAreas[account.role].href;
+  if (returnTo === null || !returnTo.startsWith("/")) return home;
+  let target: URL;
+  try {
+    target = new URL(returnTo, sameOriginBase);
+  } catch {
+    return home;
+  }
+  if (target.origin !== sameOriginBase) return home;
+  const reachableAreaRoots = ["/submitter", ...account.roles.map((role) => roleAreas[role].href)];
+  if (!reachableAreaRoots.some((areaRoot) => pathIsInsideArea(target.pathname, areaRoot))) return home;
+  return `${target.pathname}${target.search}${target.hash}`;
+}
+
+/**
+ * Portal work and owned proposals move the area of exactly one account shape - the one
+ * whose single grant is the speaker area - so only that shape pays for the two reads.
+ */
+async function loadAccountAreas(session: SessionPayload): Promise<AccountArea[]> {
+  const roles = session.user.roles;
+  if (roles.length !== 1 || roles[0] !== "speaker") {
+    return accountAreasFor(roles, false, false);
   }
 
   const [speakerResponse, submissionResponse] = await Promise.all([
@@ -70,7 +134,7 @@ async function loadAccountArea(session: SessionPayload): Promise<AccountArea> {
     ? await submissionResponse.json<{ items: unknown[] }>()
     : { items: [] };
   const hasPortalWork = speaker.sessions.length > 0 || speaker.tasks.length > 0;
-  return accountAreaFor(session.user.role, hasPortalWork, ownedSubmissions.items.length > 0);
+  return accountAreasFor(roles, hasPortalWork, ownedSubmissions.items.length > 0);
 }
 
 export function navigate(path: string): void {
@@ -148,6 +212,31 @@ export function Brand() {
   );
 }
 
+/**
+ * A page outside every granted area selects the placeholder, never a real area: the
+ * control must not claim a location the person is not at, and every area option has to
+ * stay selectable so each one fires a real change and navigates.
+ */
+export function AreaSwitcher({ areas }: { areas: AccountArea[] }) {
+  const currentAreaHref =
+    areas.find((area) => pathIsInsideArea(window.location.pathname, area.href))?.href ?? "";
+  return (
+    <label className="nav-area-switcher">
+      <span>Area</span>
+      <select
+        aria-label="Switch area"
+        onChange={(event) => navigate(event.target.value)}
+        value={currentAreaHref}
+      >
+        {currentAreaHref === "" && <option disabled value="">Go to...</option>}
+        {areas.map((area) => (
+          <option key={area.href} value={area.href}>{area.label}</option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 export function PublicHeader({
   signedOutHref,
   navigationLinkPrefix,
@@ -155,7 +244,7 @@ export function PublicHeader({
   signedOutHref?: string;
   navigationLinkPrefix?: string;
 } = {}) {
-  const [account, setAccount] = useState<{ session: SessionPayload; area: AccountArea } | null>(null);
+  const [account, setAccount] = useState<{ session: SessionPayload; areas: AccountArea[] } | null>(null);
   const [navigationOpen, setNavigationOpen] = useState(false);
 
   useEffect(() => {
@@ -168,8 +257,8 @@ export function PublicHeader({
         return;
       }
       const session = { user };
-      const area = await loadAccountArea(session);
-      if (active && resolution === currentResolution) setAccount({ session, area });
+      const areas = await loadAccountAreas(session);
+      if (active && resolution === currentResolution) setAccount({ session, areas });
     }
     const stopObservingSession = observePublicSession((user) => void resolveAccount(user));
     fetch("/api/session", { credentials: "same-origin" })
@@ -231,7 +320,11 @@ export function PublicHeader({
         ) : (
           <>
             <span className="nav-identity">{account.session.user.name}</span>
-            <Link className="nav-signin" href={account.area.href}>{account.area.label}</Link>
+            {account.areas.length === 1 ? (
+              <Link className="nav-signin" href={account.areas[0]!.href}>{account.areas[0]!.label}</Link>
+            ) : (
+              <AreaSwitcher areas={account.areas} />
+            )}
             <button className="nav-signout" onClick={() => void signOut()} type="button">Sign out</button>
           </>
         )}

@@ -38,6 +38,8 @@
 .submitter-dashboard__nav nav button { min-height: 44px; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; letter-spacing: inherit; text-transform: inherit; cursor: pointer; }
 .submitter-dashboard__nav nav button:hover { color: var(--signal); }
 .submitter-dashboard__identity { display: inline-flex; align-items: center; color: var(--signal); text-transform: none; letter-spacing: 0.04em; }
+.submitter-dashboard__nav .nav-area-switcher { min-width: 0; padding: 0; border: 0; }
+.submitter-dashboard__nav .nav-area-switcher select { width: auto; max-width: 100%; min-height: 38px; }
 .submitter-dashboard main { width: min(1180px, 100%); margin: 0 auto; padding: clamp(46px, 7vw, 90px) clamp(18px, 5vw, 64px) 100px; }
 .submitter-dashboard__heading { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(260px, 0.5fr); gap: 48px; align-items: end; margin-bottom: 50px; }
 .submitter-dashboard__heading h1 { margin: 0; font: clamp(3.2rem, 7vw, 7rem) / 0.9 Georgia, "Times New Roman", serif; letter-spacing: -0.06em; }
