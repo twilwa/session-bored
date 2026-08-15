@@ -821,6 +821,18 @@ cfpRoutes.post("/:slug/submissions", async (context) => {
     }, 409);
   }
   const author = await findOrCreateSpeaker(database, cfp.event.id, input, authUser?.id);
+  const speakerBioField = cfp.fields.find((field) => field.key === "speaker_bio");
+  if (
+    authUser !== null
+    && personWithEmail !== undefined
+    && speakerBioField !== undefined
+    && isFieldVisible(cfp.fields, speakerBioField, input)
+  ) {
+    await database
+      .update(people)
+      .set({ bio: input.speaker.bio?.trim() || null })
+      .where(eq(people.id, author.personId));
+  }
   const submissionId = createPublicId("sub");
   const access = authUser === null ? await createAuthorKey() : null;
   await database.insert(submissions).values({
