@@ -1,0 +1,19 @@
+AGENTS.md
+  s_551ebf981f252b::t_cad71529b71f0b 542-549
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "7e92991e552c90c10502c9c11830d1fa68d5115b",
+  "prompts": {},
+  "sessions": {
+    "s_551ebf981f252b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bf5962ea-2907-4f79-9982-1b156708b2eb",
+        "model": "claude-fable-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
