@@ -1,0 +1,101 @@
+tests/e2e/public-schedule.spec.ts
+  s_92b72f7fee59ce::t_0633bfb406386a 21-29,153,187
+  s_92b72f7fee59ce::t_f0d757ae05f6d5 202,212
+  s_e3ad47700fb060::t_2d9e27e7c95374 17-20,180-186,188-201,203-211,213-215
+  s_e3f3e39dba9889::t_a2ce1a6bc897cd 216-217
+migrations/meta/0021_snapshot.json
+  s_e3ad47700fb060::t_38c5180f60e1ff 1-5304
+tests/integration/account-access.test.ts
+  s_e3ad47700fb060::t_fc6482df1c229d 101,140-163
+  s_92b72f7fee59ce::t_4d33d1472fa455 2,8,102-112,116,138-139
+  s_92b72f7fee59ce::t_c5881ce3daed89 113-115,117-137
+db/schema.ts
+  s_e3ad47700fb060::t_311431ce54cca3 12,470-479
+  s_c73f390217b566::t_e951dd222772ea 480-482
+client/pages/public/PersonalSchedulePage.tsx
+  s_e3ad47700fb060::t_9aaeecaaf60430 33,69-75,96,149
+  s_30ecb3989968d2::t_37541bfb332d21 73-75
+AGENTS.md
+  s_92b72f7fee59ce::t_112beed462064a 274-280
+migrations/meta/_journal.json
+  s_e3ad47700fb060::t_38c5180f60e1ff 151-157,160
+migrations/0021_tiny_mauler.sql
+  s_e3ad47700fb060::t_38c5180f60e1ff 1-10
+worker/index.ts
+  s_e3ad47700fb060::t_311431ce54cca3 55,181
+client/pages/public/personal-schedule.ts
+  s_e3ad47700fb060::t_9aaeecaaf60430 1-3,6-16,41-88,91-140,143-160,164
+  s_fb60edacd2345c::t_225773098c5eaa 71
+  s_fb60edacd2345c::t_5d044c1fe2a08d 72
+  s_30ecb3989968d2::t_935cdc0b90b7ea 66,134
+  s_30ecb3989968d2::t_684f086025265f 72,108-109,112,161
+  s_30ecb3989968d2::t_59e24b2379d174 85,88
+  s_30ecb3989968d2::t_ff9378ee08774d 99-100
+worker/routes/personal-schedule.ts
+  s_e3ad47700fb060::t_311431ce54cca3 1-3,5-35,37-108
+  s_e3ad47700fb060::t_26ffc5bea92f7a 4,36
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "41b4ce6660c9b19d4b91d9179eafcfeedb43bcf8",
+  "prompts": {},
+  "sessions": {
+    "s_30ecb3989968d2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a8f53bda-a14c-486c-91b0-f4ed8c79cc45",
+        "model": "claude-opus-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    },
+    "s_3a79969d781133": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f43b60c0-1d66-4cff-9e7a-a84eebe2624c",
+        "model": "claude-opus-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    },
+    "s_92b72f7fee59ce": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffe3b-d2f2-75a2-b6a7-09b2cc066278",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    },
+    "s_c73f390217b566": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffe28-a582-71c0-ab3c-a5ad17aeb127",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    },
+    "s_e3ad47700fb060": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffe28-ed6b-7322-98f9-3868b6104a9d",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    },
+    "s_e3f3e39dba9889": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffe3b-d895-7c03-8bcd-216fdc06109f",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    },
+    "s_fb60edacd2345c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b68572a7-45fb-4b68-86df-0880cb32e0e4",
+        "model": "claude-fable-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}

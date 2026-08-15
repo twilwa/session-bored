@@ -1,0 +1,29 @@
+client/pages/public/PersonalSchedulePage.tsx
+  s_fb60edacd2345c::t_170b9aa44cf824 72
+client/pages/public/personal-schedule.ts
+  s_fb60edacd2345c::t_8f66b28189a542 163
+  s_fb60edacd2345c::t_90373a983e1f52 69-75
+  s_fb60edacd2345c::t_4cb7c2be8827f8 99,103-105,115-116,125,132-139
+  s_fb60edacd2345c::t_225773098c5eaa 18-21,76
+  s_fb60edacd2345c::t_5d044c1fe2a08d 77
+tests/e2e/public-schedule.spec.ts
+  s_fb60edacd2345c::t_9e0ed54bd023b7 253
+  s_fb60edacd2345c::t_567adb6a71acc5 247-252,254
+  s_fb60edacd2345c::t_c5d7de9e35dc60 218-246,255-318
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "b27cd5c6633482b5373c4abcdd178119bfcc0da5",
+  "prompts": {},
+  "sessions": {
+    "s_fb60edacd2345c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b68572a7-45fb-4b68-86df-0880cb32e0e4",
+        "model": "claude-fable-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
