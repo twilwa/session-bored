@@ -75,6 +75,11 @@
 .reviewer-progress-list article > div:nth-child(2) span { display: block; height: 100%; background: var(--blue); }
 .reviewer-progress-list small { color: var(--muted); }
 .reviewer-progress-list small a { color: var(--blue); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+.review-reminder-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 18px; }
+.review-reminder-actions small { flex-basis: 100%; color: var(--muted); }
+.reviewer-reminder-select { display: flex; gap: 8px; align-items: center; margin: 10px 0; font-size: 0.82rem; font-weight: 700; }
+.reviewer-reminder-select input { width: 18px; height: 18px; accent-color: var(--blue); }
+.reviewer-reminder-select:has(input:disabled) { color: var(--muted); font-weight: 400; }
 .reviewer-scope { min-width: 0; margin-top: 10px; }
 .reviewer-scope summary { color: var(--blue); font-weight: 800; cursor: pointer; }
 .reviewer-scope form { margin-top: 10px; border: 1px solid var(--line); background: #ebe7dd; padding: 14px; }

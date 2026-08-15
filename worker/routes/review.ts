@@ -25,10 +25,17 @@ import {
   users,
 } from "../../db/schema.ts";
 import { holdsAccess } from "../access.ts";
-import type { ReviewAssignmentStatus } from "../../shared/api.ts";
+import type {
+  BulkReviewAssignmentRequest,
+  ReviewAssignmentStatus,
+  ReviewReminderDraftRequest,
+  ReviewReminderDraftResult,
+} from "../../shared/api.ts";
 import type { AuthSession } from "../auth.ts";
 import { createAuth } from "../auth.ts";
 import { reviewProposalAnswers } from "../review-answers.ts";
+import { draftOutstandingReviewReminders } from "../email/review-reminders.ts";
+import { distributeReviewAssignments } from "../review-distribution.ts";
 import { grantRole, hasLiveGrant, listAccountsHoldingRole } from "../roles.ts";
 import { applyReviewerRemit } from "../reviewer-invites.ts";
 import { changeSubmissionStatuses } from "../submission-decision.ts";
@@ -616,6 +623,86 @@ reviewRoutes.get(
 );
 
 reviewRoutes.post(
+  "/review/events/:eventId/reminders",
+  requireRole("organizer"),
+  async (context) => {
+    const user = context.get("authUser");
+    if (user === null) {
+      return context.json({ error: "authentication_required" }, 401);
+    }
+    const payload = await context.req.json<Partial<ReviewReminderDraftRequest>>().catch(() => null);
+    const reviewerUserIds = Array.isArray(payload?.reviewerUserIds) &&
+        payload.reviewerUserIds.every((reviewerUserId) => typeof reviewerUserId === "string")
+      ? [...new Set(payload.reviewerUserIds)]
+      : [];
+    if (reviewerUserIds.length === 0) {
+      return context.json({ error: "reviewer_selection_required" }, 400);
+    }
+
+    const database = drizzle(context.env.DB);
+    const eventId = context.req.param("eventId") as `evt_${string}`;
+    const [event, liveReviewers] = await Promise.all([
+      database
+        .select({ name: events.name })
+        .from(events)
+        .where(and(eq(events.id, eventId), isNull(events.deletedAt)))
+        .then((rows) => rows[0]),
+      listAccountsHoldingRole(database, "reviewer"),
+    ]);
+    if (event === undefined) {
+      return context.json({ error: "not_found" }, 404);
+    }
+    const reviewersById = new Map(liveReviewers.map((reviewer) => [reviewer.id, reviewer]));
+    const recipients = [];
+    const skipped: ReviewReminderDraftResult["skipped"] = [];
+    for (const reviewerUserId of reviewerUserIds) {
+      const reviewer = reviewersById.get(reviewerUserId);
+      if (reviewer === undefined) {
+        skipped.push({ reviewerUserId, reason: "no_outstanding_reviews" });
+        continue;
+      }
+      const outstandingReviewCount = (await reviewerQueue(database, reviewerUserId))
+        .filter((item) =>
+          item.eventId === eventId && item.assignmentStatus !== "completed" && item.assignmentStatus !== "recused"
+        ).length;
+      if (outstandingReviewCount === 0) {
+        skipped.push({ reviewerUserId, reason: "no_outstanding_reviews" });
+        continue;
+      }
+      recipients.push({
+        reviewerUserId,
+        recipientName: reviewer.name,
+        recipientEmail: reviewer.email,
+        outstandingReviewCount,
+      });
+    }
+
+    const drafted = await draftOutstandingReviewReminders({
+      database,
+      eventId,
+      eventName: event.name,
+      reviewUrl: `${context.env.APP_ORIGIN}/reviewer`,
+      createdByUserId: user.id,
+      recipients,
+    });
+    const alreadyDrafted = new Set(drafted.skippedReviewerUserIds);
+    const result: ReviewReminderDraftResult = {
+      drafts: drafted.drafts,
+      skipped: [
+        ...skipped,
+        ...recipients
+          .filter((recipient) => alreadyDrafted.has(recipient.reviewerUserId))
+          .map((recipient) => ({
+            reviewerUserId: recipient.reviewerUserId,
+            reason: "reminder_already_drafted" as const,
+          })),
+      ],
+    };
+    return context.json(result, result.drafts.length > 0 ? 201 : 200);
+  },
+);
+
+reviewRoutes.post(
   "/review/events/:eventId/reviewers",
   requireRole("organizer"),
   async (context) => {
@@ -1032,6 +1119,36 @@ reviewRoutes.delete(
       removedCriterionId: criterionId,
       recomputedReviews: await recomputeRoundReviewAggregates(database, criterion.roundId),
     });
+  },
+);
+
+reviewRoutes.post(
+  "/review/rounds/:roundId/assignments/distribute",
+  requireRole("organizer"),
+  async (context) => {
+    const payload = await context.req.json<Partial<BulkReviewAssignmentRequest>>().catch(() => null);
+    if (
+      typeof payload?.trackId !== "string" ||
+      !Number.isInteger(payload.maxAssignmentsPerReviewer) ||
+      (payload.maxAssignmentsPerReviewer ?? 0) < 1
+    ) {
+      return context.json({ error: "invalid_assignment_distribution" }, 400);
+    }
+    const distributed = await distributeReviewAssignments(drizzle(context.env.DB), {
+      roundId: context.req.param("roundId"),
+      trackId: payload.trackId,
+      maxAssignmentsPerReviewer: payload.maxAssignmentsPerReviewer!,
+    });
+    if (distributed.status === "round_not_found") {
+      return context.json({ error: "not_found" }, 404);
+    }
+    if (distributed.status === "track_scope_invalid") {
+      return context.json({ error: "assignment_track_invalid" }, 400);
+    }
+    return context.json(
+      distributed.result,
+      distributed.result.assignments.length > 0 ? 201 : 200,
+    );
   },
 );
 

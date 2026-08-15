@@ -2,13 +2,18 @@
 // ABOUTME: Keeps reviewer, round, pool, scorecard, and assignment controls secondary but reachable.
 import { useEffect, useState, type FormEvent } from "react";
 import type {
+  BulkReviewAssignmentRequest,
+  BulkReviewAssignmentResult,
   ReviewCriterion,
+  ReviewReminderDraftRequest,
+  ReviewReminderDraftResult,
   ReviewerRecusal,
   ReviewProgress,
   ReviewSort,
   ReviewWorklistItem,
 } from "../../../shared/api.ts";
 import { Button, LoadingState, StatusChip, Toast } from "../../components/ui.tsx";
+import { navigate } from "../../lib.tsx";
 import { ReviewLink, reviewRequest } from "./reviewClient.tsx";
 import {
   reviewerRemitSummary,
@@ -93,6 +98,9 @@ function OrganizerReviewWorklist() {
   const [message, setMessage] = useState<string | null>(null);
   const [reviewerTrackIds, setReviewerTrackIds] = useState<string[]>([]);
   const [reviewerRoundIds, setReviewerRoundIds] = useState<string[]>([]);
+  const [reminderReviewerIds, setReminderReviewerIds] = useState<string[]>([]);
+  const [reminderBusy, setReminderBusy] = useState(false);
+  const [reviewReminderDraftsReady, setReviewReminderDraftsReady] = useState(false);
 
   async function loadWorklist(nextSort = sort): Promise<void> {
     try {
@@ -300,6 +308,65 @@ function OrganizerReviewWorklist() {
     }
   }
 
+  async function distributeAssignments(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const roundId = String(form.get("roundId"));
+    const payload: BulkReviewAssignmentRequest = {
+      trackId: String(form.get("trackId")),
+      maxAssignmentsPerReviewer: Number(form.get("maxAssignmentsPerReviewer")),
+    };
+    try {
+      const result = await reviewRequest<BulkReviewAssignmentResult>(
+        `/api/review/rounds/${roundId}/assignments/distribute`,
+        { method: "POST", body: JSON.stringify(payload) },
+      );
+      const remainingReads = result.unfilled.reduce(
+        (total, item) => total + item.remainingAssignments,
+        0,
+      );
+      setMessage(
+        `${result.assignments.length} review assignments created. ${remainingReads === 0
+          ? "Every proposal in this track reached the two-read target."
+          : `${result.unfilled.length} proposals still need ${remainingReads} reads because eligible reviewers reached the cap.`}`,
+      );
+      await loadConfig();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Review work could not be distributed.");
+    }
+  }
+
+  function toggleReminderReviewer(reviewerUserId: string): void {
+    setReminderReviewerIds((current) => current.includes(reviewerUserId)
+      ? current.filter((id) => id !== reviewerUserId)
+      : [...current, reviewerUserId]);
+  }
+
+  async function draftReviewReminders(): Promise<void> {
+    const payload: ReviewReminderDraftRequest = { reviewerUserIds: reminderReviewerIds };
+    setReminderBusy(true);
+    try {
+      const result = await reviewRequest<ReviewReminderDraftResult>(
+        `/api/review/events/${eventId}/reminders`,
+        { method: "POST", body: JSON.stringify(payload) },
+      );
+      setReminderReviewerIds([]);
+      setReviewReminderDraftsReady(result.drafts.length > 0);
+      const draftCount = result.drafts.length;
+      const skippedCopy = result.skipped.length === 0
+        ? ""
+        : ` ${result.skipped.length} skipped because no review is outstanding or a draft already exists.`;
+      setMessage(
+        `${draftCount} review reminder draft${draftCount === 1 ? "" : "s"} added to Communications.${skippedCopy}`,
+      );
+      await loadConfig();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Review reminder drafts could not be created.");
+    } finally {
+      setReminderBusy(false);
+    }
+  }
+
   const progress = worklist?.progress;
   const completion = progress === undefined
     ? 0
@@ -371,11 +438,33 @@ function OrganizerReviewWorklist() {
               )}
             </section>
             <section className="setup-card setup-card--wide">
-              <div className="setup-heading"><div><p className="section-label">LIVE PROGRESS</p><h2>Committee coverage</h2></div><StatusChip tone="signal">{config.reviewers.length} reviewers</StatusChip></div>
+              <div className="setup-heading">
+                <div><p className="section-label">LIVE PROGRESS</p><h2>Committee coverage</h2></div>
+                <StatusChip tone="signal">{config.reviewers.length} reviewers</StatusChip>
+              </div>
               <p className="criterion-policy">A remit can be narrowed as well as widened. Unticking a track takes that reading access away the moment you save.</p>
+              <div className="review-reminder-actions">
+                <Button
+                  disabled={reminderBusy || reminderReviewerIds.length === 0}
+                  onClick={() => void draftReviewReminders()}
+                  tone="signal"
+                  type="button"
+                >
+                  Draft selected reminders
+                </Button>
+                {reviewReminderDraftsReady
+                  ? (
+                    <Button onClick={() => navigate("/organizer/comms")} tone="quiet" type="button">
+                      Review drafts in Communications
+                    </Button>
+                  )
+                  : null}
+                <small>Drafts stay unsent until you review and approve them in Communications.</small>
+              </div>
               <div className="reviewer-progress-list">
                 {config.reviewers.map((reviewer) => {
                   const reviewerPercent = percent(reviewer.completedCount, reviewer.assignedCount);
+                  const outstandingReviewCount = reviewer.assignedCount - reviewer.completedCount;
                   const reviewerRoundIds = config.rounds
                     .filter((round) => round.reviewerPool.some((member) => member.id === reviewer.id))
                     .map((round) => round.id);
@@ -383,6 +472,20 @@ function OrganizerReviewWorklist() {
                     <article key={reviewer.id}>
                       <div><strong>{reviewer.name}</strong><span>{reviewer.completedCount} / {reviewer.assignedCount}</span></div>
                       <div><span style={{ width: `${reviewerPercent}%` }} /></div>
+                      <label className="reviewer-reminder-select">
+                        <input
+                          aria-label={`Select ${reviewer.name} for a reminder`}
+                          checked={reminderReviewerIds.includes(reviewer.id)}
+                          disabled={outstandingReviewCount === 0}
+                          onChange={() => toggleReminderReviewer(reviewer.id)}
+                          type="checkbox"
+                        />
+                        <span>
+                          {outstandingReviewCount === 0
+                            ? "No outstanding reviews"
+                            : `${outstandingReviewCount} outstanding review${outstandingReviewCount === 1 ? "" : "s"}`}
+                        </span>
+                      </label>
                       <small>
                         {remitLabel(reviewer.trackIds.length, config.tracks.length, reviewerRoundIds.length)}
                         {reviewer.recusals.length === 0 ? null : (
@@ -488,6 +591,15 @@ function OrganizerReviewWorklist() {
               <label className="review-field"><span>Weight</span><input min="0.1" name="weight" step="0.1" type="number" defaultValue="1" /></label>
               <label className="check-line"><input name="required" type="checkbox" /> Required</label>
               <Button type="submit">Add criterion</Button>
+            </form>
+
+            <form className="setup-card setup-form" onSubmit={(event) => void distributeAssignments(event)}>
+              <p className="section-label">AUTO-DISTRIBUTE</p><h2>Spread one track.</h2>
+              <p>Fills toward two reads per proposal across eligible reviewers in the round. Existing assignments stay put.</p>
+              <label className="review-field"><span>Review round</span><select name="roundId" required>{config.rounds.map((round) => <option key={round.id} value={round.id}>{round.name}</option>)}</select></label>
+              <label className="review-field"><span>Track</span><select name="trackId" required>{config.tracks.map((track) => <option key={track.id} value={track.id}>{track.name}</option>)}</select></label>
+              <label className="review-field"><span>Maximum assignments per reviewer</span><input defaultValue="4" min="1" name="maxAssignmentsPerReviewer" required type="number" /></label>
+              <Button type="submit">Distribute review work</Button>
             </form>
 
             <form className="setup-card setup-form" onSubmit={(event) => void addAssignment(event)}>
