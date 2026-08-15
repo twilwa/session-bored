@@ -129,10 +129,11 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   whatever state the session is - `pendingSpeakerCount`, the panel's
   `publicationPending`, and the roster's `pendingPublicationSessions` all read the
   column and never `sessions.published_at`, so a re-placement cannot silently turn
-  a signposted hold into an unannounced release. Where publication has gone stale
-  because content approval lapsed (`isPubliclyLiveSession` is false), the roster
-  names approving the content first rather than offering a republish that would
-  skip the session.
+  a signposted hold into an unannounced release. Where the next publish would skip
+  the session anyway - its content approval lapsed, or it came off the schedule -
+  `publishBlockers` in `worker/public-queries.ts` is the one reading of what still
+  stands in the way, and both prompts name that step rather than offering a
+  republish that would leave the hold exactly where it is.
   A speaker is publicly listed only when a `PUBLIC_SPEAKER_STATUSES` status meets
   a participation the public may see: live, unheld, on a session organizers have
   approved. Both halves live in `PUBLIC_SPEAKER_GATE` in
@@ -241,7 +242,9 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   itself. Placement edits clear publication and the agenda tells the organizer
   to publish again. Publishing answers with `AgendaPublishResult`: it names
   every session it published and every one it skipped with the reasons why, so
-  the organizer is never told only about its successes. `worker/public-queries.ts`
+  the organizer is never told only about its successes. It is also the one door
+  that releases a participant's publication hold, under the rules above.
+  `worker/public-queries.ts`
   is the only written form of the public read; route through it rather than
   growing another copy in the router.
 - The organizer board (`client/pages/agenda/`) leads with the grid: a sticky
