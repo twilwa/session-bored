@@ -1,6 +1,6 @@
 // ABOUTME: Lets organizers manage event identity, branding, rooms, and tracks from one route group.
 // ABOUTME: Validates public brand assets and keeps destructive taxonomy changes reference-safe.
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, gt, isNotNull, isNull, lt, ne, or } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { Hono } from "hono";
 import { createMiddleware } from "hono/factory";
@@ -30,8 +30,8 @@ interface EventSetupInput {
   slug: string;
   tagline: string | null;
   description: string | null;
-  startDate: string | null;
-  endDate: string | null;
+  startDate: string;
+  endDate: string;
   venue: string | null;
   timezone: string;
   branding: Record<string, string>;
@@ -193,9 +193,10 @@ eventSettingsRoutes.use("/api/events/:eventId/tracks/*", requireOrganizer);
 eventSettingsRoutes.use("/api/events/:eventId/branding/*", requireOrganizer);
 
 eventSettingsRoutes.patch("/api/events/:eventId", requireOrganizer, async (context) => {
+  const eventId = context.req.param("eventId");
   const validation = eventSetupInput(
     await context.req.json<unknown>().catch(() => null),
-    context.req.param("eventId"),
+    eventId,
   );
   if (validation.input === null) {
     return context.json({
@@ -205,7 +206,47 @@ eventSettingsRoutes.patch("/api/events/:eventId", requireOrganizer, async (conte
     }, 400);
   }
   const input = validation.input;
-  const [updated] = await drizzle(context.env.DB)
+  const database = drizzle(context.env.DB);
+  const [current] = await database
+    .select()
+    .from(events)
+    .where(and(eq(events.id, eventId), isNull(events.deletedAt)))
+    .limit(1);
+  if (current === undefined) {
+    return context.json({ error: "event_not_found", message: "This event could not be found." }, 404);
+  }
+  const [slugOwner] = await database
+    .select({ id: events.id })
+    .from(events)
+    .where(and(eq(events.slug, input.slug), ne(events.id, eventId), isNull(events.deletedAt)))
+    .limit(1);
+  if (slugOwner !== undefined) {
+    return context.json({
+      error: "event_slug_conflict",
+      fields: { slug: "This public slug is already in use." },
+      message: "Choose a different public slug.",
+    }, 409);
+  }
+  const [outsideDateRange] = await database
+    .select({ id: sessions.id })
+    .from(sessions)
+    .where(and(
+      eq(sessions.eventId, eventId),
+      isNull(sessions.deletedAt),
+      isNotNull(sessions.scheduledDate),
+      or(lt(sessions.scheduledDate, input.startDate), gt(sessions.scheduledDate, input.endDate)),
+    ))
+    .limit(1);
+  if (outsideDateRange !== undefined) {
+    const dateMessage = "The event dates must include every scheduled session.";
+    return context.json({
+      error: "scheduled_sessions_outside_event_dates",
+      fields: { startDate: dateMessage, endDate: dateMessage },
+      message: "Move the scheduled sessions before changing these event dates.",
+    }, 409);
+  }
+  const updatedAt = new Date();
+  const updateEvent = database
     .update(events)
     .set({
       name: input.name,
@@ -217,13 +258,34 @@ eventSettingsRoutes.patch("/api/events/:eventId", requireOrganizer, async (conte
       venue: input.venue,
       timezone: input.timezone,
       branding: input.branding,
-      updatedAt: new Date(),
+      updatedAt,
     })
-    .where(and(eq(events.id, context.req.param("eventId")), isNull(events.deletedAt)))
+    .where(and(eq(events.id, eventId), isNull(events.deletedAt)))
     .returning();
+  let updated: typeof current | undefined;
+  let scheduleReviewRequired = false;
+  if (input.timezone !== current.timezone) {
+    const [updatedEvents, unpublishedSessions] = await database.batch([
+      updateEvent,
+      database
+        .update(sessions)
+        .set({ publishedAt: null, updatedAt })
+        .where(and(
+          eq(sessions.eventId, eventId),
+          eq(sessions.scheduleStatus, "placed"),
+          isNull(sessions.deletedAt),
+          isNotNull(sessions.publishedAt),
+        ))
+        .returning({ id: sessions.id }),
+    ]);
+    [updated] = updatedEvents;
+    scheduleReviewRequired = unpublishedSessions.length > 0;
+  } else {
+    [updated] = await updateEvent;
+  }
   return updated === undefined
     ? context.json({ error: "event_not_found", message: "This event could not be found." }, 404)
-    : context.json(updated);
+    : context.json({ ...updated, scheduleReviewRequired });
 });
 
 eventSettingsRoutes.post("/api/events/:eventId/branding/:asset", async (context) => {

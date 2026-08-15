@@ -24,6 +24,18 @@ test("organizer edits event identity, dates, venue, timezone, and branding", asy
     const response = await fetch("/api/events/evt_devflow_conf_2027");
     return response.json() as Promise<Record<string, unknown>>;
   });
+  const baselineStatus = await page.evaluate(async (event) => (
+    await fetch("/api/events/evt_devflow_conf_2027", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ...event, timezone: "America/Los_Angeles" }),
+    })
+  ).status, original);
+  expect(baselineStatus).toBe(200);
+  const baselinePublishStatus = await page.evaluate(async () => (
+    await fetch("/api/events/evt_devflow_conf_2027/agenda/publish", { method: "POST" })
+  ).status);
+  expect(baselinePublishStatus).toBe(200);
 
   try {
     await page.goto("/organizer/event");
@@ -32,8 +44,8 @@ test("organizer edits event identity, dates, venue, timezone, and branding", asy
     await page.getByLabel("Public slug").fill("signal-summit-2027");
     await page.getByLabel("Tagline").fill("Where production systems meet their operators.");
     await page.getByLabel("Description").fill("A practical gathering for people who run software in the real world.");
-    await page.getByLabel("Start date").fill("2027-09-08");
-    await page.getByLabel("End date").fill("2027-09-10");
+    await page.getByLabel("Start date").fill("2027-05-11");
+    await page.getByLabel("End date").fill("2027-05-15");
     await page.getByLabel("Venue").fill("Pier 27, San Francisco");
     await page.getByLabel("Timezone").selectOption("America/New_York");
     await page.getByLabel("Primary color").fill("#173b57");
@@ -46,9 +58,11 @@ test("organizer edits event identity, dates, venue, timezone, and branding", asy
     await expect(page.getByRole("status")).toContainText("Background image uploaded.");
     await page.getByRole("button", { name: "Save event" }).click();
 
-    await expect(page.getByRole("status")).toContainText("Event setup saved.");
+    await expect(page.getByRole("status")).toContainText(
+      "Event setup saved. Review and republish placed sessions after the timezone change.",
+    );
     await expect(page.locator(".event-switcher strong")).toHaveText("Signal Summit 2027");
-    await expect(page.locator(".event-switcher")).toContainText("Sep 8–10, 2027 · Pier 27, San Francisco");
+    await expect(page.locator(".event-switcher")).toContainText("May 11–15, 2027 · Pier 27, San Francisco");
     await expect(page.getByRole("img", { name: "Signal Summit 2027 logo preview" })).toBeVisible();
 
     await page.goto("/cfp/devflow-conf-2027");
@@ -70,6 +84,10 @@ test("organizer edits event identity, dates, venue, timezone, and branding", asy
       return response.status;
     }, original);
     expect(restoreStatus).toBe(200);
+    const publishStatus = await page.evaluate(async () => (
+      await fetch("/api/events/evt_devflow_conf_2027/agenda/publish", { method: "POST" })
+    ).status);
+    expect(publishStatus).toBe(200);
   }
 });
 

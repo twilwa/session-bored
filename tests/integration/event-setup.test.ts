@@ -77,8 +77,8 @@ describe("organizer event setup", () => {
         slug: "signal-summit-2027",
         tagline: "Where production systems meet their operators.",
         description: "A practical gathering for people who run software in the real world.",
-        startDate: "2027-09-08",
-        endDate: "2027-09-10",
+        startDate: "2027-05-11",
+        endDate: "2027-05-15",
         venue: "Pier 27, San Francisco",
         timezone: "America/New_York",
         branding: {
@@ -97,8 +97,8 @@ describe("organizer event setup", () => {
       slug: "signal-summit-2027",
       tagline: "Where production systems meet their operators.",
       description: "A practical gathering for people who run software in the real world.",
-      startDate: "2027-09-08",
-      endDate: "2027-09-10",
+      startDate: "2027-05-11",
+      endDate: "2027-05-15",
       venue: "Pier 27, San Francisco",
       timezone: "America/New_York",
       branding: {
@@ -113,6 +113,129 @@ describe("organizer event setup", () => {
     expect(agenda.status).toBe(200);
     await expect(agenda.json()).resolves.toMatchObject({
       event: { name: "Signal Summit 2027", timezone: "America/New_York" },
+    });
+  });
+
+  it("refuses to exclude scheduled sessions from the event date range", async () => {
+    const cookie = await organizerCookie();
+    const beforeAgenda = await request("/api/events/evt_devflow_conf_2027/agenda", { headers: { cookie } });
+    const previousDates = (await beforeAgenda.json<{ event: { startDate: string; endDate: string } }>()).event;
+    await env.DB.prepare(
+      "update program_session set schedule_status = ?, scheduled_date = ? where id = ?",
+    ).bind("tbd", "2027-05-12", "ses_docs_retrieval").run();
+    const response = await request("/api/events/evt_devflow_conf_2027", {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({
+        name: "DevFlow Conf 2027",
+        slug: "devflow-conf-2027",
+        tagline: null,
+        description: null,
+        startDate: "2027-05-13",
+        endDate: "2027-05-15",
+        venue: "Moscone West",
+        timezone: "America/Los_Angeles",
+        branding: { primaryColor: "#173B57", accentColor: "#F4B942" },
+      }),
+    });
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      error: "scheduled_sessions_outside_event_dates",
+      fields: {
+        startDate: "The event dates must include every scheduled session.",
+        endDate: "The event dates must include every scheduled session.",
+      },
+      message: "Move the scheduled sessions before changing these event dates.",
+    });
+    const agenda = await request("/api/events/evt_devflow_conf_2027/agenda", { headers: { cookie } });
+    await expect(agenda.json()).resolves.toMatchObject({
+      event: previousDates,
+    });
+  });
+
+  it("unpublishes placed sessions when the event timezone changes", async () => {
+    const cookie = await organizerCookie();
+    const now = Date.now();
+    await env.DB.prepare("update event set timezone = ? where id = ?")
+      .bind("America/Los_Angeles", "evt_devflow_conf_2027")
+      .run();
+    await env.DB.prepare(
+      "update program_session set content_status = ?, schedule_status = ?, scheduled_date = ?, starts_at = ?, ends_at = ?, published_at = ? where id = ?",
+    ).bind(
+      "approved",
+      "placed",
+      "2027-05-12",
+      Date.parse("2027-05-12T16:00:00Z"),
+      Date.parse("2027-05-12T17:00:00Z"),
+      now,
+      "ses_docs_retrieval",
+    ).run();
+
+    const before = await request("/api/public/events/evt_devflow_conf_2027/sessions");
+    expect((await before.json<{ items: Array<{ id: string }> }>()).items).toContainEqual(
+      expect.objectContaining({ id: "ses_docs_retrieval" }),
+    );
+
+    const response = await request("/api/events/evt_devflow_conf_2027", {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({
+        name: "DevFlow Conf 2027",
+        slug: "devflow-conf-2027",
+        tagline: null,
+        description: null,
+        startDate: "2027-05-12",
+        endDate: "2027-05-14",
+        venue: "Moscone West",
+        timezone: "America/New_York",
+        branding: { primaryColor: "#173B57", accentColor: "#F4B942" },
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      timezone: "America/New_York",
+      scheduleReviewRequired: true,
+    });
+    const stored = await env.DB.prepare(
+      "select published_at from program_session where id = ?",
+    ).bind("ses_docs_retrieval").first<{ published_at: number | null }>();
+    expect(stored?.published_at).toBeNull();
+    const after = await request("/api/public/events/evt_devflow_conf_2027/sessions");
+    expect((await after.json<{ items: Array<{ id: string }> }>()).items).not.toContainEqual(
+      expect.objectContaining({ id: "ses_docs_retrieval" }),
+    );
+  });
+
+  it("returns a field conflict when another event owns the public slug", async () => {
+    const cookie = await organizerCookie();
+    const now = Date.now();
+    await env.DB.prepare(
+      "insert into event (id, slug, name, timezone, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
+    ).bind("evt_reserved_slug", "reserved-event", "Reserved Event", "UTC", now, now).run();
+
+    const response = await request("/api/events/evt_devflow_conf_2027", {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({
+        name: "DevFlow Conf 2027",
+        slug: "reserved-event",
+        tagline: null,
+        description: null,
+        startDate: "2027-05-12",
+        endDate: "2027-05-14",
+        venue: "Moscone West",
+        timezone: "America/Los_Angeles",
+        branding: { primaryColor: "#173B57", accentColor: "#F4B942" },
+      }),
+    });
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      error: "event_slug_conflict",
+      fields: { slug: "This public slug is already in use." },
+      message: "Choose a different public slug.",
     });
   });
 

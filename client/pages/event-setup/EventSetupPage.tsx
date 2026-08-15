@@ -28,6 +28,7 @@ interface EventSetupError {
   error: string;
   fields?: Record<string, string>;
   message?: string;
+  scheduleReviewRequired?: boolean;
 }
 
 function errorText(fields: Record<string, string>, name: string): React.ReactNode {
@@ -92,7 +93,9 @@ export function EventSetupPage() {
       }
       const saved = body as EventSetupRecord;
       setEvent(saved);
-      setMessage("Event setup saved.");
+      setMessage(body.scheduleReviewRequired
+        ? "Event setup saved. Review and republish placed sessions after the timezone change."
+        : "Event setup saved.");
       window.dispatchEvent(new CustomEvent("greenroom:event-updated", { detail: saved }));
     } catch {
       setMessage("Event setup could not be saved. Check your connection and try again.");
