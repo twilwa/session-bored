@@ -1,0 +1,32 @@
+worker/routes/portal.ts
+  s_f251fd3e17d4f3::t_7d86a6c727d8ca 32,35
+tests/integration/event-setup.test.ts
+  s_f251fd3e17d4f3::t_d7eadd08535cb5 157-198
+worker/routes/event-settings.ts
+  s_f251fd3e17d4f3::t_95cdb5f7b56168 289
+  s_f251fd3e17d4f3::t_72abf940e30641 316,323
+  s_f251fd3e17d4f3::t_9f45960e27cc2d 3,13,19-26
+  s_f251fd3e17d4f3::t_da8af6e1d11519 170-184
+  s_f251fd3e17d4f3::t_a652f9198a12ec 250
+  s_f251fd3e17d4f3::t_75b1dc3253229d 237
+worker/storage/files.ts
+  s_f251fd3e17d4f3::t_d62c3d4ef599a4 121-133
+client/pages/event-setup/EventSetupPage.tsx
+  s_f251fd3e17d4f3::t_0e35cc7a9601b1 176
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "3eb85b0e916b60f24607faf24594ee7fa392dc54",
+  "prompts": {},
+  "sessions": {
+    "s_f251fd3e17d4f3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0d69b693-b6f1-41ef-939e-1b4a92b210db",
+        "model": "claude-opus-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
