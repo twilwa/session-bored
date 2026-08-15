@@ -1,0 +1,28 @@
+client/pages/agenda/board.ts
+  s_d75db399824266::t_4df1c67cfdd79e 204-210
+client/pages/agenda/AgendaPage.tsx
+  s_d75db399824266::t_a71234cc3cfd7f 733
+  s_d75db399824266::t_e0156c68bda04d 15
+tests/e2e/event-settings.spec.ts
+  s_d75db399824266::t_9bf35be4f967a2 57-59
+  s_d75db399824266::t_3dc1659d46d3d9 87-90
+tests/unit/agenda-board.test.ts
+  s_d75db399824266::t_9b48fcf7c83552 12
+  s_d75db399824266::t_2be82aeb214587 292-302
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "15ff5302a98c5db1dadfacc9dd9566a142cc2082",
+  "prompts": {},
+  "sessions": {
+    "s_d75db399824266": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c76339f0-d186-4b74-9c5c-6657158ffd5b",
+        "model": "claude-opus-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}

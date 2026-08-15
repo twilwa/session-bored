@@ -1,0 +1,53 @@
+tests/e2e/roster.spec.ts
+  s_ff5664ed5fcfb3::t_c8b35a3d60ab9e 86-92
+worker/speaker-import.ts
+  s_ff5664ed5fcfb3::t_aa54d9be1ffded 125-127
+  s_ff5664ed5fcfb3::t_42bfda3a16b66e 3,17
+worker/routes/roster.ts
+  s_ff5664ed5fcfb3::t_d00e00bb471725 256
+  s_ff5664ed5fcfb3::t_0936e9dcc665dd 21,111,123,127,152-162,190,205,208-216,220,236-240,243-244,246-250,253-255,257-261,263-268,283
+client/pages/roster/RosterPage.tsx
+  s_ff5664ed5fcfb3::t_aa54d9be1ffded 8-9
+tests/integration/roster.test.ts
+  s_ff5664ed5fcfb3::t_3779019ef543f2 594-624
+shared/api.ts
+  s_ff5664ed5fcfb3::t_aa54d9be1ffded 427-444,462-503
+  s_fa9aadb7c04427::t_3d995ffb75935d 504
+tests/unit/speaker-import.test.ts
+  s_ff5664ed5fcfb3::t_3779019ef543f2 53-66
+tests/unit/route-map.test.ts
+  s_ff5664ed5fcfb3::t_01566d7579b740 4,93-116
+  s_e3f3e39dba9889::t_5caaf3323bdc95 117-119
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "8a39ac8dec2bd4063811eabc7d5ab6c2cbedbafa",
+  "prompts": {},
+  "sessions": {
+    "s_e3f3e39dba9889": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffe3b-d895-7c03-8bcd-216fdc06109f",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    },
+    "s_fa9aadb7c04427": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c321709e-d81a-4fe4-88d1-68749a16a788",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    },
+    "s_ff5664ed5fcfb3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a003f3-5502-7dd1-8d0b-6512ecb1b526",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}

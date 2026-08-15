@@ -1,0 +1,31 @@
+shared/api.ts
+  s_6dffbbed602ec0::t_0ade66e9da1566 464-470
+tests/unit/speaker-import.test.ts
+  s_6dffbbed602ec0::t_fc0a745a10d636 104-140
+  s_6dffbbed602ec0::t_6d7d58beb92427 4
+client/pages/roster/RosterPage.tsx
+  s_6dffbbed602ec0::t_bd5923502af080 7
+  s_6dffbbed602ec0::t_21c54416be0529 248
+  s_6dffbbed602ec0::t_31a160c2ec6c89 187,196,198,203-212
+  s_6dffbbed602ec0::t_02d7f16520a07a 152-163
+worker/speaker-import.ts
+  s_6dffbbed602ec0::t_95a0d19fc1b154 3-8
+  s_6dffbbed602ec0::t_18d44623165aa8 153-160
+  s_6dffbbed602ec0::t_51abf21271f730 196-199
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "fe740e26f963f586ab1480f16455936ab8844fe1",
+  "prompts": {},
+  "sessions": {
+    "s_6dffbbed602ec0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a3e8a9ed-def0-4e2d-996a-c1158e9c3d35",
+        "model": "claude-opus-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
