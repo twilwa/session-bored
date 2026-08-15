@@ -105,8 +105,10 @@ function mergedSpeakerStanding(
   now: number,
 ): { status: SpeakerStatus; deletedAt: number | null } {
   if (kept.status === "withdrawn" || merged.status === "withdrawn") {
-    const withdrawnAt = kept.deletedAt ?? merged.deletedAt;
-    return { status: "withdrawn", deletedAt: withdrawnAt === null ? now : withdrawnAt.getTime() };
+    const archivedAt = [kept.deletedAt, merged.deletedAt]
+      .filter((value): value is Date => value !== null)
+      .map((value) => value.getTime());
+    return { status: "withdrawn", deletedAt: archivedAt.length === 0 ? now : Math.min(...archivedAt) };
   }
   return {
     status: speakerStatusOrder[merged.status] > speakerStatusOrder[kept.status]
@@ -119,9 +121,10 @@ function mergedSpeakerStanding(
 speakerDirectoryRoutes.post("/api/speaker-directory/:personId/merge", requireOrganizer, async (context) => {
   const organizer = context.get("authUser");
   if (organizer === null) return context.json({ error: "authentication_required" }, 401);
-  const payload = await context.req.json<{ duplicatePersonId?: unknown }>();
+  const payload = await context.req.json<{ duplicatePersonId?: unknown }>().catch(() => null);
   const keptPersonId = context.req.param("personId");
-  if (typeof payload.duplicatePersonId !== "string" || payload.duplicatePersonId === keptPersonId) {
+  const duplicatePersonId = payload?.duplicatePersonId;
+  if (typeof duplicatePersonId !== "string" || duplicatePersonId === keptPersonId) {
     return context.json({ error: "invalid_merge" }, 400);
   }
 
@@ -129,7 +132,7 @@ speakerDirectoryRoutes.post("/api/speaker-directory/:personId/merge", requireOrg
   const [keptPerson, mergedPerson] = await Promise.all([
     database.select().from(people).where(and(eq(people.id, keptPersonId), isNull(people.deletedAt))).then((rows) => rows[0]),
     database.select().from(people)
-      .where(and(eq(people.id, payload.duplicatePersonId as string), isNull(people.deletedAt)))
+      .where(and(eq(people.id, duplicatePersonId), isNull(people.deletedAt)))
       .then((rows) => rows[0]),
   ]);
   if (keptPerson === undefined || mergedPerson === undefined) return context.json({ error: "not_found" }, 404);
@@ -143,9 +146,11 @@ speakerDirectoryRoutes.post("/api/speaker-directory/:personId/merge", requireOrg
     return context.json({ error: "account_conflict" }, 409);
   }
 
+  // Both sides include archived speaker rows. Withdrawing on the roster archives the row it
+  // withdraws, so reading only live ones would skip the duplicate's withdrawal - and leave its
+  // sessions, onboarding work, and files hanging off a speaker row no surface can reach.
   const [mergedSpeakers, keptSpeakers] = await Promise.all([
-    database.select().from(speakers)
-      .where(and(eq(speakers.personId, mergedPerson.id), isNull(speakers.deletedAt))),
+    database.select().from(speakers).where(eq(speakers.personId, mergedPerson.id)),
     database.select().from(speakers).where(eq(speakers.personId, keptPerson.id)),
   ]);
   const speakerIds = [...new Set([...mergedSpeakers, ...keptSpeakers].map((speaker) => speaker.id))];
@@ -215,7 +220,7 @@ speakerDirectoryRoutes.post("/api/speaker-directory/:personId/merge", requireOrg
     const keptSpeaker = keptSpeakers.find((speaker) => speaker.eventId === mergedSpeaker.eventId);
     if (keptSpeaker === undefined) {
       statements.push(context.env.DB.prepare(
-        "update speaker set person_id = ?, updated_at = ? where id = ? and deleted_at is null",
+        "update speaker set person_id = ?, updated_at = ? where id = ?",
       ).bind(keptPerson.id, now, mergedSpeaker.id));
       continue;
     }
@@ -262,8 +267,9 @@ speakerDirectoryRoutes.post("/api/speaker-directory/:personId/merge", requireOrg
       context.env.DB.prepare(
         "update file set speaker_id = ?, updated_at = ? where speaker_id = ? and kind = 'headshot' and not exists (select 1 from file as kept_headshot where kept_headshot.speaker_id = ? and kept_headshot.kind = 'headshot')",
       ).bind(keptSpeaker.id, now, mergedSpeaker.id, keptSpeaker.id),
-      context.env.DB.prepare("update speaker set deleted_at = ?, updated_at = ? where id = ?")
-        .bind(now, now, mergedSpeaker.id),
+      context.env.DB.prepare(
+        "update speaker set deleted_at = ?, updated_at = ? where id = ? and deleted_at is null",
+      ).bind(now, now, mergedSpeaker.id),
     );
   }
 

@@ -624,4 +624,97 @@ describe("speaker directory", () => {
       isNull(files.deletedAt),
     ))).toHaveLength(1);
   });
+  it("takes the duplicate's withdrawal and carries the work hanging off its archived record", async () => {
+    await request("/api/health");
+    const database = drizzle(env.DB);
+    const now = Date.now();
+    const withdrawnAt = now - 90_000;
+    await env.DB.batch([
+      env.DB.prepare(
+        "insert into event (id, name, slug, timezone, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
+      ).bind("evt_probe_withdrawn_only", "Probe Summit 2029", "probe-summit-2029", "America/Los_Angeles", now, now),
+      env.DB.prepare(
+        "insert into person (id, name, email, organization, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
+      ).bind("psn_probe_wd2_kept", "Robin Standing", "robin.kept@example.com", "Standing Works", now, now),
+      env.DB.prepare(
+        "insert into person (id, name, email, organization, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
+      ).bind("psn_probe_wd2_dupe", "Robin Standing", "robin.duplicate@example.com", "Standing Works", now, now),
+      // The record the organizer keeps is live and well past `invited` at this event.
+      env.DB.prepare(
+        "insert into speaker (id, person_id, event_id, status, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
+      ).bind("spk_probe_wd2_kept", "psn_probe_wd2_kept", "evt_devflow_conf_2027", "confirmed", now, now),
+      // The duplicate was withdrawn on the roster, which archives the row it withdraws.
+      env.DB.prepare(
+        "insert into speaker (id, person_id, event_id, status, created_at, updated_at, deleted_at) values (?, ?, ?, ?, ?, ?, ?)",
+      ).bind("spk_probe_wd2_dupe", "psn_probe_wd2_dupe", "evt_devflow_conf_2027", "withdrawn", now, now, withdrawnAt),
+      // And it is the only record either person has at this second event.
+      env.DB.prepare(
+        "insert into speaker (id, person_id, event_id, status, created_at, updated_at, deleted_at) values (?, ?, ?, ?, ?, ?, ?)",
+      ).bind("spk_probe_wd2_only", "psn_probe_wd2_dupe", "evt_probe_withdrawn_only", "withdrawn", now, now, withdrawnAt),
+      env.DB.prepare(
+        "insert into program_session (id, event_id, title, content_status, schedule_status, direct_entry, ics_uid, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      ).bind(
+        "ses_probe_wd2",
+        "evt_devflow_conf_2027",
+        "A withdrawn duplicate's session",
+        "draft",
+        "tbd",
+        1,
+        "ses_probe_wd2@session-bored",
+        now,
+        now,
+      ),
+      env.DB.prepare(
+        "insert into session_speaker (id, session_id, speaker_id, role_label, sort_order, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?)",
+      ).bind("ssnr_probe_wd2", "ses_probe_wd2", "spk_probe_wd2_dupe", "speaker", 0, now, now),
+      env.DB.prepare(
+        "insert into task (id, event_id, title, status, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
+      ).bind("tsk_probe_wd2", "evt_devflow_conf_2027", "Withdrawn duplicate onboarding", "active", now, now),
+      env.DB.prepare(
+        "insert into task_assignee (id, task_id, speaker_id, status, completed_at, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?)",
+      ).bind("tassn_probe_wd2", "tsk_probe_wd2", "spk_probe_wd2_dupe", "completed", now, now, now),
+    ]);
+
+    // The organizer opens the live record and keeps it - the direction the UI offers alongside
+    // keeping the candidate, and the one that must not quietly undo the roster's withdrawal.
+    const merged = await request("/api/speaker-directory/psn_probe_wd2_kept/merge", {
+      method: "POST",
+      headers: { cookie: await organizerCookie(), "content-type": "application/json" },
+      body: JSON.stringify({ duplicatePersonId: "psn_probe_wd2_dupe" }),
+    });
+    expect(merged.status).toBe(200);
+
+    const [keptSpeaker] = await database.select().from(speakers).where(eq(speakers.id, "spk_probe_wd2_kept"));
+    expect(keptSpeaker?.status).toBe("withdrawn");
+    expect(keptSpeaker?.deletedAt?.getTime()).toBe(withdrawnAt);
+
+    const [carriedSession] = await database.select().from(sessionSpeakers)
+      .where(eq(sessionSpeakers.id, "ssnr_probe_wd2"));
+    expect(carriedSession?.speakerId).toBe("spk_probe_wd2_kept");
+    const [carriedAssignment] = await database.select().from(taskAssignees)
+      .where(eq(taskAssignees.id, "tassn_probe_wd2"));
+    expect(carriedAssignment).toMatchObject({ speakerId: "spk_probe_wd2_kept", status: "completed" });
+
+    // An archived duplicate record at an event the kept person never reached belongs to them
+    // now, still archived and still withdrawn, rather than being stranded on an archived person.
+    const [onlySpeaker] = await database.select().from(speakers).where(eq(speakers.id, "spk_probe_wd2_only"));
+    expect(onlySpeaker).toMatchObject({ personId: "psn_probe_wd2_kept", status: "withdrawn" });
+    expect(onlySpeaker?.deletedAt?.getTime()).toBe(withdrawnAt);
+
+    const publicSpeakers = await (await request("/api/public/events/evt_devflow_conf_2027/speakers"))
+      .json<{ items: Array<{ name: string }> }>();
+    expect(publicSpeakers.items.some((speaker) => speaker.name === "Robin Standing")).toBe(false);
+  });
+
+  it("answers a malformed merge request as a bad request rather than a server fault", async () => {
+    await request("/api/health");
+    const cookie = await organizerCookie();
+    const response = await request("/api/speaker-directory/psn_priya_raman/merge", {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json" },
+      body: "{ not json",
+    });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "invalid_merge" });
+  });
 });
