@@ -1,0 +1,20 @@
+tests/e2e/public-schedule.spec.ts
+  s_92b72f7fee59ce::t_643d1ff3a1c13b 21,26-29,278,291,333,336,339,378
+  s_92b72f7fee59ce::t_2c91f585108ade 23
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "b03a2a92fd9637471847a639c63facb90bb072d8",
+  "prompts": {},
+  "sessions": {
+    "s_92b72f7fee59ce": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffe3b-d2f2-75a2-b6a7-09b2cc066278",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
