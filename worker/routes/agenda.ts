@@ -36,6 +36,81 @@ type AgendaEnvironment = {
   };
 };
 
+type AgendaDatabase = ReturnType<typeof drizzle>;
+
+export interface ParticipantPublicationHold {
+  id: string;
+  sessionId: string;
+  speakerId: string;
+  publicationHoldAt: Date;
+}
+
+/** Captures the exact live holds a publish request is allowed to release. */
+export async function snapshotParticipantPublicationHolds(
+  database: AgendaDatabase,
+  eventId: string,
+): Promise<ParticipantPublicationHold[]> {
+  const held = await database
+    .select({
+      id: sessionSpeakers.id,
+      sessionId: sessionSpeakers.sessionId,
+      speakerId: sessionSpeakers.speakerId,
+      publicationHoldAt: sessionSpeakers.publicationHoldAt,
+    })
+    .from(sessionSpeakers)
+    .innerJoin(sessions, eq(sessionSpeakers.sessionId, sessions.id))
+    .innerJoin(speakers, eq(sessionSpeakers.speakerId, speakers.id))
+    .where(and(
+      eq(sessions.eventId, eventId),
+      isNull(sessionSpeakers.deletedAt),
+      isNotNull(sessionSpeakers.publicationHoldAt),
+      isNull(speakers.deletedAt),
+    ));
+  return held.flatMap((link) =>
+    link.publicationHoldAt === null
+      ? []
+      : [{ ...link, publicationHoldAt: link.publicationHoldAt }]
+  );
+}
+
+/** Publishes sessions and releases only the unchanged holds captured for this publish act. */
+export async function publishSessionsAndReleaseParticipantHolds(
+  database: AgendaDatabase,
+  sessionIds: string[],
+  publishedAt: Date,
+  heldAtStart: ParticipantPublicationHold[],
+): Promise<Array<{ sessionId: string; speakerId: string }>> {
+  const publishSessions = database
+    .update(sessions)
+    .set({ publishedAt })
+    .where(inArray(sessions.id, sessionIds));
+  const releasable = heldAtStart.filter((link) => sessionIds.includes(link.sessionId));
+  if (releasable.length === 0) {
+    await publishSessions;
+    return [];
+  }
+  const unchangedHold = or(...releasable.map((link) => and(
+    eq(sessionSpeakers.id, link.id),
+    eq(sessionSpeakers.publicationHoldAt, link.publicationHoldAt),
+  )));
+  const releaseHolds = database
+    .update(sessionSpeakers)
+    .set({ publicationHoldAt: null })
+    .where(and(
+      inArray(sessionSpeakers.sessionId, sessionIds),
+      isNull(sessionSpeakers.deletedAt),
+      unchangedHold,
+      sql`EXISTS (
+        SELECT 1 FROM ${speakers}
+        WHERE ${speakers.id} = ${sessionSpeakers.speakerId}
+          AND ${speakers.deletedAt} IS NULL
+      )`,
+    ))
+    .returning({ sessionId: sessionSpeakers.sessionId, speakerId: sessionSpeakers.speakerId });
+  const [, released] = await database.batch([publishSessions, releaseHolds]);
+  return released;
+}
+
 const agendaRoutes = new Hono<AgendaEnvironment>();
 
 const requireOrganizer = createMiddleware<AgendaEnvironment>(async (context, next) => {
@@ -434,6 +509,8 @@ function publishMessage(
 
 agendaRoutes.post("/api/events/:eventId/agenda/publish", async (context) => {
   const eventId = context.req.param("eventId");
+  const database = drizzle(context.env.DB);
+  const heldAtStart = await snapshotParticipantPublicationHolds(database, eventId);
   const agenda = await readAgenda(context.env.DB, eventId);
   if (agenda === null) return context.json({ error: "event_not_found" }, 404);
   const eligible = agenda.sessions.filter((session) =>
@@ -452,31 +529,18 @@ agendaRoutes.post("/api/events/:eventId/agenda/publish", async (context) => {
   const titleBySession = new Map(eligible.map((session) => [session.id as string, session.title]));
   let released: AgendaPublishRelease[] = [];
   if (eligible.length > 0) {
-    const database = drizzle(context.env.DB);
-    await database
-      .update(sessions)
-      .set({ publishedAt })
-      .where(inArray(sessions.id, eligible.map((session) => session.id)));
     // Publishing a session is the one act that releases the holds on it, and it releases every
-    // outstanding one it can name. It writes nothing about the people themselves: whether
-    // somebody has agreed to present is the roster's fact, and this route deciding it for them
-    // is how an organizer's own workflow status used to get overruled. An archived speaker's
-    // hold stands, because the agenda never showed it as pending and releasing it would hand
-    // them the public lineup the day the roster restores them.
-    const releasedLinks = await database
-      .update(sessionSpeakers)
-      .set({ publicationHoldAt: null })
-      .where(and(
-        inArray(sessionSpeakers.sessionId, eligible.map((session) => session.id)),
-        isNull(sessionSpeakers.deletedAt),
-        isNotNull(sessionSpeakers.publicationHoldAt),
-        sql`EXISTS (
-          SELECT 1 FROM ${speakers}
-          WHERE ${speakers.id} = ${sessionSpeakers.speakerId}
-            AND ${speakers.deletedAt} IS NULL
-        )`,
-      ))
-      .returning({ sessionId: sessionSpeakers.sessionId, speakerId: sessionSpeakers.speakerId });
+    // outstanding one captured for this publish act. It writes nothing about the people
+    // themselves: whether somebody has agreed to present is the roster's fact, and this route
+    // deciding it for them is how an organizer's own workflow status used to get overruled. An
+    // archived speaker's hold stands, because the agenda never showed it as pending and releasing
+    // it would hand them the public lineup the day the roster restores them.
+    const releasedLinks = await publishSessionsAndReleaseParticipantHolds(
+      database,
+      eligible.map((session) => session.id),
+      publishedAt,
+      heldAtStart,
+    );
     if (releasedLinks.length > 0) {
       const named = await database
         .select({ speakerId: speakers.id, name: people.name })

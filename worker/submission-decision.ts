@@ -1,6 +1,6 @@
 // ABOUTME: Applies submission status changes and their reversible downstream handoffs.
 // ABOUTME: Gives review and disposition routes one idempotent decision path.
-import { and, eq, inArray, isNotNull, isNull, ne, type SQL } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, ne, sql, type SQL } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import {
   createPublicId,
@@ -31,6 +31,54 @@ type DecisionDatabase = ReturnType<typeof drizzle>;
 interface OnboardingTask {
   id: string;
   title: string;
+}
+
+function publicationHoldForCurrentSession(sessionId: string): SQL {
+  return sql`CASE WHEN EXISTS (
+    SELECT 1 FROM ${sessions}
+    WHERE ${sessions.id} = ${sessionId}
+      AND ${sessions.publishedAt} IS NOT NULL
+  ) THEN CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER) ELSE NULL END`;
+}
+
+/** Records one session link while deriving its publication hold in the same database write. */
+export async function recordSessionParticipation(
+  database: DecisionDatabase,
+  participant: {
+    id: string;
+    sessionId: string;
+    speakerId: string;
+    roleLabel: string;
+    sortOrder: number;
+  },
+): Promise<void> {
+  const publicationHoldAt = publicationHoldForCurrentSession(participant.sessionId);
+  await database
+    .insert(sessionSpeakers)
+    .values({
+      id: participant.id,
+      sessionId: participant.sessionId,
+      speakerId: participant.speakerId,
+      roleLabel: participant.roleLabel,
+      sortOrder: participant.sortOrder,
+      publicationHoldAt,
+    })
+    .onConflictDoNothing();
+  await database
+    .update(sessionSpeakers)
+    .set({
+      roleLabel: participant.roleLabel,
+      sortOrder: participant.sortOrder,
+      publicationHoldAt: sql`CASE
+        WHEN ${sessionSpeakers.deletedAt} IS NULL THEN ${sessionSpeakers.publicationHoldAt}
+        ELSE ${publicationHoldAt}
+      END`,
+      deletedAt: null,
+    })
+    .where(and(
+      eq(sessionSpeakers.sessionId, participant.sessionId),
+      eq(sessionSpeakers.speakerId, participant.speakerId),
+    ));
 }
 
 export interface ParticipantRelease {
@@ -112,11 +160,12 @@ async function resolveOnboardingTasks(
  * everybody else on it. Archived links are restored rather than duplicated, so a participant
  * who is removed and named again keeps their completion history.
  *
- * This is the only door that takes a publication hold, and it reads the session itself rather
- * than trusting a caller, so acceptance, a repeated acceptance, and a late organizer addition
- * all resolve it the same way. Joining an already-published session takes a hold, and the hold
- * is written on every create and restore - never left to whatever the row said before it was
- * archived, which is how a stale value would smuggle somebody onto the public lineup. A link
+ * This is the only door that takes a publication hold, and the link write derives it from the
+ * session in the same statement rather than trusting an earlier read, so acceptance, a repeated
+ * acceptance, and a late organizer addition all resolve it the same way. Joining an
+ * already-published session takes a hold, and the hold is written on every create and restore -
+ * never left to whatever the row said before it was archived, which is how a stale value would
+ * smuggle somebody onto the public lineup. A link
  * that is already live on the session keeps the answer it has: an already-public participation
  * is not re-held by a role-label edit or a repeat acceptance, and a held one stays held.
  * Nothing here touches `speaker.status`, which says whether somebody has agreed to present and
@@ -131,25 +180,13 @@ async function attachParticipant(
     roleLabel: string;
     sortOrder: number;
     onboardingTasks: OnboardingTask[];
-    session: { publishedAt: Date | null };
   },
 ): Promise<string> {
-  const { eventId, sessionId, personId, roleLabel, sortOrder, session } = participant;
+  const { eventId, sessionId, personId, roleLabel, sortOrder } = participant;
   let [speaker] = await database
     .select()
     .from(speakers)
     .where(and(eq(speakers.personId, personId), eq(speakers.eventId, eventId)));
-  const [existingLink] = speaker === undefined
-    ? []
-    : await database
-      .select({ deletedAt: sessionSpeakers.deletedAt })
-      .from(sessionSpeakers)
-      .where(and(
-        eq(sessionSpeakers.sessionId, sessionId),
-        eq(sessionSpeakers.speakerId, speaker.id),
-      ));
-  const restoringOrCreatingLink = existingLink === undefined || existingLink.deletedAt !== null;
-  const publicationHoldAt = session.publishedAt === null ? null : new Date();
   if (speaker === undefined) {
     await database
       .insert(speakers)
@@ -177,26 +214,13 @@ async function attachParticipant(
       .set({ status: "onboarding" })
       .where(eq(speakers.id, speaker.id));
   }
-  await database
-    .insert(sessionSpeakers)
-    .values({
-      id: createPublicId("ssnr"),
-      sessionId,
-      speakerId: speaker.id,
-      roleLabel,
-      sortOrder,
-      publicationHoldAt,
-    })
-    .onConflictDoNothing();
-  await database
-    .update(sessionSpeakers)
-    .set({
-      roleLabel,
-      sortOrder,
-      ...(restoringOrCreatingLink ? { publicationHoldAt } : {}),
-      deletedAt: null,
-    })
-    .where(and(eq(sessionSpeakers.sessionId, sessionId), eq(sessionSpeakers.speakerId, speaker.id)));
+  await recordSessionParticipation(database, {
+    id: createPublicId("ssnr"),
+    sessionId,
+    speakerId: speaker.id,
+    roleLabel,
+    sortOrder,
+  });
   for (const task of participant.onboardingTasks) {
     // Only an assignment this handoff actually creates records the session that granted it.
     // Work the person already owed the event keeps whatever provenance it had, so restoring
@@ -246,7 +270,7 @@ export async function carryParticipantIntoSession(
 ): Promise<string> {
   const database = drizzle(binding);
   const [session] = await database
-    .select({ publishedAt: sessions.publishedAt })
+    .select({ id: sessions.id })
     .from(sessions)
     .where(and(eq(sessions.id, sessionId), eq(sessions.eventId, eventId)));
   if (session === undefined) {
@@ -259,7 +283,6 @@ export async function carryParticipantIntoSession(
     roleLabel: participant.roleLabel,
     sortOrder: participant.sortOrder,
     onboardingTasks: await resolveOnboardingTasks(database, eventId, sessionId),
-    session,
   });
 }
 
@@ -508,7 +531,6 @@ async function ensureAcceptedHandoff(
       roleLabel: participant.roleLabel,
       sortOrder: participant.sortOrder,
       onboardingTasks,
-      session,
     });
     acceptedSpeakers.push({
       id: speakerId,
