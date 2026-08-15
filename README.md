@@ -79,7 +79,9 @@ An organizer can also invite a reviewer by email. The invitation is sent through
 Communications and becomes reviewer access only once that person creates an account
 and confirms the invited address, so knowing that address is never enough to claim
 it. Invitation mail needs an email sender; without one, People says delivery was not
-attempted and the invitation remains pending.
+attempted and the invitation remains pending. Whenever an invitation reached nobody,
+People offers **Resend invitation** on its row, so a failed send or one made before a
+sender was connected goes out without withdrawing and re-inviting.
 
 Granting reviewer from People asks in the same step what that reviewer may read:
 at least one track and one open review round, so a new reviewer signs in to a
