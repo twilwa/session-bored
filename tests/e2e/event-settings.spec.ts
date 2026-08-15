@@ -32,9 +32,25 @@ test("organizer edits event identity, dates, venue, timezone, and branding", asy
     })
   ).status, original);
   expect(baselineStatus).toBe(200);
-  const baselinePublishStatus = await page.evaluate(async () => (
-    await fetch("/api/events/evt_devflow_conf_2027/agenda/publish", { method: "POST" })
-  ).status);
+  // A timezone change only asks the organizer to republish placed sessions, so this test owns
+  // the placed, published session it asserts about rather than inheriting one from another spec.
+  const baselinePublishStatus = await page.evaluate(async () => {
+    const placement = await fetch(
+      "/api/events/evt_devflow_conf_2027/agenda/sessions/ses_docs_retrieval",
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          scheduleStatus: "placed",
+          scheduledDate: "2027-05-12",
+          roomId: "rm_main_stage",
+          startsAt: Date.parse("2027-05-12T16:00:00Z"),
+        }),
+      },
+    );
+    if (!placement.ok) return placement.status;
+    return (await fetch("/api/events/evt_devflow_conf_2027/agenda/publish", { method: "POST" })).status;
+  });
   expect(baselinePublishStatus).toBe(200);
 
   try {
