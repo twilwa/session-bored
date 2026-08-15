@@ -14,6 +14,10 @@ interface InvitationSession {
   emailVerified: boolean;
 }
 
+export function redeemedInvitationMessage(eventName: string): string {
+  return `This invitation has already been used for ${eventName}.`;
+}
+
 export function InvitationPage({ inviteId }: { inviteId: string }) {
   const [invite, setInvite] = useState<InvitationInfo | null>(null);
   const [missing, setMissing] = useState(false);
@@ -127,10 +131,8 @@ export function InvitationPage({ inviteId }: { inviteId: string }) {
   } else if (invite?.status === "redeemed") {
     body = (
       <>
-        <p className="hero__lede">Reviewer access for {eventName} is already open.</p>
-        <div className="hero__actions">
-          <Link className="button button--signal" href="/reviewer">Go to the review workspace</Link>
-        </div>
+        <p className="hero__lede">{redeemedInvitationMessage(eventName)}</p>
+        <p className="login-intro__alt"><Link href="/">Back to Greenroom</Link></p>
       </>
     );
   } else if (session === "loading") {

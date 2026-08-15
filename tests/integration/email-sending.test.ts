@@ -618,6 +618,30 @@ describe("reviewer invitation dispatch", () => {
     expect(resend.calls[0]?.text).toContain("Reviewer access is already open with your existing account");
   });
 
+  it("asks a confirmed account to accept when the invite-time upgrade is pending", async () => {
+    const recipientEmail = `reviewer-invite-pending-${crypto.randomUUID()}@greenroom-mail.dev`;
+    await request("/api/auth/sign-up/email", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Existing Pending", email: recipientEmail, password: "Greenroom!2027" }),
+    });
+    await drizzle(env.DB).update(users).set({ emailVerified: true }).where(eq(users.email, recipientEmail));
+
+    const resend = interceptResend({ ok: true, id: "resend_reviewer_invitation_pending" });
+    const response = await requestWithSenderConnected(`/api/events/${eventId}/reviewer-invites`, {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ email: recipientEmail }),
+    });
+
+    expect(response.status).toBe(201);
+    const payload = await response.json<{ invite: { id: string }; accountStatus: string; upgraded: boolean }>();
+    expect(payload).toMatchObject({ accountStatus: "confirmed", upgraded: false });
+    expect(resend.calls[0]?.text).toContain(`/invitations/${payload.invite.id}`);
+    expect(resend.calls[0]?.text).toContain("Open the invitation to accept reviewer access");
+    expect(resend.calls[0]?.text).not.toContain("Reviewer access is already open");
+  });
+
   it("resends a failed open invitation through tracked delivery", async () => {
     const recipientEmail = `reviewer-invite-failure-${crypto.randomUUID()}@greenroom-mail.dev`;
     const resend = interceptResend({ ok: false });

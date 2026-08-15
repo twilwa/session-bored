@@ -44,6 +44,7 @@ export async function sendReviewerInvitationEmail(input: {
   inviteId: string;
   recipientEmail: string;
   accountStatus: InvitedAccountStatus;
+  reviewerAccessOpened: boolean;
   createdByUserId: string;
   delivery?: EmailDelivery;
 }): Promise<ReviewerInvitationResult> {
@@ -57,12 +58,14 @@ export async function sendReviewerInvitationEmail(input: {
 
   const invitationUrl = reviewerInvitationUrl(input.env.APP_ORIGIN, input.inviteId, input.recipientEmail);
   const subject = `Review proposals for ${event.name}`;
-  const lead = input.accountStatus === "confirmed"
+  const lead = input.reviewerAccessOpened
     ? `You've been invited to review proposals for ${event.name}. Reviewer access is already open with your existing account.`
+    : input.accountStatus === "confirmed"
+    ? `You've been invited to review proposals for ${event.name}. Open the invitation to accept reviewer access with your confirmed Greenroom account.`
     : input.accountStatus === "unconfirmed"
     ? `You've been invited to review proposals for ${event.name}. You already have a Greenroom account for this address - confirming the address opens the review committee.`
     : `You've been invited to review proposals for ${event.name}. Create your Greenroom account using this email address, then confirm the address to open the review committee.`;
-  const action = input.accountStatus === "confirmed" ? "Sign in to start reviewing:" : "Open the invitation:";
+  const action = input.reviewerAccessOpened ? "Sign in to start reviewing:" : "Open the invitation:";
   const text = [lead, "", action, invitationUrl].join("\n");
 
   return sendTrackedEmail({

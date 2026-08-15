@@ -625,6 +625,7 @@ peopleRoutes.post("/api/events/:eventId/reviewer-invites", requireOrganizer, asy
     inviteId: invite!.id,
     recipientEmail: email,
     accountStatus,
+    reviewerAccessOpened: upgrade !== null,
     createdByUserId: organizer.id,
   });
   if (delivery.status === "event_not_found") {
@@ -687,6 +688,7 @@ peopleRoutes.post("/api/events/:eventId/reviewer-invites/:inviteId/resend", requ
     inviteId: invite.id,
     recipientEmail: invite.email,
     accountStatus,
+    reviewerAccessOpened: false,
     createdByUserId: organizer.id,
   });
   if (delivery.status === "event_not_found") {
