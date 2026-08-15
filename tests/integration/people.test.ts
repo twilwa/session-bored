@@ -4,7 +4,16 @@ import { env } from "cloudflare:workers";
 import { drizzle } from "drizzle-orm/d1";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
-import { reviewerInvites, reviewRounds, tracks, users } from "../../db/schema.ts";
+import {
+  events,
+  reviewerInvites,
+  reviewerRoundPools,
+  reviewerTracks,
+  reviewRounds,
+  roleGrants,
+  tracks,
+  users,
+} from "../../db/schema.ts";
 import type { PersonAccountSummary } from "../../shared/api.ts";
 import { redeemReviewerInvites } from "../../worker/reviewer-invites.ts";
 import worker from "../../worker/index.ts";
@@ -42,6 +51,7 @@ interface OpenInvite {
   email: string;
   emailDelivery: "sent" | "failed" | "not_attempted";
   canResend: boolean;
+  accountStatus?: string;
 }
 
 async function loadPeople(cookie: string): Promise<{ items: PersonAccountSummary[]; invites: OpenInvite[] }> {
@@ -53,6 +63,36 @@ async function loadPeople(cookie: string): Promise<{ items: PersonAccountSummary
 async function userIdFor(email: string): Promise<string> {
   const [row] = await drizzle(env.DB).select({ id: users.id }).from(users).where(eq(users.email, email));
   return row!.id;
+}
+
+/** Confirms an account's address the way the database records it: the flag the invite door reads. */
+async function confirmAddress(email: string): Promise<void> {
+  await drizzle(env.DB).update(users).set({ emailVerified: true }).where(eq(users.email, email));
+}
+
+/**
+ * A second event to invite an existing reviewer into: what makes a remit "extended" rather than
+ * "granted" is a reviewer who already reads somewhere else.
+ */
+async function seedSecondEvent(): Promise<{ eventId: string; trackId: string; roundId: string }> {
+  const database = drizzle(env.DB);
+  const eventId = `evt_second_${crypto.randomUUID().slice(0, 8)}`;
+  const trackId = `trk_${crypto.randomUUID().slice(0, 8)}`;
+  const roundId = `rnd_${crypto.randomUUID().slice(0, 8)}`;
+  await database.insert(events).values({
+    id: eventId,
+    slug: `second-${crypto.randomUUID().slice(0, 8)}`,
+    name: "Second Conf 2028",
+    startDate: "2028-05-12",
+    endDate: "2028-05-14",
+    venue: "SFO",
+    timezone: "America/Los_Angeles",
+  }).onConflictDoNothing();
+  await database.insert(tracks).values({ id: trackId, eventId, name: "Reliability", sortOrder: 0 });
+  await database
+    .insert(reviewRounds)
+    .values({ id: roundId, eventId, name: "Second review", status: "open" });
+  return { eventId, trackId, roundId };
 }
 
 describe("organizer People surface", () => {
@@ -334,112 +374,6 @@ describe("organizer People surface", () => {
     expect((await queue.json<{ items: unknown[] }>()).items.length).toBeGreaterThan(0);
   });
 
-  it("refuses an invitation to a confirmed address and names the door that is actually open", async () => {
-    await request("/api/health");
-    const cookie = await organizerCookie();
-    const database = drizzle(env.DB);
-    const eventId = "evt_devflow_conf_2027";
-    const invited = "confirmed-account-invite@example.com";
-    await signUp("Confirmed Account", invited);
-    const userId = await userIdFor(invited);
-
-    const inviteReviewer = async (email: string) =>
-      request(`/api/events/${eventId}/reviewer-invites`, {
-        method: "POST",
-        headers: { cookie, "content-type": "application/json" },
-        body: JSON.stringify({ email }),
-      });
-
-    // While the address is unconfirmed the invitation is still the right door, because
-    // confirming it is exactly what redeems the invitation.
-    const beforeConfirmation = await inviteReviewer(invited);
-    expect(beforeConfirmation.status).toBe(201);
-    const openInviteId = (await beforeConfirmation.json<{ invite: { id: string } }>()).invite.id;
-    expect((await request(`/api/reviewer-invites/${openInviteId}`, { method: "DELETE", headers: { cookie } })).status)
-      .toBe(200);
-
-    await database.update(users).set({ emailVerified: true }).where(eq(users.id, userId));
-
-    // Confirmed, so the address has no confirmation left to make and an invitation could only
-    // sit open forever. The organizer is told that, and told what to do instead.
-    const refused = await inviteReviewer("Confirmed-Account-Invite@Example.com");
-    expect(refused.status).toBe(409);
-    const refusal = await refused.json<{ error: string; userId: string; holdsReviewer: boolean; note: string }>();
-    expect(refusal).toMatchObject({ error: "account_already_confirmed", userId, holdsReviewer: false });
-    // An account without the grant needs both steps, and in this order: the grant opens the area,
-    // Committee setup gives this event's remit. Naming only the first can leave a reviewer with
-    // access and an empty queue, so the note names the remit and what it takes.
-    expect(refusal.note).toContain("Grant reviewer access");
-    expect(refusal.note).toContain("Committee setup");
-    expect(refusal.note.indexOf("Grant reviewer access")).toBeLessThan(refusal.note.indexOf("Committee setup"));
-    expect(refusal.note).toContain("Tracks and a review round");
-
-    // Nothing was recorded, so no invitation waits on a confirmation that already happened.
-    expect((await loadPeople(cookie)).invites.map((invite) => invite.email)).not.toContain(invited);
-
-    // The recourse the refusal names opens the committee area, and People's grant asks for this
-    // event's remit in the same step (#166), so the note can promise a queue with work in it.
-    const readCommittee = async () => {
-      const response = await request(`/api/review/events/${eventId}/config`, { headers: { cookie } });
-      expect(response.status).toBe(200);
-      return response.json<{
-        tracks: Array<{ id: string }>;
-        rounds: Array<{ id: string; status: string }>;
-        reviewers: Array<{ id: string }>;
-      }>();
-    };
-    const committee = await readCommittee();
-    const granted = await request(`/api/people/${userId}/grants`, {
-      method: "POST",
-      headers: { cookie, "content-type": "application/json" },
-      body: JSON.stringify({
-        role: "reviewer",
-        reviewerRemit: {
-          eventId,
-          trackIds: committee.tracks.map((track) => track.id),
-          roundIds: [committee.rounds.find((round) => round.status === "open")?.id],
-        },
-      }),
-    });
-    expect(granted.status).toBe(200);
-    const reviewerCookie = await signIn(invited, "Greenroom!2027");
-    const readQueue = async () => {
-      const response = await request("/api/review/queue", { headers: { cookie: reviewerCookie } });
-      expect(response.status).toBe(200);
-      return (await response.json<{ items: unknown[] }>()).items;
-    };
-
-    // So the recourse lands the person exactly where the invitation would have.
-    expect((await readQueue()).length).toBeGreaterThan(0);
-
-    // This is how every reviewer onboarded by an invitation looks when an organizer invites them
-    // to another committee: confirmed, and already holding the grant. Naming that grant would
-    // name a button People does not render for them, so the refusal names the remaining step.
-    expect((await loadPeople(cookie)).items.find((person) => person.id === userId)?.grants
-      .map((grant) => grant.role)).toContain("reviewer");
-    const refusedAgain = await inviteReviewer(invited);
-    expect(refusedAgain.status).toBe(409);
-    const secondRefusal = await refusedAgain.json<{ error: string; holdsReviewer: boolean; note: string }>();
-    expect(secondRefusal).toMatchObject({ error: "account_already_confirmed", holdsReviewer: true });
-    expect(secondRefusal.note).toContain("already has reviewer access");
-    expect(secondRefusal.note).toContain("Committee setup");
-    expect(secondRefusal.note).not.toContain("Grant reviewer access");
-
-    // And that step is real: Committee setup lists them and owns the remit from here, so
-    // narrowing it to no tracks empties the queue the grant had filled.
-    expect((await readCommittee()).reviewers.map((reviewer) => reviewer.id)).toContain(userId);
-    const remit = await request(`/api/review/events/${eventId}/reviewers/${userId}`, {
-      method: "PATCH",
-      headers: { cookie, "content-type": "application/json" },
-      body: JSON.stringify({
-        trackIds: [],
-        roundIds: [committee.rounds.find((round) => round.status === "open")?.id],
-      }),
-    });
-    expect(remit.status).toBe(200);
-    expect(await readQueue()).toHaveLength(0);
-  });
-
   it("keeps an invitation resendable while no email sender is connected", async () => {
     await request("/api/health");
     const cookie = await organizerCookie();
@@ -538,5 +472,229 @@ describe("organizer People surface", () => {
     // revoking a grant must follow the live decision, not the leftover row.
     await disposition("declined");
     expect(await evidenceOf()).toMatchObject({ kind: "proposals" });
+  });
+
+  it("refuses an invitation whose named remit names ids this event does not have", async () => {
+    await request("/api/health");
+    const cookie = await organizerCookie();
+
+    const badTrack = await request("/api/events/evt_devflow_conf_2027/reviewer-invites", {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ email: "bogus-track-invite@example.com", trackIds: ["trk_nowhere"] }),
+    });
+    expect(badTrack.status).toBe(400);
+    expect(await badTrack.json()).toEqual({ error: "invalid_reviewer_tracks" });
+
+    const badRound = await request("/api/events/evt_devflow_conf_2027/reviewer-invites", {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ email: "bogus-round-invite@example.com", roundIds: ["rnd_never_opened"] }),
+    });
+    expect(badRound.status).toBe(400);
+    expect(await badRound.json()).toEqual({ error: "invalid_reviewer_rounds" });
+  });
+});
+
+describe("reviewer invitations for an address that already has an account", () => {
+  const eventId = "evt_devflow_conf_2027";
+
+  async function invite(
+    cookie: string,
+    email: string,
+    body: Record<string, unknown> = {},
+    targetEventId = eventId,
+  ): Promise<Response> {
+    return request(`/api/events/${targetEventId}/reviewer-invites`, {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ email, ...body }),
+    });
+  }
+
+  async function remitOf(email: string): Promise<{ trackIds: string[]; roundIds: string[] } | undefined> {
+    const [stored] = await drizzle(env.DB)
+      .select({ trackIds: reviewerInvites.trackIds, roundIds: reviewerInvites.roundIds })
+      .from(reviewerInvites)
+      .where(eq(reviewerInvites.email, email));
+    return stored;
+  }
+
+  async function tracksForReviewer(userId: string, scopedEventId: string): Promise<string[]> {
+    const rows = await drizzle(env.DB)
+      .select({ trackId: reviewerTracks.trackId })
+      .from(reviewerTracks)
+      .where(and(eq(reviewerTracks.reviewerUserId, userId), eq(reviewerTracks.eventId, scopedEventId)));
+    return rows.map((row) => row.trackId);
+  }
+
+  it("upgrades a confirmed account the moment the invitation names its remit", async () => {
+    await request("/api/health");
+    const cookie = await organizerCookie();
+    const database = drizzle(env.DB);
+    const email = "already-confirmed-invite@example.com";
+    await signUp("Already Confirmed", email);
+    await confirmAddress(email);
+    const userId = await userIdFor(email);
+
+    const trackIds = (await database.select({ id: tracks.id }).from(tracks).where(eq(tracks.eventId, eventId)))
+      .map((track) => track.id).slice(0, 1);
+    const [openRound] = await database
+      .select({ id: reviewRounds.id })
+      .from(reviewRounds)
+      .where(and(eq(reviewRounds.eventId, eventId), eq(reviewRounds.status, "open")));
+
+    const created = await invite(cookie, email, { trackIds, roundIds: [openRound!.id] });
+    expect(created.status).toBe(201);
+    await expect(created.json()).resolves.toMatchObject({
+      accountStatus: "confirmed",
+      upgraded: true,
+      grantedReviewerRole: true,
+      account: { userId, name: "Already Confirmed" },
+      appliedRemit: { trackIds, roundIds: [openRound!.id] },
+    });
+
+    // The remit the organizer chose is the remit that landed.
+    expect(await tracksForReviewer(userId, eventId)).toEqual(trackIds);
+    const pool = await database
+      .select({ roundId: reviewerRoundPools.roundId })
+      .from(reviewerRoundPools)
+      .where(eq(reviewerRoundPools.reviewerUserId, userId));
+    expect(pool.map((row) => row.roundId)).toContain(openRound!.id);
+    const [grant] = await database
+      .select({ role: roleGrants.role, source: roleGrants.source })
+      .from(roleGrants)
+      .where(eq(roleGrants.userId, userId));
+    expect(grant).toMatchObject({ role: "reviewer", source: "reviewer_invite" });
+    const [stored] = await database
+      .select({ redeemedAt: reviewerInvites.redeemedAt, redeemedByUserId: reviewerInvites.redeemedByUserId })
+      .from(reviewerInvites)
+      .where(eq(reviewerInvites.email, email));
+    expect(stored?.redeemedAt).not.toBeNull();
+    expect(stored?.redeemedByUserId).toBe(userId);
+
+    // The upgraded reviewer's queue opens with work in it.
+    const reviewerCookie = await signIn(email, "Greenroom!2027");
+    const queue = await request("/api/review/queue", { headers: { cookie: reviewerCookie } });
+    expect(queue.status).toBe(200);
+    expect((await queue.json<{ items: unknown[] }>()).items.length).toBeGreaterThan(0);
+  });
+
+  it("extends an existing reviewer's remit rather than granting them reviewer access again", async () => {
+    await request("/api/health");
+    const cookie = await organizerCookie();
+    const second = await seedSecondEvent();
+    const database = drizzle(env.DB);
+    // The seeded reviewer already reviews the fixture event; the second event is the new one.
+    // A reviewer onboarded through an invitation is confirmed by construction - redemption only
+    // runs after the address is proved - so confirm the fixture identity the same way.
+    await confirmAddress("sbek-reviewer@example.com");
+    const reviewerId = await userIdFor("sbek-reviewer@example.com");
+    const grantsBefore = await database
+      .select({ id: roleGrants.id })
+      .from(roleGrants)
+      .where(and(eq(roleGrants.userId, reviewerId), eq(roleGrants.role, "reviewer")));
+
+    const created = await invite(
+      cookie,
+      "sbek-reviewer@example.com",
+      { trackIds: [second.trackId], roundIds: [second.roundId] },
+      second.eventId,
+    );
+    expect(created.status).toBe(201);
+    await expect(created.json()).resolves.toMatchObject({
+      accountStatus: "confirmed",
+      upgraded: true,
+      // The copy distinction the organizer reads: not a fresh grant, a wider remit.
+      grantedReviewerRole: false,
+    });
+
+    expect(await tracksForReviewer(reviewerId, second.eventId)).toEqual([second.trackId]);
+    const grantsAfter = await database
+      .select({ id: roleGrants.id })
+      .from(roleGrants)
+      .where(and(eq(roleGrants.userId, reviewerId), eq(roleGrants.role, "reviewer")));
+    expect(grantsAfter).toHaveLength(grantsBefore.length);
+  });
+
+  it("keeps a confirmed account's invitation open when no remit was named, then upgrades it on request", async () => {
+    await request("/api/health");
+    const cookie = await organizerCookie();
+    const email = "confirmed-no-remit@example.com";
+    await signUp("Confirmed No Remit", email);
+    await confirmAddress(email);
+    const userId = await userIdFor(email);
+
+    const created = await invite(cookie, email);
+    expect(created.status).toBe(201);
+    const payload = await created.json<{ invite: { id: string }; accountStatus: string; upgraded: boolean }>();
+    expect(payload).toMatchObject({ accountStatus: "confirmed", upgraded: false });
+
+    // No silent default upgrade: nothing was granted and the invitation still stands.
+    expect(
+      await drizzle(env.DB).select().from(roleGrants).where(eq(roleGrants.userId, userId)),
+    ).toEqual([]);
+    const [stored] = await drizzle(env.DB)
+      .select({ redeemedAt: reviewerInvites.redeemedAt })
+      .from(reviewerInvites)
+      .where(eq(reviewerInvites.email, email));
+    expect(stored?.redeemedAt).toBeNull();
+
+    // The open-invite list says what state this is in, so the organizer is never stuck.
+    const listed = await loadPeople(cookie);
+    expect(listed.invites.find((row) => row.email === email)).toMatchObject({ accountStatus: "confirmed" });
+
+    const trackIds = (await drizzle(env.DB)
+      .select({ id: tracks.id })
+      .from(tracks)
+      .where(eq(tracks.eventId, eventId)))
+      .map((track) => track.id).slice(0, 2);
+    const [openRound] = await drizzle(env.DB)
+      .select({ id: reviewRounds.id })
+      .from(reviewRounds)
+      .where(and(eq(reviewRounds.eventId, eventId), eq(reviewRounds.status, "open")));
+    const upgraded = await request(`/api/events/${eventId}/reviewer-invites/${payload.invite.id}/upgrade`, {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ trackIds, roundIds: [openRound!.id] }),
+    });
+    expect(upgraded.status).toBe(200);
+    await expect(upgraded.json()).resolves.toMatchObject({
+      grantedReviewerRole: true,
+      appliedRemit: { trackIds, roundIds: [openRound!.id] },
+    });
+    expect(await tracksForReviewer(userId, eventId)).toEqual(trackIds);
+
+    // The stored remit is the chosen one, and the invitation is spent.
+    expect(await remitOf(email)).toMatchObject({ trackIds, roundIds: [openRound!.id] });
+    const [after] = await drizzle(env.DB)
+      .select({ redeemedAt: reviewerInvites.redeemedAt })
+      .from(reviewerInvites)
+      .where(eq(reviewerInvites.email, email));
+    expect(after?.redeemedAt).not.toBeNull();
+  });
+
+  it("leaves an unconfirmed account's invitation to the confirmation path", async () => {
+    await request("/api/health");
+    const cookie = await organizerCookie();
+    const email = "unconfirmed-invite-door@example.com";
+    await signUp("Unconfirmed Invite", email);
+    const userId = await userIdFor(email);
+
+    const created = await invite(cookie, email, { trackIds: [], roundIds: ["rnd_initial_review"] });
+    expect(created.status).toBe(201);
+    await expect(created.json()).resolves.toMatchObject({ accountStatus: "unconfirmed", upgraded: false });
+    expect(
+      await drizzle(env.DB).select().from(roleGrants).where(eq(roleGrants.userId, userId)),
+    ).toEqual([]);
+
+    const listed = await loadPeople(cookie);
+    expect(listed.invites.find((row) => row.email === email)).toMatchObject({ accountStatus: "unconfirmed" });
+
+    // And confirmation still redeems it, through the same hook as a brand-new sign-up.
+    await confirmAddress(email);
+    expect(
+      await redeemReviewerInvites(drizzle(env.DB), { id: userId, email, emailVerified: true }),
+    ).toHaveLength(1);
   });
 });

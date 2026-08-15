@@ -7,6 +7,7 @@ import { createMiddleware } from "hono/factory";
 import {
   authAccounts,
   emailDispatches,
+  events,
   type GrantableRole,
   grantableRoles,
   people,
@@ -29,9 +30,15 @@ import type { EmailDeliveryResult } from "../email.ts";
 import {
   reviewerInvitationTemplateKey,
   sendReviewerInvitationEmail,
+  type InvitedAccountStatus,
 } from "../email/reviewer-invitation.ts";
 import { sendRoleGrantEmail } from "../email/role-grant.ts";
-import { applyReviewerRemit, normalizeInviteEmail } from "../reviewer-invites.ts";
+import {
+  applyReviewerRemit,
+  normalizeInviteEmail,
+  redeemInviteForAccount,
+  redeemReviewerInvites,
+} from "../reviewer-invites.ts";
 import { grantRole, hasLiveGrant, listLiveGrants, revokeRole } from "../roles.ts";
 
 type PeopleEnvironment = {
@@ -131,41 +138,6 @@ function invitationDeliveryResponse(
   return { emailDelivery: "sent" };
 }
 
-/**
- * An invitation is redeemed only by confirming the address, so an address whose account has
- * already confirmed has no redemption left to make. The organizer is told that rather than
- * being handed an invitation that can never become access.
- */
-async function confirmedAccountFor(
-  database: ReturnType<typeof drizzle>,
-  email: string,
-): Promise<{ id: string; name: string } | undefined> {
-  const [account] = await database
-    .select({ id: users.id, name: users.name })
-    .from(users)
-    .where(and(sql`lower(${users.email}) = ${email}`, eq(users.emailVerified, true)));
-  return account;
-}
-
-/**
- * Names the door that is actually open, and every step behind it. A reviewer onboarded by an
- * earlier invitation is a confirmed account that already holds the grant, and People offers no
- * second grant for it, so for them the only step left is this event's remit, which Committee
- * setup owns. An account without the grant needs the grant first and then that same remit: the
- * grant carries a remit of its own, but a grant is platform-wide while a queue is per event, so
- * naming the grant alone can leave a reviewer with access and nothing to read.
- */
-function confirmedAddressRefusalNote(accountName: string, holdsReviewer: boolean): string {
-  if (holdsReviewer) {
-    return `${accountName} already has reviewer access and has confirmed this address, so there is `
-      + "no invitation left to redeem. Give them this event's tracks and a review round on "
-      + "Committee setup to put its proposals in their queue.";
-  }
-  return `${accountName} has already confirmed this address, so an invitation has nothing left to `
-    + "redeem. Grant reviewer access on their account, then give them this event's remit on "
-    + "Committee setup. Tracks and a review round must both be chosen, or their queue stays empty.";
-}
-
 const requireOrganizer = createMiddleware<PeopleEnvironment>(async (context, next) => {
   const roles = context.get("roles");
   if (roles === null) {
@@ -209,6 +181,63 @@ function readReviewerRemit(value: unknown): ReviewerRemitInput | null {
     trackIds: [...new Set(remit.trackIds)],
     roundIds: [...new Set(remit.roundIds)],
   };
+}
+
+interface InvitedAccount {
+  userId: string;
+  name: string;
+  emailVerified: boolean;
+}
+
+/**
+ * The account an invited address already belongs to, if any. Better Auth stores addresses
+ * lower-case and invitations normalize them, but the comparison stays case-insensitive so a
+ * legacy mixed-case account is still found rather than silently re-invited as new.
+ */
+async function invitedAccountFor(
+  database: ReturnType<typeof drizzle>,
+  email: string,
+): Promise<InvitedAccount | null> {
+  const [account] = await database
+    .select({ userId: users.id, name: users.name, emailVerified: users.emailVerified })
+    .from(users)
+    .where(sql`lower(${users.email}) = ${email}`);
+  return account ?? null;
+}
+
+function accountStatusFor(account: { emailVerified: boolean } | null): InvitedAccountStatus {
+  if (account === null) {
+    return "none";
+  }
+  return account.emailVerified ? "confirmed" : "unconfirmed";
+}
+
+/**
+ * Validates that every id an organizer named belongs to this event - tracks to the event's
+ * taxonomy, rounds to its open rounds, exactly as the People grant door demands. An
+ * invitation's stored remit is what redemption applies, so it may not carry an id that reads
+ * nothing once it lands.
+ */
+async function validateExplicitRemit(
+  database: ReturnType<typeof drizzle>,
+  input: { eventId: string; trackIds: string[]; roundIds: string[] },
+): Promise<{ error: "invalid_reviewer_tracks" | "invalid_reviewer_rounds" } | null> {
+  const [availableTracks, openRounds] = await Promise.all([
+    database.select({ id: tracks.id }).from(tracks).where(eq(tracks.eventId, input.eventId)),
+    database
+      .select({ id: reviewRounds.id })
+      .from(reviewRounds)
+      .where(and(eq(reviewRounds.eventId, input.eventId), eq(reviewRounds.status, "open"))),
+  ]);
+  const availableTrackIds = new Set(availableTracks.map((track) => track.id));
+  if (input.trackIds.some((trackId) => !availableTrackIds.has(trackId))) {
+    return { error: "invalid_reviewer_tracks" };
+  }
+  const openRoundIds = new Set(openRounds.map((round) => round.id));
+  if (input.roundIds.some((roundId) => !openRoundIds.has(roundId))) {
+    return { error: "invalid_reviewer_rounds" };
+  }
+  return null;
 }
 
 /**
@@ -336,10 +365,24 @@ peopleRoutes.get("/api/people", requireOrganizer, async (context) => {
   const invitationDispatches = oldestOpenInvite === undefined
     ? []
     : await readReviewerInvitationDispatches(database, inviteEventIds, oldestOpenInvite.createdAt);
+  // Whether an invited address already has an account decides what the organizer can do with
+  // the open invitation: a confirmed account can be upgraded now, an unconfirmed one is
+  // waiting on its confirmation, and no account is waiting on a sign-up.
+  const inviteEmails = [...new Set(openInvites.map((invite) => invite.email))];
+  const inviteAccounts = inviteEmails.length === 0
+    ? []
+    : await database
+      .select({ email: users.email, emailVerified: users.emailVerified })
+      .from(users)
+      .where(inArray(sql`lower(${users.email})`, inviteEmails));
+  const inviteAccountByEmail = new Map(
+    inviteAccounts.map((account) => [normalizeInviteEmail(account.email), account]),
+  );
   return context.json({
     items,
     invites: openInvites.map((invite) => {
       const emailDelivery = reviewerInvitationDeliveryFor(invite, invitationDispatches);
+      const account = inviteAccountByEmail.get(invite.email) ?? null;
       return {
         id: invite.id,
         email: invite.email,
@@ -347,6 +390,7 @@ peopleRoutes.get("/api/people", requireOrganizer, async (context) => {
         createdAt: invite.createdAt.toISOString(),
         emailDelivery,
         canResend: emailDelivery !== "sent",
+        accountStatus: accountStatusFor(account),
       };
     }),
   });
@@ -457,19 +501,6 @@ peopleRoutes.post("/api/events/:eventId/reviewer-invites", requireOrganizer, asy
   const database = drizzle(context.env.DB);
   const email = normalizeInviteEmail(payload.email);
   const eventId = context.req.param("eventId");
-  const confirmedAccount = await confirmedAccountFor(database, email);
-  if (confirmedAccount !== undefined) {
-    const holdsReviewer = await hasLiveGrant(database, confirmedAccount.id, "reviewer");
-    return context.json(
-      {
-        error: "account_already_confirmed",
-        userId: confirmedAccount.id,
-        holdsReviewer,
-        note: confirmedAddressRefusalNote(confirmedAccount.name, holdsReviewer),
-      },
-      409,
-    );
-  }
   const [existing] = await database
     .select({ id: reviewerInvites.id, createdAt: reviewerInvites.createdAt })
     .from(reviewerInvites)
@@ -518,37 +549,101 @@ peopleRoutes.post("/api/events/:eventId/reviewer-invites", requireOrganizer, asy
       409,
     );
   }
-  const requestedRoundIds = Array.isArray(payload.roundIds)
+  const explicitTrackIds = Array.isArray(payload.trackIds)
+    ? payload.trackIds.filter((id): id is string => typeof id === "string")
+    : null;
+  const explicitRoundIds = Array.isArray(payload.roundIds)
     ? payload.roundIds.filter((id): id is string => typeof id === "string")
-    : [];
+    : null;
+  // A named remit is validated exactly as the People grant door validates one, because it is
+  // what redemption will apply - an id that reads nothing here must not reach an account later.
+  if (explicitTrackIds !== null || explicitRoundIds !== null) {
+    const invalid = await validateExplicitRemit(database, {
+      eventId,
+      trackIds: explicitTrackIds ?? [],
+      roundIds: explicitRoundIds ?? [],
+    });
+    if (invalid !== null) {
+      return context.json(invalid, 400);
+    }
+  }
+  const resolvedTrackIds = explicitTrackIds ?? eventTracks.map((track) => track.id);
+  const resolvedRoundIds = explicitRoundIds !== null && explicitRoundIds.length > 0
+    ? explicitRoundIds
+    : [defaultRound.id];
   const [invite] = await database
     .insert(reviewerInvites)
     .values({
       email,
       eventId,
-      trackIds: Array.isArray(payload.trackIds)
-        ? payload.trackIds.filter((id): id is string => typeof id === "string")
-        : eventTracks.map((track) => track.id),
-      roundIds: requestedRoundIds.length === 0 ? [defaultRound.id] : requestedRoundIds,
+      trackIds: resolvedTrackIds,
+      roundIds: resolvedRoundIds,
       invitedByUserId: organizer.id,
     })
     .returning({ id: reviewerInvites.id });
+
+  // An invited address that already has a confirmed account is a normal case, not an error:
+  // people sign up on their own before anyone invites them. Nothing will ever re-fire email
+  // verification for them, so the invitation can only become access through this door or
+  // through the emailed link's accept action.
+  const invitedAccount = await invitedAccountFor(database, email);
+  const accountStatus = accountStatusFor(invitedAccount);
+  // The organizer-side upgrade applies a remit the organizer explicitly named - the same rule
+  // the People grant door follows (#166) - never the silent default above. Without one, the
+  // invitation stays open and resolvable: the link opens it with the stored remit, and the
+  // upgrade route can still apply a chosen remit later.
+  const namedFullRemit = explicitTrackIds !== null && explicitRoundIds !== null && explicitRoundIds.length > 0;
+  let upgrade: {
+    account: { userId: string; name: string };
+    grantedReviewerRole: boolean;
+    appliedRemit: { trackIds: string[]; roundIds: string[] };
+  } | null = null;
+  if (invitedAccount !== null && invitedAccount.emailVerified && namedFullRemit) {
+    const alreadyReviewer = await hasLiveGrant(database, invitedAccount.userId, "reviewer");
+    await redeemInviteForAccount(
+      database,
+      {
+        id: invite!.id,
+        eventId,
+        trackIds: resolvedTrackIds,
+        roundIds: resolvedRoundIds,
+        invitedByUserId: organizer.id,
+      },
+      { id: invitedAccount.userId },
+    );
+    upgrade = {
+      account: { userId: invitedAccount.userId, name: invitedAccount.name },
+      grantedReviewerRole: !alreadyReviewer,
+      appliedRemit: { trackIds: resolvedTrackIds, roundIds: resolvedRoundIds },
+    };
+  }
   const delivery = await sendReviewerInvitationEmail({
     database,
     env: context.env,
     eventId: eventId as `evt_${string}`,
+    inviteId: invite!.id,
     recipientEmail: email,
+    accountStatus,
     createdByUserId: organizer.id,
   });
   if (delivery.status === "event_not_found") {
     return context.json({ error: "event_not_found" }, 404);
   }
+  const note = upgrade !== null
+    ? null
+    : accountStatus === "unconfirmed"
+    ? "An account already exists for this address, but it is not confirmed yet. The invitation opens reviewer access once that address is confirmed."
+    : accountStatus === "confirmed"
+    ? "That address already has a confirmed account. Open reviewer access now by naming a remit, or leave the invitation to open through its link."
+    : "The invitation becomes reviewer access only when this address is confirmed.";
   return context.json(
     {
       invite: { id: invite!.id, email, eventId },
       ...invitationDeliveryResponse(delivery),
-      // Said plainly so an organizer is never left believing an invitation is already access.
-      note: "The invitation becomes reviewer access only when this address is confirmed.",
+      accountStatus,
+      upgraded: upgrade !== null,
+      ...(upgrade !== null ? upgrade : {}),
+      ...(note === null ? {} : { note }),
     },
     201,
   );
@@ -581,11 +676,16 @@ peopleRoutes.post("/api/events/:eventId/reviewer-invites/:inviteId/resend", requ
   if (await deliveryForInvite(database, invite) === "sent") {
     return context.json({ error: "invitation_already_sent" }, 409);
   }
+  // The resend speaks to the address as it stands now, so the copy fits an account that may
+  // have appeared since the invitation was first recorded.
+  const accountStatus = accountStatusFor(await invitedAccountFor(database, invite.email));
   const delivery = await sendReviewerInvitationEmail({
     database,
     env: context.env,
     eventId: eventId as `evt_${string}`,
+    inviteId: invite.id,
     recipientEmail: invite.email,
+    accountStatus,
     createdByUserId: organizer.id,
   });
   if (delivery.status === "event_not_found") {
@@ -608,6 +708,158 @@ peopleRoutes.delete("/api/reviewer-invites/:inviteId", requireOrganizer, async (
     .where(and(eq(reviewerInvites.id, context.req.param("inviteId")), isNull(reviewerInvites.revokedAt)))
     .returning({ id: reviewerInvites.id });
   return revoked.length > 0 ? context.json({ revoked: true }) : context.json({ error: "not_found" }, 404);
+});
+
+/**
+ * Applies an organizer-chosen remit to an open invitation whose address already has a
+ * confirmed account, and redeems it for that account now. This is the completion of the
+ * invite-time upgrade when the organizer did not name a remit up front, and it follows the
+ * same rule the People grant door does (#166): an explicit remit with at least one open
+ * round, never a silent default. The remit is stored on the invitation before redemption, so
+ * what the account receives is what the organizer chose.
+ */
+peopleRoutes.post(
+  "/api/events/:eventId/reviewer-invites/:inviteId/upgrade",
+  requireOrganizer,
+  async (context) => {
+    const organizer = context.get("authUser");
+    if (organizer === null) {
+      return context.json({ error: "authentication_required" }, 401);
+    }
+    const payload = await context.req.json<{ trackIds?: unknown; roundIds?: unknown }>();
+    const trackIds = Array.isArray(payload.trackIds)
+      ? payload.trackIds.filter((id): id is string => typeof id === "string")
+      : null;
+    const roundIds = Array.isArray(payload.roundIds)
+      ? payload.roundIds.filter((id): id is string => typeof id === "string")
+      : null;
+    if (trackIds === null || roundIds === null || roundIds.length === 0) {
+      return context.json({ error: "reviewer_remit_required" }, 400);
+    }
+    const database = drizzle(context.env.DB);
+    const eventId = context.req.param("eventId");
+    const [invite] = await database
+      .select({
+        id: reviewerInvites.id,
+        email: reviewerInvites.email,
+        invitedByUserId: reviewerInvites.invitedByUserId,
+      })
+      .from(reviewerInvites)
+      .where(and(
+        eq(reviewerInvites.id, context.req.param("inviteId")),
+        eq(reviewerInvites.eventId, eventId),
+        isNull(reviewerInvites.redeemedAt),
+        isNull(reviewerInvites.revokedAt),
+      ));
+    if (invite === undefined) {
+      return context.json({ error: "invite_not_found" }, 404);
+    }
+    const invalid = await validateExplicitRemit(database, { eventId, trackIds, roundIds });
+    if (invalid !== null) {
+      return context.json(invalid, 400);
+    }
+    const invitedAccount = await invitedAccountFor(database, invite.email);
+    if (invitedAccount === null || !invitedAccount.emailVerified) {
+      // The invitation itself still stands: the link opens it once the address is confirmed.
+      return context.json(
+        { error: "account_not_confirmed", accountStatus: accountStatusFor(invitedAccount) },
+        409,
+      );
+    }
+    await database
+      .update(reviewerInvites)
+      .set({ trackIds, roundIds })
+      .where(eq(reviewerInvites.id, invite.id));
+    const alreadyReviewer = await hasLiveGrant(database, invitedAccount.userId, "reviewer");
+    await redeemInviteForAccount(
+      database,
+      { ...invite, eventId, trackIds, roundIds },
+      { id: invitedAccount.userId },
+    );
+    return context.json({
+      invite: { id: invite.id, email: invite.email, eventId },
+      account: { userId: invitedAccount.userId, name: invitedAccount.name },
+      grantedReviewerRole: !alreadyReviewer,
+      appliedRemit: { trackIds, roundIds },
+    });
+  },
+);
+
+/**
+ * What the emailed link's page needs: whether the invitation is still open and which event it
+ * names. The invite id is the capability, so nothing here is secret beyond it - no address,
+ * no remit, no account state.
+ */
+peopleRoutes.get("/api/reviewer-invites/:inviteId", async (context) => {
+  const [invite] = await drizzle(context.env.DB)
+    .select({
+      eventId: reviewerInvites.eventId,
+      redeemedAt: reviewerInvites.redeemedAt,
+      revokedAt: reviewerInvites.revokedAt,
+      eventName: events.name,
+    })
+    .from(reviewerInvites)
+    .innerJoin(events, eq(reviewerInvites.eventId, events.id))
+    .where(eq(reviewerInvites.id, context.req.param("inviteId")));
+  if (invite === undefined) {
+    return context.json({ error: "invite_not_found" }, 404);
+  }
+  const status = invite.revokedAt !== null
+    ? "revoked"
+    : invite.redeemedAt !== null
+    ? "redeemed"
+    : "open";
+  return context.json({ status, event: { id: invite.eventId, name: invite.eventName } });
+});
+
+/**
+ * The emailed link's action for an account that already exists: the signed-in caller whose
+ * confirmed address is the invited one opens reviewer access now. This is the same proof the
+ * Better Auth hook relies on - the address is confirmed - observed from a live session rather
+ * than from a verification event, so an account that verified long before the invitation can
+ * still redeem it. Redeeming applies every open invitation for the address, exactly as a
+ * confirmation event would.
+ */
+peopleRoutes.post("/api/reviewer-invites/:inviteId/accept", async (context) => {
+  const caller = context.get("authUser");
+  if (caller === null) {
+    return context.json({ error: "authentication_required" }, 401);
+  }
+  const database = drizzle(context.env.DB);
+  const [invite] = await database
+    .select({
+      email: reviewerInvites.email,
+      redeemedAt: reviewerInvites.redeemedAt,
+      revokedAt: reviewerInvites.revokedAt,
+    })
+    .from(reviewerInvites)
+    .where(eq(reviewerInvites.id, context.req.param("inviteId")));
+  if (invite === undefined) {
+    return context.json({ error: "invite_not_found" }, 404);
+  }
+  if (invite.revokedAt !== null) {
+    return context.json({ error: "invite_revoked" }, 409);
+  }
+  if (invite.redeemedAt !== null) {
+    return context.json({ accepted: false, reason: "already_redeemed" });
+  }
+  // Read the account from the database rather than trusting the session's copy, so the
+  // confirmed-address check is the same one every redemption door applies.
+  const [account] = await database
+    .select({ id: users.id, email: users.email, emailVerified: users.emailVerified })
+    .from(users)
+    .where(eq(users.id, caller.id));
+  if (account === undefined) {
+    return context.json({ error: "authentication_required" }, 401);
+  }
+  if (normalizeInviteEmail(account.email) !== normalizeInviteEmail(invite.email)) {
+    return context.json({ error: "invite_email_mismatch" }, 403);
+  }
+  if (!account.emailVerified) {
+    return context.json({ error: "email_unconfirmed" }, 403);
+  }
+  const redeemed = await redeemReviewerInvites(database, account);
+  return context.json({ accepted: true, redeemed });
 });
 
 export default peopleRoutes;

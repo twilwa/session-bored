@@ -152,7 +152,13 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   the organizer names no remit: every event track and the first open round, and
   no open round refuses with `open_round_required`. An *explicitly* empty
   `trackIds` array means no tracks, never all of them. An invitation stores the
-  resolved ids, so redemption opens a queue with work in it.
+  resolved ids, so redemption opens a queue with work in it. That default is
+  for the *invitee's* redemption only: when an invited address already has a
+  confirmed account, the organizer-side upgrade (invite-time with a named
+  remit, or `POST .../reviewer-invites/:inviteId/upgrade` afterwards) applies a
+  remit the organizer explicitly named - the People grant door's rule (#166),
+  never the silent default - and reports `grantedReviewerRole: false` when the
+  person was already a reviewer, because what extended was their remit.
   `PATCH /review/events/:eventId/reviewers/:reviewerUserId` replaces that remit
   in both directions, so narrowing takes effect on the reviewer's next read. It
   reports `retainedAssignments` because an explicit assignment still grants
@@ -305,11 +311,19 @@ longer projects it into the session at all.
   *Programmed* counts a submission-backed session only while its submission is
   still accepted, and a directly entered session (no `submission_id`) always.
   Granting is attributed and silent; the notify checkbox defaults to off.
-- **A reviewer invitation is redeemed only by confirming the address.** Signing
-  up as an invited address grants nothing. `worker/reviewer-invites.ts#redeemReviewerInvites`
-  runs from Better Auth's `afterEmailVerification` and nowhere else; redeeming at
-  sign-up would hand reviewer access to anyone who guessed an invited address.
-  `tests/integration/account-access.test.ts` runs that exact attack - keep it.
+- **A reviewer invitation is redeemed only by a proved address, never by signing
+  up as one.** Signing up as an invited address grants nothing. Redemption has
+  three doors and one proof. `worker/reviewer-invites.ts#redeemInviteForAccount`
+  is the single redemption writer, and its callers are: Better Auth's
+  `afterEmailVerification`; the emailed link's accept action
+  (`POST /api/reviewer-invites/:inviteId/accept` in `worker/routes/people.ts`,
+  which requires a signed-in account whose confirmed address is the invited
+  one, because an account that verified long ago never re-fires verification);
+  and an organizer upgrading an already-confirmed account at invite time or
+  through the upgrade route. The emailed link is one URL for every path -
+  `/invitations/:inviteId` - never a second signup-only link.
+  `tests/integration/account-access.test.ts` runs the guessed-address attack -
+  keep it.
 - `emailVerification.sendOnSignUp` is on and never blocks signing in. Account
   mail carries `eventId: "platform"` and goes straight to the delivery rather
   than `sendTrackedEmail`, because `email_dispatch.event_id` references a real

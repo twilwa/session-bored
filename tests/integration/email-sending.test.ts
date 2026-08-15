@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { env } from "cloudflare:workers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { decisionNotices, emailDispatches, people, sessions, speakers, submissions, tasks, taskAssignees } from "../../db/schema.ts";
+import { decisionNotices, emailDispatches, people, sessions, speakers, submissions, tasks, taskAssignees, users } from "../../db/schema.ts";
 import type { EmailDelivery, EmailDeliveryResult } from "../../worker/email.ts";
 import { dispatchDecisionNoticeEmails, retryDecisionNotice } from "../../worker/email/decision-notices.ts";
 import { sendQueuedDispatch } from "../../worker/email/dispatch-queue.ts";
@@ -557,7 +557,9 @@ describe("reviewer invitation dispatch", () => {
       to: [recipientEmail],
       from: senderSecrets.RESEND_FROM_ADDRESS,
     });
-    expect(resend.calls[0]?.text).toContain(`/signup?email=${encodeURIComponent(recipientEmail)}`);
+    expect(resend.calls[0]?.text).toContain(`/invitations/`);
+    expect(resend.calls[0]?.text).toContain(`email=${encodeURIComponent(recipientEmail)}`);
+    expect(resend.calls[0]?.text).toContain("Create your Greenroom account using this email address");
     expect(await readInvitationDispatches(recipientEmail)).toContainEqual(expect.objectContaining({
       status: "sent",
       templateKey: "reviewer_invitation",
@@ -586,6 +588,34 @@ describe("reviewer invitation dispatch", () => {
     expect(resent.status).toBe(409);
     await expect(resent.json()).resolves.toMatchObject({ error: "invitation_already_sent" });
     expect(resend.calls).toHaveLength(1);
+  });
+
+  it("tells a confirmed account that reviewer access is already open, with the same link", async () => {
+    const recipientEmail = `reviewer-invite-existing-${crypto.randomUUID()}@greenroom-mail.dev`;
+    await request("/api/auth/sign-up/email", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Existing Confirmed", email: recipientEmail, password: "Greenroom!2027" }),
+    });
+    await drizzle(env.DB).update(users).set({ emailVerified: true }).where(eq(users.email, recipientEmail));
+
+    const resend = interceptResend({ ok: true, id: "resend_reviewer_invitation_existing" });
+    const response = await requestWithSenderConnected(`/api/events/${eventId}/reviewer-invites`, {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({
+        email: recipientEmail,
+        trackIds: ["trk_platform_infra"],
+        roundIds: ["rnd_initial_review"],
+      }),
+    });
+
+    expect(response.status).toBe(201);
+    const payload = await response.json<{ invite: { id: string }; accountStatus: string; upgraded: boolean }>();
+    expect(payload).toMatchObject({ accountStatus: "confirmed", upgraded: true });
+    // The same one link serves every path; only the copy around it changes.
+    expect(resend.calls[0]?.text).toContain(`/invitations/${payload.invite.id}`);
+    expect(resend.calls[0]?.text).toContain("Reviewer access is already open with your existing account");
   });
 
   it("resends a failed open invitation through tracked delivery", async () => {

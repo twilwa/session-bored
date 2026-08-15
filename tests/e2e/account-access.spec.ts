@@ -6,6 +6,14 @@ function uniqueEmail(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1e6)}@example.com`;
 }
 
+/** Opens the header's collapsed navigation on phone-width projects, as app-shell.spec.ts does. */
+async function openMobileNavigation(page: import("@playwright/test").Page): Promise<void> {
+  const menuButton = page.locator(".public-header__menu");
+  if (await menuButton.isVisible()) {
+    await menuButton.click();
+  }
+}
+
 async function signUp(page: import("@playwright/test").Page, name: string, email: string): Promise<void> {
   await page.goto("/signup");
   await page.getByLabel("Name").fill(name);
@@ -119,7 +127,7 @@ test("an invitation is recorded as pending, not as access", async ({ page }) => 
   await expect(page.locator(".toast")).toContainText("no email sender is connected");
   const invite = page.locator(".people-invite-list li").filter({ hasText: invited });
   await expect(invite).toBeVisible();
-  await expect(invite.getByText("waiting on confirmation")).toBeVisible();
+  await expect(invite.getByText("waiting on sign-up")).toBeVisible();
   await expect(invite.getByText("email not sent")).toBeVisible();
 
   const resendResponse = page.waitForResponse((response) =>
@@ -160,9 +168,9 @@ test("a slow invitation send cannot be fired twice by an impatient organizer", a
     await route.continue();
   });
 
-  const invited = uniqueEmail("slow-invite");
+  const slowInvited = uniqueEmail("slow-invite");
   await page.goto("/organizer/people");
-  await page.getByLabel("Invite a reviewer by email").fill(invited);
+  await page.getByLabel("Invite a reviewer by email").fill(slowInvited);
   const send = page.getByRole("button", { name: "Send invitation", exact: true });
   await send.click();
 
@@ -174,7 +182,109 @@ test("a slow invitation send cannot be fired twice by an impatient organizer", a
   release();
   await expect(page.locator(".toast")).toContainText("no email sender is connected");
   expect(attempts).toBe(1);
-  await expect(page.locator(".people-invite-list li").filter({ hasText: invited })).toHaveCount(1);
+  await expect(page.locator(".people-invite-list li").filter({ hasText: slowInvited })).toHaveCount(1);
+});
+
+test("an invitation to an address that already has an account says so honestly", async ({ page }) => {
+  const email = uniqueEmail("existing-account");
+  await signUp(page, "Existing Account", email);
+  await expect(page).toHaveURL(/\/schedule\/mine$/);
+  await page.request.post("/api/auth/sign-out", { data: {} });
+
+  await page.goto("/login");
+  await page.getByLabel("Email").fill("sbek-organizer@example.com");
+  await page.getByLabel("Password").fill("SbekTest!2027-org");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page).toHaveURL(/\/organizer$/);
+
+  await page.goto("/organizer/people");
+  await page.getByLabel("Invite a reviewer by email").fill(email);
+  await page.getByRole("button", { name: "Send invitation", exact: true }).click();
+
+  await expect(page.locator(".toast")).toContainText(
+    "An account already exists for",
+  );
+  await expect(page.locator(".toast")).toContainText("its address is not confirmed yet");
+  const invite = page.locator(".people-invite-list li").filter({ hasText: email });
+  await expect(invite).toBeVisible();
+  // The address is unconfirmed, so there is no reviewer access to open yet.
+  await expect(invite.getByText("account exists, address unconfirmed")).toBeVisible();
+  await expect(invite.getByRole("button", { name: "Open reviewer access" })).toHaveCount(0);
+});
+
+test("the invitation link page greets a signed-out visitor with both paths", async ({ page }) => {
+  await page.goto("/login");
+  await page.getByLabel("Email").fill("sbek-organizer@example.com");
+  await page.getByLabel("Password").fill("SbekTest!2027-org");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page).toHaveURL(/\/organizer$/);
+
+  const invited = uniqueEmail("link-visitor");
+  const created = await page.request.post("/api/events/evt_devflow_conf_2027/reviewer-invites", {
+    data: { email: invited },
+  });
+  expect(created.status()).toBe(201);
+  const inviteId = (await created.json()).invite.id as string;
+
+  // A signed-in account that is not the invited address is told so, and offered nothing.
+  await page.goto(`/invitations/${inviteId}?email=${encodeURIComponent(invited)}`);
+  await expect(page.getByText(`This invitation was sent to ${invited}`)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open reviewer access" })).toHaveCount(0);
+
+  await openMobileNavigation(page);
+  await page.getByRole("button", { name: "Sign out" }).click();
+  // The invitation page stays put on sign-out, so wait for the header to become signed-out.
+  await expect(page.getByRole("banner").getByRole("link", { name: "Sign in" })).toBeVisible();
+
+  await page.goto(`/invitations/${inviteId}?email=${encodeURIComponent(invited)}`);
+  await expect(page.getByRole("heading", { name: /review committee/i })).toBeVisible();
+  await expect(page.getByText("You've been invited to review proposals for DevFlow Conf 2027")).toBeVisible();
+  const create = page.getByRole("link", { name: "Create your account" });
+  await expect(create).toBeVisible();
+  await expect(create).toHaveAttribute("href", `/signup?email=${encodeURIComponent(invited)}`);
+  await expect(page.getByRole("main").getByRole("link", { name: "Sign in", exact: true })).toBeVisible();
+
+  // A withdrawn invitation tells the truth instead of offering an accept.
+  await page.goto("/login");
+  await page.getByLabel("Email").fill("sbek-organizer@example.com");
+  await page.getByLabel("Password").fill("SbekTest!2027-org");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page).toHaveURL(/\/organizer$/);
+  const withdrawn = await page.request.delete(`/api/reviewer-invites/${inviteId}`);
+  expect(withdrawn.ok()).toBe(true);
+  await openMobileNavigation(page);
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await expect(page.getByRole("banner").getByRole("link", { name: "Sign in" })).toBeVisible();
+  await page.goto(`/invitations/${inviteId}?email=${encodeURIComponent(invited)}`);
+  await expect(page.getByText("This invitation was withdrawn by the organizer.")).toBeVisible();
+});
+
+test("the invitation link page tells a signed-in unconfirmed account to confirm first", async ({ page }) => {
+  await page.goto("/login");
+  await page.getByLabel("Email").fill("sbek-organizer@example.com");
+  await page.getByLabel("Password").fill("SbekTest!2027-org");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page).toHaveURL(/\/organizer$/);
+
+  const invited = uniqueEmail("link-unconfirmed");
+  const created = await page.request.post("/api/events/evt_devflow_conf_2027/reviewer-invites", {
+    data: { email: invited },
+  });
+  expect(created.status()).toBe(201);
+  const inviteId = (await created.json()).invite.id as string;
+  await openMobileNavigation(page);
+  await page.getByRole("button", { name: "Sign out" }).click();
+
+  // The invited person already signed up but never confirmed the address - the exact
+  // account an emailed link used to strand, because nothing re-fires verification.
+  await signUp(page, "Link Unconfirmed", invited);
+  await expect(page).toHaveURL(/\/schedule\/mine$/);
+  await page.goto(`/invitations/${inviteId}?email=${encodeURIComponent(invited)}`);
+
+  await expect(page.getByText("Confirm your address to open reviewer access")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open reviewer access" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Resend confirmation email" }).click();
+  await expect(page.locator(".toast")).toContainText("Confirmation email sent");
 });
 
 test("an account granted two areas can reach both of them from the header", async ({ page }) => {
