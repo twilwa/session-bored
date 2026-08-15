@@ -511,6 +511,8 @@ export interface SubmissionParticipantsPayload {
   sessionPublishedAt: number | null;
   /** Whether the session is on the public site now, so a pending place has a republish to wait for. */
   sessionPubliclyLive: boolean;
+  /** Whether a held place also needs the session's content approved again before publishing can run. */
+  sessionAwaitingContentApproval: boolean;
   sessionTitle: string | null;
   participants: SubmissionParticipantSummary[];
   removal?: ParticipantRemovalOutcome;
@@ -674,6 +676,14 @@ export interface AgendaPublishSkip extends AgendaPublishSession {
   reasons: AgendaPublishSkipReason[];
 }
 
+/** A participant this publish took off a publication hold, and so put on the public site. */
+export interface AgendaPublishRelease {
+  sessionId: `ses_${string}`;
+  sessionTitle: string;
+  speakerId: `spk_${string}`;
+  name: string;
+}
+
 export interface AgendaPublishResult {
   status: "published";
   publishedAt: number;
@@ -682,6 +692,7 @@ export interface AgendaPublishResult {
   alreadyPublicCount: number;
   published: AgendaPublishSession[];
   skipped: AgendaPublishSkip[];
+  releasedParticipants: AgendaPublishRelease[];
   message: string;
   notes: string[];
 }

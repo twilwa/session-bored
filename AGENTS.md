@@ -108,36 +108,40 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   proposal through the CFP edit never carries them onto its session, so a session
   the person never reached was never theirs to lose; and an `approved` session is
   read-only to the speakers who are on it.
-  `PUBLIC_SPEAKER_STATUSES` in `worker/public-queries.ts` is the one rule for
-  whether an event speaker is publicly listed, and the outcome's
-  `listedPublicly` reads it; read it rather than restating the statuses.
-  `session_speaker.published_at` separately records that an explicit agenda
-  publish included that link. A new participant added after publication stays
-  `invited`, and therefore off the public directory, until republish stamps the
-  link and starts onboarding; an already-public event speaker stays public while
-  their new session participation is pending, so adding them does not make the
-  public site lose information either. That hold is decided inside
-  `attachParticipant`, from the session's `published_at` and the participant's
-  own link, never by the caller: only a live link the last publish already
-  stamped escapes it, so acceptance, a *repeated* acceptance, and a late
-  organizer addition all resolve it identically, and re-applying `accepted`
-  cannot promote somebody the organizer has not published yet. Publish stamps
-  only the links still waiting, so the column keeps recording when a participant
-  first became public, and it skips an archived speaker's link because the agenda
-  never counted that link as pending - stamping it would hand them the public
-  lineup the day the roster restores them, with no republish. It then promotes
-  only the speakers it took **off a hold**: a hold is placed on an
-  already-published session, so a first publish releases nobody, and `invited`
-  there is a workflow status an organizer set by hand on the roster, not this
-  route's to overrule. A participant is offered as pending only while their
-  speaker row is live and only for a session that has been published and is
-  still on the programme (`PROGRAMME_SESSION_GATE`, beside `PUBLIC_SESSION_GATE`);
-  where publication has gone stale because content approval lapsed
-  (`isPubliclyLiveSession` is false), the roster names approving the content
-  first rather than offering a republish that would skip the session. The
-  agenda's own "Republish agenda" count stays on publicly-live sessions for the
-  same reason. The proposal panel reads the payload's `sessionPubliclyLive`
-  rather than `published_at` alone. A collaborator is named, not
+  **Publication is the session's fact, and `session_speaker.publication_hold_at`
+  is its one per-link exception.** A participation is public when its session is
+  public, the link is live, and it carries no hold; nothing stores a link's own
+  publication, so no link can read as published on the strength of a publish that
+  happened before the person was removed. **Exactly two doors write the column.**
+  `attachParticipant` takes the hold - joining an already-published session
+  (`sessions.published_at`) holds the newcomer - and writes it on every create and
+  restore so a restored link never inherits the answer it had before it was
+  archived. It leaves a live link's hold alone, so a repeat acceptance or a
+  role-label edit neither re-holds a public participation nor frees a held one.
+  The agenda publish is the only door that clears it, and it names everybody it
+  released in `AgendaPublishResult.releasedParticipants` and in `notes` - an
+  archived speaker's hold stands, because the agenda never showed it as pending.
+  **Publish writes nothing to `speaker.status`**: whether somebody has agreed to
+  present belongs to the roster, and an agenda action deciding it for them is how
+  a deliberately parked speaker used to get published. That also means a roster
+  workflow edit can neither take nor release a hold.
+  Because a hold belongs to the participation, every affordance reports it in
+  whatever state the session is - `pendingSpeakerCount`, the panel's
+  `publicationPending`, and the roster's `pendingPublicationSessions` all read the
+  column and never `sessions.published_at`, so a re-placement cannot silently turn
+  a signposted hold into an unannounced release. Where publication has gone stale
+  because content approval lapsed (`isPubliclyLiveSession` is false), the roster
+  names approving the content first rather than offering a republish that would
+  skip the session.
+  A speaker is publicly listed only when a `PUBLIC_SPEAKER_STATUSES` status meets
+  a participation the public may see: live, unheld, on a session organizers have
+  approved. Both halves live in `PUBLIC_SPEAKER_GATE` in
+  `worker/public-queries.ts`, `listedPublicly` and the name search read the same
+  rule, and a speaker with no approved credit is not listed - so removing somebody
+  from their only session takes their directory entry with it while their event
+  `speaker` row, and the roster's power to withdraw it, stand. An already-public
+  event speaker stays public while a *new* session participation is pending, so
+  adding them loses the public site no information. A collaborator is named, not
   admitted: naming somebody mints no author key, grants no dashboard, and never
   overwrites the profile an existing person already has.
 - A sessionless task with no `task_scope` row is an event-wide onboarding

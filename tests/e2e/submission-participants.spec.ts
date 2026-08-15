@@ -136,11 +136,13 @@ test("a panel names its participants, the program team amends them, and acceptan
   expect(publishedSessionId).toMatch(/^ses_/);
 
   await page.goto("/speakers");
-  // Removal leaves the event-speaker row standing; the roster owns withdrawal, so this person
-  // remains in the directory even though their session link was removed before publication.
-  for (const name of ["Rosa Okonkwo", "Dev Malhotra", "Ines Brenner", "Late Addition"]) {
+  // The approved panel is the directory's evidence, so the three people still on it are listed.
+  for (const name of ["Rosa Okonkwo", "Dev Malhotra", "Ines Brenner"]) {
     await expect(page.getByText(name, { exact: true }).first()).toBeVisible();
   }
+  // Removal leaves the event-speaker row standing - the roster owns withdrawal, and the removal
+  // notice said so - but the directory speaks for the programme, and this person is no longer on it.
+  await expect(page.getByText("Late Addition", { exact: true })).toHaveCount(0);
 
   // This spec adds real people and one session to the shared fixture event, so it withdraws the
   // people through the organizer's own roster action, takes the session back off the schedule -

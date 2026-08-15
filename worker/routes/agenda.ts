@@ -1,6 +1,6 @@
 // ABOUTME: Reads, approves, places, and publishes accepted sessions on an event agenda.
 // ABOUTME: Recomputes speaker and room conflicts after every non-blocking scheduling change.
-import { and, asc, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { Hono } from "hono";
 import { createMiddleware } from "hono/factory";
@@ -17,10 +17,10 @@ import {
   type Role,
 } from "../../db/schema.ts";
 import { holdsAccess } from "../access.ts";
-import { isPubliclyLiveSession } from "../public-queries.ts";
 import type {
   AgendaConflict,
   AgendaPlacement,
+  AgendaPublishRelease,
   AgendaPublishResult,
   AgendaPublishSkip,
   AgendaPublishSkipReason,
@@ -186,7 +186,7 @@ async function readAgenda(binding: D1Database, eventId: string): Promise<AgendaS
         sessionId: sessionSpeakers.sessionId,
         speakerId: speakers.id,
         name: people.name,
-        publishedAt: sessionSpeakers.publishedAt,
+        publicationHoldAt: sessionSpeakers.publicationHoldAt,
       })
       .from(sessionSpeakers)
       .innerJoin(speakers, eq(sessionSpeakers.speakerId, speakers.id))
@@ -206,7 +206,7 @@ async function readAgenda(binding: D1Database, eventId: string): Promise<AgendaS
     const sessionParticipants = speakersBySession.get(speaker.sessionId) ?? [];
     sessionParticipants.push({ id: speaker.speakerId, name: speaker.name });
     speakersBySession.set(speaker.sessionId, sessionParticipants);
-    if (speaker.publishedAt === null) {
+    if (speaker.publicationHoldAt !== null) {
       pendingSpeakersBySession.set(speaker.sessionId, (pendingSpeakersBySession.get(speaker.sessionId) ?? 0) + 1);
     }
   }
@@ -226,7 +226,7 @@ async function readAgenda(binding: D1Database, eventId: string): Promise<AgendaS
     startsAt: session.startsAt?.getTime() ?? null,
     endsAt: session.endsAt?.getTime() ?? null,
     publishedAt: session.publishedAt?.getTime() ?? null,
-    pendingSpeakerCount: isPubliclyLiveSession(session) ? (pendingSpeakersBySession.get(session.id) ?? 0) : 0,
+    pendingSpeakerCount: pendingSpeakersBySession.get(session.id) ?? 0,
     durationMinutes: session.durationMinutes ?? 30,
     track: session.trackId === null || session.trackName === null
       ? null
@@ -402,20 +402,33 @@ function countLabel(count: number): string {
   return `${count} ${count === 1 ? "session" : "sessions"}`;
 }
 
+// Nobody becomes public without the organizer reading their name here.
+function releaseNote(released: AgendaPublishRelease[]): string {
+  const names = released.map((participant) => participant.name).join(", ");
+  return released.length === 1
+    ? `Published ${names}, who was waiting for this.`
+    : `Published ${names}, who were waiting for this.`;
+}
+
 function publishMessage(
   newlyPublished: number,
   alreadyPublic: number,
   skipped: number,
+  released: number,
 ): string {
-  if (newlyPublished === 0 && alreadyPublic === 0) {
-    return skipped === 0
-      ? "Nothing to publish — the agenda has no sessions."
-      : `Nothing published — ${countLabel(skipped)} skipped.`;
-  }
   const parts: string[] = [];
   if (newlyPublished > 0) parts.push(`${countLabel(newlyPublished)} published`);
   if (alreadyPublic > 0) parts.push(`${countLabel(alreadyPublic)} already public`);
+  if (released > 0) {
+    parts.push(`${released} ${released === 1 ? "participant" : "participants"} released`);
+  }
   if (skipped > 0) parts.push(`${countLabel(skipped)} skipped`);
+  if (parts.length === 0) {
+    return "Nothing to publish — the agenda has no sessions.";
+  }
+  if (newlyPublished === 0 && alreadyPublic === 0 && released === 0) {
+    return `Nothing published — ${countLabel(skipped)} skipped.`;
+  }
   return `${parts.join(" · ")}.`;
 }
 
@@ -433,50 +446,50 @@ agendaRoutes.post("/api/events/:eventId/agenda/publish", async (context) => {
       title: session.title,
       reasons: publishSkipReasons(session),
     }));
-  const newlyPublishedCount = eligible.filter((session) =>
-    session.publishedAt === null || session.pendingSpeakerCount > 0
-  ).length;
+  const newlyPublishedCount = eligible.filter((session) => session.publishedAt === null).length;
   const alreadyPublicCount = eligible.length - newlyPublishedCount;
   const publishedAt = new Date();
+  const titleBySession = new Map(eligible.map((session) => [session.id as string, session.title]));
+  let released: AgendaPublishRelease[] = [];
   if (eligible.length > 0) {
     const database = drizzle(context.env.DB);
     await database
       .update(sessions)
       .set({ publishedAt })
       .where(inArray(sessions.id, eligible.map((session) => session.id)));
-    // Only the links still waiting are stamped, so the column keeps recording when a
-    // participant first became public, and what it returns is exactly who this publish reveals.
-    // An archived speaker is not one of them: the agenda never counted their link as pending,
-    // so stamping it here would hand them the public lineup the day somebody restores them.
-    const revealedLinks = await database
+    // Publishing a session is the one act that releases the holds on it, and it releases every
+    // outstanding one it can name. It writes nothing about the people themselves: whether
+    // somebody has agreed to present is the roster's fact, and this route deciding it for them
+    // is how an organizer's own workflow status used to get overruled. An archived speaker's
+    // hold stands, because the agenda never showed it as pending and releasing it would hand
+    // them the public lineup the day the roster restores them.
+    const releasedLinks = await database
       .update(sessionSpeakers)
-      .set({ publishedAt })
+      .set({ publicationHoldAt: null })
       .where(and(
         inArray(sessionSpeakers.sessionId, eligible.map((session) => session.id)),
         isNull(sessionSpeakers.deletedAt),
-        isNull(sessionSpeakers.publishedAt),
+        isNotNull(sessionSpeakers.publicationHoldAt),
         sql`EXISTS (
           SELECT 1 FROM ${speakers}
           WHERE ${speakers.id} = ${sessionSpeakers.speakerId}
             AND ${speakers.deletedAt} IS NULL
         )`,
       ))
-      .returning({ speakerId: sessionSpeakers.speakerId, sessionId: sessionSpeakers.sessionId });
-    // Only the speakers this publish takes off a hold. The hold is placed on a session that was
-    // already public, so a first publish reveals nobody who was waiting on one, and `invited`
-    // there is a workflow status the organizer set by hand - not this route's to overrule.
-    const republishedSessionIds = new Set<string>(
-      eligible.filter((session) => session.publishedAt !== null).map((session) => session.id),
-    );
-    const releasedFromHold = revealedLinks.filter((link) => republishedSessionIds.has(link.sessionId));
-    if (releasedFromHold.length > 0) {
-      await database
-        .update(speakers)
-        .set({ status: "onboarding" })
-        .where(and(
-          inArray(speakers.id, releasedFromHold.map((link) => link.speakerId)),
-          eq(speakers.status, "invited"),
-        ));
+      .returning({ sessionId: sessionSpeakers.sessionId, speakerId: sessionSpeakers.speakerId });
+    if (releasedLinks.length > 0) {
+      const named = await database
+        .select({ speakerId: speakers.id, name: people.name })
+        .from(speakers)
+        .innerJoin(people, eq(speakers.personId, people.id))
+        .where(inArray(speakers.id, releasedLinks.map((link) => link.speakerId)));
+      const nameBySpeaker = new Map(named.map((row) => [row.speakerId, row.name]));
+      released = releasedLinks.map((link) => ({
+        sessionId: link.sessionId as `ses_${string}`,
+        sessionTitle: titleBySession.get(link.sessionId) ?? "Untitled session",
+        speakerId: link.speakerId as `spk_${string}`,
+        name: nameBySpeaker.get(link.speakerId) ?? "A participant",
+      }));
     }
   }
   const result: AgendaPublishResult = {
@@ -487,8 +500,12 @@ agendaRoutes.post("/api/events/:eventId/agenda/publish", async (context) => {
     alreadyPublicCount,
     published: eligible.map((session) => ({ id: session.id, title: session.title })),
     skipped,
-    message: publishMessage(newlyPublishedCount, alreadyPublicCount, skipped.length),
-    notes: skipped.map(skipNote),
+    releasedParticipants: released,
+    message: publishMessage(newlyPublishedCount, alreadyPublicCount, skipped.length, released.length),
+    notes: [
+      ...(released.length === 0 ? [] : [releaseNote(released)]),
+      ...skipped.map(skipNote),
+    ],
   };
   return context.json(result);
 });

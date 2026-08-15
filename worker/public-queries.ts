@@ -50,14 +50,31 @@ export function isPubliclyLiveSession(
   return session.contentStatus === "approved" && session.publishedAt !== null;
 }
 
+// ABOUTME: A participation the public may see: live, carrying no publication hold, on a session
+// whose content organizers have approved. Publication is the session's own fact, never the link's,
+// so a hold is the only per-link exception to it and a link can never read as published on the
+// strength of a publish that happened before the person was removed.
+const PUBLIC_PARTICIPATION = sql`EXISTS (
+  SELECT 1 FROM ${sessionSpeakers}
+  JOIN ${sessions} AS held_session ON held_session.id = ${sessionSpeakers.sessionId}
+  WHERE ${sessionSpeakers.speakerId} = ${speakers.id}
+    AND ${sessionSpeakers.deletedAt} IS NULL
+    AND ${sessionSpeakers.publicationHoldAt} IS NULL
+    AND held_session.deleted_at IS NULL
+    AND held_session.content_status = 'approved'
+)`;
+
 // ABOUTME: Public speakers have cleared invitation and employer-approval states.
 // Confirmed, onboarding, and ready speakers remain visible even when their profiles are incomplete.
 export const PUBLIC_SPEAKER_STATUSES = ["confirmed", "onboarding", "ready"] as const;
 
+// ABOUTME: A speaker is listed only on the strength of a participation the public may see, so a
+// person whose every credit is held or unapproved is not in the directory, the count, or the detail.
 const PUBLIC_SPEAKER_GATE = and(
   inArray(speakers.status, [...PUBLIC_SPEAKER_STATUSES]),
   isNull(speakers.deletedAt),
   isNull(people.deletedAt),
+  PUBLIC_PARTICIPATION,
 );
 
 export async function isPublicSpeaker(
@@ -161,14 +178,21 @@ function searchPredicate(q: string) {
     like(sql`lower(coalesce(${sessions.title}, ''))`, term),
     like(sql`lower(coalesce(${sessions.abstract}, ''))`, term),
     // ABOUTME: Speaker-name match: any session sharing a speaker whose name contains q is a hit.
+    // Only a speaker the lineup itself would show, or searching a held or private name would
+    // reveal the session that name is on.
     sql`EXISTS (
       SELECT 1 FROM ${sessionSpeakers}
       JOIN ${speakers} ON ${speakers}.id = ${sessionSpeakers}.speaker_id
       JOIN ${people} ON ${people}.id = ${speakers}.person_id
       WHERE ${sessionSpeakers}.session_id = ${sessions}.id
         AND ${sessionSpeakers}.deleted_at IS NULL
-        AND ${sessionSpeakers}.published_at IS NOT NULL
+        AND ${sessionSpeakers}.publication_hold_at IS NULL
         AND ${speakers}.deleted_at IS NULL
+        AND ${people}.deleted_at IS NULL
+        AND ${speakers}.status IN (${sql.join(
+      PUBLIC_SPEAKER_STATUSES.map((status) => sql`${status}`),
+      sql`, `,
+    )})
         AND lower(coalesce(${people}.name, '')) LIKE ${term} ESCAPE '\\'
     )`,
   );
@@ -240,7 +264,7 @@ export async function fetchPublicSessions(
           .where(
             and(
               isNull(sessionSpeakers.deletedAt),
-              isNotNull(sessionSpeakers.publishedAt),
+              isNull(sessionSpeakers.publicationHoldAt),
               PUBLIC_SPEAKER_GATE,
               inArray(sessionSpeakers.sessionId, sessionIds),
             ),
@@ -357,7 +381,7 @@ export async function fetchPublicSpeakers(
           .where(
             and(
               isNull(sessionSpeakers.deletedAt),
-              isNotNull(sessionSpeakers.publishedAt),
+              isNull(sessionSpeakers.publicationHoldAt),
               eq(sessions.eventId, eventId),
               PUBLIC_SESSION_GATE,
               inArray(sessionSpeakers.speakerId, speakerIds),
@@ -433,7 +457,7 @@ export async function fetchPublicSpeaker(
         eq(sessionSpeakers.speakerId, speakerId),
         eq(sessions.eventId, eventId),
         isNull(sessionSpeakers.deletedAt),
-        isNotNull(sessionSpeakers.publishedAt),
+        isNull(sessionSpeakers.publicationHoldAt),
         PUBLIC_SESSION_GATE,
       ),
     )

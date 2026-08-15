@@ -170,21 +170,24 @@ async function participantsResponse(
   const onSessionPeople = sessionId === null ? [] : await database
     .select({
       personId: speakers.personId,
-      publishedAt: sessionSpeakers.publishedAt,
+      publicationHoldAt: sessionSpeakers.publicationHoldAt,
       speakerArchivedAt: speakers.deletedAt,
     })
     .from(sessionSpeakers)
     .innerJoin(speakers, eq(sessionSpeakers.speakerId, speakers.id))
     .where(and(eq(sessionSpeakers.sessionId, sessionId), isNull(sessionSpeakers.deletedAt)));
   const carried = new Map(onSessionPeople.map((row) => [row.personId, row]));
-  const sessionIsPubliclyLive = sessionContentStatus !== null
-    && isPubliclyLiveSession({ contentStatus: sessionContentStatus, publishedAt: sessionPublishedAt });
+  // A hold is a fact about the participation, so the panel reports it in every session state.
+  // Reading it back off the session's own publication is what made a re-placement look like
+  // there was nothing to confirm, right up until the next publish confirmed it unannounced.
   return {
     submissionId,
     sessionId,
     sessionContentStatus,
     sessionPublishedAt: sessionPublishedAt?.getTime() ?? null,
-    sessionPubliclyLive: sessionIsPubliclyLive,
+    sessionPubliclyLive: sessionContentStatus !== null
+      && isPubliclyLiveSession({ contentStatus: sessionContentStatus, publishedAt: sessionPublishedAt }),
+    sessionAwaitingContentApproval: sessionId !== null && sessionContentStatus !== "approved",
     sessionTitle,
     participants: rows.map((row) => {
       const sessionLink = carried.get(row.personId);
@@ -192,9 +195,8 @@ async function participantsResponse(
         ...row,
         isSubmitter: row.personId === submitterPersonId,
         onSession: sessionLink !== undefined,
-        publicationPending: sessionIsPubliclyLive
-          && sessionLink !== undefined
-          && sessionLink.publishedAt === null
+        publicationPending: sessionLink !== undefined
+          && sessionLink.publicationHoldAt !== null
           && sessionLink.speakerArchivedAt === null,
       };
     }),

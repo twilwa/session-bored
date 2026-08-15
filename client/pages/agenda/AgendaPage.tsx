@@ -517,7 +517,9 @@ export function AgendaPage() {
       setAgenda(refreshed);
       setToast({
         message: result.message,
-        detail: result.skipped.length === 0
+        detail: result.releasedParticipants.length > 0
+          ? "This publish put participants who were waiting on the public site:"
+          : result.skipped.length === 0
           ? null
           : "Only approved, scheduled sessions go public. The rest stayed private:",
         notes: result.notes,

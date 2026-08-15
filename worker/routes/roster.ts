@@ -103,11 +103,13 @@ rosterRoutes.get("/api/events/:eventId/roster", async (context) => {
       })
       .from(sessionSpeakers)
       .innerJoin(sessions, eq(sessionSpeakers.sessionId, sessions.id))
+      // The hold itself is the reason to show a row, in whatever state its session is: a
+      // re-placement or a withdrawn approval must not quietly retire the prompt while the
+      // participant is still being withheld.
       .where(and(
         inArray(sessionSpeakers.speakerId, items.map((item) => item.id)),
-        isNull(sessionSpeakers.publishedAt),
+        isNotNull(sessionSpeakers.publicationHoldAt),
         isNull(sessionSpeakers.deletedAt),
-        isNotNull(sessions.publishedAt),
         PROGRAMME_SESSION_GATE,
       ));
 

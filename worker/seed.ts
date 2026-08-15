@@ -554,7 +554,6 @@ export async function ensureSeeded(env: CloudflareBindings): Promise<void> {
       id: "ssnr_docs_marcus",
       sessionId: fixtureIds.session,
       speakerId: fixtureIds.speakers.speaker2,
-      publishedAt: publicSessionPublishedAt,
     })
     .onConflictDoNothing();
 

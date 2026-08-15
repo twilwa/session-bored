@@ -449,26 +449,29 @@ test("speaker gallery is alphabetized by surname, searches, and opens a speaker 
   await expect(page.getByRole("heading", { name: "Gallery", exact: true })).toBeVisible();
   // ABOUTME: The heading renders synchronously; the cards depend on an async fetch, so wait for
   // them to actually land before reading text — a one-shot read here raced the fetch under load.
-  await expect(page.locator(".gallery-card")).toHaveCount(2);
+  // The gallery lists the people the approved programme actually credits. Priya is a roster
+  // speaker at this event with no approved session yet, so the public does not see her here.
+  await expect(page.locator(".gallery-card")).toHaveCount(1);
   const names = await page.locator(".gallery-card__caption h2").allTextContents();
-  expect(names).toEqual(["Marcus Okafor", "Priya Raman"]);
+  expect(names).toEqual(["Marcus Okafor"]);
 
-  // Marcus Okafor has no headshot in the fixture and no other spec ever gives him one (unlike
-  // Priya, whose portal e2e coverage legitimately uploads hers), so his card is the stable one
-  // to assert the no-headshot fallback against: it must render initials, not break.
+  // Marcus Okafor has no headshot in the fixture and no other spec ever gives him one, so his
+  // card is the stable one to assert the no-headshot fallback against: it must render initials,
+  // not break. A really-rendered headshot is covered by the portal spec, which uploads one.
   const marcusCard = page.locator(".gallery-card", { hasText: "Marcus Okafor" });
   await expect(marcusCard.locator(".gallery-card__photo--placeholder")).toHaveText("MO");
-  const priyaHeadshot = page.locator(".gallery-card", { hasText: "Priya Raman" }).locator("img");
-  await expect(priyaHeadshot).toHaveAttribute("src", /.+/);
-  await expect.poll(() => priyaHeadshot.evaluate((image) => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
 
   await page.fill('input[aria-label="Search speakers by name"]', "priya");
-  await expect(page.locator(".gallery-card")).toHaveCount(1);
-  await expect(page.getByText("1 of 2 speakers")).toBeVisible();
+  await expect(page.locator(".gallery-card")).toHaveCount(0);
+  await expect(page.getByText("0 of 1 speakers")).toBeVisible();
 
-  await page.locator(".gallery-card", { hasText: "Priya Raman" }).click();
-  await expect(page).toHaveURL(/\/speakers\/spk_priya_devflow_2027$/);
-  await expect(page.getByRole("heading", { name: "Priya Raman", exact: true })).toBeVisible();
+  await page.fill('input[aria-label="Search speakers by name"]', "okafor");
+  await expect(page.locator(".gallery-card")).toHaveCount(1);
+  await expect(page.getByText("1 of 1 speakers")).toBeVisible();
+
+  await page.locator(".gallery-card", { hasText: "Marcus Okafor" }).click();
+  await expect(page).toHaveURL(/\/speakers\/spk_marcus_devflow_2027$/);
+  await expect(page.getByRole("heading", { name: "Marcus Okafor", exact: true })).toBeVisible();
 });
 
 test("a placed session reads identically on the program, agenda, itinerary, and speaker detail surfaces", async ({ page }) => {

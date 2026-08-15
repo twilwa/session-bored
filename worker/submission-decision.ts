@@ -109,17 +109,18 @@ async function resolveOnboardingTasks(
 /**
  * Carries one named participant onto a session: adopts their event speaker identity, links
  * them to the session under their own role label, and gives them the same onboarding work as
- * everybody else on it. A participant who is not already part of a published session's public
- * lineup stays invited until republish; archived links are restored rather than duplicated, so
- * a participant who is removed and named again keeps their completion history.
+ * everybody else on it. Archived links are restored rather than duplicated, so a participant
+ * who is removed and named again keeps their completion history.
  *
- * Both halves are decided here, from the session and this participant's own link, rather than
- * by the caller, so acceptance, a repeated acceptance, and a late organizer addition all
- * resolve them the same way. The link is left pending unless it is one the last publish
- * stamped while live: a pending link is still waiting for its republish, and an archived one
- * is a re-addition whose public place has to be confirmed again. A session that has been
- * published also parks the person at `invited`, so joining its lineup cannot put a new face on
- * the public site before the organizer says so.
+ * This is the only door that takes a publication hold, and it reads the session itself rather
+ * than trusting a caller, so acceptance, a repeated acceptance, and a late organizer addition
+ * all resolve it the same way. Joining an already-published session takes a hold, and the hold
+ * is written on every create and restore - never left to whatever the row said before it was
+ * archived, which is how a stale value would smuggle somebody onto the public lineup. A link
+ * that is already live on the session keeps the answer it has: an already-public participation
+ * is not re-held by a role-label edit or a repeat acceptance, and a held one stays held.
+ * Nothing here touches `speaker.status`, which says whether somebody has agreed to present and
+ * belongs to the roster.
  */
 async function attachParticipant(
   database: DecisionDatabase,
@@ -141,16 +142,14 @@ async function attachParticipant(
   const [existingLink] = speaker === undefined
     ? []
     : await database
-      .select({ publishedAt: sessionSpeakers.publishedAt, deletedAt: sessionSpeakers.deletedAt })
+      .select({ deletedAt: sessionSpeakers.deletedAt })
       .from(sessionSpeakers)
       .where(and(
         eq(sessionSpeakers.sessionId, sessionId),
         eq(sessionSpeakers.speakerId, speaker.id),
       ));
-  const alreadyInPublicLineup = existingLink !== undefined
-    && existingLink.deletedAt === null
-    && existingLink.publishedAt !== null;
-  const holdForRepublish = session.publishedAt !== null && !alreadyInPublicLineup;
+  const restoringOrCreatingLink = existingLink === undefined || existingLink.deletedAt !== null;
+  const publicationHoldAt = session.publishedAt === null ? null : new Date();
   if (speaker === undefined) {
     await database
       .insert(speakers)
@@ -158,7 +157,7 @@ async function attachParticipant(
         id: createPublicId("spk"),
         personId,
         eventId,
-        status: holdForRepublish ? "invited" : "onboarding",
+        status: "onboarding",
       })
       .onConflictDoNothing();
     [speaker] = await database
@@ -169,10 +168,10 @@ async function attachParticipant(
   if (speaker === undefined) {
     throw new Error(`Speaker handoff failed for ${personId}`);
   }
-  // ABOUTME: A CFP author already has an `invited` speaker row from their first draft. Acceptance
-  // starts onboarding immediately, while a late addition to an already-public session waits for
-  // the agenda republish that confirms the person should join the public programme.
-  if (speaker.status === "invited" && !holdForRepublish) {
+  // ABOUTME: A CFP author already has an `invited` speaker row from their first draft, and being
+  // carried onto a session starts their onboarding. Whether the public sees them is the hold's
+  // question, not this one's.
+  if (speaker.status === "invited") {
     await database
       .update(speakers)
       .set({ status: "onboarding" })
@@ -186,6 +185,7 @@ async function attachParticipant(
       speakerId: speaker.id,
       roleLabel,
       sortOrder,
+      publicationHoldAt,
     })
     .onConflictDoNothing();
   await database
@@ -193,7 +193,7 @@ async function attachParticipant(
     .set({
       roleLabel,
       sortOrder,
-      ...(alreadyInPublicLineup ? {} : { publishedAt: null }),
+      ...(restoringOrCreatingLink ? { publicationHoldAt } : {}),
       deletedAt: null,
     })
     .where(and(eq(sessionSpeakers.sessionId, sessionId), eq(sessionSpeakers.speakerId, speaker.id)));
