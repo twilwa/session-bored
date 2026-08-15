@@ -5,6 +5,8 @@ import {
   fileRequestKindOf,
   pictureRequestFileTypes,
   type MissingInformationItem,
+  type SpeakerImportOutcome,
+  type SpeakerImportResponse,
   type RosterSpeakerSummary,
   type RosterTaskSummary,
 } from "../../../shared/api.ts";
@@ -30,39 +32,6 @@ const workflowStatuses = [
   "ready",
   "withdrawn",
 ] as const;
-
-type SpeakerImportOutcome =
-  | "will_create"
-  | "will_add_existing"
-  | "will_restore"
-  | "skipped_existing"
-  | "skipped_duplicate_file"
-  | "invalid"
-  | "blocked_identity_conflict"
-  | "blocked_archived_identity"
-  | "created"
-  | "added_existing"
-  | "restored";
-
-interface SpeakerImportResponse {
-  errors: string[];
-  mappings: Array<{ source: string; target: "name" | "email" | "jobTitle" | "organization" | "bio" }>;
-  rows: Array<{
-    rowNumber: number;
-    values: { name: string; email: string; jobTitle: string; organization: string; bio: string };
-    errors: string[];
-    outcome: SpeakerImportOutcome;
-  }>;
-  summary: {
-    total: number;
-    importable?: number;
-    skipped: number;
-    invalid: number;
-    created?: number;
-    addedExisting?: number;
-    restored?: number;
-  };
-}
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);

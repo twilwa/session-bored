@@ -591,6 +591,37 @@ describe("organizer speaker roster", () => {
     expect(accountPersonAfter).toEqual(accountPersonBefore);
   });
 
+  it("returns accurate row outcomes when two large imports commit concurrently", async () => {
+    const suffix = Date.now();
+    const csv = [
+      "name,email,title,company,bio",
+      ...Array.from({ length: 41 }, (_, index) =>
+        `Concurrent ${index},concurrent-${suffix}-${index}@example.test,Engineer,Example,Concurrent import`),
+    ].join("\n");
+    const path = "/api/events/evt_devflow_conf_2027/speakers/import";
+    const responses = await Promise.all(Array.from({ length: 2 }, () => request(path, {
+      method: "POST",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({ csv }),
+    })));
+
+    expect(responses.map((response) => response.status)).toEqual([200, 200]);
+    const payloads = await Promise.all(responses.map((response) => response.json<{
+      summary: { created: number; skipped: number };
+    }>()));
+    expect(payloads.reduce((total, payload) => total + payload.summary.created, 0)).toBe(41);
+    expect(payloads.reduce((total, payload) => total + payload.summary.skipped, 0)).toBe(41);
+
+    const peopleCount = await env.DB.prepare(
+      "select count(*) as count from person where email like ?",
+    ).bind(`concurrent-${suffix}-%@example.test`).first<{ count: number }>();
+    const speakerCount = await env.DB.prepare(
+      "select count(*) as count from speaker join person on person.id = speaker.person_id where speaker.event_id = ? and person.email like ?",
+    ).bind("evt_devflow_conf_2027", `concurrent-${suffix}-%@example.test`).first<{ count: number }>();
+    expect(peopleCount?.count).toBe(41);
+    expect(speakerCount?.count).toBe(41);
+  });
+
   it("persists profile and workflow edits without sending notifications", async () => {
     const dispatchesBefore = await env.DB.prepare(
       "select count(*) as count from email_dispatch",

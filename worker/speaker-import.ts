@@ -1,14 +1,6 @@
 // ABOUTME: Parses organizer speaker CSV files into a stable import preview.
 // ABOUTME: Maps supported headers and keeps validation errors attached to their source rows.
-export type SpeakerImportField = "name" | "email" | "jobTitle" | "organization" | "bio";
-
-export interface SpeakerImportValues {
-  name: string;
-  email: string;
-  jobTitle: string;
-  organization: string;
-  bio: string;
-}
+import type { SpeakerImportField, SpeakerImportOutcome, SpeakerImportValues } from "../shared/api.ts";
 
 export interface ParsedSpeakerImportRow {
   rowNumber: number;
@@ -22,15 +14,7 @@ export interface SpeakerImportDocument {
   errors: string[];
 }
 
-export type SpeakerImportPreviewOutcome =
-  | "will_create"
-  | "will_add_existing"
-  | "will_restore"
-  | "skipped_existing"
-  | "skipped_duplicate_file"
-  | "invalid"
-  | "blocked_identity_conflict"
-  | "blocked_archived_identity";
+export type SpeakerImportPreviewOutcome = Exclude<SpeakerImportOutcome, "created" | "added_existing" | "restored">;
 
 export interface SpeakerImportIdentity {
   personId: string;
@@ -138,7 +122,9 @@ export function parseSpeakerImport(csv: string): SpeakerImportDocument {
       if (record.every((cell) => cell.trim().length === 0)) return null;
       const name = valueAt(record, "name");
       const email = valueAt(record, "email").toLowerCase();
-      const rowErrors: string[] = [];
+      const rowErrors = record.length > headerRow.length
+        ? [`Row has ${record.length} columns but the header has ${headerRow.length}.`]
+        : [];
       if (name.length === 0) rowErrors.push("Name is required.");
       if (email.length === 0) {
         rowErrors.push("Email is required.");

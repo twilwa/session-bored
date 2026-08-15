@@ -50,6 +50,20 @@ describe("speaker CSV import parsing", () => {
     ]);
   });
 
+  it("rejects rows with cells beyond the declared headers", () => {
+    const parsed = parseSpeakerImport([
+      "name,email,title,company,bio",
+      "Dana Kowalski,dana@example.com,Engineer,Example,Builds tools,without quoting commas",
+    ].join("\n"));
+
+    expect(parsed.rows).toMatchObject([
+      {
+        rowNumber: 2,
+        errors: ["Row has 6 columns but the header has 5."],
+      },
+    ]);
+  });
+
   it("refuses files that cannot map one unambiguous name and email column", () => {
     expect(parseSpeakerImport("email,title\ndana@example.com,Engineer")).toMatchObject({
       rows: [],

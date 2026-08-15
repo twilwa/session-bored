@@ -18,6 +18,7 @@ import {
   type Role,
   type SpeakerStatus,
 } from "../../db/schema.ts";
+import type { SpeakerImportOutcome, SpeakerImportResponse } from "../../shared/api.ts";
 import { holdsAccess } from "../access.ts";
 import { chunkIds } from "../d1-limits.ts";
 import { sendPortalInvitationEmail } from "../email/portal-invitation.ts";
@@ -28,7 +29,6 @@ import {
   planSpeakerImport,
   type SpeakerImportIdentity,
   type SpeakerImportPlanRow,
-  type SpeakerImportPreviewOutcome,
 } from "../speaker-import.ts";
 
 type RosterEnvironment = {
@@ -108,8 +108,7 @@ async function speakerImportIdentities(
   });
 }
 
-type SpeakerImportCompletedOutcome = SpeakerImportPreviewOutcome | "created" | "added_existing" | "restored";
-type SpeakerImportCompletedRow = Omit<SpeakerImportPlanRow, "outcome"> & { outcome: SpeakerImportCompletedOutcome };
+type SpeakerImportCompletedRow = Omit<SpeakerImportPlanRow, "outcome"> & { outcome: SpeakerImportOutcome };
 
 function visibleSpeakerImportRows<Row extends { personId: string | null; speakerId: string | null }>(rows: Row[]) {
   return rows.map(({ personId: _personId, speakerId: _speakerId, ...row }) => row);
@@ -121,11 +120,11 @@ function importableSpeakerRow(row: SpeakerImportPlanRow): boolean {
     row.outcome === "will_restore";
 }
 
-function skippedSpeakerImportOutcome(outcome: SpeakerImportCompletedOutcome): boolean {
+function skippedSpeakerImportOutcome(outcome: SpeakerImportOutcome): boolean {
   return outcome === "skipped_existing" || outcome === "skipped_duplicate_file";
 }
 
-function invalidSpeakerImportOutcome(outcome: SpeakerImportCompletedOutcome): boolean {
+function invalidSpeakerImportOutcome(outcome: SpeakerImportOutcome): boolean {
   return outcome === "invalid" ||
     outcome === "blocked_identity_conflict" ||
     outcome === "blocked_archived_identity";
@@ -148,6 +147,17 @@ async function prepareSpeakerImport(database: RosterDatabase, eventId: string, c
     document.rows.filter((row) => row.errors.length === 0).map((row) => row.values.email),
   );
   return { document, rows: planSpeakerImport(document, identities) };
+}
+
+async function currentSpeakerImportPlan(
+  database: RosterDatabase,
+  eventId: string,
+  row: SpeakerImportPlanRow,
+): Promise<SpeakerImportPlanRow> {
+  const identities = await speakerImportIdentities(database, eventId, [row.values.email]);
+  const [planned] = planSpeakerImport({ errors: [], mappings: [], rows: [row] }, identities);
+  if (planned === undefined) throw new Error(`Import row ${row.rowNumber} disappeared`);
+  return planned;
 }
 
 rosterRoutes.get("/api/events/:eventId/speakers/import-template.csv", async (context) => {
@@ -177,7 +187,7 @@ rosterRoutes.post("/api/events/:eventId/speakers/import/preview", async (context
     mappings: document.mappings,
     rows: visibleSpeakerImportRows(rows),
     summary: speakerImportPreviewSummary(rows),
-  });
+  } satisfies SpeakerImportResponse);
 });
 
 rosterRoutes.post("/api/events/:eventId/speakers/import", async (context) => {
@@ -192,17 +202,22 @@ rosterRoutes.post("/api/events/:eventId/speakers/import", async (context) => {
   }
   const { document, rows: plannedRows } = await prepareSpeakerImport(database, eventId, payload.csv);
   const completedRows: SpeakerImportCompletedRow[] = plannedRows.map((row) => ({ ...row }));
+  const completedByRowNumber = new Map(completedRows.map((row) => [row.rowNumber, row]));
   const now = Date.now();
 
-  for (const rowChunk of chunkIds(plannedRows.filter(importableSpeakerRow), 40)) {
-    const statements = rowChunk.flatMap((row) => {
-      const completed = completedRows.find((candidate) => candidate.rowNumber === row.rowNumber);
-      if (completed === undefined) throw new Error(`Import row ${row.rowNumber} disappeared`);
+  for (const initiallyPlanned of plannedRows.filter(importableSpeakerRow)) {
+    const completed = completedByRowNumber.get(initiallyPlanned.rowNumber);
+    if (completed === undefined) throw new Error(`Import row ${initiallyPlanned.rowNumber} disappeared`);
+    const row = await currentSpeakerImportPlan(database, eventId, initiallyPlanned);
+    if (!importableSpeakerRow(row)) {
+      Object.assign(completed, row);
+      continue;
+    }
+    try {
       if (row.outcome === "will_create") {
         const personId = createPublicId("psn");
         const speakerId = createPublicId("spk");
-        completed.outcome = "created";
-        return [
+        await context.env.DB.batch([
           context.env.DB.prepare(
             "insert into person (id, name, email, job_title, organization, bio, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?)",
           ).bind(
@@ -218,23 +233,39 @@ rosterRoutes.post("/api/events/:eventId/speakers/import", async (context) => {
           context.env.DB.prepare(
             "insert into speaker (id, person_id, event_id, status, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
           ).bind(speakerId, personId, eventId, "invited", now, now),
-        ];
+        ]);
+        completed.outcome = "created";
+        completed.personId = personId;
+        completed.speakerId = speakerId;
+        continue;
       }
       if (row.outcome === "will_add_existing" && row.personId !== null) {
-        completed.outcome = "added_existing";
-        return [context.env.DB.prepare(
+        const speakerId = createPublicId("spk");
+        await context.env.DB.batch([context.env.DB.prepare(
           "insert into speaker (id, person_id, event_id, status, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
-        ).bind(createPublicId("spk"), row.personId, eventId, "invited", now, now)];
+        ).bind(speakerId, row.personId, eventId, "invited", now, now)]);
+        completed.outcome = "added_existing";
+        completed.personId = row.personId;
+        completed.speakerId = speakerId;
+        continue;
       }
       if (row.outcome === "will_restore" && row.speakerId !== null) {
-        completed.outcome = "restored";
-        return [context.env.DB.prepare(
-          "update speaker set status = ?, deleted_at = null, updated_at = ? where id = ? and event_id = ?",
-        ).bind("invited", now, row.speakerId, eventId)];
+        const [result] = await context.env.DB.batch([context.env.DB.prepare(
+          "update speaker set status = ?, deleted_at = null, updated_at = ? where id = ? and event_id = ? and deleted_at is not null",
+        ).bind("invited", now, row.speakerId, eventId)]);
+        if (result !== undefined && result.meta.changes > 0) {
+          completed.outcome = "restored";
+          completed.personId = row.personId;
+          completed.speakerId = row.speakerId;
+          continue;
+        }
       }
-      return [];
-    });
-    if (statements.length > 0) await context.env.DB.batch(statements);
+      Object.assign(completed, await currentSpeakerImportPlan(database, eventId, row));
+    } catch (error) {
+      const afterConflict = await currentSpeakerImportPlan(database, eventId, row);
+      if (importableSpeakerRow(afterConflict)) throw error;
+      Object.assign(completed, afterConflict);
+    }
   }
 
   return context.json({
@@ -249,7 +280,7 @@ rosterRoutes.post("/api/events/:eventId/speakers/import", async (context) => {
       skipped: completedRows.filter((row) => skippedSpeakerImportOutcome(row.outcome)).length,
       invalid: completedRows.filter((row) => invalidSpeakerImportOutcome(row.outcome)).length,
     },
-  });
+  } satisfies SpeakerImportResponse);
 });
 
 rosterRoutes.get("/api/events/:eventId/roster", async (context) => {

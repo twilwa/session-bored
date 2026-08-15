@@ -83,11 +83,13 @@ test("organizer previews row outcomes and imports valid speakers from CSV", asyn
     `Imported CSV ${suffix},${importedEmail},Engineering Manager,Substrate,Imported through browser`,
     "Broken CSV,not-an-email,Engineer,Example,Invalid row",
   ].join("\n");
-  await page.getByLabel("Speaker CSV file").setInputFiles({
-    name: "speakers.csv",
-    mimeType: "text/csv",
-    buffer: Buffer.from(csv),
-  });
+  await page.getByLabel("Speaker CSV file").evaluate((element, contents) => {
+    const transfer = new DataTransfer();
+    transfer.items.add(new File([contents], "speakers.csv", { type: "text/csv" }));
+    const input = element as HTMLInputElement;
+    input.files = transfer.files;
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  }, csv);
 
   await expect(page.getByText("1 ready to import")).toBeVisible();
   await expect(page.getByText("Already on this roster")).toBeVisible();

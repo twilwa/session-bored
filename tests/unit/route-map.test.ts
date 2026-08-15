@@ -1,7 +1,7 @@
 // ABOUTME: Specifies the shared typed route catalog consumed by independent feature lanes.
 // ABOUTME: Ensures every PRD module declares its method, path, and access requirement.
 import { describe, expect, it } from "vitest";
-import { peopleRouteMap, reviewRouteMap, routeMap } from "../../shared/api.ts";
+import { peopleRouteMap, reviewRouteMap, rosterRouteMap, routeMap } from "../../shared/api.ts";
 
 describe("typed route map", () => {
   it("covers every planned product module", () => {
@@ -85,6 +85,33 @@ describe("typed route map", () => {
         method: "POST",
         path: "/api/events/:eventId/reviewer-invites/:inviteId/upgrade",
         module: "people",
+        access: "organizer",
+      },
+    ]);
+  });
+
+  it("publishes every organizer speaker import door", () => {
+    expect([
+      rosterRouteMap.speakerImportTemplate,
+      rosterRouteMap.previewSpeakerImport,
+      rosterRouteMap.commitSpeakerImport,
+    ]).toEqual([
+      {
+        method: "GET",
+        path: "/api/events/:eventId/speakers/import-template.csv",
+        module: "speakers",
+        access: "organizer",
+      },
+      {
+        method: "POST",
+        path: "/api/events/:eventId/speakers/import/preview",
+        module: "speakers",
+        access: "organizer",
+      },
+      {
+        method: "POST",
+        path: "/api/events/:eventId/speakers/import",
+        module: "speakers",
         access: "organizer",
       },
     ]);
