@@ -1,0 +1,21 @@
+worker/routes/cfp.ts
+  s_7324123579ee88::t_668eb6f7043d96 825,830,835
+tests/integration/cfp-submission.test.ts
+  s_7324123579ee88::t_332e94ffc09da6 188-236
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "1bdc625c5773f07df52341af146f2e096a4d6321",
+  "prompts": {},
+  "sessions": {
+    "s_7324123579ee88": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0079f-c21e-7472-80c4-af77d192c7fa",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
