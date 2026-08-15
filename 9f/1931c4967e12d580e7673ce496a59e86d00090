@@ -1,0 +1,19 @@
+client/pages/comms/CommsPage.tsx
+  s_7bea4e476b9c92::t_68ebc20ef1bf4c 510
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "9f1931c4967e12d580e7673ce496a59e86d00090",
+  "prompts": {},
+  "sessions": {
+    "s_7bea4e476b9c92": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffe3b-ba90-7072-a100-5d86ced36312",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
