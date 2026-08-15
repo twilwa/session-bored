@@ -252,6 +252,89 @@ test("a pick made on the itinerary is on my schedule the moment I click through 
   await expect(page.locator(".itinerary-item", { hasText: "Docs That Answer Back" })).toBeVisible();
 });
 
+test("signing in from the header, without ever reloading, moves the device's picks onto the account", async ({ page }) => {
+  await placeDocsSession(page, {
+    scheduleStatus: "placed",
+    scheduledDate: PLACED_DAY,
+    roomId: MAIN_STAGE_ROOM_ID,
+    startsAt: new Date(PLACED_STARTS_AT_ISO).getTime(),
+  });
+  await signOut(page);
+
+  // Make the account first, then sign out, so the sign-in below is the only auth step and it
+  // happens entirely inside one document.
+  const email = uniqueEmail("header-signin");
+  await page.goto("/signup");
+  await page.getByLabel("Name").fill("Header Signin");
+  await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Password").fill("Greenroom!2027");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await expect(page).toHaveURL(/\/schedule\/mine$/);
+  // Signing out on this page stays in place by design, so it is done inline here.
+  await page.getByRole("banner").getByRole("button", { name: "Sign out" }).click();
+  await expect(page.getByRole("banner").getByRole("button", { name: "Sign out" })).toBeHidden();
+
+  await page.goto("/schedule");
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await selectPlacedDay(page);
+  await page.getByRole("button", { name: /Save Docs That Answer Back.*to my schedule/ }).click();
+  await expect(page.getByRole("button", { name: /Saved Docs That Answer Back.*to my schedule/ })).toBeVisible();
+
+  // Every step from here is SPA navigation: the schedule pages unmount, but the schedule they
+  // share must still notice that somebody signed in.
+  await page.getByRole("banner").getByRole("link", { name: "Sign in", exact: true }).click();
+  await expect(page).toHaveURL(/\/login/);
+  await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Password").fill("Greenroom!2027");
+  await page.getByRole("button", { name: "Sign in" }).click();
+
+  await expect(page).toHaveURL(/\/schedule\/mine$/);
+  await expect(page.getByText("Saved to your account · available on any device", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "1 pick", exact: true })).toBeVisible();
+
+  // And the device pick really reached the account, not just this rendering of the page.
+  await page.reload();
+  await expect(page.getByText("Saved to your account · available on any device", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "1 pick", exact: true })).toBeVisible();
+});
+
+test("signing out from another page takes the account schedule off the shared device", async ({ page }) => {
+  await placeDocsSession(page, {
+    scheduleStatus: "placed",
+    scheduledDate: PLACED_DAY,
+    roomId: MAIN_STAGE_ROOM_ID,
+    startsAt: new Date(PLACED_STARTS_AT_ISO).getTime(),
+  });
+  await signOut(page);
+  await page.goto("/schedule");
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await selectPlacedDay(page);
+  await page.getByRole("button", { name: /Save Docs That Answer Back.*to my schedule/ }).click();
+  await expect(page.getByRole("button", { name: /Saved Docs That Answer Back.*to my schedule/ })).toBeVisible();
+
+  const email = uniqueEmail("signout-elsewhere");
+  await page.goto("/signup");
+  await page.getByLabel("Name").fill("Signout Elsewhere");
+  await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Password").fill("Greenroom!2027");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await expect(page).toHaveURL(/\/schedule\/mine$/);
+  await expect(page.getByRole("heading", { name: "1 pick", exact: true })).toBeVisible();
+
+  // Leave the schedule behind, sign out from a page that never renders it, and come back.
+  await page.getByRole("banner").getByRole("link", { name: "Program", exact: true }).click();
+  await expect(page).toHaveURL(/\/program$/);
+  await page.getByRole("banner").getByRole("button", { name: "Sign out" }).click();
+  await expect(page.getByRole("banner").getByRole("button", { name: "Sign out" })).toBeHidden();
+  await page.getByRole("banner").getByRole("link", { name: "My schedule", exact: true }).click();
+
+  await expect(page).toHaveURL(/\/schedule\/mine$/);
+  await expect(page.getByText("Saved on this device · no account needed", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "1 pick", exact: true })).toBeVisible();
+});
+
 test("a signed-in account's schedule stays off the device, so signing out restores the anonymous picks", async ({ page }) => {
   await placeDocsSession(page, {
     scheduleStatus: "placed",

@@ -25,12 +25,14 @@ export interface PersonalScheduleEnvironment {
   readAccountSchedule(eventId: string): Promise<string[]>;
   updateAccountSchedule(eventId: string, change: PersonalScheduleChange): Promise<string[]>;
   publicSessionIds(eventId: string): Promise<Set<string>>;
+  observeAccountChange(listener: () => void): () => void;
 }
 
 export interface PersonalScheduleStore {
   subscribe(listener: () => void): () => void;
   snapshot(): PersonalScheduleSnapshot;
   settle(): Promise<void>;
+  resume(): Promise<void>;
   reset(): Promise<void>;
   toggle(sessionId: string): Promise<void>;
 }
@@ -135,6 +137,9 @@ export function browserPersonalScheduleEnvironment(): PersonalScheduleEnvironmen
       }
       const payload = await response.json<PublicSessionListPayload>();
       return new Set(payload.items.map((session) => session.id));
+    },
+    observeAccountChange(listener) {
+      return observePublicSession(() => listener());
     },
   };
 }
@@ -330,6 +335,29 @@ export function createPersonalScheduleStore(
     return queue;
   }
 
+  // A page showing this schedule has just mounted. Signing in and out happen on other SPA
+  // routes, and signing in through the login form announces nothing, so who the account is
+  // has to be asked again before its picks are rendered to whoever is here now.
+  async function runResume(): Promise<void> {
+    if (mode === "checking") {
+      return;
+    }
+    const attempt = generation;
+    const userId = await resolveAccountUserId();
+    if (attempt !== generation || userId === accountUserId) {
+      return;
+    }
+    generation += 1;
+    forgetAccount();
+    failed = false;
+    publish();
+  }
+
+  function resume(): Promise<void> {
+    queue = queue.then(runResume);
+    return settle();
+  }
+
   function forgetAccount(): void {
     pending.clear();
     accountUserId = null;
@@ -360,6 +388,10 @@ export function createPersonalScheduleStore(
     return settle();
   }
 
+  environment.observeAccountChange(() => {
+    void reset();
+  });
+
   return {
     subscribe(listener) {
       listeners.add(listener);
@@ -371,38 +403,44 @@ export function createPersonalScheduleStore(
       return snapshot;
     },
     settle,
+    resume,
     reset,
     toggle,
   };
 }
 
-const stores = new Map<string, PersonalScheduleStore>();
+export interface PersonalScheduleStores {
+  forEvent(eventId: string): PersonalScheduleStore;
+}
 
 // One schedule per event, shared by every page that shows it. A pick made on the itinerary is
 // still saving when that page unmounts, and the page it leads to must see it rather than read
 // the account past it.
-export function personalScheduleStore(
-  eventId: string,
+export function createPersonalScheduleStores(
   environment?: PersonalScheduleEnvironment,
-): PersonalScheduleStore {
-  const existing = stores.get(eventId);
-  if (existing !== undefined) {
-    return existing;
-  }
-  const store = createPersonalScheduleStore(eventId, environment);
-  stores.set(eventId, store);
-  return store;
+): PersonalScheduleStores {
+  const stores = new Map<string, PersonalScheduleStore>();
+  return {
+    forEvent(eventId) {
+      const existing = stores.get(eventId);
+      if (existing !== undefined) {
+        return existing;
+      }
+      const store = createPersonalScheduleStore(eventId, environment);
+      stores.set(eventId, store);
+      return store;
+    },
+  };
 }
 
+const browserStores = createPersonalScheduleStores();
+
 export function usePersonalSchedule(eventId: string) {
-  const store = useMemo(() => personalScheduleStore(eventId), [eventId]);
+  const store = useMemo(() => browserStores.forEvent(eventId), [eventId]);
   const snapshot = useSyncExternalStore(store.subscribe, store.snapshot, store.snapshot);
 
   useEffect(() => {
-    void store.settle();
-    return observePublicSession(() => {
-      void store.reset();
-    });
+    void store.resume();
   }, [store]);
 
   return {

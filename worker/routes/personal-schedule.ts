@@ -85,6 +85,10 @@ personalScheduleRoutes.patch("/attendee/events/:eventId/schedule", async (contex
     await database.delete(personalScheduleSessions).where(and(
       eq(personalScheduleSessions.userId, user.id),
       inArray(personalScheduleSessions.sessionId, batch),
+      inArray(
+        personalScheduleSessions.sessionId,
+        database.select({ id: sessions.id }).from(sessions).where(eq(sessions.eventId, eventId)),
+      ),
     ));
   }
   const removed = new Set(remove);

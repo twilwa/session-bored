@@ -5,7 +5,7 @@ import { drizzle } from "drizzle-orm/d1";
 import { Hono } from "hono";
 import { and, eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
-import { reviewerInvites, roleGrants, type Role, sessions, users } from "../../db/schema.ts";
+import { events, reviewerInvites, roleGrants, type Role, sessions, users } from "../../db/schema.ts";
 import { personalScheduleUpdateLimit } from "../../shared/api.ts";
 import { createAuth, type AuthSession } from "../../worker/auth.ts";
 import type { EmailDelivery, EmailMessage } from "../../worker/email.ts";
@@ -184,6 +184,48 @@ describe("account-backed personal schedule", () => {
     });
     expect(cleared.status).toBe(200);
     expect(await cleared.json()).toEqual({ sessionIds: [] });
+  });
+
+  it("refuses to let one event's request clear another event's picks", async () => {
+    await request("/api/health");
+    const cookie = await signUp("Two Event Picker", "two-event-picker@example.com");
+    const database = drizzle(env.DB);
+    await database.insert(events).values({
+      id: "evt_other_conf_2027",
+      slug: "other-conf-2027",
+      name: "Other Conf 2027",
+      timezone: "America/Los_Angeles",
+    }).onConflictDoNothing();
+    await database.insert(sessions).values({
+      id: "ses_other_event_keynote",
+      eventId: "evt_other_conf_2027",
+      title: "Keynote at the other conference",
+      contentStatus: "approved" as const,
+      scheduleStatus: "tbd" as const,
+      directEntry: true,
+      icsUid: "ses_other_event_keynote@session-bored",
+      publishedAt: new Date("2027-04-01T12:00:00Z"),
+    }).onConflictDoNothing();
+
+    const otherPath = "/api/attendee/events/evt_other_conf_2027/schedule";
+    const savedElsewhere = await request(otherPath, {
+      method: "PATCH",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ add: ["ses_other_event_keynote"], remove: [] }),
+    });
+    expect(savedElsewhere.status).toBe(200);
+    expect(await savedElsewhere.json()).toEqual({ sessionIds: ["ses_other_event_keynote"] });
+
+    // A request naming this event may only speak about this event's sessions.
+    const crossEvent = await request("/api/attendee/events/evt_devflow_conf_2027/schedule", {
+      method: "PATCH",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ add: [], remove: ["ses_other_event_keynote"] }),
+    });
+    expect(crossEvent.status).toBe(200);
+
+    const stillThere = await request(otherPath, { headers: { cookie } });
+    expect(await stillThere.json()).toEqual({ sessionIds: ["ses_other_event_keynote"] });
   });
 
   it("keeps an attendee's saved public sessions after signing out and back in", async () => {

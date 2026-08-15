@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { personalScheduleUpdateLimit, type PersonalScheduleChange } from "../../shared/api.ts";
 import {
   createPersonalScheduleStore,
-  personalScheduleStore,
+  createPersonalScheduleStores,
   PersonalScheduleRejected,
   PersonalScheduleUnauthenticated,
   type PersonalScheduleEnvironment,
@@ -43,6 +43,7 @@ class FakeSchedule implements PersonalScheduleEnvironment {
   failNextUpdate: Error | null = null;
   updateFailure: Error | null = null;
   publicSessionIdsFailure: Error | null = null;
+  readonly accountListeners = new Set<() => void>();
   blockNextUpdate: { started: Deferred<void>; release: Deferred<void> } | null = null;
 
   constructor(devicePicks: string[] = []) {
@@ -109,6 +110,20 @@ class FakeSchedule implements PersonalScheduleEnvironment {
       throw this.publicSessionIdsFailure;
     }
     return new Set(this.publicIds);
+  }
+
+  observeAccountChange(listener: () => void): () => void {
+    this.accountListeners.add(listener);
+    return () => {
+      this.accountListeners.delete(listener);
+    };
+  }
+
+  // What the header's sign-out broadcasts to whatever is listening in this document.
+  announceAccountChange(): void {
+    for (const listener of this.accountListeners) {
+      listener();
+    }
   }
 }
 
@@ -359,12 +374,12 @@ describe("moving between the pages that show the schedule", () => {
   // `/schedule` and `/schedule/mine` are one SPA navigation apart, so the itinerary's page
   // component unmounts while its save is still in flight.
   it("carries a pick that is still saving onto the next page, and reads the account once", async () => {
-    const navigationEventId = `${EVENT_ID}_navigation`;
     const environment = new FakeSchedule([]);
     environment.publicIds = new Set(["ses_first"]);
-    const itinerary = personalScheduleStore(navigationEventId, environment);
+    const stores = createPersonalScheduleStores(environment);
+    const itinerary = stores.forEvent(EVENT_ID);
 
-    await itinerary.settle();
+    await itinerary.resume();
     expect(environment.reads).toBe(1);
 
     const started = deferred<void>();
@@ -373,18 +388,60 @@ describe("moving between the pages that show the schedule", () => {
     const saving = itinerary.toggle("ses_first");
     await started.promise;
 
-    const mySchedule = personalScheduleStore(navigationEventId);
+    const mySchedule = stores.forEvent(EVENT_ID);
     expect(mySchedule.snapshot().sessionIds).toEqual(["ses_first"]);
     expect(mySchedule.snapshot().storageStatus).toBe("account");
 
     release.resolve();
-    await Promise.all([saving, mySchedule.settle()]);
+    await Promise.all([saving, mySchedule.resume()]);
 
     expect(environment.account).toEqual(["ses_first"]);
     expect(mySchedule.snapshot().sessionIds).toEqual(["ses_first"]);
     expect(mySchedule.snapshot().storageStatus).toBe("account");
     expect(environment.updates).toEqual([{ add: ["ses_first"], remove: [] }]);
     expect(environment.reads).toBe(1);
+  });
+});
+
+describe("an account that changed while no schedule page was mounted", () => {
+  // Signing in and out happen on other SPA routes, so the store outlives the page that
+  // subscribed to the session. The login form announces nothing at all.
+  it("reaches the account the visitor signed into elsewhere", async () => {
+    const environment = new FakeSchedule(["ses_device"]);
+    environment.publicIds = new Set(["ses_device", "ses_account"]);
+    environment.account = ["ses_account"];
+    environment.userId = null;
+    const stores = createPersonalScheduleStores(environment);
+
+    await stores.forEvent(EVENT_ID).resume();
+    expect(stores.forEvent(EVENT_ID).snapshot().storageStatus).toBe("device");
+
+    environment.userId = "usr_attendee";
+    await stores.forEvent(EVENT_ID).resume();
+
+    const schedule = stores.forEvent(EVENT_ID).snapshot();
+    expect(schedule.storageStatus).toBe("account");
+    expect(schedule.sessionIds).toEqual(["ses_account", "ses_device"]);
+    expect(environment.account).toEqual(["ses_account", "ses_device"]);
+  });
+
+  it("returns the shared device to its own picks after a sign-out it never heard", async () => {
+    const environment = new FakeSchedule(["ses_device"]);
+    environment.publicIds = new Set(["ses_device", "ses_account"]);
+    environment.account = ["ses_account"];
+    environment.storage.set(migrationKey("usr_attendee"), "done");
+    const stores = createPersonalScheduleStores(environment);
+
+    await stores.forEvent(EVENT_ID).resume();
+    expect(stores.forEvent(EVENT_ID).snapshot().sessionIds).toEqual(["ses_account"]);
+
+    environment.userId = null;
+    await stores.forEvent(EVENT_ID).resume();
+
+    const schedule = stores.forEvent(EVENT_ID).snapshot();
+    expect(schedule.storageStatus).toBe("device");
+    expect(schedule.sessionIds).toEqual(["ses_device"]);
+    expect(JSON.parse(environment.storage.get(DEVICE_KEY)!)).toEqual(["ses_device"]);
   });
 });
 
@@ -452,8 +509,11 @@ describe("signing out on the page", () => {
     await store.settle();
     expect(store.snapshot().sessionIds).toEqual(["ses_account", "ses_device"]);
 
+    // The store hears the header's broadcast itself, rather than through whichever page
+    // happens to be mounted.
     environment.userId = null;
-    await store.reset();
+    environment.announceAccountChange();
+    await store.settle();
 
     expect(store.snapshot().storageStatus).toBe("device");
     expect(store.snapshot().sessionIds).toEqual(["ses_device"]);

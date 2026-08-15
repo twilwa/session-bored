@@ -284,8 +284,11 @@ longer projects it into the session at all.
   session, so the client answers a refusal by re-reading the live programme and
   dropping only the picks it no longer offers: a stale id never takes its batch
   peers with it. One store per event serves both `/schedule` and
-  `/schedule/mine` (`personalScheduleStore`), because those are one SPA
-  navigation apart and a pick is still saving when the first page unmounts.
+  `/schedule/mine` (`createPersonalScheduleStores`), because those are one SPA
+  navigation apart and a pick is still saving when the first page unmounts. That
+  store outlives both pages, so it owns its own session subscription and
+  `resume()` re-asks who the account is on every mount - signing in and out
+  happen on other SPA routes, and the login form announces nothing at all.
 - **A query whose parameter count follows the data goes through
   `worker/d1-limits.ts#chunkIds`.** D1 binds at most 100 per statement, so an
   `inArray` over rows the event owns - the speaker join behind
