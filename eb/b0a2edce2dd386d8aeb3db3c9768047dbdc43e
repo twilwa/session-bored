@@ -1,0 +1,33 @@
+worker/routes/speaker-directory.ts
+  s_e45850ec76bd2e::t_cdbf8569da9e09 47-48,51-52,54-56
+  s_e45850ec76bd2e::t_d5d789dff1b987 244-246,250,265-274
+client/pages/directory/SpeakerDirectoryPage.tsx
+  s_e45850ec76bd2e::t_3bd5f542c8577b 256
+  s_e45850ec76bd2e::t_e0a667ad4e27ca 294-296
+  s_e45850ec76bd2e::t_0a519acd0906d1 281
+  s_e45850ec76bd2e::t_e3d5ccd5aeb499 298
+worker/speaker-directory.ts
+  s_e45850ec76bd2e::t_c1837a444689bc 37-47,54,57-58,64-107,113-114,123,133-137,172-178,181-183,185,189-198,269-272,274,282-284,331-339
+tests/unit/speaker-directory.test.ts
+  s_e45850ec76bd2e::t_80be62fb2f295d 4-8
+  s_e45850ec76bd2e::t_2dba6e4ee8ea3b 57-82
+tests/e2e/speaker-directory.spec.ts
+  s_e45850ec76bd2e::t_cf6d4ee434560b 33-80,82-83
+  s_e45850ec76bd2e::t_e4e59e04481c94 81
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "ebb0a2edce2dd386d8aeb3db3c9768047dbdc43e",
+  "prompts": {},
+  "sessions": {
+    "s_e45850ec76bd2e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "13ebe572-3fd6-463d-851d-c1c4d90d010a",
+        "model": "claude-opus-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
