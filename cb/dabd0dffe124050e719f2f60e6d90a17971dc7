@@ -1,0 +1,59 @@
+shared/api.ts
+  s_810cc89dc7b90f::t_755adb76e0710f 189-194,775,781-791
+  s_6de8337f42ca48::t_fd525ccf3ece50 792
+tests/integration/agenda.test.ts
+  s_810cc89dc7b90f::t_ab7b04d82bc9a8 76-82,725-769
+  s_810cc89dc7b90f::t_74b41bce3f0cdd 697-724,770
+  s_9ee3e1ba44036e::t_52fa29affccb15 75
+client/pages/agenda/AgendaPage.tsx
+  s_810cc89dc7b90f::t_83d06d2346bf78 992,995,998
+  s_810cc89dc7b90f::t_4b8f8bd5e04629 4,22,660-684,701
+  s_810cc89dc7b90f::t_9f8cb10e10c628 989
+client/pages/agenda/AgendaSessionCreator.tsx
+  s_810cc89dc7b90f::t_4b8f8bd5e04629 1-114
+tests/unit/route-map.test.ts
+  s_810cc89dc7b90f::t_ab7b04d82bc9a8 82-87
+worker/routes/agenda.ts
+  s_810cc89dc7b90f::t_755adb76e0710f 8,32-33,223,234-238,336,366-419
+  s_6de8337f42ca48::t_e0ededdf1c15a9 420-421
+client/pages/agenda/agenda.css
+  s_810cc89dc7b90f::t_4b8f8bd5e04629 20-22,164-168,202,211-213,231
+tests/e2e/direct-session-entry.spec.ts
+  s_810cc89dc7b90f::t_83d06d2346bf78 40-42
+  s_810cc89dc7b90f::t_9f8cb10e10c628 39
+  s_810cc89dc7b90f::t_e6f11d6a64054b 17-20,50
+  s_810cc89dc7b90f::t_a41054e23ce746 31-34,54-63
+  s_810cc89dc7b90f::t_a50edb48723fb0 1-16,21-30,35-38,43-49,51-53,64
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "cbdabd0dffe124050e719f2f60e6d90a17971dc7",
+  "prompts": {},
+  "sessions": {
+    "s_6de8337f42ca48": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1d347aba-ee10-4757-ba7a-85ff80054093",
+        "model": "claude-opus-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    },
+    "s_810cc89dc7b90f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a007a0-0d12-75c3-a0c0-619ad39b0cc7",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    },
+    "s_9ee3e1ba44036e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a007a0-6123-7780-854a-bc327213d312",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
