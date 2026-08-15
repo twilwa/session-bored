@@ -39,6 +39,10 @@ export interface PersonalScheduleStore {
 // dropped from it; every still-public pick in the same batch is kept and sent again.
 export class PersonalScheduleRejected extends Error {}
 
+// The account behind these picks is not signed in any more. The device takes its own
+// schedule back, and the account's picks - saved or still unsent - never follow it there.
+export class PersonalScheduleUnauthenticated extends Error {}
+
 interface SessionPayload {
   user: { id: string };
 }
@@ -98,6 +102,9 @@ export function browserPersonalScheduleEnvironment(): PersonalScheduleEnvironmen
     },
     async readAccountSchedule(eventId) {
       const response = await fetch(accountSchedulePath(eventId), { credentials: "same-origin" });
+      if (response.status === 401) {
+        throw new PersonalScheduleUnauthenticated("authentication_required");
+      }
       if (!response.ok) {
         throw new Error("personal_schedule_load_failed");
       }
@@ -112,6 +119,9 @@ export function browserPersonalScheduleEnvironment(): PersonalScheduleEnvironmen
       });
       if (response.status === 400) {
         throw new PersonalScheduleRejected("personal_schedule_rejected");
+      }
+      if (response.status === 401) {
+        throw new PersonalScheduleUnauthenticated("authentication_required");
       }
       if (!response.ok) {
         throw new Error("personal_schedule_sync_failed");
@@ -205,10 +215,15 @@ export function createPersonalScheduleStore(
 
   async function dropPicksOffTheProgramme(): Promise<void> {
     const publicIds = await environment.publicSessionIds(eventId);
+    const dropped = new Set<string>();
     for (const [sessionId, keep] of pending) {
       if (keep && !publicIds.has(sessionId)) {
         pending.delete(sessionId);
+        dropped.add(sessionId);
       }
+    }
+    if (dropped.size > 0) {
+      sessionIds = sessionIds.filter((sessionId) => !dropped.has(sessionId));
     }
   }
 
@@ -295,6 +310,13 @@ export function createPersonalScheduleStore(
       if (attempt !== generation) {
         return;
       }
+      if (error instanceof PersonalScheduleUnauthenticated) {
+        forgetAccount();
+        mode = "device";
+        failed = false;
+        publish();
+        return;
+      }
       if (error instanceof PersonalScheduleRejected) {
         accountLoaded = false;
       }
@@ -308,15 +330,19 @@ export function createPersonalScheduleStore(
     return queue;
   }
 
-  function reset(): Promise<void> {
-    generation += 1;
+  function forgetAccount(): void {
     pending.clear();
     accountUserId = null;
     accountLoaded = false;
     mode = "checking";
-    failed = false;
     devicePicks = readDevicePicks();
     sessionIds = devicePicks;
+  }
+
+  function reset(): Promise<void> {
+    generation += 1;
+    forgetAccount();
+    failed = false;
     publish();
     return settle();
   }

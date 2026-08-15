@@ -5,6 +5,7 @@ import { personalScheduleUpdateLimit, type PersonalScheduleChange } from "../../
 import {
   createPersonalScheduleStore,
   PersonalScheduleRejected,
+  PersonalScheduleUnauthenticated,
   type PersonalScheduleEnvironment,
 } from "../../client/pages/public/personal-schedule.ts";
 
@@ -36,6 +37,7 @@ class FakeSchedule implements PersonalScheduleEnvironment {
   userId: string | null = "usr_attendee";
   pendingUserId: Deferred<string | null> | null = null;
   userIdFailure: Error | null = null;
+  readFailure: Error | null = null;
   failNextUpdate: Error | null = null;
   updateFailure: Error | null = null;
   publicSessionIdsFailure: Error | null = null;
@@ -63,6 +65,9 @@ class FakeSchedule implements PersonalScheduleEnvironment {
   }
 
   async readAccountSchedule(): Promise<string[]> {
+    if (this.readFailure !== null) {
+      throw this.readFailure;
+    }
     return [...this.account];
   }
 
@@ -310,7 +315,11 @@ describe("a flush the server refuses part of", () => {
     environment.publicIds.delete("ses_0");
     await store.settle();
 
+    // The refused pick leaves the rendered list at once - the page must not go on showing a
+    // session the programme has withdrawn, under copy that says the picks are being kept.
     expect(store.snapshot().storageStatus).toBe("error");
+    expect(store.snapshot().sessionIds).not.toContain("ses_0");
+    expect(store.snapshot().sessionIds).toEqual(manyPicks(150).slice(1));
 
     await store.settle();
 
@@ -340,6 +349,60 @@ describe("a flush the server refuses part of", () => {
     expect(environment.account).toEqual(["ses_0", "ses_1"]);
     expect(store.snapshot().sessionIds).toEqual(["ses_0", "ses_1"]);
     expect(store.snapshot().storageStatus).toBe("account");
+  });
+});
+
+describe("an account that is no longer signed in", () => {
+  // Signing out in another tab, or a session simply expiring, never reaches this page:
+  // `observePublicSession` is a same-window event. The refusal itself is the only signal.
+  it("hands the shared device back to its anonymous owner when a save is refused", async () => {
+    const environment = new FakeSchedule(["ses_device"]);
+    environment.publicIds = new Set(["ses_device", "ses_account", "ses_later"]);
+    environment.account = ["ses_account"];
+    environment.storage.set(migrationKey("usr_attendee"), "done");
+    const store = createPersonalScheduleStore(EVENT_ID, environment);
+
+    await store.settle();
+    expect(store.snapshot().sessionIds).toEqual(["ses_account"]);
+    expect(store.snapshot().storageStatus).toBe("account");
+
+    environment.updateFailure = new PersonalScheduleUnauthenticated("authentication_required");
+    environment.userId = null;
+    await store.toggle("ses_later");
+
+    expect(store.snapshot().storageStatus).toBe("device");
+    expect(store.snapshot().sessionIds).toEqual(["ses_device"]);
+    expect(environment.account).toEqual(["ses_account"]);
+    // Neither the account's saved pick nor the one it never managed to send may be written
+    // to a device the account does not own.
+    expect(JSON.parse(environment.storage.get(DEVICE_KEY)!)).toEqual(["ses_device"]);
+
+    environment.updateFailure = null;
+    await store.toggle("ses_later");
+
+    expect(store.snapshot().storageStatus).toBe("device");
+    expect(store.snapshot().sessionIds).toEqual(["ses_device", "ses_later"]);
+    expect(JSON.parse(environment.storage.get(DEVICE_KEY)!)).toEqual(["ses_device", "ses_later"]);
+    expect(environment.account).toEqual(["ses_account"]);
+  });
+
+  it("keeps persisting on the device when the schedule read itself is refused", async () => {
+    const environment = new FakeSchedule(["ses_device"]);
+    environment.publicIds = new Set(["ses_device", "ses_later"]);
+    environment.account = ["ses_account"];
+    environment.readFailure = new PersonalScheduleUnauthenticated("authentication_required");
+    const store = createPersonalScheduleStore(EVENT_ID, environment);
+
+    await store.settle();
+
+    expect(store.snapshot().storageStatus).toBe("device");
+    expect(store.snapshot().sessionIds).toEqual(["ses_device"]);
+
+    await store.toggle("ses_later");
+
+    expect(store.snapshot().storageStatus).toBe("device");
+    expect(JSON.parse(environment.storage.get(DEVICE_KEY)!)).toEqual(["ses_device", "ses_later"]);
+    expect(environment.updates).toEqual([]);
   });
 });
 

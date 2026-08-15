@@ -1,5 +1,6 @@
-// ABOUTME: Shows an anonymous attendee exactly the public sessions saved on this device.
-// ABOUTME: Offers removal, calendar download, and a copyable link for the current selection.
+// ABOUTME: Shows an attendee the public sessions they saved, on their account or on this device.
+// ABOUTME: Names which of the two holds the picks, and offers removal, calendar download, and a
+// ABOUTME: copyable link for the current selection.
 import { useEffect, useMemo, useState } from "react";
 import type { PublicSessionCard, PublicSessionsResponse } from "../../../shared/api.ts";
 import { EmptyState, LoadingState, Toast } from "../../components/ui.tsx";
