@@ -317,7 +317,21 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   The merge also never gives the kept speaker a second `headshot` file:
   a merged speaker's headshot moves only when the kept speaker has none, and an
   adopted `headshot_url` is rewritten to name the speaker row that owns the
-  file after the batch.
+  file after the batch. Nor a second live answer to one file request: a
+  duplicate's deliverable moves to the kept speaker like every other file, but
+  arrives archived when the kept speaker already answered that task, so all the
+  submitted versions stay downloadable while the active views still name one
+  file. `file_task_speaker_live_unique` enforces that rather than trusting the
+  merge to, so every reader that picks a task's file — the portal upload it
+  appends versions to, the speaker's task card, the organizer deliverables list
+  — must filter `deleted_at`.
+  **Withdrawal is terminal to a merge.** `mergedSpeakerStanding` decides it
+  before the status ladder: if either same-event `speaker` row is `withdrawn`
+  the merged row stays `withdrawn` and stays archived, keeping the earlier
+  withdrawal's timestamp. Taking the further-along of the two instead would let
+  the `invited` row a first CFP draft mints reverse a roster decision the
+  roster alone owns (issue #127), and at `confirmed` or beyond it would cross
+  `PUBLIC_SPEAKER_STATUSES` and republish the person.
 
 ## Accounts and access
 

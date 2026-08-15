@@ -8,6 +8,7 @@ import {
   directoryMerges,
   events,
   files,
+  fileVersions,
   people,
   sessions,
   sessionSpeakers,
@@ -500,5 +501,127 @@ describe("speaker directory", () => {
     expect(await response.json()).toEqual({ error: "account_conflict" });
     expect((await database.select().from(people).where(eq(people.id, "psn_directory_account_conflict")))[0]?.deletedAt)
       .toBeNull();
+  });
+  it("keeps a withdrawn speaker withdrawn when the duplicate's live record would promote them", async () => {
+    await request("/api/health");
+    const database = drizzle(env.DB);
+    const now = Date.now();
+    const withdrawnAt = now - 60_000;
+    await env.DB.batch([
+      env.DB.prepare(
+        "insert into person (id, name, email, organization, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
+      ).bind("psn_probe_withdrawn_kept", "Wren Terminal", "wren.kept@example.com", "Terminal Labs", now, now),
+      env.DB.prepare(
+        "insert into person (id, name, email, organization, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
+      ).bind("psn_probe_withdrawn_dupe", "Wren Terminal", "wren.duplicate@example.com", "Terminal Labs", now, now),
+      // Withdrawing on the roster sets the status and archives the row together.
+      env.DB.prepare(
+        "insert into speaker (id, person_id, event_id, status, created_at, updated_at, deleted_at) values (?, ?, ?, ?, ?, ?, ?)",
+      ).bind(
+        "spk_probe_withdrawn_kept",
+        "psn_probe_withdrawn_kept",
+        "evt_devflow_conf_2027",
+        "withdrawn",
+        now,
+        now,
+        withdrawnAt,
+      ),
+      env.DB.prepare(
+        "insert into speaker (id, person_id, event_id, status, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
+      ).bind("spk_probe_withdrawn_dupe", "psn_probe_withdrawn_dupe", "evt_devflow_conf_2027", "ready", now, now),
+    ]);
+
+    const merged = await request("/api/speaker-directory/psn_probe_withdrawn_kept/merge", {
+      method: "POST",
+      headers: { cookie: await organizerCookie(), "content-type": "application/json" },
+      body: JSON.stringify({ duplicatePersonId: "psn_probe_withdrawn_dupe" }),
+    });
+    expect(merged.status).toBe(200);
+
+    const [keptSpeaker] = await database.select().from(speakers)
+      .where(eq(speakers.id, "spk_probe_withdrawn_kept"));
+    expect(keptSpeaker?.status).toBe("withdrawn");
+    expect(keptSpeaker?.deletedAt?.getTime()).toBe(withdrawnAt);
+
+    const publicSpeakers = await (await request("/api/public/events/evt_devflow_conf_2027/speakers"))
+      .json<{ items: Array<{ name: string }> }>();
+    expect(publicSpeakers.items.some((speaker) => speaker.name === "Wren Terminal")).toBe(false);
+  });
+
+  it("leaves one live deliverable per request and keeps the duplicate's as archived history", async () => {
+    await request("/api/health");
+    const database = drizzle(env.DB);
+    const now = Date.now();
+    const [organizer] = await database.select({ id: users.id }).from(users)
+      .where(eq(users.email, "sbek-organizer@example.com"));
+    const taskId = "tsk_probe_file_request";
+    await env.DB.batch([
+      env.DB.prepare(
+        "insert into person (id, name, email, organization, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
+      ).bind("psn_probe_file_kept", "Marlow Deliver", "marlow.kept@example.com", "Deliver Co", now, now),
+      env.DB.prepare(
+        "insert into person (id, name, email, organization, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
+      ).bind("psn_probe_file_dupe", "Marlow Deliver", "marlow.duplicate@example.com", "Deliver Co", now, now),
+      env.DB.prepare(
+        "insert into speaker (id, person_id, event_id, status, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
+      ).bind("spk_probe_file_kept", "psn_probe_file_kept", "evt_devflow_conf_2027", "ready", now, now),
+      env.DB.prepare(
+        "insert into speaker (id, person_id, event_id, status, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
+      ).bind("spk_probe_file_dupe", "psn_probe_file_dupe", "evt_devflow_conf_2027", "ready", now, now),
+      env.DB.prepare(
+        "insert into task (id, event_id, task_type, title, status, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?)",
+      ).bind(taskId, "evt_devflow_conf_2027", "file_request", "Upload your slides", "active", now, now),
+      env.DB.prepare(
+        "insert into task_assignee (id, task_id, speaker_id, status, completed_at, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?)",
+      ).bind("tassn_probe_file_kept", taskId, "spk_probe_file_kept", "completed", now, now, now),
+      env.DB.prepare(
+        "insert into task_assignee (id, task_id, speaker_id, status, completed_at, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?)",
+      ).bind("tassn_probe_file_dupe", taskId, "spk_probe_file_dupe", "completed", now, now, now),
+      env.DB.prepare(
+        "insert into file (id, event_id, task_id, speaker_id, kind, display_name, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?)",
+      ).bind("fil_probe_file_kept", "evt_devflow_conf_2027", taskId, "spk_probe_file_kept", "deliverable", "kept-slides.pdf", now, now),
+      env.DB.prepare(
+        "insert into file (id, event_id, task_id, speaker_id, kind, display_name, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?)",
+      ).bind("fil_probe_file_dupe", "evt_devflow_conf_2027", taskId, "spk_probe_file_dupe", "deliverable", "duplicate-slides.pdf", now, now),
+      env.DB.prepare(
+        "insert into file_version (id, file_id, version, storage_key, mime_type, size_bytes, latest, uploaded_by_user_id, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      ).bind("fver_probe_file_kept", "fil_probe_file_kept", 1, "probe/kept-slides.pdf", "application/pdf", 12, 1, organizer!.id, now, now),
+      env.DB.prepare(
+        "insert into file_version (id, file_id, version, storage_key, mime_type, size_bytes, latest, uploaded_by_user_id, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      ).bind("fver_probe_file_dupe", "fil_probe_file_dupe", 1, "probe/duplicate-slides.pdf", "application/pdf", 34, 1, organizer!.id, now, now),
+    ]);
+
+    const cookie = await organizerCookie();
+    const merged = await request("/api/speaker-directory/psn_probe_file_kept/merge", {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ duplicatePersonId: "psn_probe_file_dupe" }),
+    });
+    expect(merged.status).toBe(200);
+
+    // The organizer's deliverables list joins live files per assignment, so a second live row
+    // for the same request would show the speaker's task twice with no way to tell them apart.
+    const deliverables = await (await request("/api/events/evt_devflow_conf_2027/deliverables", {
+      headers: { cookie },
+    })).json<{ items: Array<{ taskId: string; speaker: { id: string }; file: { displayName: string } | null }> }>();
+    const ownRows = deliverables.items.filter((item) =>
+      item.taskId === taskId && item.speaker.id === "spk_probe_file_kept");
+    expect(ownRows).toHaveLength(1);
+    expect(ownRows[0]?.file?.displayName).toBe("kept-slides.pdf");
+
+    // The duplicate's upload is not discarded and does not stay on the archived identity: it
+    // belongs to the kept speaker as archived history, with its versions still downloadable.
+    const [archivedFile] = await database.select().from(files).where(eq(files.id, "fil_probe_file_dupe"));
+    expect(archivedFile).toMatchObject({
+      speakerId: "spk_probe_file_kept",
+      deletedAt: expect.any(Date),
+    });
+    expect(await database.select().from(fileVersions).where(eq(fileVersions.fileId, "fil_probe_file_dupe")))
+      .toHaveLength(1);
+    expect(await database.select().from(files).where(and(
+      eq(files.taskId, taskId),
+      eq(files.speakerId, "spk_probe_file_kept"),
+      isNull(files.deletedAt),
+    ))).toHaveLength(1);
   });
 });
