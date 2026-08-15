@@ -1,7 +1,9 @@
 // ABOUTME: Verifies agenda scheduling through authenticated Worker requests and real D1 state.
 // ABOUTME: Covers accepted-session reads, persistent placement, conflicts, TBD, and publishing.
 import { env } from "cloudflare:workers";
+import { drizzle } from "drizzle-orm/d1";
 import { beforeEach, describe, expect, it } from "vitest";
+import { sessions } from "../../db/schema.ts";
 import type { AgendaPublishResult, AgendaState } from "../../shared/api.ts";
 import worker from "../../worker/index.ts";
 
@@ -747,6 +749,39 @@ describe("agenda builder", () => {
     });
     expect(publish.status).toBe(200);
     expect(await publicSessionIds()).toContain(result.session.id);
+  });
+
+  it("returns the updated agenda when direct entry creates session 101", async () => {
+    const database = drizzle(env.DB);
+    const existingAgenda = await readAgenda(organizerCookie);
+    const addedSessions = Array.from(
+      { length: 100 - existingAgenda.sessions.length },
+      (_, index) => ({
+        id: `ses_scale_${index.toString().padStart(3, "0")}`,
+        eventId,
+        title: `Scale session ${index + 1}`,
+        contentStatus: "draft" as const,
+        scheduleStatus: "unplaced" as const,
+        directEntry: true,
+        icsUid: `ses_scale_${index.toString().padStart(3, "0")}@greenroom`,
+      }),
+    );
+    for (let index = 0; index < addedSessions.length; index += 5) {
+      await database.insert(sessions).values(addedSessions.slice(index, index + 5));
+    }
+    expect((await readAgenda(organizerCookie)).sessions).toHaveLength(100);
+
+    const response = await request(`/api/events/${eventId}/agenda/sessions`, {
+      method: "POST",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({ title: "Session one hundred and one" }),
+    });
+
+    expect(response.status).toBe(201);
+    const result = await response.json<{ agenda: AgendaState; session: AgendaState["sessions"][number] }>();
+    expect(result.session.title).toBe("Session one hundred and one");
+    expect(result.agenda.sessions).toHaveLength(101);
+    expect((await readAgenda(organizerCookie)).sessions).toHaveLength(101);
   });
 
   it("refuses invalid direct-session content and event resources without creating a session", async () => {

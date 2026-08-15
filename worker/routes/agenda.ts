@@ -272,25 +272,31 @@ async function readAgenda(binding: D1Database, eventId: string): Promise<AgendaS
 
   const speakerRows = sessionRows.length === 0
     ? []
-    : await database
-      .select({
-        sessionId: sessionSpeakers.sessionId,
-        speakerId: speakers.id,
-        name: people.name,
-        publicationHoldAt: sessionSpeakers.publicationHoldAt,
-      })
-      .from(sessionSpeakers)
-      .innerJoin(speakers, eq(sessionSpeakers.speakerId, speakers.id))
-      .innerJoin(people, eq(speakers.personId, people.id))
-      // This one list is both the card's lineup and the input to the speaker-overlap rule, so a
-      // removed participant left in it does not just misread - it invents a clash and offers to
-      // unplace a correctly-placed session to resolve it.
-      .where(and(
-        inArray(sessionSpeakers.sessionId, sessionRows.map((session) => session.id)),
-        isNull(sessionSpeakers.deletedAt),
-        isNull(speakers.deletedAt),
-      ))
-      .orderBy(asc(sessionSpeakers.sortOrder), asc(people.name));
+    : (
+      await Promise.all(
+        chunkIds(sessionRows.map((session) => session.id)).map((sessionIds) =>
+          database
+            .select({
+              sessionId: sessionSpeakers.sessionId,
+              speakerId: speakers.id,
+              name: people.name,
+              publicationHoldAt: sessionSpeakers.publicationHoldAt,
+            })
+            .from(sessionSpeakers)
+            .innerJoin(speakers, eq(sessionSpeakers.speakerId, speakers.id))
+            .innerJoin(people, eq(speakers.personId, people.id))
+            // This one list is both the card's lineup and the input to the speaker-overlap rule, so a
+            // removed participant left in it does not just misread - it invents a clash and offers to
+            // unplace a correctly-placed session to resolve it.
+            .where(and(
+              inArray(sessionSpeakers.sessionId, sessionIds),
+              isNull(sessionSpeakers.deletedAt),
+              isNull(speakers.deletedAt),
+            ))
+            .orderBy(asc(sessionSpeakers.sortOrder), asc(people.name)),
+        ),
+      )
+    ).flat();
   const speakersBySession = new Map<string, Array<{ id: string; name: string }>>();
   const pendingSpeakersBySession = new Map<string, number>();
   for (const speaker of speakerRows) {
