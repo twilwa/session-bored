@@ -152,7 +152,13 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   the organizer names no remit: every event track and the first open round, and
   no open round refuses with `open_round_required`. An *explicitly* empty
   `trackIds` array means no tracks, never all of them. An invitation stores the
-  resolved ids, so redemption opens a queue with work in it.
+  resolved ids, so redemption opens a queue with work in it. That default is
+  for the *invitee's* redemption only: when an invited address already has a
+  confirmed account, the organizer-side upgrade (invite-time with a named
+  remit, or `POST .../reviewer-invites/:inviteId/upgrade` afterwards) applies a
+  remit the organizer explicitly named - the People grant door's rule (#166),
+  never the silent default - and reports `grantedReviewerRole: false` when the
+  person was already a reviewer, because what extended was their remit.
   `PATCH /review/events/:eventId/reviewers/:reviewerUserId` replaces that remit
   in both directions, so narrowing takes effect on the reviewer's next read. It
   reports `retainedAssignments` because an explicit assignment still grants
@@ -305,11 +311,22 @@ longer projects it into the session at all.
   *Programmed* counts a submission-backed session only while its submission is
   still accepted, and a directly entered session (no `submission_id`) always.
   Granting is attributed and silent; the notify checkbox defaults to off.
-- **A reviewer invitation is redeemed only by confirming the address.** Signing
-  up as an invited address grants nothing. `worker/reviewer-invites.ts#redeemReviewerInvites`
-  runs from Better Auth's `afterEmailVerification` and nowhere else; redeeming at
-  sign-up would hand reviewer access to anyone who guessed an invited address.
-  `tests/integration/account-access.test.ts` runs that exact attack - keep it.
+- **A reviewer invitation is redeemed only by a proved address, never by signing
+  up as one.** Signing up as an invited address grants nothing. Redemption has
+  three doors and one proof. `worker/reviewer-invites.ts#redeemInviteForAccount`
+  is the single redemption writer, and its callers are: Better Auth's
+  `afterEmailVerification`; the emailed link's accept action
+  (`POST /api/reviewer-invites/:inviteId/accept` in `worker/routes/people.ts`,
+  which requires a signed-in account whose confirmed address is the invited
+  one, because an account that verified long ago never re-fires verification);
+  and an organizer upgrading an already-confirmed account at invite time or
+  through the upgrade route. The emailed link is one URL for every path that
+  still has to redeem - `/invitations/:inviteId` - never a second signup-only
+  link. An invite-time upgrade leaves nothing to redeem, so that mail alone
+  links `/reviewer`: the workspace gate routes a signed-out visit through
+  sign-in and back, while the invitation's own page would only report that it is
+  spent. `tests/integration/account-access.test.ts` runs the guessed-address
+  attack - keep it.
 - `emailVerification.sendOnSignUp` is on and never blocks signing in. Account
   mail carries `eventId: "platform"` and goes straight to the delivery rather
   than `sendTrackedEmail`, because `email_dispatch.event_id` references a real
@@ -579,30 +596,20 @@ reason - tests inject a fake one instead of touching the network.
   `sendTrackedEmail` (template key `reviewer_invitation`), so every attempt
   lands in the shared `email_dispatch` communications log and the route answers
   `emailDelivery` (`sent` | `failed` | `not_configured`) for People to report.
-  The mail links `/signup?email=<invited address>`, which prefills the sign-up
-  form; redemption stays address-confirmation only (see Accounts and access).
-  Because redemption is that confirmation and nothing else, an address whose
-  account has **already confirmed** is refused `account_already_confirmed`: it
-  cannot confirm a second time, so the invitation could only sit open forever.
-  The refusal names the door that is actually open, which depends on whether
-  that account already holds a live reviewer grant - a reviewer onboarded by an
-  earlier invitation always does, and People offers no second grant for them.
-  Neither door carries a default remit, and every refusal names the remit
-  itself: an account that already holds the grant is sent to Committee setup,
-  which is the only step left for it, and an account without the grant is sent
-  to People's grant (#166) *and then* to Committee setup for this event, because
-  a grant is platform-wide while a queue is per event. Both say plainly that
-  tracks and a review round must be chosen. The other two invitation refusals,
-  `invalid_email` and `open_round_required`, carry a `note` for the same reason:
-  People renders the server's note, so a refusal without one is a dead end.
-  Resending
-  (`POST /api/events/:eventId/reviewer-invites/:inviteId/resend`) is open only
-  while this invitation's own delivery reads `failed` or `not_attempted`, and
-  refuses `invitation_already_sent` once any attempt since its `createdAt`
-  succeeded. That is the same rule behind `canResend` in `GET /api/people`:
+  Every refusal it can answer - `invalid_email`, `invite_already_open`,
+  `open_round_required` - carries a `note`, because People renders the server's
+  note and a refusal without one is a dead end.
+  A never-delivered invitation is re-sent from People through
+  `POST .../reviewer-invites/:inviteId/resend`, which refuses
+  `invitation_already_sent` once any attempt since the invitation's `createdAt`
+  succeeded, and re-reads the invited address's account status so the copy still
+  fits. That is the same rule behind `canResend` in `GET /api/people`:
   `reviewerInvitationDeliveryFor` is the one reading of it, so a letter that
   reached somebody is never sent twice and one that reached nobody is never
-  stranded.
+  stranded. The mail carries whichever link still has work to do - the
+  invitation page, or `/reviewer` when the organizer already opened access - and
+  says acceptance is still required unless it was; see Accounts and access for
+  the redemption doors.
 - **Reminders** (F-11.7) are drafted, never sent, by
   `worker/email/reminders.ts#draftOverdueTaskReminders` into `email_dispatch`
   rows with `status = 'draft'`. An organizer reviews, optionally edits

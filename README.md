@@ -76,12 +76,20 @@ sits inside an area your account reaches; anything else lands you on your home
 area.
 
 An organizer can also invite a reviewer by email. The invitation is sent through
-Communications and becomes reviewer access only once that person creates an account
+Communications and becomes reviewer access once that person creates an account
 and confirms the invited address, so knowing that address is never enough to claim
-it. Invitation mail needs an email sender; without one, People says delivery was not
-attempted and the invitation remains pending. Whenever an invitation reached nobody,
-People offers **Resend invitation** on its row, so a failed send or one made before a
-sender was connected goes out without withdrawing and re-inviting.
+it. The emailed link is one page for every case: it starts a sign-up for a new
+address, asks an account that has not confirmed its address to do that first, and
+for an address with a confirmed account opens reviewer access from the page once
+that person is signed in as it. If the invited address already has a confirmed
+account, People tells the organizer and can open the access immediately - naming
+what the reviewer may read, exactly as a direct grant does - which for an
+existing reviewer extends their remit to the event rather than granting them
+anything new. Invitation mail needs an email sender; without one, People says
+delivery was not attempted and the invitation remains pending. Whenever an
+invitation reached nobody, People offers **Resend invitation** on its row, so a
+failed send or one made before a sender was connected goes out without
+withdrawing and re-inviting.
 
 Granting reviewer from People asks in the same step what that reviewer may read:
 at least one track and one open review round, so a new reviewer signs in to a

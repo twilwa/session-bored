@@ -363,6 +363,24 @@ export const peopleRouteMap = {
     module: "people",
     access: "organizer",
   },
+  reviewerInvite: {
+    method: "GET",
+    path: "/api/reviewer-invites/:inviteId",
+    module: "people",
+    access: "public",
+  },
+  acceptReviewerInvite: {
+    method: "POST",
+    path: "/api/reviewer-invites/:inviteId/accept",
+    module: "people",
+    access: "authenticated",
+  },
+  upgradeReviewerInvite: {
+    method: "POST",
+    path: "/api/events/:eventId/reviewer-invites/:inviteId/upgrade",
+    module: "people",
+    access: "organizer",
+  },
   resendReviewerInvite: {
     method: "POST",
     path: "/api/events/:eventId/reviewer-invites/:inviteId/resend",

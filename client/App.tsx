@@ -26,6 +26,7 @@ import { ContentPage } from "./pages/content/ContentPage.tsx";
 import { EmbedsPage } from "./pages/embeds/EmbedsPage.tsx";
 import { EmbedFramePage } from "./pages/embeds/EmbedFramePage.tsx";
 import { SignUpPage } from "./pages/account/SignUpPage.tsx";
+import { InvitationPage } from "./pages/account/InvitationPage.tsx";
 import { PeoplePage } from "./pages/people/PeoplePage.tsx";
 
 type Role = "organizer" | "reviewer" | "speaker" | "attendee";
@@ -337,6 +338,9 @@ function RoutedPage({ path }: { path: string }) {
   if (path === "/") return <HomePage />;
   if (path === "/login") return <LoginPage />;
   if (path === "/signup") return <SignUpPage />;
+  if (hasOnePathSegment(path, "/invitations/")) {
+    return <InvitationPage inviteId={path.split("/")[2] ?? ""} />;
+  }
   if (isCfpSubmissionPath(path)) return <CfpSubmissionPage path={path} />;
   if (path === "/organizer/cfp") return <RoleShell role="organizer"><CfpBuilderPage /></RoleShell>;
   if (path === "/organizer/disposition") return <RoleShell role="organizer"><DispositionPage /></RoleShell>;

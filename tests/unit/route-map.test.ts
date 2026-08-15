@@ -63,6 +63,33 @@ describe("typed route map", () => {
     });
   });
 
+  it("publishes every reviewer invitation door with its actual access", () => {
+    expect([
+      peopleRouteMap.reviewerInvite,
+      peopleRouteMap.acceptReviewerInvite,
+      peopleRouteMap.upgradeReviewerInvite,
+    ]).toEqual([
+      {
+        method: "GET",
+        path: "/api/reviewer-invites/:inviteId",
+        module: "people",
+        access: "public",
+      },
+      {
+        method: "POST",
+        path: "/api/reviewer-invites/:inviteId/accept",
+        module: "people",
+        access: "authenticated",
+      },
+      {
+        method: "POST",
+        path: "/api/events/:eventId/reviewer-invites/:inviteId/upgrade",
+        module: "people",
+        access: "organizer",
+      },
+    ]);
+  });
+
   it("publishes the complete organizer communication-template contract", () => {
     expect([
       routeMap.commsRecipients,
