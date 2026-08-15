@@ -1,0 +1,40 @@
+tests/integration/email-sending.test.ts
+  s_89b108d05b94d9::t_2fe082ff017bda 598-621
+tests/unit/route-map.test.ts
+  s_89b108d05b94d9::t_2fe082ff017bda 66-92
+shared/api.ts
+  s_89b108d05b94d9::t_891abe230d5e37 365-381
+  s_7bea4e476b9c92::t_98819453addb62 364
+worker/email/reviewer-invitation.ts
+  s_89b108d05b94d9::t_17781528750c34 47,61,63-64,68
+tests/unit/invitation-page.test.ts
+  s_89b108d05b94d9::t_dd26f09b428dba 1-11
+client/pages/account/InvitationPage.tsx
+  s_89b108d05b94d9::t_17781528750c34 17-20,134-135
+worker/routes/people.ts
+  s_89b108d05b94d9::t_17781528750c34 559,636
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "2bd1941a5d0be0549facb4f8f192dfc6093e945a",
+  "prompts": {},
+  "sessions": {
+    "s_7bea4e476b9c92": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffe3b-ba90-7072-a100-5d86ced36312",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    },
+    "s_89b108d05b94d9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a00396-c836-7c43-87b0-74d23fa3588c",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
