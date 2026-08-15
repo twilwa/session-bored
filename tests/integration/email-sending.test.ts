@@ -33,8 +33,10 @@ async function requestWithSenderConnected(path: string, init?: RequestInit): Pro
 }
 
 /** Answers only Resend's endpoint; any other host reaching global fetch fails the test. */
-function interceptResend(reply: { ok: boolean; id?: string }): { calls: Array<{ to: string[]; from: string }> } {
-  const calls: Array<{ to: string[]; from: string }> = [];
+function interceptResend(reply: { ok: boolean; id?: string }): {
+  calls: Array<{ to: string[]; from: string; subject: string; html: string; text: string }>;
+} {
+  const calls: Array<{ to: string[]; from: string; subject: string; html: string; text: string }> = [];
   const original = globalThis.fetch;
   vi.stubGlobal("fetch", async (input: RequestInfo | URL, requestInit?: RequestInit) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
@@ -499,6 +501,131 @@ describe("a decision recorded while no sender is connected", () => {
     const item = payload.items.find((row) => row.id === submissionId);
     expect(item?.notice).toMatchObject({ deliveryStatus: "failed" });
     expect(item?.notice?.failureReason).toContain("resend_403");
+  });
+});
+
+describe("reviewer invitation dispatch", () => {
+  let cookie: string;
+
+  beforeEach(async () => {
+    await request("/api/health");
+    cookie = await signIn("sbek-organizer@example.com", "SbekTest!2027-org");
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  async function readInvitationDispatches(recipientEmail: string): Promise<Array<{
+    status: string;
+    templateKey: string | null;
+    failureReason: string | null;
+    recipients: Array<{ email: string }>;
+  }>> {
+    const response = await request(`/api/events/${eventId}/email-dispatches`, { headers: { cookie } });
+    expect(response.status).toBe(200);
+    const payload = await response.json<{
+      items: Array<{
+        status: string;
+        templateKey: string | null;
+        failureReason: string | null;
+        recipients: Array<{ email: string }>;
+      }>;
+    }>();
+    return payload.items.filter((item) =>
+      item.templateKey === "reviewer_invitation" &&
+      item.recipients.some((recipient) => recipient.email === recipientEmail)
+    );
+  }
+
+  it("sends the invitation through tracked delivery and lists the sent record in Communications", async () => {
+    const recipientEmail = `reviewer-invite-success-${crypto.randomUUID()}@greenroom-mail.dev`;
+    const resend = interceptResend({ ok: true, id: "resend_reviewer_invitation" });
+    const response = await requestWithSenderConnected(`/api/events/${eventId}/reviewer-invites`, {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ email: recipientEmail }),
+    });
+
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toMatchObject({
+      invite: { email: recipientEmail, eventId },
+      emailDelivery: "sent",
+    });
+    expect(resend.calls).toHaveLength(1);
+    expect(resend.calls[0]).toMatchObject({
+      to: [recipientEmail],
+      from: senderSecrets.RESEND_FROM_ADDRESS,
+    });
+    expect(resend.calls[0]?.text).toContain(`/signup?email=${encodeURIComponent(recipientEmail)}`);
+    expect(await readInvitationDispatches(recipientEmail)).toContainEqual(expect.objectContaining({
+      status: "sent",
+      templateKey: "reviewer_invitation",
+      failureReason: null,
+    }));
+
+    // Inviting the same address again is refused, and because this one really reached them the
+    // refusal does not offer a resend the row no longer carries.
+    const duplicate = await requestWithSenderConnected(`/api/events/${eventId}/reviewer-invites`, {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ email: recipientEmail }),
+    });
+    expect(duplicate.status).toBe(409);
+    const refusal = await duplicate.json<{ error: string; inviteId: string; note: string }>();
+    expect(refusal.error).toBe("invite_already_open");
+    expect(refusal.note).toContain("reached them");
+    expect(refusal.note).not.toContain("Resend invitation");
+    expect(resend.calls).toHaveLength(1);
+
+    // And the send door agrees: a letter that arrived is never sent twice.
+    const resent = await requestWithSenderConnected(
+      `/api/events/${eventId}/reviewer-invites/${refusal.inviteId}/resend`,
+      { method: "POST", headers: { cookie } },
+    );
+    expect(resent.status).toBe(409);
+    await expect(resent.json()).resolves.toMatchObject({ error: "invitation_already_sent" });
+    expect(resend.calls).toHaveLength(1);
+  });
+
+  it("resends a failed open invitation through tracked delivery", async () => {
+    const recipientEmail = `reviewer-invite-failure-${crypto.randomUUID()}@greenroom-mail.dev`;
+    const resend = interceptResend({ ok: false });
+    const response = await requestWithSenderConnected(`/api/events/${eventId}/reviewer-invites`, {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ email: recipientEmail }),
+    });
+
+    expect(response.status).toBe(201);
+    const failedPayload = await response.json<{ invite: { id: string } } & Record<string, unknown>>();
+    expect(failedPayload).toMatchObject({
+      invite: { email: recipientEmail, eventId },
+      emailDelivery: "failed",
+      failureReason: expect.stringContaining("resend_403"),
+    });
+    expect(resend.calls).toHaveLength(1);
+    expect(await readInvitationDispatches(recipientEmail)).toContainEqual(expect.objectContaining({
+      status: "failed",
+      failureReason: expect.stringContaining("resend_403"),
+    }));
+
+    vi.unstubAllGlobals();
+    const retry = interceptResend({ ok: true, id: "resend_reviewer_invitation_retry" });
+    const retryResponse = await requestWithSenderConnected(
+      `/api/events/${eventId}/reviewer-invites/${failedPayload.invite.id}/resend`,
+      { method: "POST", headers: { cookie } },
+    );
+
+    expect(retryResponse.status).toBe(200);
+    await expect(retryResponse.json()).resolves.toMatchObject({
+      invite: { id: failedPayload.invite.id, email: recipientEmail, eventId },
+      emailDelivery: "sent",
+    });
+    expect(retry.calls).toHaveLength(1);
+    expect(retry.calls[0]).toMatchObject({ to: [recipientEmail] });
+    expect((await readInvitationDispatches(recipientEmail)).map((dispatch) => dispatch.status))
+      .toEqual(expect.arrayContaining(["failed", "sent"]));
   });
 });
 

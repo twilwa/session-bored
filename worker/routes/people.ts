@@ -1,11 +1,12 @@
 // ABOUTME: Serves the organizer's platform-wide view of who has an account and what it opens.
 // ABOUTME: Owns granting, revoking, and reviewer invitations, each attributed to the organizer who acted.
-import { and, asc, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNull, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { Hono } from "hono";
 import { createMiddleware } from "hono/factory";
 import {
   authAccounts,
+  emailDispatches,
   type GrantableRole,
   grantableRoles,
   people,
@@ -24,9 +25,14 @@ import {
 import { holdsAccess } from "../access.ts";
 import type { PersonAccountEvidence, PersonAccountSummary } from "../../shared/api.ts";
 import type { AuthSession } from "../auth.ts";
+import type { EmailDeliveryResult } from "../email.ts";
+import {
+  reviewerInvitationTemplateKey,
+  sendReviewerInvitationEmail,
+} from "../email/reviewer-invitation.ts";
 import { sendRoleGrantEmail } from "../email/role-grant.ts";
 import { applyReviewerRemit, normalizeInviteEmail } from "../reviewer-invites.ts";
-import { grantRole, listLiveGrants, revokeRole } from "../roles.ts";
+import { grantRole, hasLiveGrant, listLiveGrants, revokeRole } from "../roles.ts";
 
 type PeopleEnvironment = {
   Bindings: CloudflareBindings;
@@ -37,6 +43,128 @@ type PeopleEnvironment = {
 };
 
 const peopleRoutes = new Hono<PeopleEnvironment>();
+
+type OpenReviewerInvite = {
+  id: string;
+  email: string;
+  eventId: string;
+  createdAt: Date;
+};
+
+type ReviewerInvitationDispatch = {
+  eventId: string;
+  recipients: Array<{ email: string }>;
+  status: "draft" | "queued" | "sent" | "failed";
+  createdAt: Date;
+};
+
+type ReviewerInvitationDelivery = "sent" | "failed" | "not_attempted";
+
+function reviewerInvitationDeliveryFor(
+  invite: OpenReviewerInvite,
+  dispatches: readonly ReviewerInvitationDispatch[],
+): ReviewerInvitationDelivery {
+  const attempts = dispatches.filter((dispatch) =>
+    dispatch.eventId === invite.eventId &&
+    dispatch.createdAt >= invite.createdAt &&
+    dispatch.recipients.some((recipient) => recipient.email === invite.email)
+  );
+  if (attempts.some((dispatch) => dispatch.status === "sent")) {
+    return "sent";
+  }
+  if (attempts.some((dispatch) => dispatch.status === "failed")) {
+    return "failed";
+  }
+  return "not_attempted";
+}
+
+/**
+ * An invitation is only ever answered by an attempt made after it was created, so the read is
+ * bounded by the oldest invitation it has to speak for. Attempt rows accumulate for the life of
+ * an event; the open invitations they describe do not.
+ */
+async function readReviewerInvitationDispatches(
+  database: ReturnType<typeof drizzle>,
+  eventIds: readonly string[],
+  since: Date,
+): Promise<ReviewerInvitationDispatch[]> {
+  if (eventIds.length === 0) {
+    return [];
+  }
+  return database
+    .select({
+      eventId: emailDispatches.eventId,
+      recipients: emailDispatches.recipients,
+      status: emailDispatches.status,
+      createdAt: emailDispatches.createdAt,
+    })
+    .from(emailDispatches)
+    .where(and(
+      inArray(emailDispatches.eventId, [...eventIds]),
+      eq(emailDispatches.templateKey, reviewerInvitationTemplateKey),
+      gte(emailDispatches.createdAt, since),
+      isNull(emailDispatches.deletedAt),
+    ));
+}
+
+/** The one single-invite reading of the resend rule, shared by every door that asks it. */
+async function deliveryForInvite(
+  database: ReturnType<typeof drizzle>,
+  invite: OpenReviewerInvite,
+): Promise<ReviewerInvitationDelivery> {
+  return reviewerInvitationDeliveryFor(
+    invite,
+    await readReviewerInvitationDispatches(database, [invite.eventId], invite.createdAt),
+  );
+}
+
+/** The one wire vocabulary both invitation doors report delivery in. */
+function invitationDeliveryResponse(
+  result: EmailDeliveryResult,
+): { emailDelivery: "sent" | "failed" | "not_configured"; failureReason?: string } {
+  if (result.status === "provider_not_configured") {
+    return { emailDelivery: "not_configured" };
+  }
+  if (result.status === "failed") {
+    return { emailDelivery: "failed", failureReason: result.error ?? "send_failed" };
+  }
+  return { emailDelivery: "sent" };
+}
+
+/**
+ * An invitation is redeemed only by confirming the address, so an address whose account has
+ * already confirmed has no redemption left to make. The organizer is told that rather than
+ * being handed an invitation that can never become access.
+ */
+async function confirmedAccountFor(
+  database: ReturnType<typeof drizzle>,
+  email: string,
+): Promise<{ id: string; name: string } | undefined> {
+  const [account] = await database
+    .select({ id: users.id, name: users.name })
+    .from(users)
+    .where(and(sql`lower(${users.email}) = ${email}`, eq(users.emailVerified, true)));
+  return account;
+}
+
+/**
+ * Names the door that is actually open, and every step behind it. A reviewer onboarded by an
+ * earlier invitation is a confirmed account that already holds the grant, and People offers no
+ * second grant for it, so for them the only step left is this event's remit, which Committee
+ * setup owns. An account without the grant needs the grant first and then that same remit: the
+ * grant carries a remit of its own, but a grant is platform-wide while a queue is per event, so
+ * naming the grant alone can leave a reviewer with access and nothing to read.
+ */
+function confirmedAddressRefusalNote(accountName: string, holdsReviewer: boolean): string {
+  if (holdsReviewer) {
+    return `${accountName} already has reviewer access and has confirmed this address, so there is `
+      + "no invitation left to redeem. Give them this event's tracks and a review round on "
+      + "Committee setup to put its proposals in their queue.";
+  }
+  return `${accountName} has already confirmed this address, so an invitation has nothing left to `
+    + "redeem. Grant reviewer access on their account, then give them this event's remit on "
+    + "Committee setup. Tracks and a review round must both be chosen, or their queue stays empty.";
+}
 
 const requireOrganizer = createMiddleware<PeopleEnvironment>(async (context, next) => {
   const roles = context.get("roles");
@@ -203,14 +331,24 @@ peopleRoutes.get("/api/people", requireOrganizer, async (context) => {
     .from(reviewerInvites)
     .where(and(isNull(reviewerInvites.redeemedAt), isNull(reviewerInvites.revokedAt)))
     .orderBy(asc(reviewerInvites.createdAt));
+  const inviteEventIds = [...new Set(openInvites.map((invite) => invite.eventId))];
+  const oldestOpenInvite = openInvites[0];
+  const invitationDispatches = oldestOpenInvite === undefined
+    ? []
+    : await readReviewerInvitationDispatches(database, inviteEventIds, oldestOpenInvite.createdAt);
   return context.json({
     items,
-    invites: openInvites.map((invite) => ({
-      id: invite.id,
-      email: invite.email,
-      eventId: invite.eventId,
-      createdAt: invite.createdAt.toISOString(),
-    })),
+    invites: openInvites.map((invite) => {
+      const emailDelivery = reviewerInvitationDeliveryFor(invite, invitationDispatches);
+      return {
+        id: invite.id,
+        email: invite.email,
+        eventId: invite.eventId,
+        createdAt: invite.createdAt.toISOString(),
+        emailDelivery,
+        canResend: emailDelivery !== "sent",
+      };
+    }),
   });
 });
 
@@ -303,7 +441,14 @@ peopleRoutes.delete("/api/people/:userId/grants/:role", requireOrganizer, async 
 peopleRoutes.post("/api/events/:eventId/reviewer-invites", requireOrganizer, async (context) => {
   const payload = await context.req.json<{ email?: unknown; trackIds?: unknown; roundIds?: unknown }>();
   if (typeof payload.email !== "string" || !payload.email.includes("@")) {
-    return context.json({ error: "invalid_email" }, 400);
+    return context.json(
+      {
+        error: "invalid_email",
+        note: "An invitation is redeemed by confirming the address it was sent to, so it needs a "
+          + "valid email address. Check the address and send it again.",
+      },
+      400,
+    );
   }
   const organizer = context.get("authUser");
   if (organizer === null) {
@@ -312,8 +457,21 @@ peopleRoutes.post("/api/events/:eventId/reviewer-invites", requireOrganizer, asy
   const database = drizzle(context.env.DB);
   const email = normalizeInviteEmail(payload.email);
   const eventId = context.req.param("eventId");
+  const confirmedAccount = await confirmedAccountFor(database, email);
+  if (confirmedAccount !== undefined) {
+    const holdsReviewer = await hasLiveGrant(database, confirmedAccount.id, "reviewer");
+    return context.json(
+      {
+        error: "account_already_confirmed",
+        userId: confirmedAccount.id,
+        holdsReviewer,
+        note: confirmedAddressRefusalNote(confirmedAccount.name, holdsReviewer),
+      },
+      409,
+    );
+  }
   const [existing] = await database
-    .select({ id: reviewerInvites.id })
+    .select({ id: reviewerInvites.id, createdAt: reviewerInvites.createdAt })
     .from(reviewerInvites)
     .where(
       and(
@@ -324,7 +482,19 @@ peopleRoutes.post("/api/events/:eventId/reviewer-invites", requireOrganizer, asy
       ),
     );
   if (existing !== undefined) {
-    return context.json({ error: "invite_already_open", inviteId: existing.id }, 409);
+    const openInvite = { id: existing.id, email, eventId, createdAt: existing.createdAt };
+    const alreadySent = await deliveryForInvite(database, openInvite) === "sent";
+    return context.json(
+      {
+        error: "invite_already_open",
+        inviteId: existing.id,
+        note: alreadySent
+          ? `${email} already has an open invitation and it reached them. They become a reviewer once they confirm that address.`
+          : `${email} already has an open invitation, so nothing new was recorded. `
+            + "Use Resend invitation on its row below if the first one never arrived.",
+      },
+      409,
+    );
   }
   // An invitation that names no remit carries the same default a directly provisioned
   // reviewer gets - every event track and the first open round - so redemption opens a queue
@@ -339,7 +509,14 @@ peopleRoutes.post("/api/events/:eventId/reviewer-invites", requireOrganizer, asy
   ]);
   const defaultRound = openRounds[0];
   if (defaultRound === undefined) {
-    return context.json({ error: "open_round_required" }, 409);
+    return context.json(
+      {
+        error: "open_round_required",
+        note: "This event has no open review round, so a redeemed invitation would open an empty "
+          + "queue. Open a review round on Committee setup, then send this invitation again.",
+      },
+      409,
+    );
   }
   const requestedRoundIds = Array.isArray(payload.roundIds)
     ? payload.roundIds.filter((id): id is string => typeof id === "string")
@@ -356,14 +533,68 @@ peopleRoutes.post("/api/events/:eventId/reviewer-invites", requireOrganizer, asy
       invitedByUserId: organizer.id,
     })
     .returning({ id: reviewerInvites.id });
+  const delivery = await sendReviewerInvitationEmail({
+    database,
+    env: context.env,
+    eventId: eventId as `evt_${string}`,
+    recipientEmail: email,
+    createdByUserId: organizer.id,
+  });
+  if (delivery.status === "event_not_found") {
+    return context.json({ error: "event_not_found" }, 404);
+  }
   return context.json(
     {
       invite: { id: invite!.id, email, eventId },
+      ...invitationDeliveryResponse(delivery),
       // Said plainly so an organizer is never left believing an invitation is already access.
       note: "The invitation becomes reviewer access only when this address is confirmed.",
     },
     201,
   );
+});
+
+peopleRoutes.post("/api/events/:eventId/reviewer-invites/:inviteId/resend", requireOrganizer, async (context) => {
+  const organizer = context.get("authUser");
+  if (organizer === null) {
+    return context.json({ error: "authentication_required" }, 401);
+  }
+  const database = drizzle(context.env.DB);
+  const eventId = context.req.param("eventId");
+  const [invite] = await database
+    .select({
+      id: reviewerInvites.id,
+      email: reviewerInvites.email,
+      eventId: reviewerInvites.eventId,
+      createdAt: reviewerInvites.createdAt,
+    })
+    .from(reviewerInvites)
+    .where(and(
+      eq(reviewerInvites.id, context.req.param("inviteId")),
+      eq(reviewerInvites.eventId, eventId),
+      isNull(reviewerInvites.redeemedAt),
+      isNull(reviewerInvites.revokedAt),
+    ));
+  if (invite === undefined) {
+    return context.json({ error: "invite_not_found" }, 404);
+  }
+  if (await deliveryForInvite(database, invite) === "sent") {
+    return context.json({ error: "invitation_already_sent" }, 409);
+  }
+  const delivery = await sendReviewerInvitationEmail({
+    database,
+    env: context.env,
+    eventId: eventId as `evt_${string}`,
+    recipientEmail: invite.email,
+    createdByUserId: organizer.id,
+  });
+  if (delivery.status === "event_not_found") {
+    return context.json({ error: "event_not_found" }, 404);
+  }
+  return context.json({
+    invite: { id: invite.id, email: invite.email, eventId },
+    ...invitationDeliveryResponse(delivery),
+  });
 });
 
 peopleRoutes.delete("/api/reviewer-invites/:inviteId", requireOrganizer, async (context) => {

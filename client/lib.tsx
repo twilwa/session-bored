@@ -172,6 +172,23 @@ export function Link({
 
 const requestTimeoutMs = 15_000;
 
+/**
+ * A refusal the server explained. It keeps the status as its message, so callers that only
+ * report the failure read the same as before, and carries the body so a caller that wants the
+ * server's own words does not have to leave the shared timeout behind to read them.
+ */
+export class RequestFailure extends Error {
+  readonly status: number;
+  readonly payload: { error?: string; note?: string } | null;
+
+  constructor(status: number, payload: { error?: string; note?: string } | null) {
+    super(`${status}`);
+    this.name = "RequestFailure";
+    this.status = status;
+    this.payload = payload;
+  }
+}
+
 export async function requestJson<T>(
   path: string,
   init: RequestInit = {},
@@ -186,7 +203,10 @@ export async function requestJson<T>(
       signal: controller.signal,
     });
     if (!response.ok) {
-      throw new Error(`${response.status}`);
+      throw new RequestFailure(
+        response.status,
+        await response.json<{ error?: string; note?: string }>().catch(() => null),
+      );
     }
     return response.json<T>();
   } catch (error) {

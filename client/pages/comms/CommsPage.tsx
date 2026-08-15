@@ -507,7 +507,7 @@ export function CommsPage() {
             <p className="section-label">EVENT COPY</p>
             <h2>Message templates</h2>
           </div>
-          <Button disabled={busy} onClick={() => startTemplateEditor(null)} tone="signal">New template</Button>
+          <Button disabled={busy || dispatches === null} onClick={() => startTemplateEditor(null)} tone="signal">New template</Button>
         </div>
         <p className="comms-template-help">
           Built-ins are maintained by Greenroom and stay read-only. Event templates belong only to this event and can be edited or removed here.

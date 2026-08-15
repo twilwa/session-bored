@@ -72,6 +72,7 @@
 }
 .people-invite-list div { display: grid; gap: 3px; min-width: 0; }
 .people-invite-list small { color: var(--muted); font-size: 0.78rem; }
+.people-invite-list .people-invite-list__actions { display: flex; flex-wrap: wrap; gap: 8px; }
 
 @media (max-width: 900px) {
   .people-row { grid-template-columns: minmax(0, 1fr); gap: 10px; }
