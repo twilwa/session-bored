@@ -98,6 +98,7 @@ function AgendaWidget({ config, items, rooms, timezone }: { config: EmbedConfig;
                             )}
                             <span>{session.title ?? "Untitled session"}</span>
                             {embedFieldIsVisible(config, "showSpeakers") ? <p className="embed-agenda__speakers">{formatSpeakerLine(session.speakers)}</p> : null}
+                            {!embedFieldIsVisible(config, "showDescription") || session.abstract === null ? null : <p className="embed-frame__abstract">{session.abstract}</p>}
                           </article>
                         ))}
                       </div>
@@ -118,7 +119,7 @@ function SpeakerWidget({ config, items, gallery }: { config: EmbedConfig; items:
     <ul className={gallery ? "embed-speakers embed-speakers--gallery" : "embed-speakers"}>
       {items.map((speaker) => (
         <li key={speaker.id}>
-          {gallery && embedFieldIsVisible(config, "showSpeakerImage") ? (
+          {embedFieldIsVisible(config, "showSpeakerImage") ? (
             <Headshot alt="" fallbackClassName="embed-speakers__initials" imageClassName="" name={speaker.name} url={speaker.headshotUrl} />
           ) : null}
           <div>

@@ -146,6 +146,34 @@ test("embed builder remains usable at phone width", async ({ page }) => {
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
 });
 
+test("agenda description choice controls the anonymous public widget", async ({ page, browser }) => {
+  const name = `Agenda descriptions ${Date.now()}`;
+  await signInAsOrganizer(page);
+  await page.goto("/organizer/embeds");
+
+  await page.getByLabel("Name").fill(name);
+  await page.locator(".embed-type").filter({ hasText: "Agenda" }).click();
+  await page.getByLabel("Status").selectOption("published");
+  await expect(page.getByLabel("Show description")).toBeChecked();
+  await page.getByRole("button", { name: "Save embed" }).click();
+
+  const iframeHref = await page.getByRole("link", { name: "Open iframe preview" }).getAttribute("href");
+  const publicToken = new URL(iframeHref!).pathname.split("/").at(-1)!;
+  const publicContext = await browser.newContext();
+  const publicPage = await publicContext.newPage();
+  await publicPage.goto(`/embed/${publicToken}`);
+  const agendaSession = publicPage.locator(".embed-agenda__cell article", { hasText: "Docs That Answer Back" });
+  await expect(agendaSession.locator(".embed-frame__abstract")).toHaveCount(1);
+
+  const embedRow = page.getByRole("row").filter({ has: page.getByRole("button", { name, exact: true }) });
+  await embedRow.getByRole("button", { name: "Edit" }).click();
+  await page.getByLabel("Show description").uncheck();
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await publicPage.reload();
+  await expect(agendaSession.locator(".embed-frame__abstract")).toHaveCount(0);
+  await publicContext.close();
+});
+
 test("organizer styling and field choices reach the public widget in both preview sizes", async ({ page, browser }) => {
   const name = `Branded programme ${Date.now()}`;
   await signInAsOrganizer(page);
@@ -220,6 +248,34 @@ test("organizer styling and field choices reach the public widget in both previe
     showTrack: false,
     showFormat: false,
   });
+});
+
+test("speakers list photo choice controls the anonymous public widget", async ({ page, browser }) => {
+  const name = `Speaker list photos ${Date.now()}`;
+  await signInAsOrganizer(page);
+  await page.goto("/organizer/embeds");
+
+  await page.getByLabel("Name").fill(name);
+  await page.locator(".embed-type").filter({ hasText: "Speakers list" }).click();
+  await page.getByLabel("Status").selectOption("published");
+  await expect(page.getByLabel("Show speaker photo")).toBeChecked();
+  await page.getByRole("button", { name: "Save embed" }).click();
+
+  const iframeHref = await page.getByRole("link", { name: "Open iframe preview" }).getAttribute("href");
+  const publicToken = new URL(iframeHref!).pathname.split("/").at(-1)!;
+  const publicContext = await browser.newContext();
+  const publicPage = await publicContext.newPage();
+  await publicPage.goto(`/embed/${publicToken}`);
+  await expect(publicPage.getByRole("heading", { name })).toBeVisible();
+  expect(await publicPage.locator(".embed-speakers img, .embed-speakers__initials").count()).toBeGreaterThan(0);
+
+  const embedRow = page.getByRole("row").filter({ has: page.getByRole("button", { name, exact: true }) });
+  await embedRow.getByRole("button", { name: "Edit" }).click();
+  await page.getByLabel("Show speaker photo").uncheck();
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await publicPage.reload();
+  await expect(publicPage.locator(".embed-speakers img, .embed-speakers__initials")).toHaveCount(0);
+  await publicContext.close();
 });
 
 test("speaker widgets honor their field choices and omit session-only delivery", async ({ page, browser }) => {
