@@ -1,11 +1,12 @@
 // ABOUTME: Proves self-service sign-up lands on attendee and reaches no role-scoped surface.
-// ABOUTME: Proves a reviewer invitation is only redeemed by someone who confirms the address.
+// ABOUTME: Proves schedule persistence and reviewer access stay behind their intended auth gates.
 import { env } from "cloudflare:workers";
 import { drizzle } from "drizzle-orm/d1";
 import { Hono } from "hono";
 import { and, eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
-import { reviewerInvites, roleGrants, type Role, users } from "../../db/schema.ts";
+import { events, reviewerInvites, roleGrants, type Role, sessions, users } from "../../db/schema.ts";
+import { personalScheduleUpdateLimit } from "../../shared/api.ts";
 import { createAuth, type AuthSession } from "../../worker/auth.ts";
 import type { EmailDelivery, EmailMessage } from "../../worker/email.ts";
 import { applyReviewerRemit, redeemReviewerInvites } from "../../worker/reviewer-invites.ts";
@@ -95,6 +96,159 @@ describe("self-service sign-up", () => {
     const dashboard = await request("/api/submitter/submissions", { headers: { cookie } });
     expect(dashboard.status).toBe(200);
     expect(await dashboard.json()).toEqual({ items: [] });
+  });
+});
+
+describe("account-backed personal schedule", () => {
+  it("keeps account storage signed-in and limited to public sessions", async () => {
+    await request("/api/health");
+    const path = "/api/attendee/events/evt_devflow_conf_2027/schedule";
+    expect((await request(path)).status).toBe(401);
+    expect((await request(path, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ add: ["ses_docs_retrieval"], remove: [] }),
+    })).status).toBe(401);
+
+    const cookie = await signUp("Private Session Picker", "private-session-picker@example.com");
+    const database = drizzle(env.DB);
+    const [published] = await database
+      .select({ publishedAt: sessions.publishedAt })
+      .from(sessions)
+      .where(eq(sessions.id, "ses_docs_retrieval"));
+    expect(published?.publishedAt).toBeInstanceOf(Date);
+    await database
+      .update(sessions)
+      .set({ publishedAt: null })
+      .where(eq(sessions.id, "ses_docs_retrieval"));
+
+    try {
+      const response = await request(path, {
+        method: "PATCH",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ add: ["ses_docs_retrieval"], remove: [] }),
+      });
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({ error: "invalid_personal_schedule" });
+    } finally {
+      await database
+        .update(sessions)
+        .set({ publishedAt: published!.publishedAt })
+        .where(eq(sessions.id, "ses_docs_retrieval"));
+    }
+  });
+
+  it("saves and clears a request holding the most ids the route accepts", async () => {
+    await request("/api/health");
+    const path = "/api/attendee/events/evt_devflow_conf_2027/schedule";
+    const cookie = await signUp("Batch Session Picker", "batch-session-picker@example.com");
+    const database = drizzle(env.DB);
+    const batchIds = Array.from(
+      { length: personalScheduleUpdateLimit },
+      (_, index) => `ses_batch_${index}`,
+    );
+    for (let index = 0; index < batchIds.length; index += 5) {
+      await database.insert(sessions).values(batchIds.slice(index, index + 5).map((id, offset) => ({
+        id,
+        eventId: "evt_devflow_conf_2027",
+        title: `Batch session ${index + offset}`,
+        contentStatus: "approved" as const,
+        scheduleStatus: "tbd" as const,
+        directEntry: true,
+        icsUid: `${id}@session-bored`,
+        publishedAt: new Date("2027-04-01T12:00:00Z"),
+      })));
+    }
+
+    // The event now offers more public sessions than D1 will bind in a single query, and
+    // every read of the programme - public or account-scoped - has to survive that.
+    const programme = await request("/api/public/events/evt_devflow_conf_2027/sessions");
+    expect(programme.status).toBe(200);
+    const listed = (await programme.json<{ items: Array<{ id: string; speakers: unknown[] }> }>()).items;
+    expect(listed.length).toBeGreaterThan(personalScheduleUpdateLimit);
+    expect(listed.find((item) => item.id === "ses_docs_retrieval")?.speakers.length).toBeGreaterThan(0);
+
+    const saved = await request(path, {
+      method: "PATCH",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ add: batchIds, remove: [] }),
+    });
+    expect(saved.status).toBe(200);
+    const savedIds = (await saved.json<{ sessionIds: string[] }>()).sessionIds;
+    expect([...savedIds].sort()).toEqual([...batchIds].sort());
+
+    const cleared = await request(path, {
+      method: "PATCH",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ add: [], remove: batchIds }),
+    });
+    expect(cleared.status).toBe(200);
+    expect(await cleared.json()).toEqual({ sessionIds: [] });
+  });
+
+  it("refuses to let one event's request clear another event's picks", async () => {
+    await request("/api/health");
+    const cookie = await signUp("Two Event Picker", "two-event-picker@example.com");
+    const database = drizzle(env.DB);
+    await database.insert(events).values({
+      id: "evt_other_conf_2027",
+      slug: "other-conf-2027",
+      name: "Other Conf 2027",
+      timezone: "America/Los_Angeles",
+    }).onConflictDoNothing();
+    await database.insert(sessions).values({
+      id: "ses_other_event_keynote",
+      eventId: "evt_other_conf_2027",
+      title: "Keynote at the other conference",
+      contentStatus: "approved" as const,
+      scheduleStatus: "tbd" as const,
+      directEntry: true,
+      icsUid: "ses_other_event_keynote@session-bored",
+      publishedAt: new Date("2027-04-01T12:00:00Z"),
+    }).onConflictDoNothing();
+
+    const otherPath = "/api/attendee/events/evt_other_conf_2027/schedule";
+    const savedElsewhere = await request(otherPath, {
+      method: "PATCH",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ add: ["ses_other_event_keynote"], remove: [] }),
+    });
+    expect(savedElsewhere.status).toBe(200);
+    expect(await savedElsewhere.json()).toEqual({ sessionIds: ["ses_other_event_keynote"] });
+
+    // A request naming this event may only speak about this event's sessions.
+    const crossEvent = await request("/api/attendee/events/evt_devflow_conf_2027/schedule", {
+      method: "PATCH",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ add: [], remove: ["ses_other_event_keynote"] }),
+    });
+    expect(crossEvent.status).toBe(200);
+
+    const stillThere = await request(otherPath, { headers: { cookie } });
+    expect(await stillThere.json()).toEqual({ sessionIds: ["ses_other_event_keynote"] });
+  });
+
+  it("keeps an attendee's saved public sessions after signing out and back in", async () => {
+    await request("/api/health");
+    const email = "agenda-attendee@example.com";
+    const cookie = await signUp("Agenda Attendee", email);
+
+    const saved = await request("/api/attendee/events/evt_devflow_conf_2027/schedule", {
+      method: "PATCH",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ add: ["ses_docs_retrieval"], remove: [] }),
+    });
+    expect(saved.status).toBe(200);
+    expect(await saved.json()).toEqual({ sessionIds: ["ses_docs_retrieval"] });
+
+    await request("/api/auth/sign-out", { method: "POST", headers: { cookie } });
+    const nextCookie = await signIn(email, "Greenroom!2027");
+    const restored = await request("/api/attendee/events/evt_devflow_conf_2027/schedule", {
+      headers: { cookie: nextCookie },
+    });
+
+    expect(restored.status).toBe(200);
+    expect(await restored.json()).toEqual({ sessionIds: ["ses_docs_retrieval"] });
   });
 });
 

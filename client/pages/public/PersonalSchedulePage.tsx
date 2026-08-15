@@ -1,5 +1,6 @@
-// ABOUTME: Shows an anonymous attendee exactly the public sessions saved on this device.
-// ABOUTME: Offers removal, calendar download, and a copyable link for the current selection.
+// ABOUTME: Shows an attendee the public sessions they saved, on their account or on this device.
+// ABOUTME: Names which of the two holds the picks, and offers removal, calendar download, and a
+// ABOUTME: copyable link for the current selection.
 import { useEffect, useMemo, useState } from "react";
 import type { PublicSessionCard, PublicSessionsResponse } from "../../../shared/api.ts";
 import { EmptyState, LoadingState, Toast } from "../../components/ui.tsx";
@@ -30,7 +31,7 @@ export function PersonalSchedulePage() {
   const [openSession, setOpenSession] = useState<PublicSessionCard | null>(null);
   const [retryToken, setRetryToken] = useState(0);
   const [message, setMessage] = useState<string | null>(null);
-  const { sessionIds, toggleSession } = usePersonalSchedule(DEVFLOW_EVENT_ID);
+  const { sessionIds, storageStatus, toggleSession } = usePersonalSchedule(DEVFLOW_EVENT_ID);
 
   useEffect(() => {
     let active = true;
@@ -66,6 +67,13 @@ export function PersonalSchedulePage() {
   const calendarPath = personalScheduleSnapshotPath(DEVFLOW_EVENT_ID, savedItems.map((session) => session.id));
   const pickLabel = savedItems.length === 0 ? "No picks" : `${savedItems.length} pick${savedItems.length === 1 ? "" : "s"}`;
   const currentPickLabel = `${savedItems.length} current pick${savedItems.length === 1 ? "" : "s"}`;
+  const storageDescription = storageStatus === "account"
+    ? "Saved to your account · available on any device"
+    : storageStatus === "error"
+      ? "Your picks are kept · account sync retries with your next change"
+      : storageStatus === "checking"
+        ? "Checking for your account…"
+        : "Saved on this device · no account needed";
 
   async function copyCalendarLink(): Promise<void> {
     const calendarUrl = new URL(calendarPath, window.location.origin).toString();
@@ -86,7 +94,7 @@ export function PersonalSchedulePage() {
         <header className="program-intro">
           <p className="eyebrow">MY SCHEDULE / {facets?.event.name ?? "DEVFLOW CONF 2027"}</p>
           <h1>{pickLabel}</h1>
-          <p>Saved on this device · no account needed</p>
+          <p>{storageDescription}</p>
         </header>
 
         {loading ? <LoadingState label="Loading your schedule" /> : null}
@@ -139,7 +147,7 @@ export function PersonalSchedulePage() {
               <div className="personal-schedule-actions">
                 <a className="button button--signal" download="my-schedule.ics" href={calendarPath}>Add to calendar (.ics)</a>
                 <button className="button button--quiet" onClick={() => void copyCalendarLink()} type="button">Copy calendar link ({currentPickLabel})</button>
-                <span>{savedItems.length} session{savedItems.length === 1 ? "" : "s"} · saved on this device</span>
+                <span>{savedItems.length} session{savedItems.length === 1 ? "" : "s"} · {storageDescription.toLowerCase()}</span>
               </div>
             </>
           )

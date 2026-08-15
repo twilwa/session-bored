@@ -9,6 +9,7 @@ import {
   real,
   sqliteTable,
   text,
+  primaryKey,
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 
@@ -463,6 +464,19 @@ export const sessions = sqliteTable(
     uniqueIndex("session_submission_unique").on(table.submissionId),
     check("session_content_status_check", sql`${table.contentStatus} in ('draft','in_review','approved')`),
     check("session_schedule_status_check", sql`${table.scheduleStatus} in ('unplaced','tbd','placed')`),
+  ],
+);
+
+export const personalScheduleSessions = sqliteTable(
+  "personal_schedule_session",
+  {
+    userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    sessionId: text("session_id").notNull().references(() => sessions.id, { onDelete: "cascade" }),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.sessionId] }),
+    index("personal_schedule_session_user_idx").on(table.userId),
   ],
 );
 

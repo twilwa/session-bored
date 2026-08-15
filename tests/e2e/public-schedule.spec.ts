@@ -14,6 +14,23 @@ const PLACED_DAY = "2027-05-13";
 // browser run proves the public surfaces render the event's own timezone, not the raw UTC instant.
 const PLACED_STARTS_AT_ISO = "2027-05-13T17:00:00Z";
 
+function uniqueEmail(prefix: string): string {
+  return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1e6)}@example.com`;
+}
+
+async function openPublicNavigation(page: Page): Promise<void> {
+  const menuButton = page.locator(".public-header__menu");
+  if (await menuButton.isVisible() && await menuButton.getAttribute("aria-expanded") === "false") {
+    await menuButton.click();
+  }
+}
+
+async function signOut(page: Page): Promise<void> {
+  await openPublicNavigation(page);
+  await page.getByRole("banner").getByRole("button", { name: "Sign out" }).click();
+  await expect(page).toHaveURL(/\/$/);
+}
+
 type Placement =
   | { scheduleStatus: "tbd"; scheduledDate: string }
   | { scheduleStatus: "placed"; scheduledDate: string; roomId: string; startsAt: number };
@@ -137,6 +154,7 @@ test("an attendee can save a personal schedule, keep it across reloads, copy a l
     roomId: MAIN_STAGE_ROOM_ID,
     startsAt: new Date(PLACED_STARTS_AT_ISO).getTime(),
   });
+  await signOut(page);
   await page.goto("/schedule");
   await page.evaluate(() => localStorage.clear());
   await page.reload();
@@ -161,6 +179,268 @@ test("an attendee can save a personal schedule, keep it across reloads, copy a l
   await page.getByRole("button", { name: /Remove Docs That Answer Back.*from my schedule/ }).click();
   await expect(page.getByRole("heading", { name: "No picks", exact: true })).toBeVisible();
   await expect(page.getByText("Nothing saved yet")).toBeVisible();
+});
+
+test("an anonymous schedule joins a new attendee account and follows them to another browser", async ({ browser, page }) => {
+  await placeDocsSession(page, {
+    scheduleStatus: "placed",
+    scheduledDate: PLACED_DAY,
+    roomId: MAIN_STAGE_ROOM_ID,
+    startsAt: new Date(PLACED_STARTS_AT_ISO).getTime(),
+  });
+  await signOut(page);
+  await page.goto("/schedule");
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await selectPlacedDay(page);
+  await page.getByRole("button", { name: /Save Docs That Answer Back.*to my schedule/ }).click();
+
+  const email = uniqueEmail("agenda-attendee");
+  await page.goto("/signup");
+  await page.getByLabel("Name").fill("Agenda Attendee");
+  await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Password").fill("Greenroom!2027");
+  await page.getByRole("button", { name: "Create account" }).click();
+
+  await expect(page).toHaveURL(/\/schedule\/mine$/);
+  await expect(page.getByText("Saved to your account · available on any device", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "1 pick", exact: true })).toBeVisible();
+
+  const otherBrowser = await browser.newContext();
+  const otherPage = await otherBrowser.newPage();
+  await otherPage.goto("/login");
+  await otherPage.getByLabel("Email").fill(email);
+  await otherPage.getByLabel("Password").fill("Greenroom!2027");
+  await otherPage.getByRole("button", { name: "Sign in" }).click();
+  await expect(otherPage).toHaveURL(/\/schedule\/mine$/);
+  await expect(otherPage.getByText("Saved to your account · available on any device", { exact: true })).toBeVisible();
+  await expect(otherPage.getByRole("heading", { name: "1 pick", exact: true })).toBeVisible();
+  await expect(otherPage.locator(".itinerary-item", { hasText: "Docs That Answer Back" })).toBeVisible();
+  await otherBrowser.close();
+});
+
+test("a pick made on the itinerary is on my schedule the moment I click through to it", async ({ page }) => {
+  await placeDocsSession(page, {
+    scheduleStatus: "placed",
+    scheduledDate: PLACED_DAY,
+    roomId: MAIN_STAGE_ROOM_ID,
+    startsAt: new Date(PLACED_STARTS_AT_ISO).getTime(),
+  });
+  await signOut(page);
+  await page.goto("/schedule");
+  await page.evaluate(() => localStorage.clear());
+
+  const email = uniqueEmail("click-through");
+  await page.goto("/signup");
+  await page.getByLabel("Name").fill("Click Through");
+  await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Password").fill("Greenroom!2027");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await expect(page).toHaveURL(/\/schedule\/mine$/);
+  await expect(page.getByRole("heading", { name: "No picks", exact: true })).toBeVisible();
+
+  // Star a session and leave for the schedule page at once, without waiting for the save.
+  await page.goto("/schedule");
+  await selectPlacedDay(page);
+  await page.getByRole("button", { name: /Save Docs That Answer Back.*to my schedule/ }).click();
+  await page.getByRole("link", { name: "My schedule 1" }).click();
+
+  await expect(page).toHaveURL(/\/schedule\/mine$/);
+  await expect(page.getByText("Saved to your account · available on any device", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "1 pick", exact: true })).toBeVisible();
+  await expect(page.locator(".itinerary-item", { hasText: "Docs That Answer Back" })).toBeVisible();
+
+  // And the pick reached the account, not just this page's memory.
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "1 pick", exact: true })).toBeVisible();
+  await expect(page.locator(".itinerary-item", { hasText: "Docs That Answer Back" })).toBeVisible();
+});
+
+test("signing in from the header, without ever reloading, moves the device's picks onto the account", async ({ page }) => {
+  await placeDocsSession(page, {
+    scheduleStatus: "placed",
+    scheduledDate: PLACED_DAY,
+    roomId: MAIN_STAGE_ROOM_ID,
+    startsAt: new Date(PLACED_STARTS_AT_ISO).getTime(),
+  });
+  await signOut(page);
+
+  // Make the account first, then sign out, so the sign-in below is the only auth step and it
+  // happens entirely inside one document.
+  const email = uniqueEmail("header-signin");
+  await page.goto("/signup");
+  await page.getByLabel("Name").fill("Header Signin");
+  await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Password").fill("Greenroom!2027");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await expect(page).toHaveURL(/\/schedule\/mine$/);
+  // Signing out on this page stays in place by design, so it is done inline here.
+  await openPublicNavigation(page);
+  await page.getByRole("banner").getByRole("button", { name: "Sign out" }).click();
+  await expect(page.getByRole("banner").getByRole("button", { name: "Sign out" })).toBeHidden();
+
+  await page.goto("/schedule");
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await selectPlacedDay(page);
+  await page.getByRole("button", { name: /Save Docs That Answer Back.*to my schedule/ }).click();
+  await expect(page.getByRole("button", { name: /Saved Docs That Answer Back.*to my schedule/ })).toBeVisible();
+
+  // Every step from here is SPA navigation: the schedule pages unmount, but the schedule they
+  // share must still notice that somebody signed in.
+  await openPublicNavigation(page);
+  await page.getByRole("banner").getByRole("link", { name: "Sign in", exact: true }).click();
+  await expect(page).toHaveURL(/\/login/);
+  await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Password").fill("Greenroom!2027");
+  await page.getByRole("button", { name: "Sign in" }).click();
+
+  await expect(page).toHaveURL(/\/schedule\/mine$/);
+  await expect(page.getByText("Saved to your account · available on any device", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "1 pick", exact: true })).toBeVisible();
+
+  // And the device pick really reached the account, not just this rendering of the page.
+  await page.reload();
+  await expect(page.getByText("Saved to your account · available on any device", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "1 pick", exact: true })).toBeVisible();
+});
+
+test("signing out from another page takes the account schedule off the shared device", async ({ page }) => {
+  await placeDocsSession(page, {
+    scheduleStatus: "placed",
+    scheduledDate: PLACED_DAY,
+    roomId: MAIN_STAGE_ROOM_ID,
+    startsAt: new Date(PLACED_STARTS_AT_ISO).getTime(),
+  });
+  await signOut(page);
+  await page.goto("/schedule");
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await selectPlacedDay(page);
+  await page.getByRole("button", { name: /Save Docs That Answer Back.*to my schedule/ }).click();
+  await expect(page.getByRole("button", { name: /Saved Docs That Answer Back.*to my schedule/ })).toBeVisible();
+
+  const email = uniqueEmail("signout-elsewhere");
+  await page.goto("/signup");
+  await page.getByLabel("Name").fill("Signout Elsewhere");
+  await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Password").fill("Greenroom!2027");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await expect(page).toHaveURL(/\/schedule\/mine$/);
+  await expect(page.getByRole("heading", { name: "1 pick", exact: true })).toBeVisible();
+
+  // Leave the schedule behind, sign out from a page that never renders it, and come back.
+  await openPublicNavigation(page);
+  await page.getByRole("banner").getByRole("link", { name: "Program", exact: true }).click();
+  await expect(page).toHaveURL(/\/program$/);
+  await openPublicNavigation(page);
+  await page.getByRole("banner").getByRole("button", { name: "Sign out" }).click();
+  await expect(page.getByRole("banner").getByRole("button", { name: "Sign out" })).toBeHidden();
+  await openPublicNavigation(page);
+  await page.getByRole("banner").getByRole("link", { name: "My schedule", exact: true }).click();
+
+  await expect(page).toHaveURL(/\/schedule\/mine$/);
+  await expect(page.getByText("Saved on this device · no account needed", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "1 pick", exact: true })).toBeVisible();
+});
+
+test("a signed-in account's schedule stays off the device, so signing out restores the anonymous picks", async ({ page }) => {
+  await placeDocsSession(page, {
+    scheduleStatus: "placed",
+    scheduledDate: PLACED_DAY,
+    roomId: MAIN_STAGE_ROOM_ID,
+    startsAt: new Date(PLACED_STARTS_AT_ISO).getTime(),
+  });
+  await signOut(page);
+  await page.goto("/schedule");
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await selectPlacedDay(page);
+  await page.getByRole("button", { name: /Save Docs That Answer Back.*to my schedule/ }).click();
+  await expect(page.getByRole("button", { name: /Saved Docs That Answer Back.*to my schedule/ })).toBeVisible();
+
+  const firstEmail = uniqueEmail("shared-device-first");
+  await page.goto("/signup");
+  await page.getByLabel("Name").fill("Shared Device First");
+  await page.getByLabel("Email").fill(firstEmail);
+  await page.getByLabel("Password").fill("Greenroom!2027");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await expect(page).toHaveURL(/\/schedule\/mine$/);
+  await expect(page.getByText("Saved to your account · available on any device", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "1 pick", exact: true })).toBeVisible();
+
+  // Removing the pick changes only this account's schedule, never the device copy underneath.
+  await page.getByRole("button", { name: /Remove Docs That Answer Back.*from my schedule/ }).click();
+  await expect(page.getByRole("heading", { name: "No picks", exact: true })).toBeVisible();
+
+  // Signing out hands the shared device straight back to its anonymous owner: the account's
+  // schedule leaves the rendered page at once, with no navigation and no reload.
+  await openPublicNavigation(page);
+  await page.getByRole("banner").getByRole("button", { name: "Sign out" }).click();
+  await expect(page.getByRole("banner").getByRole("button", { name: "Sign out" })).toBeHidden();
+  await expect(page).toHaveURL(/\/schedule\/mine$/);
+  await expect(page.getByText("Saved on this device · no account needed", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "1 pick", exact: true })).toBeVisible();
+  await expect(page.locator(".itinerary-item", { hasText: "Docs That Answer Back" })).toBeVisible();
+
+  // A second account on the same browser inherits the device's anonymous picks and
+  // nothing the first account did while signed in.
+  const secondEmail = uniqueEmail("shared-device-second");
+  await page.goto("/signup");
+  await page.getByLabel("Name").fill("Shared Device Second");
+  await page.getByLabel("Email").fill(secondEmail);
+  await page.getByLabel("Password").fill("Greenroom!2027");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await expect(page).toHaveURL(/\/schedule\/mine$/);
+  await expect(page.getByText("Saved to your account · available on any device", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "1 pick", exact: true })).toBeVisible();
+});
+
+test("a device pick whose session lost publication no longer blocks account sync at sign-up", async ({ page }) => {
+  await placeDocsSession(page, {
+    scheduleStatus: "placed",
+    scheduledDate: PLACED_DAY,
+    roomId: MAIN_STAGE_ROOM_ID,
+    startsAt: new Date(PLACED_STARTS_AT_ISO).getTime(),
+  });
+  await signOut(page);
+  await page.goto("/schedule");
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await selectPlacedDay(page);
+  await page.getByRole("button", { name: /Save Docs That Answer Back.*to my schedule/ }).click();
+  await expect(page.getByRole("button", { name: /Saved Docs That Answer Back.*to my schedule/ })).toBeVisible();
+
+  // The organizer re-places the session without republishing, which clears its publication —
+  // the pick saved on this device now names a session the public gate refuses.
+  await page.goto("/login");
+  await page.getByLabel("Email").fill("sbek-organizer@example.com");
+  await page.getByLabel("Password").fill("SbekTest!2027-org");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page).toHaveURL(/\/organizer$/);
+  const replacedStatus = await page.evaluate(
+    async ({ eventId, sessionId, scheduledDate }) => {
+      const response = await fetch(`/api/events/${eventId}/agenda/sessions/${sessionId}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ scheduleStatus: "tbd", scheduledDate }),
+      });
+      return response.status;
+    },
+    { eventId: EVENT_ID, sessionId: DOCS_SESSION_ID, scheduledDate: PLACED_DAY },
+  );
+  expect(replacedStatus, "agenda re-placement failed").toBe(200);
+  await signOut(page);
+
+  const email = uniqueEmail("stale-pick");
+  await page.goto("/signup");
+  await page.getByLabel("Name").fill("Stale Pick");
+  await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Password").fill("Greenroom!2027");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await expect(page).toHaveURL(/\/schedule\/mine$/);
+  await expect(page.getByText("Saved to your account · available on any device", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "No picks", exact: true })).toBeVisible();
 });
 
 test("speaker gallery is alphabetized by surname, searches, and opens a speaker detail", async ({ page }) => {

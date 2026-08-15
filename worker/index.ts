@@ -52,6 +52,7 @@ import contentRoutes from "./routes/content.ts";
 import embedRoutes from "./routes/embeds.ts";
 import eventSettingsRoutes from "./routes/event-settings.ts";
 import peopleRoutes from "./routes/people.ts";
+import personalScheduleRoutes from "./routes/personal-schedule.ts";
 import { protectedPageRoutes } from "./page-routes.ts";
 
 type SessionUser = AuthSession["user"];
@@ -177,6 +178,7 @@ app.route("/api", aiReviewRoutes);
 app.route("/api", portalRoutes);
 app.route("/api/public", publicRoutes);
 app.route("/api", submitterRoutes);
+app.route("/api", personalScheduleRoutes);
 
 app.get("/api/public/cfp/:slug", async (context) => {
   const database = drizzle(context.env.DB);

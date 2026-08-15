@@ -13,6 +13,7 @@ import {
   submissions,
   tracks,
 } from "../db/schema.ts";
+import { chunkIds } from "./d1-limits.ts";
 
 // ABOUTME: A session is public only after explicit publication, while its content and source decision remain live.
 // Schedule status is intentionally not a gate because published TBD sessions remain visible.
@@ -185,26 +186,31 @@ export async function fetchPublicSessions(
   if (rows.length === 0) {
     return [];
   }
-  const sessionIds = rows.map((row) => row.id);
-  const speakerRows = await database
-    .select({
-      sessionId: sessionSpeakers.sessionId,
-      id: speakers.id,
-      name: people.name,
-      jobTitle: people.jobTitle,
-      organization: people.organization,
-    })
-    .from(sessionSpeakers)
-    .innerJoin(speakers, eq(sessionSpeakers.speakerId, speakers.id))
-    .innerJoin(people, eq(speakers.personId, people.id))
-    .where(
-      and(
-        isNull(sessionSpeakers.deletedAt),
-        PUBLIC_SPEAKER_GATE,
-        inArray(sessionSpeakers.sessionId, sessionIds),
+  const speakerRows = (
+    await Promise.all(
+      chunkIds(rows.map((row) => row.id)).map((sessionIds) =>
+        database
+          .select({
+            sessionId: sessionSpeakers.sessionId,
+            id: speakers.id,
+            name: people.name,
+            jobTitle: people.jobTitle,
+            organization: people.organization,
+          })
+          .from(sessionSpeakers)
+          .innerJoin(speakers, eq(sessionSpeakers.speakerId, speakers.id))
+          .innerJoin(people, eq(speakers.personId, people.id))
+          .where(
+            and(
+              isNull(sessionSpeakers.deletedAt),
+              PUBLIC_SPEAKER_GATE,
+              inArray(sessionSpeakers.sessionId, sessionIds),
+            ),
+          )
+          .orderBy(sessionSpeakers.sortOrder, people.name),
       ),
     )
-    .orderBy(sessionSpeakers.sortOrder, people.name);
+  ).flat();
 
   const speakersBySession = new Map<string, PublicSpeakerRef[]>();
   for (const row of speakerRows) {
@@ -230,6 +236,30 @@ export async function countPublicSessions(
     .from(sessions)
     .where(and(eq(sessions.eventId, eventId), PUBLIC_SESSION_GATE));
   return row?.count ?? 0;
+}
+
+// ABOUTME: Answers which of the named sessions the public programme currently offers, under the
+// same gate as the full read, at a cost that follows the ids rather than the size of the event.
+export async function filterPublicSessionIds(
+  database: DrizzleD1Database,
+  eventId: string,
+  candidateIds: string[],
+): Promise<string[]> {
+  if (candidateIds.length === 0) {
+    return [];
+  }
+  const rows = (
+    await Promise.all(
+      chunkIds(candidateIds).map((ids) =>
+        database
+          .select({ id: sessions.id })
+          .from(sessions)
+          .where(and(eq(sessions.eventId, eventId), PUBLIC_SESSION_GATE, inArray(sessions.id, ids))),
+      ),
+    )
+  ).flat();
+  const publicIds = new Set(rows.map((row) => row.id));
+  return candidateIds.filter((candidateId) => publicIds.has(candidateId));
 }
 
 export async function fetchPublicSpeakers(
@@ -276,23 +306,28 @@ export async function fetchPublicSpeakers(
   if (rows.length === 0) {
     return [];
   }
-  const speakerIds = rows.map((row) => row.id);
-  const counts = await database
-    .select({
-      speakerId: sessionSpeakers.speakerId,
-      count: sql<number>`count(*)`.as("count"),
-    })
-    .from(sessionSpeakers)
-    .innerJoin(sessions, eq(sessionSpeakers.sessionId, sessions.id))
-    .where(
-      and(
-        isNull(sessionSpeakers.deletedAt),
-        eq(sessions.eventId, eventId),
-        PUBLIC_SESSION_GATE,
-        inArray(sessionSpeakers.speakerId, speakerIds),
+  const counts = (
+    await Promise.all(
+      chunkIds(rows.map((row) => row.id)).map((speakerIds) =>
+        database
+          .select({
+            speakerId: sessionSpeakers.speakerId,
+            count: sql<number>`count(*)`.as("count"),
+          })
+          .from(sessionSpeakers)
+          .innerJoin(sessions, eq(sessionSpeakers.sessionId, sessions.id))
+          .where(
+            and(
+              isNull(sessionSpeakers.deletedAt),
+              eq(sessions.eventId, eventId),
+              PUBLIC_SESSION_GATE,
+              inArray(sessionSpeakers.speakerId, speakerIds),
+            ),
+          )
+          .groupBy(sessionSpeakers.speakerId),
       ),
     )
-    .groupBy(sessionSpeakers.speakerId);
+  ).flat();
 
   const countBySpeaker = new Map<string, number>(counts.map((row) => [row.speakerId, row.count]));
   return rows.map((row) => ({ ...row, sessionCount: countBySpeaker.get(row.id) ?? 0 }));

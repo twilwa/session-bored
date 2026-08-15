@@ -1537,3 +1537,16 @@ export interface PublicSpeakerDetailResponse {
   speaker: PublicSpeakerDetail;
   facets: PublicEventFacets;
 }
+
+// One PATCH of an account's personal schedule carries at most this many session ids in
+// either direction. A larger merge is split into batches that each stay inside it.
+export const personalScheduleUpdateLimit = 100;
+
+export interface PersonalScheduleChange {
+  add: string[];
+  remove: string[];
+}
+
+export interface PersonalScheduleResponse {
+  sessionIds: string[];
+}
