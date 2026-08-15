@@ -35,6 +35,7 @@ class FakeSchedule implements PersonalScheduleEnvironment {
   readonly updates: PersonalScheduleChange[] = [];
   account: string[] = [];
   reads = 0;
+  sessionChecks = 0;
   publicIds = new Set<string>();
   userId: string | null = "usr_attendee";
   pendingUserId: Deferred<string | null> | null = null;
@@ -61,6 +62,7 @@ class FakeSchedule implements PersonalScheduleEnvironment {
   }
 
   async accountUserId(): Promise<string | null> {
+    this.sessionChecks += 1;
     if (this.userIdFailure !== null) {
       throw this.userIdFailure;
     }
@@ -416,6 +418,7 @@ describe("an account that changed while no schedule page was mounted", () => {
     await stores.forEvent(EVENT_ID).resume();
     expect(stores.forEvent(EVENT_ID).snapshot().storageStatus).toBe("device");
 
+    const checksBefore = environment.sessionChecks;
     environment.userId = "usr_attendee";
     await stores.forEvent(EVENT_ID).resume();
 
@@ -423,6 +426,39 @@ describe("an account that changed while no schedule page was mounted", () => {
     expect(schedule.storageStatus).toBe("account");
     expect(schedule.sessionIds).toEqual(["ses_account", "ses_device"]);
     expect(environment.account).toEqual(["ses_account", "ses_device"]);
+    // The resume already learned who signed in; settling must not ask a second time.
+    expect(environment.sessionChecks - checksBefore).toBe(1);
+  });
+
+  it("keeps the account and its unsent picks when the check cannot be answered", async () => {
+    const environment = new FakeSchedule(["ses_device"]);
+    environment.publicIds = new Set(["ses_device", "ses_account", "ses_later"]);
+    environment.account = ["ses_account"];
+    environment.storage.set(migrationKey("usr_attendee"), "done");
+    const stores = createPersonalScheduleStores(environment);
+
+    await stores.forEvent(EVENT_ID).resume();
+    expect(stores.forEvent(EVENT_ID).snapshot().sessionIds).toEqual(["ses_account"]);
+
+    environment.updateFailure = new Error("personal_schedule_sync_failed");
+    await stores.forEvent(EVENT_ID).toggle("ses_later");
+    expect(stores.forEvent(EVENT_ID).snapshot().storageStatus).toBe("error");
+
+    // The same trouble that failed the save leaves the session check unanswerable. Nobody
+    // said this account signed out, so its picks stay with it, still waiting to be sent.
+    environment.userIdFailure = new Error("session_load_failed");
+    await stores.forEvent(EVENT_ID).resume();
+
+    expect(stores.forEvent(EVENT_ID).snapshot().storageStatus).toBe("error");
+    expect(stores.forEvent(EVENT_ID).snapshot().sessionIds).toEqual(["ses_account", "ses_later"]);
+    expect(JSON.parse(environment.storage.get(DEVICE_KEY)!)).toEqual(["ses_device"]);
+
+    environment.userIdFailure = null;
+    environment.updateFailure = null;
+    await stores.forEvent(EVENT_ID).resume();
+
+    expect(environment.account).toEqual(["ses_account", "ses_later"]);
+    expect(stores.forEvent(EVENT_ID).snapshot().storageStatus).toBe("account");
   });
 
   it("returns the shared device to its own picks after a sign-out it never heard", async () => {

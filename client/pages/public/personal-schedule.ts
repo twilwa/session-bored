@@ -49,6 +49,14 @@ interface SessionPayload {
   user: { id: string };
 }
 
+// Who the account is, or that nobody is signed in, or that the question could not be put.
+// The third is not the second: an unanswerable check is no reason to take a schedule away
+// from the account that owns it.
+type AccountCheck =
+  | { status: "account"; userId: string }
+  | { status: "anonymous" }
+  | { status: "unavailable" };
+
 interface PublicSessionListPayload {
   items: Array<{ id: string }>;
 }
@@ -269,11 +277,12 @@ export function createPersonalScheduleStore(
     return saved;
   }
 
-  async function resolveAccountUserId(): Promise<string | null> {
+  async function checkAccount(): Promise<AccountCheck> {
     try {
-      return await environment.accountUserId();
+      const userId = await environment.accountUserId();
+      return userId === null ? { status: "anonymous" } : { status: "account", userId };
     } catch {
-      return null;
+      return { status: "unavailable" };
     }
   }
 
@@ -281,12 +290,12 @@ export function createPersonalScheduleStore(
     const attempt = generation;
     try {
       if (mode === "checking") {
-        const userId = await resolveAccountUserId();
+        const check = await checkAccount();
         if (attempt !== generation) {
           return;
         }
-        accountUserId = userId;
-        mode = userId === null ? "device" : "account";
+        accountUserId = check.status === "account" ? check.userId : null;
+        mode = accountUserId === null ? "device" : "account";
       }
       if (mode === "device") {
         persistDevicePicks();
@@ -343,12 +352,18 @@ export function createPersonalScheduleStore(
       return;
     }
     const attempt = generation;
-    const userId = await resolveAccountUserId();
-    if (attempt !== generation || userId === accountUserId) {
+    const check = await checkAccount();
+    if (attempt !== generation || check.status === "unavailable") {
+      return;
+    }
+    const userId = check.status === "account" ? check.userId : null;
+    if (userId === accountUserId) {
       return;
     }
     generation += 1;
     forgetAccount();
+    accountUserId = userId;
+    mode = userId === null ? "device" : "account";
     failed = false;
     publish();
   }
