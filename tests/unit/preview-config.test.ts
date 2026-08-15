@@ -1,10 +1,8 @@
 // ABOUTME: Verifies a pull request preview binds its own D1 database and origin.
 // ABOUTME: Keeps a preview that lost its database id from falling back to production bindings.
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import productionConfig from "../../wrangler.jsonc?raw";
 import { buildPreviewConfig } from "../../scripts/preview-database.js";
-
-const productionConfig = readFileSync("wrangler.jsonc", "utf8");
 
 const bindings = {
   databaseName: "session-bored-pr-172",
