@@ -1,0 +1,32 @@
+client/pages/account/SignUpPage.tsx
+  s_92f5b643d1c759::t_16eece9fd0bd19 13
+worker/routes/people.ts
+  s_92f5b643d1c759::t_16eece9fd0bd19 27,360-369,373-374
+tests/integration/email-sending.test.ts
+  s_92f5b643d1c759::t_95136a3e1da112 36-39,507-589
+  s_92f5b643d1c759::t_0d0c9f3b99d663 590-591
+client/pages/people/PeoplePage.tsx
+  s_92f5b643d1c759::t_16eece9fd0bd19 105-117
+tests/e2e/account-access.spec.ts
+  s_92f5b643d1c759::t_94170847477a4f 67-68,70,119
+worker/email/reviewer-invitation.ts
+  s_92f5b643d1c759::t_16eece9fd0bd19 1-54
+README.md
+  s_92f5b643d1c759::t_6b42dc4f1d5c8d 78-82
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "f76ef6e2222d2a2ec76bb7a84bfb798a9b72118b",
+  "prompts": {},
+  "sessions": {
+    "s_92f5b643d1c759": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffe27-2940-7933-b3e2-70b4a0eee6c7",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
