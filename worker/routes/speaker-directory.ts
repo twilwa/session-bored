@@ -249,15 +249,33 @@ speakerDirectoryRoutes.post("/api/speaker-directory/:personId/merge", requireOrg
       context.env.DB.prepare(
         "update session_speaker as merged set speaker_id = ?, updated_at = ? where merged.speaker_id = ? and not exists (select 1 from session_speaker as kept where kept.session_id = merged.session_id and kept.speaker_id = ?)",
       ).bind(keptSpeaker.id, now, mergedSpeaker.id, keptSpeaker.id),
+      // Null provenance means the person owes this work independently of any session. If either
+      // identity carried that standing, a later session removal must not archive the merged work.
       context.env.DB.prepare(
-        "update task_assignee as kept set status = case when kept.status = 'completed' or exists (select 1 from task_assignee as merged where merged.task_id = kept.task_id and merged.speaker_id = ? and merged.status = 'completed') then 'completed' when kept.status = 'in_progress' or exists (select 1 from task_assignee as merged where merged.task_id = kept.task_id and merged.speaker_id = ? and merged.status = 'in_progress') then 'in_progress' else 'assigned' end, completed_at = coalesce(kept.completed_at, (select merged.completed_at from task_assignee as merged where merged.task_id = kept.task_id and merged.speaker_id = ?)), deleted_at = null, updated_at = ? where kept.speaker_id = ? and exists (select 1 from task_assignee as merged where merged.task_id = kept.task_id and merged.speaker_id = ? and merged.deleted_at is null)",
-      ).bind(mergedSpeaker.id, mergedSpeaker.id, mergedSpeaker.id, now, keptSpeaker.id, mergedSpeaker.id),
+        "update task_assignee as kept set status = case when kept.status = 'completed' or exists (select 1 from task_assignee as merged where merged.task_id = kept.task_id and merged.speaker_id = ? and merged.status = 'completed') then 'completed' when kept.status = 'in_progress' or exists (select 1 from task_assignee as merged where merged.task_id = kept.task_id and merged.speaker_id = ? and merged.status = 'in_progress') then 'in_progress' else 'assigned' end, completed_at = coalesce(kept.completed_at, (select merged.completed_at from task_assignee as merged where merged.task_id = kept.task_id and merged.speaker_id = ?)), granted_by_session_id = case when kept.granted_by_session_id is null or exists (select 1 from task_assignee as merged where merged.task_id = kept.task_id and merged.speaker_id = ? and merged.granted_by_session_id is null) then null else kept.granted_by_session_id end, deleted_at = null, updated_at = ? where kept.speaker_id = ? and exists (select 1 from task_assignee as merged where merged.task_id = kept.task_id and merged.speaker_id = ? and merged.deleted_at is null)",
+      ).bind(
+        mergedSpeaker.id,
+        mergedSpeaker.id,
+        mergedSpeaker.id,
+        mergedSpeaker.id,
+        now,
+        keptSpeaker.id,
+        mergedSpeaker.id,
+      ),
       // `task_assignee_unique` leaves nowhere to carry an archived duplicate assignment that the
       // kept speaker already holds, so what it knows is folded in instead: work the person did
       // under the other record stays done, without that archived row reviving the kept one.
       context.env.DB.prepare(
-        "update task_assignee as kept set status = case when kept.status = 'completed' or exists (select 1 from task_assignee as merged where merged.task_id = kept.task_id and merged.speaker_id = ? and merged.status = 'completed') then 'completed' when kept.status = 'in_progress' or exists (select 1 from task_assignee as merged where merged.task_id = kept.task_id and merged.speaker_id = ? and merged.status = 'in_progress') then 'in_progress' else kept.status end, completed_at = coalesce(kept.completed_at, (select merged.completed_at from task_assignee as merged where merged.task_id = kept.task_id and merged.speaker_id = ?)), updated_at = ? where kept.speaker_id = ? and exists (select 1 from task_assignee as merged where merged.task_id = kept.task_id and merged.speaker_id = ? and merged.deleted_at is not null)",
-      ).bind(mergedSpeaker.id, mergedSpeaker.id, mergedSpeaker.id, now, keptSpeaker.id, mergedSpeaker.id),
+        "update task_assignee as kept set status = case when kept.status = 'completed' or exists (select 1 from task_assignee as merged where merged.task_id = kept.task_id and merged.speaker_id = ? and merged.status = 'completed') then 'completed' when kept.status = 'in_progress' or exists (select 1 from task_assignee as merged where merged.task_id = kept.task_id and merged.speaker_id = ? and merged.status = 'in_progress') then 'in_progress' else kept.status end, completed_at = coalesce(kept.completed_at, (select merged.completed_at from task_assignee as merged where merged.task_id = kept.task_id and merged.speaker_id = ?)), granted_by_session_id = case when kept.granted_by_session_id is null or exists (select 1 from task_assignee as merged where merged.task_id = kept.task_id and merged.speaker_id = ? and merged.granted_by_session_id is null) then null else kept.granted_by_session_id end, updated_at = ? where kept.speaker_id = ? and exists (select 1 from task_assignee as merged where merged.task_id = kept.task_id and merged.speaker_id = ? and merged.deleted_at is not null)",
+      ).bind(
+        mergedSpeaker.id,
+        mergedSpeaker.id,
+        mergedSpeaker.id,
+        mergedSpeaker.id,
+        now,
+        keptSpeaker.id,
+        mergedSpeaker.id,
+      ),
       context.env.DB.prepare(
         "update task_assignee as merged set deleted_at = ?, updated_at = ? where merged.speaker_id = ? and merged.deleted_at is null and exists (select 1 from task_assignee as kept where kept.task_id = merged.task_id and kept.speaker_id = ?)",
       ).bind(now, now, mergedSpeaker.id, keptSpeaker.id),

@@ -204,6 +204,9 @@ describe("speaker directory", () => {
         "insert into task (id, event_id, title, status, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
       ).bind(taskId, "evt_devflow_conf_2027", "Duplicate profile task", "active", now, now),
       env.DB.prepare(
+        "insert into task_assignee (id, task_id, speaker_id, granted_by_session_id, status, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?)",
+      ).bind("tassn_directory_kept", taskId, "spk_priya_devflow_2027", sessionId, "assigned", now, now),
+      env.DB.prepare(
         "insert into task_assignee (id, task_id, speaker_id, status, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
       ).bind("tassn_directory_duplicate", taskId, duplicateSpeakerId, "in_progress", now, now),
       env.DB.prepare(
@@ -282,8 +285,14 @@ describe("speaker directory", () => {
     expect(archivedSpeaker?.deletedAt).not.toBeNull();
     expect((await database.select().from(sessionSpeakers).where(eq(sessionSpeakers.sessionId, sessionId)))[0]?.speakerId)
       .toBe("spk_priya_devflow_2027");
-    expect((await database.select().from(taskAssignees).where(eq(taskAssignees.taskId, taskId)))[0]?.speakerId)
-      .toBe("spk_priya_devflow_2027");
+    const [keptAssignment] = await database.select().from(taskAssignees)
+      .where(eq(taskAssignees.id, "tassn_directory_kept"));
+    expect(keptAssignment).toMatchObject({
+      speakerId: "spk_priya_devflow_2027",
+      status: "in_progress",
+      grantedBySessionId: null,
+      deletedAt: null,
+    });
     expect((await database.select().from(files).where(eq(files.id, fileId)))[0]?.speakerId)
       .toBe("spk_priya_devflow_2027");
     const [releasedSessionLink] = await database.select().from(sessionSpeakers)
@@ -675,11 +684,18 @@ describe("speaker directory", () => {
       ).bind("tassn_probe_wd2", "tsk_probe_wd2", "spk_probe_wd2_dupe", "completed", now, now, now),
     ]);
 
+    const cookie = await organizerCookie();
+    const before = await request("/api/speaker-directory/psn_probe_wd2_kept", { headers: { cookie } });
+    expect(before.status).toBe(200);
+    expect((await before.json<SpeakerDirectoryDetailResponse>()).possibleDuplicates).toEqual([
+      expect.objectContaining({ id: "psn_probe_wd2_dupe", reasons: ["same_name_and_organization"] }),
+    ]);
+
     // The organizer opens the live record and keeps it - the direction the UI offers alongside
     // keeping the candidate, and the one that must not quietly undo the roster's withdrawal.
     const merged = await request("/api/speaker-directory/psn_probe_wd2_kept/merge", {
       method: "POST",
-      headers: { cookie: await organizerCookie(), "content-type": "application/json" },
+      headers: { cookie, "content-type": "application/json" },
       body: JSON.stringify({ duplicatePersonId: "psn_probe_wd2_dupe" }),
     });
     expect(merged.status).toBe(200);
@@ -739,14 +755,35 @@ describe("speaker directory", () => {
         "insert into speaker (id, person_id, event_id, status, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
       ).bind("spk_probe_fold_dupe", "psn_probe_fold_dupe", "evt_devflow_conf_2027", "ready", now, now),
       env.DB.prepare(
+        "insert into program_session (id, event_id, title, content_status, schedule_status, direct_entry, ics_uid, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      ).bind(
+        "ses_probe_fold_grant",
+        "evt_devflow_conf_2027",
+        "The session that granted the kept assignment",
+        "draft",
+        "tbd",
+        1,
+        "ses_probe_fold_grant@session-bored",
+        now,
+        now,
+      ),
+      env.DB.prepare(
         "insert into task (id, event_id, task_type, title, status, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?)",
       ).bind(taskId, "evt_devflow_conf_2027", "file_request", "Send the folded slides", "active", now, now),
-      // The kept record has never answered this request.
+      // The kept assignment came from a session handoff and has never answered this request.
       env.DB.prepare(
-        "insert into task_assignee (id, task_id, speaker_id, status, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
-      ).bind("tassn_probe_fold_kept", taskId, "spk_probe_fold_kept", "assigned", now, now),
-      // The duplicate did, and was then dropped from the task's assignees on the roster, which
-      // archives the assignment and leaves the uploaded file live.
+        "insert into task_assignee (id, task_id, speaker_id, granted_by_session_id, status, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?)",
+      ).bind(
+        "tassn_probe_fold_kept",
+        taskId,
+        "spk_probe_fold_kept",
+        "ses_probe_fold_grant",
+        "assigned",
+        now,
+        now,
+      ),
+      // The duplicate's organizer-granted assignment is independently owed. It was then dropped
+      // from the task's assignees, which archives the assignment and leaves the uploaded file live.
       env.DB.prepare(
         "insert into task_assignee (id, task_id, speaker_id, status, completed_at, created_at, updated_at, deleted_at) values (?, ?, ?, ?, ?, ?, ?, ?)",
       ).bind("tassn_probe_fold_dupe", taskId, "spk_probe_fold_dupe", "completed", completedAt, now, now, now),
@@ -768,7 +805,7 @@ describe("speaker directory", () => {
 
     const [keptAssignment] = await database.select().from(taskAssignees)
       .where(eq(taskAssignees.id, "tassn_probe_fold_kept"));
-    expect(keptAssignment).toMatchObject({ status: "completed", deletedAt: null });
+    expect(keptAssignment).toMatchObject({ status: "completed", grantedBySessionId: null, deletedAt: null });
     expect(keptAssignment?.completedAt?.getTime()).toBe(completedAt);
 
     // The file follows the person, so the request must not read as still outstanding beside it.
