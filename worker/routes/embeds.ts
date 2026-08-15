@@ -4,9 +4,14 @@ import { and, desc, eq, isNull } from "drizzle-orm";
 import { drizzle, type DrizzleD1Database } from "drizzle-orm/d1";
 import { Hono } from "hono";
 import { createMiddleware } from "hono/factory";
-import { embeds, events, tracks, type Role } from "../../db/schema.ts";
+import { embeds, type Role } from "../../db/schema.ts";
 import { holdsAccess } from "../access.ts";
-import type { EmbedConfig, EmbedStatus, EmbedWidgetType } from "../../shared/api.ts";
+import type {
+  EmbedConfig,
+  EmbedStatus,
+  EmbedWidgetType,
+  EmbedWriteRequest,
+} from "../../shared/api.ts";
 import { buildScheduleIcs } from "../email/ics.ts";
 import {
   countPublicSpeakers,
@@ -14,6 +19,7 @@ import {
   fetchPublicEventFacets,
   fetchPublicSessions,
   fetchPublicSpeakers,
+  type SessionFilters,
 } from "../public-queries.ts";
 
 type EmbedEnvironment = {
@@ -68,37 +74,69 @@ type EmbedInput = {
 
 function readEmbedInput(payload: unknown): EmbedInput | null {
   if (typeof payload !== "object" || payload === null) return null;
-  const input = payload as Record<string, unknown>;
+  const input = payload as Record<keyof EmbedWriteRequest, unknown>;
   if (typeof input.name !== "string" || input.name.trim() === "" || !isWidgetType(input.widgetType)) {
     return null;
   }
   if (input.status !== undefined && !isStatus(input.status)) return null;
-  if (input.track !== undefined && typeof input.track !== "string") return null;
-  const track = typeof input.track === "string" ? input.track.trim() : "";
+  const stringKeys = ["track", "format", "room"] as const;
+  if (stringKeys.some((key) => input[key] !== undefined && typeof input[key] !== "string")) return null;
+  const colorKeys = ["backgroundColor", "textColor", "accentColor"] as const;
+  if (colorKeys.some((key) => input[key] !== undefined && (
+    typeof input[key] !== "string" || !/^#[0-9a-fA-F]{6}$/.test(input[key])
+  ))) return null;
+  const visibilityKeys = [
+    "showDescription",
+    "showSpeakers",
+    "showLocation",
+    "showEventName",
+    "showTime",
+    "showTrack",
+    "showFormat",
+    "showSpeakerImage",
+    "showSpeakerDetails",
+  ] as const;
+  if (visibilityKeys.some((key) => input[key] !== undefined && typeof input[key] !== "boolean")) return null;
+
+  const config: EmbedConfig = {};
+  for (const key of stringKeys) {
+    const value = typeof input[key] === "string" ? input[key].trim() : "";
+    if (value !== "") config[key] = value;
+  }
+  for (const key of colorKeys) {
+    if (typeof input[key] === "string") config[key] = input[key].toLowerCase();
+  }
+  for (const key of visibilityKeys) {
+    if (typeof input[key] === "boolean") config[key] = input[key];
+  }
   return {
     name: input.name.trim(),
     widgetType: input.widgetType,
     status: input.status ?? "draft",
-    config: track === "" ? {} : { track },
+    config,
   };
 }
 
-async function eventAcceptsTrack(
+async function eventAcceptsConfig(
   database: DrizzleD1Database,
   eventId: string,
-  track: string | undefined,
+  config: EmbedConfig,
 ): Promise<boolean> {
-  const [event] = await database
-    .select({ id: events.id })
-    .from(events)
-    .where(and(eq(events.id, eventId), isNull(events.deletedAt)));
-  if (event === undefined) return false;
-  if (track === undefined) return true;
-  const [match] = await database
-    .select({ id: tracks.id })
-    .from(tracks)
-    .where(and(eq(tracks.eventId, eventId), eq(tracks.name, track)));
-  return match !== undefined;
+  const facets = await fetchPublicEventFacets(database, eventId);
+  if (facets === null) return false;
+  return (config.track === undefined || facets.tracks.includes(config.track))
+    && (config.format === undefined || facets.formats.includes(config.format))
+    && (config.room === undefined || facets.rooms.includes(config.room));
+}
+
+function sessionFilters(config: EmbedConfig | null): SessionFilters {
+  return {
+    q: undefined,
+    track: config?.track,
+    format: config?.format,
+    room: config?.room,
+    day: undefined,
+  };
 }
 
 embedRoutes.get("/api/events/:eventId/embeds", async (context) => {
@@ -115,8 +153,8 @@ embedRoutes.post("/api/events/:eventId/embeds", async (context) => {
   if (input === null) return context.json({ error: "invalid_embed" }, 400);
   const database = drizzle(context.env.DB);
   const eventId = context.req.param("eventId");
-  if (!await eventAcceptsTrack(database, eventId, input.config.track)) {
-    return context.json({ error: "invalid_event_or_track" }, 400);
+  if (!await eventAcceptsConfig(database, eventId, input.config)) {
+    return context.json({ error: "invalid_event_or_filter" }, 400);
   }
   const publicToken = `emb_${crypto.randomUUID().replaceAll("-", "")}`;
   const [created] = await database
@@ -138,8 +176,8 @@ embedRoutes.patch("/api/events/:eventId/embeds/:embedId", async (context) => {
   if (input === null) return context.json({ error: "invalid_embed" }, 400);
   const database = drizzle(context.env.DB);
   const eventId = context.req.param("eventId");
-  if (!await eventAcceptsTrack(database, eventId, input.config.track)) {
-    return context.json({ error: "invalid_event_or_track" }, 400);
+  if (!await eventAcceptsConfig(database, eventId, input.config)) {
+    return context.json({ error: "invalid_event_or_filter" }, 400);
   }
   const [updated] = await database
     .update(embeds)
@@ -187,7 +225,8 @@ async function findPublishedEmbed(database: DrizzleD1Database, publicToken: stri
 async function readPublicEmbed(database: DrizzleD1Database, publicToken: string) {
   const embed = await findPublishedEmbed(database, publicToken);
   if (embed === null) return null;
-  const track = typeof embed.config?.track === "string" ? embed.config.track : undefined;
+  const config = embed.config as EmbedConfig | null;
+  const filters = sessionFilters(config);
   const facets = await fetchPublicEventFacets(database, embed.eventId);
   if (facets === null) return null;
 
@@ -196,29 +235,17 @@ async function readPublicEmbed(database: DrizzleD1Database, publicToken: string)
       fetchPublicSpeakers(database, embed.eventId, { q: undefined }),
       countPublicSpeakers(database, embed.eventId),
     ]);
-    if (track === undefined) {
+    if (config?.track === undefined && config?.format === undefined && config?.room === undefined) {
       return { embed, items: allSpeakers, total, filtered: allSpeakers.length, facets };
     }
-    const trackSessions = await fetchPublicSessions(database, embed.eventId, {
-      q: undefined,
-      track,
-      format: undefined,
-      room: undefined,
-      day: undefined,
-    });
-    const visibleSpeakerIds = new Set(trackSessions.flatMap((session) => session.speakers.map((speaker) => speaker.id)));
+    const matchingSessions = await fetchPublicSessions(database, embed.eventId, filters);
+    const visibleSpeakerIds = new Set(matchingSessions.flatMap((session) => session.speakers.map((speaker) => speaker.id)));
     const items = allSpeakers.filter((speaker) => visibleSpeakerIds.has(speaker.id));
     return { embed, items, total, filtered: items.length, facets };
   }
 
   const [items, total] = await Promise.all([
-    fetchPublicSessions(database, embed.eventId, {
-      q: undefined,
-      track,
-      format: undefined,
-      room: undefined,
-      day: undefined,
-    }),
+    fetchPublicSessions(database, embed.eventId, filters),
     countPublicSessions(database, embed.eventId),
   ]);
   return { embed, items, total, filtered: items.length, facets };
@@ -251,13 +278,7 @@ embedRoutes.get("/api/public/embeds/:delivery", async (context) => {
     return context.json({ error: "not_found" }, 404);
   }
 
-  const sessions = await fetchPublicSessions(database, payload.embed.eventId, {
-    q: undefined,
-    track: typeof payload.embed.config?.track === "string" ? payload.embed.config.track : undefined,
-    format: undefined,
-    room: undefined,
-    day: undefined,
-  });
+  const sessions = await fetchPublicSessions(database, payload.embed.eventId, sessionFilters(payload.embed.config));
   const calendar = buildScheduleIcs({
     calendarName: `${payload.facets.event.name} programme`,
     organizer: { name: payload.facets.event.name, email: "calendar@session-bored.invalid" },

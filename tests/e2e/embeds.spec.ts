@@ -1,5 +1,5 @@
 // ABOUTME: Walks the organizer embed builder and third-party iframe delivery in a real browser.
-// ABOUTME: Covers the five-widget selector, published snippet output, and phone-width layout.
+// ABOUTME: Covers widget configuration, public output, lifecycle controls, and phone-width layout.
 import { expect, test } from "@playwright/test";
 
 async function signInAsOrganizer(page: import("@playwright/test").Page): Promise<void> {
@@ -95,7 +95,7 @@ test("organizer manages the full embed lifecycle without leaving a live token", 
   await expect(editedRow).toBeVisible();
   const editedPayload = await (await page.request.get(`/api/public/embeds/${publicToken}.json`)).json();
   expect(editedPayload.embed).toMatchObject({ name: editedName, widgetType: "agenda" });
-  expect(editedPayload.embed.config).toEqual({ track: "Developer Experience" });
+  expect(editedPayload.embed.config).toMatchObject({ track: "Developer Experience" });
   expect(await fetchPublicJson(returningVisitor, publicToken)).toMatchObject({
     status: 200,
     payload: { embed: { name: editedName, widgetType: "agenda" } },
@@ -146,15 +146,161 @@ test("embed builder remains usable at phone width", async ({ page }) => {
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
 });
 
-test("speaker widgets offer only delivery formats that represent speakers", async ({ page }) => {
+test("agenda description choice controls the anonymous public widget", async ({ page, browser }) => {
+  const name = `Agenda descriptions ${Date.now()}`;
   await signInAsOrganizer(page);
   await page.goto("/organizer/embeds");
 
-  await page.getByLabel("Name").fill(`Speaker directory ${Date.now()}`);
+  await page.getByLabel("Name").fill(name);
+  await page.locator(".embed-type").filter({ hasText: "Agenda" }).click();
+  await page.getByLabel("Status").selectOption("published");
+  await expect(page.getByLabel("Show description")).toBeChecked();
+  await page.getByRole("button", { name: "Save embed" }).click();
+
+  const iframeHref = await page.getByRole("link", { name: "Open iframe preview" }).getAttribute("href");
+  const publicToken = new URL(iframeHref!).pathname.split("/").at(-1)!;
+  const publicContext = await browser.newContext();
+  const publicPage = await publicContext.newPage();
+  await publicPage.goto(`/embed/${publicToken}`);
+  const agendaSession = publicPage.locator(".embed-agenda__cell article", { hasText: "Docs That Answer Back" });
+  await expect(agendaSession.locator(".embed-frame__abstract")).toHaveCount(1);
+
+  const embedRow = page.getByRole("row").filter({ has: page.getByRole("button", { name, exact: true }) });
+  await embedRow.getByRole("button", { name: "Edit" }).click();
+  await page.getByLabel("Show description").uncheck();
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await publicPage.reload();
+  await expect(agendaSession.locator(".embed-frame__abstract")).toHaveCount(0);
+  await publicContext.close();
+});
+
+test("organizer styling and field choices reach the public widget in both preview sizes", async ({ page, browser }) => {
+  const name = `Branded programme ${Date.now()}`;
+  await signInAsOrganizer(page);
+  await page.goto("/organizer/embeds");
+
+  await page.getByLabel("Name").fill(name);
+  await page.getByLabel("Status").selectOption("published");
+  await page.getByLabel("Track").selectOption({ label: "Developer Experience" });
+  await page.getByRole("combobox", { name: "Format", exact: true }).selectOption({ label: "Lightning Talk (10 min)" });
+  await expect(page.getByRole("combobox", { name: "Location", exact: true }).getByRole("option", { name: "Main Stage" })).toHaveCount(1);
+  await page.getByLabel("Background color").fill("#123456");
+  await page.getByLabel("Text color").fill("#ffffff");
+  await page.getByLabel("Accent color").fill("#ffcc00");
+  await page.getByLabel("Show description").uncheck();
+  await page.getByLabel("Display speakers").uncheck();
+  await page.getByLabel("Show location").uncheck();
+  await page.getByLabel("Display event label").uncheck();
+  await page.getByLabel("Show date and time").uncheck();
+  await page.getByLabel("Display taxonomy").uncheck();
+  await page.getByLabel("Display session kind").uncheck();
+  await page.getByRole("button", { name: "Save embed" }).click();
+
+  const preview = page.locator(".embed-preview");
+  await expect(preview).toBeVisible();
+  const phonePreview = page.getByRole("button", { name: "Phone preview" });
+  await phonePreview.click();
+  await expect(phonePreview).toHaveAttribute("aria-pressed", "true");
+  await expect.poll(async () => (await preview.boundingBox())?.width ?? 0).toBeLessThanOrEqual(390);
+  const desktopPreview = page.getByRole("button", { name: "Desktop preview" });
+  await desktopPreview.click();
+  await expect(desktopPreview).toHaveAttribute("aria-pressed", "true");
+  if ((page.viewportSize()?.width ?? 0) > 760) {
+    await expect.poll(async () => (await preview.boundingBox())?.width ?? 0).toBeGreaterThan(700);
+  } else {
+    await expect.poll(async () => (await preview.boundingBox())?.width ?? 0).toBeLessThanOrEqual(390);
+  }
+
+  const iframeHref = await page.getByRole("link", { name: "Open iframe preview" }).getAttribute("href");
+  const publicContext = await browser.newContext();
+  const publicPage = await publicContext.newPage();
+  await publicPage.goto(iframeHref!);
+  await expect(publicPage.getByRole("heading", { name })).toBeVisible();
+  await expect(publicPage.getByText("Docs That Answer Back", { exact: false })).toBeVisible();
+  await expect(publicPage.locator(".embed-frame__abstract")).toHaveCount(0);
+  await expect(publicPage.locator(".embed-frame__speakers")).toHaveCount(0);
+  await expect(publicPage.getByText("Room TBD", { exact: true })).toHaveCount(0);
+  await expect(publicPage.getByText("DevFlow Conf 2027", { exact: true })).toHaveCount(0);
+  await expect(publicPage.locator(".embed-session-list__time")).toHaveCount(0);
+  await expect(publicPage.locator(".embed-frame__meta")).toHaveCount(0);
+  await expect(publicPage.locator("main")).toHaveCSS("background-color", "rgb(18, 52, 86)");
+  await expect(publicPage.locator("main")).toHaveCSS("color", "rgb(255, 255, 255)");
+  await expect(publicPage.locator(".embed-frame__header")).toHaveCSS("border-bottom-color", "rgb(255, 204, 0)");
+  await publicContext.close();
+
+  const publicToken = new URL(iframeHref!).pathname.split("/").at(-1)!;
+  const embedRow = page.getByRole("row").filter({ has: page.getByRole("button", { name, exact: true }) });
+  await embedRow.getByRole("button", { name: "Unpublish" }).click();
+  await page.getByRole("dialog", { name: `Unpublish ${name}?` }).getByRole("button", { name: "Unpublish embed" }).click();
+  expect((await page.request.get(`/api/public/embeds/${publicToken}.json`)).status()).toBe(404);
+  await embedRow.getByRole("button", { name: "Publish", exact: true }).click();
+  const republished = await (await page.request.get(`/api/public/embeds/${publicToken}.json`)).json();
+  expect(republished.embed.config).toMatchObject({
+    backgroundColor: "#123456",
+    textColor: "#ffffff",
+    accentColor: "#ffcc00",
+    format: "Lightning Talk (10 min)",
+    showDescription: false,
+    showSpeakers: false,
+    showLocation: false,
+    showEventName: false,
+    showTime: false,
+    showTrack: false,
+    showFormat: false,
+  });
+});
+
+test("speakers list photo choice controls the anonymous public widget", async ({ page, browser }) => {
+  const name = `Speaker list photos ${Date.now()}`;
+  await signInAsOrganizer(page);
+  await page.goto("/organizer/embeds");
+
+  await page.getByLabel("Name").fill(name);
   await page.locator(".embed-type").filter({ hasText: "Speakers list" }).click();
   await page.getByLabel("Status").selectOption("published");
+  await expect(page.getByLabel("Show speaker photo")).toBeChecked();
+  await page.getByRole("button", { name: "Save embed" }).click();
+
+  const iframeHref = await page.getByRole("link", { name: "Open iframe preview" }).getAttribute("href");
+  const publicToken = new URL(iframeHref!).pathname.split("/").at(-1)!;
+  const publicContext = await browser.newContext();
+  const publicPage = await publicContext.newPage();
+  await publicPage.goto(`/embed/${publicToken}`);
+  await expect(publicPage.getByRole("heading", { name })).toBeVisible();
+  expect(await publicPage.locator(".embed-speakers img, .embed-speakers__initials").count()).toBeGreaterThan(0);
+
+  const embedRow = page.getByRole("row").filter({ has: page.getByRole("button", { name, exact: true }) });
+  await embedRow.getByRole("button", { name: "Edit" }).click();
+  await page.getByLabel("Show speaker photo").uncheck();
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await publicPage.reload();
+  await expect(publicPage.locator(".embed-speakers img, .embed-speakers__initials")).toHaveCount(0);
+  await publicContext.close();
+});
+
+test("speaker widgets honor their field choices and omit session-only delivery", async ({ page, browser }) => {
+  const name = `Speaker gallery ${Date.now()}`;
+  await signInAsOrganizer(page);
+  await page.goto("/organizer/embeds");
+
+  await page.getByLabel("Name").fill(name);
+  await page.locator(".embed-type").filter({ hasText: "Speaker gallery" }).click();
+  await page.getByLabel("Status").selectOption("published");
+  await page.getByLabel("Show description").uncheck();
+  await page.getByLabel("Show speaker photo").uncheck();
+  await page.getByLabel("Show speaker details").uncheck();
   await page.getByRole("button", { name: "Save embed" }).click();
 
   await expect(page.getByRole("heading", { name: "Copy your snippet" })).toBeVisible();
   await expect(page.getByRole("tab", { name: "iCal" })).toHaveCount(0);
+  const iframeHref = await page.getByRole("link", { name: "Open iframe preview" }).getAttribute("href");
+  const publicContext = await browser.newContext();
+  const publicPage = await publicContext.newPage();
+  await publicPage.goto(iframeHref!);
+  await expect(publicPage.getByRole("heading", { name })).toBeVisible();
+  expect(await publicPage.locator(".embed-speakers h2").count()).toBeGreaterThan(0);
+  await expect(publicPage.locator(".embed-speakers img, .embed-speakers__initials")).toHaveCount(0);
+  await expect(publicPage.locator(".embed-speaker-details")).toHaveCount(0);
+  await expect(publicPage.locator(".embed-speaker-bio")).toHaveCount(0);
+  await publicContext.close();
 });

@@ -27,6 +27,14 @@ async function createEmbed(
     widgetType: "sessions" | "speakers" | "agenda" | "itinerary" | "gallery";
     status?: "draft" | "published";
     track?: string;
+    format?: string;
+    room?: string;
+    backgroundColor?: string;
+    textColor?: string;
+    accentColor?: string;
+    showDescription?: boolean;
+    showSpeakers?: boolean;
+    showLocation?: boolean;
   },
 ): Promise<{ id: string; publicToken: string; status: string }> {
   const response = await request(`/api/events/${eventId}/embeds`, {
@@ -339,6 +347,90 @@ describe("organizer embed builder", () => {
     expect(calendar).toContain("BEGIN:VCALENDAR");
     expect(calendar).toContain("Public embed session");
     expect(calendar).not.toContain("embed secret");
+  });
+
+  it("persists validated styling and field choices while composing event-scoped content filters", async () => {
+    const now = Date.now();
+    await env.DB.prepare(
+      "insert into program_session (id, event_id, track_id, format_id, room_id, title, content_status, schedule_status, direct_entry, ics_uid, published_at, starts_at, ends_at, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    ).bind(
+      "ses_embed_configured",
+      eventId,
+      "trk_developer_experience",
+      "fmt_lightning_10",
+      "rm_main_stage",
+      "Configured public embed session",
+      "approved",
+      "placed",
+      1,
+      "ses_embed_configured@session-bored",
+      now,
+      now + 1_800_000,
+      now + 3_600_000,
+      now,
+      now,
+    ).run();
+
+    const embed = await createEmbed(organizerCookie, {
+      name: "Branded main-stage lightning talks",
+      widgetType: "sessions",
+      status: "published",
+      track: "Developer Experience",
+      format: "Lightning Talk (10 min)",
+      room: "Main Stage",
+      backgroundColor: "#123456",
+      textColor: "#ffffff",
+      accentColor: "#ffcc00",
+      showDescription: false,
+      showSpeakers: false,
+      showLocation: false,
+    });
+
+    const publicResponse = await request(`/api/public/embeds/${embed.publicToken}.json`);
+    expect(publicResponse.status).toBe(200);
+    const payload = await publicResponse.json<{
+      embed: { config: Record<string, string | boolean> };
+      items: Array<{ title: string | null; track: string | null; format: string | null; room: string | null }>;
+    }>();
+    expect(payload.embed.config).toEqual({
+      track: "Developer Experience",
+      format: "Lightning Talk (10 min)",
+      room: "Main Stage",
+      backgroundColor: "#123456",
+      textColor: "#ffffff",
+      accentColor: "#ffcc00",
+      showDescription: false,
+      showSpeakers: false,
+      showLocation: false,
+    });
+    expect(payload.items.length).toBeGreaterThan(0);
+    expect(payload.items.every((item) => (
+      item.track === "Developer Experience"
+      && item.format === "Lightning Talk (10 min)"
+      && item.room === "Main Stage"
+    ))).toBe(true);
+    expect(payload.items.map((item) => item.title)).toContain("Configured public embed session");
+
+    const calendarResponse = await request(`/api/public/embeds/${embed.publicToken}.ics`);
+    expect(calendarResponse.status).toBe(200);
+    expect(await calendarResponse.text()).toContain("Configured public embed session");
+
+    for (const invalidInput of [
+      { format: "Another event's format" },
+      { room: "Another event's room" },
+      { backgroundColor: "blue" },
+    ]) {
+      const response = await request(`/api/events/${eventId}/embeds`, {
+        method: "POST",
+        headers: { cookie: organizerCookie, "content-type": "application/json" },
+        body: JSON.stringify({
+          name: "Invalid configuration",
+          widgetType: "sessions",
+          ...invalidInput,
+        }),
+      });
+      expect(response.status, JSON.stringify(invalidInput)).toBe(400);
+    }
   });
 
   it("rejects iCal delivery for speaker widgets instead of serving session calendars", async () => {
