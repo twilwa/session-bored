@@ -40,6 +40,7 @@ test("organizer creates, renames, and removes a room from the agenda", async ({ 
   await dialog.getByRole("button", { name: `Edit ${roomName}` }).click();
   await dialog.getByLabel("Room name").fill(renamedRoomName);
   await dialog.getByRole("button", { name: "Save room" }).click();
+  await expect(dialog.getByText(renamedRoomName, { exact: true })).toBeVisible();
   await dialog.getByRole("button", { name: "Close dialog" }).click();
   await expect(page.locator(".agenda-room-heading").getByText(renamedRoomName, { exact: true })).toBeVisible();
 
