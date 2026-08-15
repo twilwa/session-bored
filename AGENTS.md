@@ -383,8 +383,14 @@ isolated test database, so CI does not need a separate migration step.
 For same-repository pull requests, the `Preview` workflow updates one PR comment
 with the branch's stable Workers preview URL. Each PR reuses its own
 `session-bored-pr-<number>` D1 database across pushes; previews never bind the
-production database. Forked pull requests skip deployment because GitHub does
-not provide repository secrets to untrusted forks.
+production database. Because that database outlives a rebase, a branch that
+renames or renumbers a migration it already applied leaves it holding schema no
+migration name accounts for, and every later push fails on `duplicate column` or
+`already exists`. So a preview whose migrations do not apply is deleted and
+rebuilt from empty, and the push carries on against the new database - preview
+data is disposable and nothing else is. A migration that fails against an empty
+database still fails the job. Forked pull requests skip deployment because
+GitHub does not provide repository secrets to untrusted forks.
 
 Preview deployment requires the `CLOUDFLARE_API_TOKEN` and
 `CLOUDFLARE_ACCOUNT_ID` GitHub Actions secrets. The token must be able to upload
