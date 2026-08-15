@@ -9,6 +9,7 @@ import {
   predictDrop,
   shortTitle,
   timeSlots,
+  timezoneLabel,
   zonedEpoch,
 } from "../../client/pages/agenda/board.ts";
 import type { AgendaSession } from "../../shared/api.ts";
@@ -286,5 +287,16 @@ describe("shortTitle", () => {
     expect(shortTitle("Everything You Ever Wanted To Know About Incremental Build Graphs")).toBe(
       "Everything You Ever Wanted To Know Abo…",
     );
+  });
+});
+
+describe("timezoneLabel", () => {
+  it("names the event's own timezone rather than a fixed coast", () => {
+    expect(timezoneLabel(day, "America/Los_Angeles")).toBe("PDT");
+    expect(timezoneLabel(day, "America/New_York")).toBe("EDT");
+  });
+
+  it("follows daylight saving on the day being scheduled", () => {
+    expect(timezoneLabel("2027-01-12", "America/Los_Angeles")).toBe("PST");
   });
 });

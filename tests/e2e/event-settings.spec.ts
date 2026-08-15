@@ -54,6 +54,9 @@ test("organizer edits event identity, dates, venue, timezone, and branding", asy
   expect(baselinePublishStatus).toBe(200);
 
   try {
+    await page.goto("/organizer/agenda");
+    await expect(page.locator(".agenda-grid-corner")).toHaveText("PDT");
+
     await page.goto("/organizer/event");
     await expect(page.getByRole("heading", { name: "Event setup" })).toBeVisible();
     await page.getByLabel("Event name").fill("Signal Summit 2027");
@@ -80,6 +83,10 @@ test("organizer edits event identity, dates, venue, timezone, and branding", asy
     await expect(page.locator(".event-switcher strong")).toHaveText("Signal Summit 2027");
     await expect(page.locator(".event-switcher")).toContainText("May 11–15, 2027 · Pier 27, San Francisco");
     await expect(page.getByRole("img", { name: "Signal Summit 2027 logo preview" })).toBeVisible();
+
+    // The grid labels its times with the timezone the organizer just saved, not a fixed coast.
+    await page.goto("/organizer/agenda");
+    await expect(page.locator(".agenda-grid-corner")).toHaveText("EDT");
 
     await page.goto("/cfp/devflow-conf-2027");
     await expect(page.getByRole("heading", { name: "Signal Summit 2027" })).toBeVisible();

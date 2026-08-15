@@ -12,6 +12,7 @@ import {
   sessionTimeValue,
   shortTitle,
   timeSlots,
+  timezoneLabel,
   zonedEpoch,
   type DropPrediction,
   type DropTarget,
@@ -729,7 +730,7 @@ export function AgendaPage() {
                     className={`agenda-day-grid${draggingSessionId === null ? "" : " agenda-day-grid--dragging"}`}
                     style={{ gridTemplateColumns: `76px repeat(${agenda.rooms.length}, minmax(124px, 1fr))` }}
                   >
-                    <div className="agenda-grid-corner">PT</div>
+                    <div className="agenda-grid-corner">{timezoneLabel(activeDay, timezone)}</div>
                     {agenda.rooms.map((room) => <div className="agenda-room-heading" key={room.id}><strong>{room.name}</strong><small>{placed.filter((session) => session.scheduledDate === activeDay && session.room?.id === room.id).length} placed</small></div>)}
                     {timeSlots.map((time, timeIndex) => [
                       <div className={`agenda-time${time.endsWith(":00") ? " agenda-time--hour" : ""}`} key={`time-${time}`}>{timeLabel(time)}</div>,
