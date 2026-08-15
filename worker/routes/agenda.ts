@@ -17,6 +17,7 @@ import {
   type Role,
 } from "../../db/schema.ts";
 import { holdsAccess } from "../access.ts";
+import { boundParameterBudget, chunkIds } from "../d1-limits.ts";
 import type {
   AgendaConflict,
   AgendaPlacement,
@@ -73,6 +74,10 @@ export async function snapshotParticipantPublicationHolds(
   );
 }
 
+// A hold is pinned by its id and the timestamp it still has to carry, so each one costs two
+// bound parameters beside the timestamp the publish writes.
+const holdsPerStatement = Math.floor((boundParameterBudget - 1) / 2);
+
 /** Publishes sessions and releases only the unchanged holds captured for this publish act. */
 export async function publishSessionsAndReleaseParticipantHolds(
   database: AgendaDatabase,
@@ -80,35 +85,37 @@ export async function publishSessionsAndReleaseParticipantHolds(
   publishedAt: Date,
   heldAtStart: ParticipantPublicationHold[],
 ): Promise<Array<{ sessionId: string; speakerId: string }>> {
-  const publishSessions = database
-    .update(sessions)
-    .set({ publishedAt })
-    .where(inArray(sessions.id, sessionIds));
-  const releasable = heldAtStart.filter((link) => sessionIds.includes(link.sessionId));
-  if (releasable.length === 0) {
-    await publishSessions;
-    return [];
-  }
-  const unchangedHold = or(...releasable.map((link) => and(
-    eq(sessionSpeakers.id, link.id),
-    eq(sessionSpeakers.publicationHoldAt, link.publicationHoldAt),
-  )));
-  const releaseHolds = database
-    .update(sessionSpeakers)
-    .set({ publicationHoldAt: null })
-    .where(and(
-      inArray(sessionSpeakers.sessionId, sessionIds),
-      isNull(sessionSpeakers.deletedAt),
-      unchangedHold,
-      sql`EXISTS (
-        SELECT 1 FROM ${speakers}
-        WHERE ${speakers.id} = ${sessionSpeakers.speakerId}
-          AND ${speakers.deletedAt} IS NULL
-      )`,
-    ))
-    .returning({ sessionId: sessionSpeakers.sessionId, speakerId: sessionSpeakers.speakerId });
-  const [, released] = await database.batch([publishSessions, releaseHolds]);
-  return released;
+  // Both halves grow with the agenda, so each reaches D1 as several statements that fit the
+  // bound-parameter budget, and one batch still settles them together.
+  const publishStatements = chunkIds(sessionIds).map((ids) =>
+    database.update(sessions).set({ publishedAt }).where(inArray(sessions.id, ids))
+  );
+  const publishing = new Set(sessionIds);
+  const releasable = heldAtStart.filter((link) => publishing.has(link.sessionId));
+  const releaseStatements = chunkIds(releasable, holdsPerStatement).map((links) =>
+    database
+      .update(sessionSpeakers)
+      .set({ publicationHoldAt: null })
+      .where(and(
+        isNull(sessionSpeakers.deletedAt),
+        or(...links.map((link) => and(
+          eq(sessionSpeakers.id, link.id),
+          eq(sessionSpeakers.publicationHoldAt, link.publicationHoldAt),
+        ))),
+        sql`EXISTS (
+          SELECT 1 FROM ${speakers}
+          WHERE ${speakers.id} = ${sessionSpeakers.speakerId}
+            AND ${speakers.deletedAt} IS NULL
+        )`,
+      ))
+      .returning({ sessionId: sessionSpeakers.sessionId, speakerId: sessionSpeakers.speakerId })
+  );
+  const [first, ...rest] = [...publishStatements, ...releaseStatements];
+  if (first === undefined) return [];
+  const results = await database.batch([first, ...rest]);
+  return results.slice(publishStatements.length).flat() as Array<
+    { sessionId: string; speakerId: string }
+  >;
 }
 
 const agendaRoutes = new Hono<AgendaEnvironment>();
@@ -542,11 +549,17 @@ agendaRoutes.post("/api/events/:eventId/agenda/publish", async (context) => {
       heldAtStart,
     );
     if (releasedLinks.length > 0) {
-      const named = await database
-        .select({ speakerId: speakers.id, name: people.name })
-        .from(speakers)
-        .innerJoin(people, eq(speakers.personId, people.id))
-        .where(inArray(speakers.id, releasedLinks.map((link) => link.speakerId)));
+      const named = (
+        await Promise.all(
+          chunkIds(releasedLinks.map((link) => link.speakerId)).map((speakerIds) =>
+            database
+              .select({ speakerId: speakers.id, name: people.name })
+              .from(speakers)
+              .innerJoin(people, eq(speakers.personId, people.id))
+              .where(inArray(speakers.id, speakerIds)),
+          ),
+        )
+      ).flat();
       const nameBySpeaker = new Map(named.map((row) => [row.speakerId, row.name]));
       released = releasedLinks.map((link) => ({
         sessionId: link.sessionId as `ses_${string}`,

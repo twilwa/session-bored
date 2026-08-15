@@ -516,13 +516,17 @@ export function AgendaPage() {
       const result = await agendaRequest<AgendaPublishResult>(`/api/events/${eventId}/agenda/publish`, { method: "POST" });
       const refreshed = await agendaRequest<AgendaState>(`/api/events/${eventId}/agenda`);
       setAgenda(refreshed);
+      const outcomes = [
+        result.releasedParticipants.length === 0
+          ? null
+          : "This publish put participants who were waiting on the public site.",
+        result.skipped.length === 0
+          ? null
+          : "Only approved, scheduled sessions go public. The rest stayed private.",
+      ].filter((sentence): sentence is string => sentence !== null);
       setToast({
         message: result.message,
-        detail: result.releasedParticipants.length > 0
-          ? "This publish put participants who were waiting on the public site:"
-          : result.skipped.length === 0
-          ? null
-          : "Only approved, scheduled sessions go public. The rest stayed private:",
+        detail: outcomes.length === 0 ? null : outcomes.join(" "),
         notes: result.notes,
         clashes: 0,
         undo: null,

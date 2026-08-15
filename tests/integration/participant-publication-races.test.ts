@@ -4,6 +4,7 @@ import { env } from "cloudflare:workers";
 import { drizzle } from "drizzle-orm/d1";
 import { beforeEach, describe, expect, it } from "vitest";
 import worker from "../../worker/index.ts";
+import type { AgendaPublishResult } from "../../shared/api.ts";
 import {
   recordSessionParticipation,
 } from "../../worker/submission-decision.ts";
@@ -14,6 +15,20 @@ import {
 
 const eventId = "evt_devflow_conf_2027";
 const sessionId = "ses_docs_retrieval";
+
+async function request(path: string, init?: RequestInit): Promise<Response> {
+  return worker.request(`http://example.test${path}`, init, env);
+}
+
+async function signInOrganizer(): Promise<string> {
+  const response = await request("/api/auth/sign-in/email", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email: "sbek-organizer@example.com", password: "SbekTest!2027-org" }),
+  });
+  expect(response.status).toBe(200);
+  return response.headers.get("set-cookie")?.split(";")[0] ?? "";
+}
 
 async function seedSpeaker(suffix: string): Promise<string> {
   const personId = `psn_publication_race_${suffix}`;
@@ -100,5 +115,76 @@ describe("participant publication write boundaries", () => {
       { id: "ssnr_publication_race_after", publicationHoldAt: afterHoldAt },
       { id: "ssnr_publication_race_before", publicationHoldAt: null },
     ]);
+  });
+
+  it("releases and names a whole panel's worth of holds in one publish", async () => {
+    const organizerCookie = await signInOrganizer();
+    const heldCount = 110;
+    const now = Date.now();
+    const seeded: Array<{ linkId: string; speakerId: string; name: string }> = [];
+    const statements: D1PreparedStatement[] = [];
+    for (let index = 0; index < heldCount; index += 1) {
+      const suffix = `bulk_${String(index).padStart(3, "0")}`;
+      const personId = `psn_publication_race_${suffix}`;
+      const speakerId = `spk_publication_race_${suffix}`;
+      const linkId = `ssnr_publication_race_${suffix}`;
+      const name = `Held Participant ${suffix}`;
+      seeded.push({ linkId, speakerId, name });
+      statements.push(
+        env.DB.prepare(
+          "insert into person (id, name, email, created_at, updated_at) values (?, ?, ?, ?, ?)",
+        ).bind(personId, name, `${suffix}@publication-race.example.test`, now, now),
+        env.DB.prepare(
+          "insert into speaker (id, person_id, event_id, status, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
+        ).bind(speakerId, personId, eventId, "onboarding", now, now),
+        env.DB.prepare(
+          "insert into session_speaker (id, session_id, speaker_id, publication_hold_at, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
+        ).bind(linkId, sessionId, speakerId, now, now, now),
+      );
+    }
+    for (let index = 0; index < statements.length; index += 60) {
+      await env.DB.batch(statements.slice(index, index + 60));
+    }
+
+    const accepted = await request(`/api/events/${eventId}/disposition`, {
+      method: "PATCH",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({ submissionIds: ["sub_docs_retrieval"], status: "accepted" }),
+    });
+    expect(accepted.status).toBe(200);
+    const placed = await request(`/api/events/${eventId}/agenda/sessions/${sessionId}`, {
+      method: "PATCH",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({
+        scheduleStatus: "placed",
+        scheduledDate: "2027-05-12",
+        roomId: "rm_main_stage",
+        startsAt: Date.parse("2027-05-12T16:00:00Z"),
+      }),
+    });
+    expect(placed.status).toBe(200);
+    const approved = await request(`/api/events/${eventId}/agenda/sessions/${sessionId}/content`, {
+      method: "PATCH",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({ contentStatus: "approved" }),
+    });
+    expect(approved.status).toBe(200);
+
+    const publish = await request(`/api/events/${eventId}/agenda/publish`, {
+      method: "POST",
+      headers: { cookie: organizerCookie },
+    });
+    expect(publish.status).toBe(200);
+    const result = await publish.json<AgendaPublishResult>();
+    const releasedNames = new Map(
+      result.releasedParticipants.map((participant) => [participant.speakerId, participant.name]),
+    );
+    for (const participant of seeded) {
+      expect(releasedNames.get(participant.speakerId as `spk_${string}`)).toBe(participant.name);
+    }
+    const stillHeld = await env.DB.prepare(
+      "select count(*) as held from session_speaker where session_id = ? and publication_hold_at is not null",
+    ).bind(sessionId).first<{ held: number }>();
+    expect(stillHeld?.held).toBe(0);
   });
 });
