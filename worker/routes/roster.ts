@@ -1,12 +1,13 @@
 // ABOUTME: Manages the organizer speaker roster, onboarding assignments, and missing-information worklist.
 // ABOUTME: Derives workflow visibility from event-scoped speakers, accepted sessions, and task assignments.
-import { and, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { Hono } from "hono";
 import { createMiddleware } from "hono/factory";
 import {
   people,
   createPublicId,
+  events,
   sessionSpeakers,
   sessions,
   speakerStatuses,
@@ -22,6 +23,13 @@ import { chunkIds } from "../d1-limits.ts";
 import { sendPortalInvitationEmail } from "../email/portal-invitation.ts";
 import { PROGRAMME_SESSION_GATE, publishBlockers } from "../public-queries.ts";
 import { deriveRosterWorkSummary } from "../roster-work.ts";
+import {
+  parseSpeakerImport,
+  planSpeakerImport,
+  type SpeakerImportIdentity,
+  type SpeakerImportPlanRow,
+  type SpeakerImportPreviewOutcome,
+} from "../speaker-import.ts";
 
 type RosterEnvironment = {
   Bindings: CloudflareBindings;
@@ -32,6 +40,7 @@ type RosterEnvironment = {
 };
 
 const rosterRoutes = new Hono<RosterEnvironment>();
+type RosterDatabase = ReturnType<typeof drizzle>;
 
 function isSpeakerStatus(value: unknown): value is SpeakerStatus {
   return speakerStatuses.some((status) => status === value);
@@ -51,6 +60,197 @@ rosterRoutes.use("/api/events/:eventId/speakers/*", requireOrganizer);
 rosterRoutes.use("/api/events/:eventId/tasks", requireOrganizer);
 rosterRoutes.use("/api/events/:eventId/tasks/*", requireOrganizer);
 rosterRoutes.use("/api/events/:eventId/missing-information", requireOrganizer);
+
+async function eventExists(database: RosterDatabase, eventId: string): Promise<boolean> {
+  const [event] = await database
+    .select({ id: events.id })
+    .from(events)
+    .where(and(eq(events.id, eventId), sql`${events.deletedAt} is null`));
+  return event !== undefined;
+}
+
+async function speakerImportIdentities(
+  database: RosterDatabase,
+  eventId: string,
+  emails: string[],
+): Promise<SpeakerImportIdentity[]> {
+  const uniqueEmails = [...new Set(emails)];
+  const personRows = (await Promise.all(
+    chunkIds(uniqueEmails).map((emailChunk) => database
+      .select({
+        personId: people.id,
+        email: people.email,
+        deletedAt: people.deletedAt,
+      })
+      .from(people)
+      .where(or(...emailChunk.map((email) => sql`lower(${people.email}) = ${email}`)))),
+  )).flat();
+  const speakerRows = (await Promise.all(
+    chunkIds(personRows.map((person) => person.personId)).map((personIdChunk) => database
+      .select({
+        personId: speakers.personId,
+        speakerId: speakers.id,
+        deletedAt: speakers.deletedAt,
+      })
+      .from(speakers)
+      .where(and(eq(speakers.eventId, eventId), inArray(speakers.personId, personIdChunk)))),
+  )).flat();
+  const speakerByPerson = new Map(speakerRows.map((speaker) => [speaker.personId, speaker]));
+  return personRows.map((person) => {
+    const speaker = speakerByPerson.get(person.personId);
+    return {
+      personId: person.personId,
+      email: person.email,
+      personDeleted: person.deletedAt !== null,
+      speakerId: speaker?.speakerId ?? null,
+      speakerDeleted: speaker?.deletedAt !== null && speaker?.deletedAt !== undefined,
+    };
+  });
+}
+
+type SpeakerImportCompletedOutcome = SpeakerImportPreviewOutcome | "created" | "added_existing" | "restored";
+type SpeakerImportCompletedRow = Omit<SpeakerImportPlanRow, "outcome"> & { outcome: SpeakerImportCompletedOutcome };
+
+function visibleSpeakerImportRows<Row extends { personId: string | null; speakerId: string | null }>(rows: Row[]) {
+  return rows.map(({ personId: _personId, speakerId: _speakerId, ...row }) => row);
+}
+
+function importableSpeakerRow(row: SpeakerImportPlanRow): boolean {
+  return row.outcome === "will_create" ||
+    row.outcome === "will_add_existing" ||
+    row.outcome === "will_restore";
+}
+
+function skippedSpeakerImportOutcome(outcome: SpeakerImportCompletedOutcome): boolean {
+  return outcome === "skipped_existing" || outcome === "skipped_duplicate_file";
+}
+
+function invalidSpeakerImportOutcome(outcome: SpeakerImportCompletedOutcome): boolean {
+  return outcome === "invalid" ||
+    outcome === "blocked_identity_conflict" ||
+    outcome === "blocked_archived_identity";
+}
+
+function speakerImportPreviewSummary(rows: SpeakerImportPlanRow[]) {
+  return {
+    total: rows.length,
+    importable: rows.filter(importableSpeakerRow).length,
+    skipped: rows.filter((row) => skippedSpeakerImportOutcome(row.outcome)).length,
+    invalid: rows.filter((row) => invalidSpeakerImportOutcome(row.outcome)).length,
+  };
+}
+
+async function prepareSpeakerImport(database: RosterDatabase, eventId: string, csv: string) {
+  const document = parseSpeakerImport(csv);
+  const identities = await speakerImportIdentities(
+    database,
+    eventId,
+    document.rows.filter((row) => row.errors.length === 0).map((row) => row.values.email),
+  );
+  return { document, rows: planSpeakerImport(document, identities) };
+}
+
+rosterRoutes.get("/api/events/:eventId/speakers/import-template.csv", async (context) => {
+  const database = drizzle(context.env.DB);
+  if (!await eventExists(database, context.req.param("eventId"))) {
+    return context.json({ error: "event_not_found" }, 404);
+  }
+  return context.body("name,email,title,company,bio\n", 200, {
+    "content-disposition": 'attachment; filename="greenroom-speakers.csv"',
+    "content-type": "text/csv; charset=utf-8",
+  });
+});
+
+rosterRoutes.post("/api/events/:eventId/speakers/import/preview", async (context) => {
+  const payload = await context.req.json<{ csv?: unknown }>().catch(() => null);
+  if (payload === null || typeof payload.csv !== "string" || payload.csv.length > 1_000_000) {
+    return context.json({ error: "invalid_speaker_csv" }, 400);
+  }
+  const database = drizzle(context.env.DB);
+  const eventId = context.req.param("eventId");
+  if (!await eventExists(database, eventId)) {
+    return context.json({ error: "event_not_found" }, 404);
+  }
+  const { document, rows } = await prepareSpeakerImport(database, eventId, payload.csv);
+  return context.json({
+    errors: document.errors,
+    mappings: document.mappings,
+    rows: visibleSpeakerImportRows(rows),
+    summary: speakerImportPreviewSummary(rows),
+  });
+});
+
+rosterRoutes.post("/api/events/:eventId/speakers/import", async (context) => {
+  const payload = await context.req.json<{ csv?: unknown }>().catch(() => null);
+  if (payload === null || typeof payload.csv !== "string" || payload.csv.length > 1_000_000) {
+    return context.json({ error: "invalid_speaker_csv" }, 400);
+  }
+  const database = drizzle(context.env.DB);
+  const eventId = context.req.param("eventId");
+  if (!await eventExists(database, eventId)) {
+    return context.json({ error: "event_not_found" }, 404);
+  }
+  const { document, rows: plannedRows } = await prepareSpeakerImport(database, eventId, payload.csv);
+  const completedRows: SpeakerImportCompletedRow[] = plannedRows.map((row) => ({ ...row }));
+  const now = Date.now();
+
+  for (const rowChunk of chunkIds(plannedRows.filter(importableSpeakerRow), 40)) {
+    const statements = rowChunk.flatMap((row) => {
+      const completed = completedRows.find((candidate) => candidate.rowNumber === row.rowNumber);
+      if (completed === undefined) throw new Error(`Import row ${row.rowNumber} disappeared`);
+      if (row.outcome === "will_create") {
+        const personId = createPublicId("psn");
+        const speakerId = createPublicId("spk");
+        completed.outcome = "created";
+        return [
+          context.env.DB.prepare(
+            "insert into person (id, name, email, job_title, organization, bio, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?)",
+          ).bind(
+            personId,
+            row.values.name,
+            row.values.email,
+            row.values.jobTitle || null,
+            row.values.organization || null,
+            row.values.bio || null,
+            now,
+            now,
+          ),
+          context.env.DB.prepare(
+            "insert into speaker (id, person_id, event_id, status, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
+          ).bind(speakerId, personId, eventId, "invited", now, now),
+        ];
+      }
+      if (row.outcome === "will_add_existing" && row.personId !== null) {
+        completed.outcome = "added_existing";
+        return [context.env.DB.prepare(
+          "insert into speaker (id, person_id, event_id, status, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
+        ).bind(createPublicId("spk"), row.personId, eventId, "invited", now, now)];
+      }
+      if (row.outcome === "will_restore" && row.speakerId !== null) {
+        completed.outcome = "restored";
+        return [context.env.DB.prepare(
+          "update speaker set status = ?, deleted_at = null, updated_at = ? where id = ? and event_id = ?",
+        ).bind("invited", now, row.speakerId, eventId)];
+      }
+      return [];
+    });
+    if (statements.length > 0) await context.env.DB.batch(statements);
+  }
+
+  return context.json({
+    errors: document.errors,
+    mappings: document.mappings,
+    rows: visibleSpeakerImportRows(completedRows),
+    summary: {
+      total: completedRows.length,
+      created: completedRows.filter((row) => row.outcome === "created").length,
+      addedExisting: completedRows.filter((row) => row.outcome === "added_existing").length,
+      restored: completedRows.filter((row) => row.outcome === "restored").length,
+      skipped: completedRows.filter((row) => skippedSpeakerImportOutcome(row.outcome)).length,
+      invalid: completedRows.filter((row) => invalidSpeakerImportOutcome(row.outcome)).length,
+    },
+  });
+});
 
 rosterRoutes.get("/api/events/:eventId/roster", async (context) => {
   const database = drizzle(context.env.DB);

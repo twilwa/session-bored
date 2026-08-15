@@ -148,6 +148,12 @@ This file is the project's committed home for project-intrinsic agent knowledge:
 - A sessionless task with no `task_scope` row is an event-wide onboarding
   template assigned by later acceptances. Roster-created bulk tasks use the
   `selected_speakers` scope and must remain limited to their explicit assignees.
+- Speaker CSV import is a two-phase organizer action: `worker/speaker-import.ts`
+  owns parsing, header aliases, and row validation, while
+  `worker/routes/roster.ts` recomputes the plan when committing. Existing people
+  are matched by normalized email without changing their profile or account;
+  ambiguous and archived identities are blocked for manual review rather than
+  merged or adopted.
 - Organizer task edits update the shared task for current and future assignees.
   Reassignment archives removed assignee links so restored speakers retain
   completion history, and a later acceptance restores an archived event-wide

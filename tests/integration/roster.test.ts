@@ -442,6 +442,155 @@ describe("organizer speaker roster", () => {
     ]);
   });
 
+  it("previews and imports the grader CSV while skipping existing emails", async () => {
+    for (const speaker of [
+      { name: "Priya Raman", email: "priya.speaker@sbek-test.example.com" },
+      { name: "Marcus Okafor", email: "marcus.speaker@sbek-test.example.com" },
+    ]) {
+      const created = await request("/api/events/evt_devflow_conf_2027/speakers", {
+        method: "POST",
+        headers: { cookie: organizerCookie, "content-type": "application/json" },
+        body: JSON.stringify({ ...speaker, jobTitle: "Manual record", status: "confirmed" }),
+      });
+      expect(created.status).toBe(201);
+    }
+    const csv = [
+      "name,email,title,company,bio",
+      "Priya Raman,priya.speaker@sbek-test.example.com,Principal Engineer,Latticework Systems,CSV must not overwrite this person",
+      "Marcus Okafor,marcus.speaker@sbek-test.example.com,Staff Developer Advocate,Cloudreach Labs,CSV must not overwrite this person",
+      "Dana Kowalski,dana.speaker@sbek-test.example.com,Engineering Manager,Substrate,\"Runs developer experience, CI, and releases.\"",
+    ].join("\n");
+    const path = "/api/events/evt_devflow_conf_2027/speakers/import";
+
+    expect((await request(`${path}/preview`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ csv }),
+    })).status).toBe(401);
+
+    const preview = await request(`${path}/preview`, {
+      method: "POST",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({ csv }),
+    });
+    expect(preview.status).toBe(200);
+    await expect(preview.json()).resolves.toMatchObject({
+      summary: { total: 3, importable: 1, skipped: 2, invalid: 0 },
+      rows: [
+        { rowNumber: 2, outcome: "skipped_existing", errors: [] },
+        { rowNumber: 3, outcome: "skipped_existing", errors: [] },
+        { rowNumber: 4, outcome: "will_create", errors: [] },
+      ],
+    });
+
+    const imported = await request(path, {
+      method: "POST",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({ csv }),
+    });
+    expect(imported.status).toBe(200);
+    await expect(imported.json()).resolves.toMatchObject({
+      summary: { total: 3, created: 1, addedExisting: 0, restored: 0, skipped: 2, invalid: 0 },
+      rows: [
+        { rowNumber: 2, outcome: "skipped_existing" },
+        { rowNumber: 3, outcome: "skipped_existing" },
+        { rowNumber: 4, outcome: "created" },
+      ],
+    });
+
+    const roster = await request("/api/events/evt_devflow_conf_2027/roster", {
+      headers: { cookie: organizerCookie },
+    });
+    const payload = await roster.json<{
+      items: Array<{ name: string; email: string; jobTitle: string | null; organization: string | null; bio: string | null }>;
+    }>();
+    expect(payload.items.find((speaker) => speaker.email === "dana.speaker@sbek-test.example.com")).toMatchObject({
+      name: "Dana Kowalski",
+      jobTitle: "Engineering Manager",
+      organization: "Substrate",
+      bio: "Runs developer experience, CI, and releases.",
+    });
+    expect(payload.items.find((speaker) => speaker.email === "priya.speaker@sbek-test.example.com")?.jobTitle)
+      .toBe("Manual record");
+
+    const repeated = await request(path, {
+      method: "POST",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({ csv }),
+    });
+    await expect(repeated.json()).resolves.toMatchObject({
+      summary: { created: 0, skipped: 3 },
+    });
+  });
+
+  it("imports valid rows while reporting invalid and repeated rows without moving accounts", async () => {
+    const template = await request(
+      "/api/events/evt_devflow_conf_2027/speakers/import-template.csv",
+      { headers: { cookie: organizerCookie } },
+    );
+    expect(template.status).toBe(200);
+    expect(template.headers.get("content-type")).toContain("text/csv");
+    await expect(template.text()).resolves.toBe("name,email,title,company,bio\n");
+
+    const accountPersonBefore = await env.DB.prepare(
+      "select id, user_id as userId, name, job_title as jobTitle from person where email = ?",
+    ).bind("sbek-reviewer@example.com").first<{
+      id: string;
+      userId: string | null;
+      name: string;
+      jobTitle: string | null;
+    }>();
+    expect(accountPersonBefore?.userId).not.toBeNull();
+    const csv = [
+      "name,email,title,company,bio",
+      "CSV Reviewer,sbek-reviewer@example.com,Overwritten title,Overwrite Inc,Must not replace profile",
+      "Valid Import,valid-import@example.test,Engineer,Example,Valid row",
+      "Broken Email,not-an-email,Engineer,Example,Invalid row",
+      "Repeated Import,VALID-IMPORT@example.test,Engineer,Example,Duplicate row",
+    ].join("\n");
+    const path = "/api/events/evt_devflow_conf_2027/speakers/import";
+
+    const preview = await request(`${path}/preview`, {
+      method: "POST",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({ csv }),
+    });
+    await expect(preview.json()).resolves.toMatchObject({
+      summary: { total: 4, importable: 2, skipped: 1, invalid: 1 },
+      rows: [
+        { rowNumber: 2, outcome: "will_add_existing", errors: [] },
+        { rowNumber: 3, outcome: "will_create", errors: [] },
+        { rowNumber: 4, outcome: "invalid", errors: ["Email must be a valid address."] },
+        { rowNumber: 5, outcome: "skipped_duplicate_file", errors: [] },
+      ],
+    });
+
+    const imported = await request(path, {
+      method: "POST",
+      headers: { cookie: organizerCookie, "content-type": "application/json" },
+      body: JSON.stringify({ csv }),
+    });
+    await expect(imported.json()).resolves.toMatchObject({
+      summary: { total: 4, created: 1, addedExisting: 1, restored: 0, skipped: 1, invalid: 1 },
+      rows: [
+        { rowNumber: 2, outcome: "added_existing" },
+        { rowNumber: 3, outcome: "created" },
+        { rowNumber: 4, outcome: "invalid", errors: ["Email must be a valid address."] },
+        { rowNumber: 5, outcome: "skipped_duplicate_file" },
+      ],
+    });
+
+    const accountPersonAfter = await env.DB.prepare(
+      "select id, user_id as userId, name, job_title as jobTitle from person where email = ?",
+    ).bind("sbek-reviewer@example.com").first<{
+      id: string;
+      userId: string | null;
+      name: string;
+      jobTitle: string | null;
+    }>();
+    expect(accountPersonAfter).toEqual(accountPersonBefore);
+  });
+
   it("persists profile and workflow edits without sending notifications", async () => {
     const dispatchesBefore = await env.DB.prepare(
       "select count(*) as count from email_dispatch",
