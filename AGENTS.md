@@ -266,7 +266,13 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   **Withdrawal is terminal to a merge.** `mergedSpeakerStanding` decides it
   before the status ladder: if either same-event `speaker` row is `withdrawn`
   the merged row stays `withdrawn` and stays archived, keeping the earlier
-  withdrawal's timestamp. Taking the further-along of the two instead would let
+  withdrawal's timestamp. Both sides are read *including* archived rows, or the
+  rule only holds one way round: withdrawing archives the row it withdraws, so
+  a live-rows-only read cannot see a withdrawn duplicate at all, and the
+  outcome would depend on which of the two "Keep" buttons the organizer
+  pressed. That read is also what carries an archived duplicate speaker's
+  sessions, onboarding work, and files onto the kept person instead of leaving
+  them on a record no surface can reach. Taking the further-along of the two instead would let
   the `invited` row a first CFP draft mints reverse a roster decision the
   roster alone owns (issue #127), and at `confirmed` or beyond it would cross
   `PUBLIC_SPEAKER_STATUSES` and republish the person.
