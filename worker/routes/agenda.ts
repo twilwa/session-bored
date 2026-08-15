@@ -5,6 +5,7 @@ import { drizzle } from "drizzle-orm/d1";
 import { Hono } from "hono";
 import { createMiddleware } from "hono/factory";
 import {
+  createPublicId,
   events,
   formats,
   people,
@@ -28,6 +29,8 @@ import type {
   AgendaPublishSkipReason,
   AgendaSession,
   AgendaState,
+  CreateAgendaSessionInput,
+  CreateAgendaSessionResult,
 } from "../../shared/api.ts";
 
 type AgendaEnvironment = {
@@ -217,7 +220,7 @@ async function readAgenda(binding: D1Database, eventId: string): Promise<AgendaS
     return null;
   }
 
-  const [roomRows, trackRows, sessionRows] = await Promise.all([
+  const [roomRows, trackRows, formatRows, sessionRows] = await Promise.all([
     database
       .select({ id: rooms.id, name: rooms.name })
       .from(rooms)
@@ -228,6 +231,11 @@ async function readAgenda(binding: D1Database, eventId: string): Promise<AgendaS
       .from(tracks)
       .where(and(eq(tracks.eventId, eventId), isNull(tracks.deletedAt)))
       .orderBy(asc(tracks.sortOrder), asc(tracks.name)),
+    database
+      .select({ id: formats.id, name: formats.name, durationMinutes: formats.durationMinutes })
+      .from(formats)
+      .where(and(eq(formats.eventId, eventId), isNull(formats.deletedAt)))
+      .orderBy(asc(formats.sortOrder), asc(formats.name)),
     database
       .select({
         id: sessions.id,
@@ -264,25 +272,31 @@ async function readAgenda(binding: D1Database, eventId: string): Promise<AgendaS
 
   const speakerRows = sessionRows.length === 0
     ? []
-    : await database
-      .select({
-        sessionId: sessionSpeakers.sessionId,
-        speakerId: speakers.id,
-        name: people.name,
-        publicationHoldAt: sessionSpeakers.publicationHoldAt,
-      })
-      .from(sessionSpeakers)
-      .innerJoin(speakers, eq(sessionSpeakers.speakerId, speakers.id))
-      .innerJoin(people, eq(speakers.personId, people.id))
-      // This one list is both the card's lineup and the input to the speaker-overlap rule, so a
-      // removed participant left in it does not just misread - it invents a clash and offers to
-      // unplace a correctly-placed session to resolve it.
-      .where(and(
-        inArray(sessionSpeakers.sessionId, sessionRows.map((session) => session.id)),
-        isNull(sessionSpeakers.deletedAt),
-        isNull(speakers.deletedAt),
-      ))
-      .orderBy(asc(sessionSpeakers.sortOrder), asc(people.name));
+    : (
+      await Promise.all(
+        chunkIds(sessionRows.map((session) => session.id)).map((sessionIds) =>
+          database
+            .select({
+              sessionId: sessionSpeakers.sessionId,
+              speakerId: speakers.id,
+              name: people.name,
+              publicationHoldAt: sessionSpeakers.publicationHoldAt,
+            })
+            .from(sessionSpeakers)
+            .innerJoin(speakers, eq(sessionSpeakers.speakerId, speakers.id))
+            .innerJoin(people, eq(speakers.personId, people.id))
+            // This one list is both the card's lineup and the input to the speaker-overlap rule, so a
+            // removed participant left in it does not just misread - it invents a clash and offers to
+            // unplace a correctly-placed session to resolve it.
+            .where(and(
+              inArray(sessionSpeakers.sessionId, sessionIds),
+              isNull(sessionSpeakers.deletedAt),
+              isNull(speakers.deletedAt),
+            ))
+            .orderBy(asc(sessionSpeakers.sortOrder), asc(people.name)),
+        ),
+      )
+    ).flat();
   const speakersBySession = new Map<string, Array<{ id: string; name: string }>>();
   const pendingSpeakersBySession = new Map<string, number>();
   for (const speaker of speakerRows) {
@@ -325,6 +339,7 @@ async function readAgenda(binding: D1Database, eventId: string): Promise<AgendaS
     days: eventDays(event.startDate, event.endDate),
     rooms: roomRows,
     tracks: trackRows,
+    formats: formatRows,
     sessions: agendaSessions,
     conflicts,
     metrics: {
@@ -352,6 +367,62 @@ function isPlacement(value: unknown): value is AgendaPlacement {
 agendaRoutes.get("/api/events/:eventId/agenda", async (context) => {
   const agenda = await readAgenda(context.env.DB, context.req.param("eventId"));
   return agenda === null ? context.json({ error: "event_not_found" }, 404) : context.json(agenda);
+});
+
+function directSessionInput(value: unknown): CreateAgendaSessionInput | null {
+  if (typeof value !== "object" || value === null) return null;
+  const input = value as Record<string, unknown>;
+  if (typeof input.title !== "string" || input.title.trim().length === 0) return null;
+  if (input.abstract !== undefined && input.abstract !== null && typeof input.abstract !== "string") return null;
+  for (const field of ["trackId", "formatId"] as const) {
+    if (
+      input[field] !== undefined &&
+      input[field] !== null &&
+      (typeof input[field] !== "string" || input[field].trim().length === 0)
+    ) return null;
+  }
+  return {
+    title: input.title.trim(),
+    abstract: typeof input.abstract === "string" ? input.abstract.trim() || null : null,
+    trackId: typeof input.trackId === "string" ? input.trackId.trim() : null,
+    formatId: typeof input.formatId === "string" ? input.formatId.trim() : null,
+  };
+}
+
+agendaRoutes.post("/api/events/:eventId/agenda/sessions", async (context) => {
+  const input = directSessionInput(await context.req.json<unknown>().catch(() => null));
+  if (input === null) return context.json({ error: "invalid_session" }, 400);
+
+  const eventId = context.req.param("eventId");
+  const agenda = await readAgenda(context.env.DB, eventId);
+  if (agenda === null) return context.json({ error: "event_not_found" }, 404);
+  if (input.trackId !== null && !agenda.tracks.some((track) => track.id === input.trackId)) {
+    return context.json({ error: "invalid_track" }, 400);
+  }
+  if (input.formatId !== null && !agenda.formats.some((format) => format.id === input.formatId)) {
+    return context.json({ error: "invalid_format" }, 400);
+  }
+
+  const id = createPublicId("ses");
+  await drizzle(context.env.DB).insert(sessions).values({
+    id,
+    eventId,
+    title: input.title,
+    abstract: input.abstract,
+    trackId: input.trackId,
+    formatId: input.formatId,
+    contentStatus: "draft",
+    scheduleStatus: "unplaced",
+    directEntry: true,
+    icsUid: `${id}@greenroom`,
+  });
+
+  const updatedAgenda = await readAgenda(context.env.DB, eventId);
+  if (updatedAgenda === null) throw new Error(`Agenda disappeared for ${eventId}`);
+  const session = updatedAgenda.sessions.find((candidate) => candidate.id === id);
+  if (session === undefined) throw new Error(`Direct session ${id} disappeared after creation`);
+  const result: CreateAgendaSessionResult = { agenda: updatedAgenda, session };
+  return context.json(result, 201);
 });
 
 agendaRoutes.patch("/api/events/:eventId/agenda/sessions/:sessionId", async (context) => {

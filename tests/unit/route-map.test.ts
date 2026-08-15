@@ -85,6 +85,12 @@ describe("typed route map", () => {
       module: "agenda",
       access: "organizer",
     });
+    expect(routeMap.createAgendaSession).toEqual({
+      method: "POST",
+      path: "/api/events/:eventId/agenda/sessions",
+      module: "agenda",
+      access: "organizer",
+    });
   });
 
   it("publishes every reviewer invitation door with its actual access", () => {

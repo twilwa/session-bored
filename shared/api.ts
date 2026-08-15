@@ -192,6 +192,12 @@ export const routeMap = {
     access: "organizer",
   },
     agenda: { method: "GET", path: "/api/events/:eventId/agenda", module: "agenda", access: "organizer" },
+    createAgendaSession: {
+      method: "POST",
+      path: "/api/events/:eventId/agenda/sessions",
+      module: "agenda",
+      access: "organizer",
+    },
     updateAgendaSession: {
       method: "PATCH",
       path: "/api/events/:eventId/agenda/sessions/:sessionId",
@@ -772,9 +778,22 @@ export interface AgendaState {
   days: string[];
   rooms: Array<{ id: string; name: string }>;
   tracks: Array<{ id: string; name: string; color: string | null }>;
+  formats: Array<{ id: string; name: string; durationMinutes: number | null }>;
   sessions: AgendaSession[];
   conflicts: AgendaConflict[];
   metrics: { unplaced: number; conflicts: number; tbd: number };
+}
+
+export interface CreateAgendaSessionInput {
+  title: string;
+  abstract?: string | null;
+  trackId?: string | null;
+  formatId?: string | null;
+}
+
+export interface CreateAgendaSessionResult {
+  agenda: AgendaState;
+  session: AgendaSession;
 }
 
 export type AgendaPublishSkipReason = "content_not_approved" | "not_placed";
