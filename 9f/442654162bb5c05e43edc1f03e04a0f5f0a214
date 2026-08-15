@@ -1,0 +1,45 @@
+worker/public-queries.ts
+  s_31c783d512d1c5::t_20862eca4b8820 53-68
+tests/unit/participant-publication.test.ts
+  s_31c783d512d1c5::t_da0707c71a94cf 32,42-72
+  s_31c783d512d1c5::t_b29e1600dcf07f 15
+client/pages/review/SubmissionParticipants.tsx
+  s_31c783d512d1c5::t_c0f44a8f54790b 166
+worker/routes/agenda.ts
+  s_31c783d512d1c5::t_df6f108d5745d5 525
+  s_31c783d512d1c5::t_3989c54203acbd 21
+  s_31c783d512d1c5::t_7d008da9941941 469,471-472
+shared/api.ts
+  s_31c783d512d1c5::t_823e3380b1383f 533-538
+  s_31c783d512d1c5::t_21e3533ae73b78 516-517
+client/components/PendingPublicationNotice.tsx
+  s_31c783d512d1c5::t_0e438d1b8d353d 8,15-40,45-47,57-66
+worker/routes/participants.ts
+  s_31c783d512d1c5::t_f375bc925d1ee7 70,79
+  s_31c783d512d1c5::t_2b2d3927a705e0 196-197
+  s_31c783d512d1c5::t_c567f4fcfc23e3 183-185
+  s_31c783d512d1c5::t_46e0137b4b0d7c 19
+  s_31c783d512d1c5::t_34a6cbf6154c84 155-156
+tests/integration/submission-participants.test.ts
+  s_31c783d512d1c5::t_9ee362c6f4bee7 902-929,934-940,942,944-945,949-964
+worker/routes/roster.ts
+  s_31c783d512d1c5::t_52af2e80f13d32 21,23
+  s_31c783d512d1c5::t_a0567723b07601 155-158
+  s_31c783d512d1c5::t_e1fff40eb4fe31 96-120
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "9f442654162bb5c05e43edc1f03e04a0f5f0a214",
+  "prompts": {},
+  "sessions": {
+    "s_31c783d512d1c5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7c342b1d-b2ac-41a9-b858-f0e186d2ea48",
+        "model": "claude-opus-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
