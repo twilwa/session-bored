@@ -27,6 +27,7 @@ import type {
 } from "../../shared/speaker-directory.ts";
 import { holdsAccess } from "../access.ts";
 import type { AuthSession } from "../auth.ts";
+import { chunkIds } from "../d1-limits.ts";
 import {
   duplicateReasonsFor,
   filterSpeakerDirectory,
@@ -423,10 +424,12 @@ speakerDirectoryRoutes.post("/api/speaker-directory/:personId/merge", requireOrg
     database.select().from(speakers).where(eq(speakers.personId, keptPerson.id)),
   ]);
   const speakerIds = [...new Set([...mergedSpeakers, ...keptSpeakers].map((speaker) => speaker.id))];
-  const headshotOwners = speakerIds.length === 0 ? [] : await database
-    .select({ speakerId: files.speakerId })
-    .from(files)
-    .where(and(eq(files.kind, "headshot"), inArray(files.speakerId, speakerIds)));
+  const headshotOwners = speakerIds.length === 0 ? [] : (await Promise.all(
+    chunkIds(speakerIds).map((ids) => database
+      .select({ speakerId: files.speakerId })
+      .from(files)
+      .where(and(eq(files.kind, "headshot"), inArray(files.speakerId, ids)))),
+  )).flat();
   const speakersWithHeadshot = new Set(headshotOwners.map((row) => row.speakerId));
   const now = Date.now();
   const statements: D1PreparedStatement[] = [];
@@ -475,8 +478,8 @@ speakerDirectoryRoutes.post("/api/speaker-directory/:personId/merge", requireOrg
       "update submission set submitter_person_id = ?, updated_at = ? where submitter_person_id = ?",
     ).bind(keptPerson.id, now, mergedPerson.id),
     context.env.DB.prepare(
-      "update submission_speaker as kept set deleted_at = null, updated_at = ? where kept.person_id = ? and exists (select 1 from submission_speaker as merged where merged.submission_id = kept.submission_id and merged.person_id = ? and merged.deleted_at is null)",
-    ).bind(now, keptPerson.id, mergedPerson.id),
+      "update submission_speaker as kept set role_label = (select merged.role_label from submission_speaker as merged where merged.submission_id = kept.submission_id and merged.person_id = ? and merged.deleted_at is null), sort_order = (select merged.sort_order from submission_speaker as merged where merged.submission_id = kept.submission_id and merged.person_id = ? and merged.deleted_at is null), deleted_at = null, updated_at = ? where kept.person_id = ? and exists (select 1 from submission_speaker as merged where merged.submission_id = kept.submission_id and merged.person_id = ? and merged.deleted_at is null)",
+    ).bind(mergedPerson.id, mergedPerson.id, now, keptPerson.id, mergedPerson.id),
     context.env.DB.prepare(
       "update submission_speaker as merged set deleted_at = ?, updated_at = ? where merged.person_id = ? and merged.deleted_at is null and exists (select 1 from submission_speaker as kept where kept.submission_id = merged.submission_id and kept.person_id = ?)",
     ).bind(now, now, mergedPerson.id, keptPerson.id),
@@ -510,8 +513,8 @@ speakerDirectoryRoutes.post("/api/speaker-directory/:personId/merge", requireOrg
         keptSpeaker.id,
       ),
       context.env.DB.prepare(
-        "update session_speaker as kept set deleted_at = null, updated_at = ? where kept.speaker_id = ? and exists (select 1 from session_speaker as merged where merged.session_id = kept.session_id and merged.speaker_id = ? and merged.deleted_at is null)",
-      ).bind(now, keptSpeaker.id, mergedSpeaker.id),
+        "update session_speaker as kept set role_label = (select merged.role_label from session_speaker as merged where merged.session_id = kept.session_id and merged.speaker_id = ? and merged.deleted_at is null), sort_order = (select merged.sort_order from session_speaker as merged where merged.session_id = kept.session_id and merged.speaker_id = ? and merged.deleted_at is null), publication_hold_at = (select merged.publication_hold_at from session_speaker as merged where merged.session_id = kept.session_id and merged.speaker_id = ? and merged.deleted_at is null), deleted_at = null, updated_at = ? where kept.speaker_id = ? and exists (select 1 from session_speaker as merged where merged.session_id = kept.session_id and merged.speaker_id = ? and merged.deleted_at is null)",
+      ).bind(mergedSpeaker.id, mergedSpeaker.id, mergedSpeaker.id, now, keptSpeaker.id, mergedSpeaker.id),
       context.env.DB.prepare(
         "update session_speaker as merged set deleted_at = ?, updated_at = ? where merged.speaker_id = ? and merged.deleted_at is null and exists (select 1 from session_speaker as kept where kept.session_id = merged.session_id and kept.speaker_id = ?)",
       ).bind(now, now, mergedSpeaker.id, keptSpeaker.id),

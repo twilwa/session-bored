@@ -223,6 +223,7 @@ describe("speaker directory", () => {
     const [kept] = await database.select().from(people).where(eq(people.id, "psn_priya_raman"));
     expect(kept).toBeDefined();
     const now = Date.now();
+    const publicationHoldAt = now - 30_000;
     const duplicatePersonId = "psn_directory_duplicate";
     const duplicateSpeakerId = "spk_directory_duplicate";
     const submissionId = "sub_directory_duplicate";
@@ -264,7 +265,10 @@ describe("speaker directory", () => {
       ),
       env.DB.prepare(
         "insert into submission_speaker (id, submission_id, person_id, role_label, sort_order, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?)",
-      ).bind("sspk_directory_duplicate", submissionId, duplicatePersonId, "speaker", 0, now, now),
+      ).bind("sspk_directory_duplicate", submissionId, duplicatePersonId, "moderator", 2, now, now),
+      env.DB.prepare(
+        "insert into submission_speaker (id, submission_id, person_id, role_label, sort_order, created_at, updated_at, deleted_at) values (?, ?, ?, ?, ?, ?, ?, ?)",
+      ).bind("sspk_directory_kept_archived", submissionId, "psn_priya_raman", "speaker", 9, now, now, now),
       env.DB.prepare(
         "insert into submission (id, event_id, form_id, form_version, submitter_person_id, status, is_draft, title, created_at, updated_at, deleted_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       ).bind(
@@ -284,7 +288,7 @@ describe("speaker directory", () => {
         "insert into submission_speaker (id, submission_id, person_id, role_label, sort_order, created_at, updated_at, deleted_at) values (?, ?, ?, ?, ?, ?, ?, ?)",
       ).bind("sspk_directory_archived", archivedSubmissionId, duplicatePersonId, "speaker", 0, now, now, now),
       env.DB.prepare(
-        "insert into program_session (id, event_id, title, content_status, schedule_status, direct_entry, ics_uid, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "insert into program_session (id, event_id, title, content_status, schedule_status, direct_entry, ics_uid, published_at, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       ).bind(
         sessionId,
         "evt_devflow_conf_2027",
@@ -293,12 +297,16 @@ describe("speaker directory", () => {
         "tbd",
         1,
         "ses_directory_duplicate@session-bored",
+        now - 60_000,
         now,
         now,
       ),
       env.DB.prepare(
-        "insert into session_speaker (id, session_id, speaker_id, role_label, sort_order, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?)",
-      ).bind("ssnr_directory_duplicate", sessionId, duplicateSpeakerId, "speaker", 0, now, now),
+        "insert into session_speaker (id, session_id, speaker_id, role_label, sort_order, publication_hold_at, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?)",
+      ).bind("ssnr_directory_duplicate", sessionId, duplicateSpeakerId, "moderator", 2, publicationHoldAt, now, now),
+      env.DB.prepare(
+        "insert into session_speaker (id, session_id, speaker_id, role_label, sort_order, created_at, updated_at, deleted_at) values (?, ?, ?, ?, ?, ?, ?, ?)",
+      ).bind("ssnr_directory_kept_archived", sessionId, "spk_priya_devflow_2027", "speaker", 9, now, now, now),
       env.DB.prepare(
         "insert into task (id, event_id, title, status, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
       ).bind(taskId, "evt_devflow_conf_2027", "Duplicate profile task", "active", now, now),
@@ -366,8 +374,13 @@ describe("speaker directory", () => {
     expect(archivedPerson?.deletedAt).not.toBeNull();
     expect((await database.select().from(submissions).where(eq(submissions.id, submissionId)))[0]?.submitterPersonId)
       .toBe("psn_priya_raman");
-    expect((await database.select().from(submissionSpeakers).where(eq(submissionSpeakers.submissionId, submissionId)))[0]?.personId)
-      .toBe("psn_priya_raman");
+    const mergedProposalLinks = await database.select().from(submissionSpeakers)
+      .where(eq(submissionSpeakers.submissionId, submissionId));
+    expect(mergedProposalLinks.find((participant) => participant.deletedAt === null)).toMatchObject({
+      personId: "psn_priya_raman",
+      roleLabel: "moderator",
+      sortOrder: 2,
+    });
     const [archivedSubmission] = await database.select().from(submissions)
       .where(eq(submissions.id, archivedSubmissionId));
     expect(archivedSubmission).toMatchObject({
@@ -382,8 +395,14 @@ describe("speaker directory", () => {
     });
     const [archivedSpeaker] = await database.select().from(speakers).where(eq(speakers.id, duplicateSpeakerId));
     expect(archivedSpeaker?.deletedAt).not.toBeNull();
-    expect((await database.select().from(sessionSpeakers).where(eq(sessionSpeakers.sessionId, sessionId)))[0]?.speakerId)
-      .toBe("spk_priya_devflow_2027");
+    const mergedSessionLinks = await database.select().from(sessionSpeakers)
+      .where(eq(sessionSpeakers.sessionId, sessionId));
+    expect(mergedSessionLinks.find((participant) => participant.deletedAt === null)).toMatchObject({
+      speakerId: "spk_priya_devflow_2027",
+      roleLabel: "moderator",
+      sortOrder: 2,
+      publicationHoldAt: new Date(publicationHoldAt),
+    });
     const [keptAssignment] = await database.select().from(taskAssignees)
       .where(eq(taskAssignees.id, "tassn_directory_kept"));
     expect(keptAssignment).toMatchObject({
@@ -784,6 +803,13 @@ describe("speaker directory", () => {
     ]);
 
     const cookie = await organizerCookie();
+    const withdrawnDetail = await request("/api/speaker-directory/psn_probe_wd2_dupe", { headers: { cookie } });
+    expect(withdrawnDetail.status).toBe(200);
+    const withdrawnContact = await withdrawnDetail.json<SpeakerDirectoryDetailResponse>();
+    expect(withdrawnContact.person.sessionCount).toBe(1);
+    expect(withdrawnContact.person.events.find((event) => event.id === "evt_devflow_conf_2027")).toMatchObject({
+      sessions: [expect.objectContaining({ id: "ses_probe_wd2" })],
+    });
     const before = await request("/api/speaker-directory/psn_probe_wd2_kept", { headers: { cookie } });
     expect(before.status).toBe(200);
     expect((await before.json<SpeakerDirectoryDetailResponse>()).possibleDuplicates).toEqual([
@@ -923,6 +949,60 @@ describe("speaker directory", () => {
     expect(ownRows).toHaveLength(1);
     expect(ownRows[0]?.assignment.status).toBe("completed");
     expect(ownRows[0]?.file?.displayName).toBe("folded-slides.pdf");
+  });
+
+  it("merges a directory history larger than D1's per-statement binding ceiling", async () => {
+    await request("/api/health");
+    const now = Date.now();
+    await env.DB.batch([
+      env.DB.prepare(
+        "insert into person (id, name, email, organization, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
+      ).bind("psn_probe_chunk_kept", "Alex Bound", "alex.kept@example.com", "Bound Systems", now, now),
+      env.DB.prepare(
+        "insert into person (id, name, email, organization, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
+      ).bind("psn_probe_chunk_dupe", "Alex Bound", "alex.duplicate@example.com", "Bound Systems", now, now),
+    ]);
+    for (let offset = 0; offset < 101; offset += 20) {
+      const statements: D1PreparedStatement[] = [];
+      for (let index = offset; index < Math.min(101, offset + 20); index += 1) {
+        const suffix = String(index).padStart(3, "0");
+        const personId = index < 51 ? "psn_probe_chunk_kept" : "psn_probe_chunk_dupe";
+        statements.push(
+          env.DB.prepare(
+            "insert into event (id, name, slug, timezone, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
+          ).bind(
+            `evt_probe_chunk_${suffix}`,
+            `Bound Summit ${suffix}`,
+            `bound-summit-${suffix}`,
+            "America/Los_Angeles",
+            now,
+            now,
+          ),
+          env.DB.prepare(
+            "insert into speaker (id, person_id, event_id, status, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
+          ).bind(
+            `spk_probe_chunk_${suffix}`,
+            personId,
+            `evt_probe_chunk_${suffix}`,
+            "ready",
+            now,
+            now,
+          ),
+        );
+      }
+      await env.DB.batch(statements);
+    }
+
+    const merged = await request("/api/speaker-directory/psn_probe_chunk_kept/merge", {
+      method: "POST",
+      headers: { cookie: await organizerCookie(), "content-type": "application/json" },
+      body: JSON.stringify({ duplicatePersonId: "psn_probe_chunk_dupe" }),
+    });
+    expect(merged.status).toBe(200);
+    expect(await merged.json()).toMatchObject({
+      keptPersonId: "psn_probe_chunk_kept",
+      mergedPersonId: "psn_probe_chunk_dupe",
+    });
   });
 
   it("keeps multi-criteria filter, sort, and pagination under the admin-table latency budget", async () => {

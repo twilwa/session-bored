@@ -347,7 +347,6 @@ export async function loadSpeakerDirectory(database: Database): Promise<Director
       .innerJoin(events, eq(sessions.eventId, events.id))
       .where(and(
         isNull(people.deletedAt),
-        isNull(speakers.deletedAt),
         isNull(sessionSpeakers.deletedAt),
         isNull(sessions.deletedAt),
         isNull(events.deletedAt),
