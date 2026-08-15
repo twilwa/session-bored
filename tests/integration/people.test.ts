@@ -580,6 +580,35 @@ describe("reviewer invitations for an address that already has an account", () =
     expect((await queue.json<{ items: unknown[] }>()).items.length).toBeGreaterThan(0);
   });
 
+  it("keeps a confirmed account pending when an invitation names no tracks", async () => {
+    await request("/api/health");
+    const cookie = await organizerCookie();
+    const database = drizzle(env.DB);
+    const email = "confirmed-no-tracks@example.com";
+    await signUp("Confirmed No Tracks", email);
+    await confirmAddress(email);
+    const userId = await userIdFor(email);
+    const [openRound] = await database
+      .select({ id: reviewRounds.id })
+      .from(reviewRounds)
+      .where(and(eq(reviewRounds.eventId, eventId), eq(reviewRounds.status, "open")));
+
+    const created = await invite(cookie, email, { trackIds: [], roundIds: [openRound!.id] });
+    expect(created.status).toBe(201);
+    const payload = await created.json<{ invite: { id: string }; accountStatus: string; upgraded: boolean }>();
+    expect(payload).toMatchObject({ accountStatus: "confirmed", upgraded: false });
+    expect(await tracksForReviewer(userId, eventId)).toEqual([]);
+    expect(await database.select().from(roleGrants).where(eq(roleGrants.userId, userId))).toEqual([]);
+
+    const upgrade = await request(`/api/events/${eventId}/reviewer-invites/${payload.invite.id}/upgrade`, {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ trackIds: [], roundIds: [openRound!.id] }),
+    });
+    expect(upgrade.status).toBe(400);
+    await expect(upgrade.json()).resolves.toEqual({ error: "reviewer_remit_required" });
+  });
+
   it("extends an existing reviewer's remit rather than granting them reviewer access again", async () => {
     await request("/api/health");
     const cookie = await organizerCookie();

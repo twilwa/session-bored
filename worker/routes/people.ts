@@ -592,7 +592,8 @@ peopleRoutes.post("/api/events/:eventId/reviewer-invites", requireOrganizer, asy
   // the People grant door follows (#166) - never the silent default above. Without one, the
   // invitation stays open and resolvable: the link opens it with the stored remit, and the
   // upgrade route can still apply a chosen remit later.
-  const namedFullRemit = explicitTrackIds !== null && explicitRoundIds !== null && explicitRoundIds.length > 0;
+  const namedFullRemit = explicitTrackIds !== null && explicitTrackIds.length > 0 &&
+    explicitRoundIds !== null && explicitRoundIds.length > 0;
   let upgrade: {
     account: { userId: string; name: string };
     grantedReviewerRole: boolean;
@@ -733,7 +734,7 @@ peopleRoutes.post(
     const roundIds = Array.isArray(payload.roundIds)
       ? payload.roundIds.filter((id): id is string => typeof id === "string")
       : null;
-    if (trackIds === null || roundIds === null || roundIds.length === 0) {
+    if (trackIds === null || trackIds.length === 0 || roundIds === null || roundIds.length === 0) {
       return context.json({ error: "reviewer_remit_required" }, 400);
     }
     const database = drizzle(context.env.DB);
