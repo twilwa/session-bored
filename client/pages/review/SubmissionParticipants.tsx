@@ -163,6 +163,7 @@ export function SubmissionParticipants({
                   id: payload.sessionId,
                   title: payload.sessionTitle,
                   awaitingContentApproval: payload.sessionAwaitingContentApproval,
+                  awaitingPlacement: payload.sessionAwaitingPlacement,
                 }]}
               />
             )

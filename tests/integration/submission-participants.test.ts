@@ -899,21 +899,69 @@ describe("the program team's own hold on the participant list", () => {
         ))
         .items.find((speaker) => speaker.name === "Moved Along")?.pendingPublicationSessions.length,
     });
+    const outstandingSteps = async () => {
+      const roster = await request(`/api/events/${eventId}/roster`, { headers: { cookie: organizerCookie } })
+        .then((response) =>
+          response.json<{
+            items: Array<{
+              name: string;
+              pendingPublicationSessions: Array<
+                { awaitingContentApproval: boolean; awaitingPlacement: boolean }
+              >;
+            }>;
+          }>()
+        );
+      const panel = await request(participantsPath, { headers: { cookie: organizerCookie } })
+        .then((response) =>
+          response.json<{
+            sessionAwaitingContentApproval: boolean;
+            sessionAwaitingPlacement: boolean;
+          }>()
+        );
+      return {
+        roster: roster.items.find((speaker) => speaker.name === "Moved Along")
+          ?.pendingPublicationSessions[0],
+        panel: {
+          awaitingContentApproval: panel.sessionAwaitingContentApproval,
+          awaitingPlacement: panel.sessionAwaitingPlacement,
+        },
+      };
+    };
     expect(await affordances()).toEqual({ held: 1, agenda: 1, panel: 1, roster: 1 });
 
     // Every state the session can be dragged into. The hold belongs to the participation, so it
     // survives placement clearing the session's own publication and stays on show throughout -
-    // otherwise the next publish reveals somebody the organizer was never shown.
-    for (const placement of [
-      { scheduleStatus: "tbd", scheduledDate: "2027-05-14" },
-      { scheduleStatus: "unplaced" },
-      { scheduleStatus: "tbd", scheduledDate: "2027-05-12" },
+    // otherwise the next publish reveals somebody the organizer was never shown. What the notice
+    // asks for has to follow the state: publishing skips an unplaced session, so offering a bare
+    // republish there leaves the participant held with nothing the organizer can do about it.
+    for (const step of [
+      { placement: { scheduleStatus: "tbd", scheduledDate: "2027-05-14" }, awaitingPlacement: false },
+      { placement: { scheduleStatus: "unplaced" }, awaitingPlacement: true },
+      { placement: { scheduleStatus: "tbd", scheduledDate: "2027-05-12" }, awaitingPlacement: false },
     ]) {
-      expect((await place(placement)).status).toBe(200);
+      expect((await place(step.placement)).status).toBe(200);
       expect(await affordances()).toEqual({ held: 1, agenda: 1, panel: 1, roster: 1 });
+      const outstanding = { awaitingContentApproval: false, awaitingPlacement: step.awaitingPlacement };
+      expect(await outstandingSteps()).toMatchObject({ roster: outstanding, panel: outstanding });
       expect(await (await request(`/api/public/events/${eventId}/sessions`)).text())
         .not.toContain("Moved Along");
     }
+
+    // An unplaced session the publish would skip is named as skipped, and the hold stands.
+    expect((await place({ scheduleStatus: "unplaced" })).status).toBe(200);
+    const skippedPublish = await request(`/api/events/${eventId}/agenda/publish`, {
+      method: "POST",
+      headers: { cookie: organizerCookie },
+    });
+    expect(skippedPublish.status).toBe(200);
+    await expect(skippedPublish.json()).resolves.toMatchObject({
+      releasedParticipants: [],
+      skipped: expect.arrayContaining([
+        expect.objectContaining({ id: session?.id, reasons: ["not_placed"] }),
+      ]),
+    });
+    expect(await affordances()).toEqual({ held: 1, agenda: 1, panel: 1, roster: 1 });
+    expect((await place({ scheduleStatus: "tbd", scheduledDate: "2027-05-12" })).status).toBe(200);
     await request(`/api/events/${eventId}/agenda/sessions/${session?.id}/content`, {
       method: "PATCH",
       headers: { "content-type": "application/json", cookie: organizerCookie },

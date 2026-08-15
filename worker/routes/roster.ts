@@ -18,8 +18,9 @@ import {
   type SpeakerStatus,
 } from "../../db/schema.ts";
 import { holdsAccess } from "../access.ts";
+import { chunkIds } from "../d1-limits.ts";
 import { sendPortalInvitationEmail } from "../email/portal-invitation.ts";
-import { PROGRAMME_SESSION_GATE } from "../public-queries.ts";
+import { PROGRAMME_SESSION_GATE, publishBlockers } from "../public-queries.ts";
 import { deriveRosterWorkSummary } from "../roster-work.ts";
 
 type RosterEnvironment = {
@@ -92,26 +93,31 @@ rosterRoutes.get("/api/events/:eventId/roster", async (context) => {
         eq(submissions.status, "accepted"),
       ));
 
-  const pendingPublicationRows = items.length === 0
-    ? []
-    : await database
-      .select({
-        speakerId: sessionSpeakers.speakerId,
-        sessionId: sessions.id,
-        sessionTitle: sessions.title,
-        sessionContentStatus: sessions.contentStatus,
-      })
-      .from(sessionSpeakers)
-      .innerJoin(sessions, eq(sessionSpeakers.sessionId, sessions.id))
-      // The hold itself is the reason to show a row, in whatever state its session is: a
-      // re-placement or a withdrawn approval must not quietly retire the prompt while the
-      // participant is still being withheld.
-      .where(and(
-        inArray(sessionSpeakers.speakerId, items.map((item) => item.id)),
-        isNotNull(sessionSpeakers.publicationHoldAt),
-        isNull(sessionSpeakers.deletedAt),
-        PROGRAMME_SESSION_GATE,
-      ));
+  const pendingPublicationRows = (
+    await Promise.all(
+      chunkIds(items.map((item) => item.id)).map((speakerIds) =>
+        database
+          .select({
+            speakerId: sessionSpeakers.speakerId,
+            sessionId: sessions.id,
+            sessionTitle: sessions.title,
+            sessionContentStatus: sessions.contentStatus,
+            sessionScheduleStatus: sessions.scheduleStatus,
+          })
+          .from(sessionSpeakers)
+          .innerJoin(sessions, eq(sessionSpeakers.sessionId, sessions.id))
+          // The hold itself is the reason to show a row, in whatever state its session is: a
+          // re-placement or a withdrawn approval must not quietly retire the prompt while the
+          // participant is still being withheld.
+          .where(and(
+            inArray(sessionSpeakers.speakerId, speakerIds),
+            isNotNull(sessionSpeakers.publicationHoldAt),
+            isNull(sessionSpeakers.deletedAt),
+            PROGRAMME_SESSION_GATE,
+          )),
+      ),
+    )
+  ).flat();
 
   const assignments = items.length === 0
     ? []
@@ -146,7 +152,10 @@ rosterRoutes.get("/api/events/:eventId/roster", async (context) => {
         .map((row) => ({
           id: row.sessionId as `ses_${string}`,
           title: row.sessionTitle ?? "Untitled session",
-          awaitingContentApproval: row.sessionContentStatus !== "approved",
+          ...publishBlockers({
+            contentStatus: row.sessionContentStatus,
+            scheduleStatus: row.sessionScheduleStatus,
+          }),
         }));
       return {
         ...item,

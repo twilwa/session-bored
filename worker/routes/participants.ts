@@ -16,7 +16,7 @@ import {
 } from "../../db/schema.ts";
 import type { ParticipantRemovalOutcome } from "../../shared/api.ts";
 import { holdsAccess } from "../access.ts";
-import { isPublicSpeaker, isPubliclyLiveSession } from "../public-queries.ts";
+import { isPublicSpeaker, isPubliclyLiveSession, publishBlockers } from "../public-queries.ts";
 import {
   carryParticipantIntoSession,
   releaseParticipantFromSession,
@@ -67,6 +67,7 @@ async function readSubmissionContext(
       id: sessions.id,
       title: sessions.title,
       contentStatus: sessions.contentStatus,
+      scheduleStatus: sessions.scheduleStatus,
       publishedAt: sessions.publishedAt,
     })
     .from(sessions)
@@ -75,6 +76,7 @@ async function readSubmissionContext(
     submission,
     sessionId: session?.id ?? null,
     sessionContentStatus: session?.contentStatus ?? null,
+    sessionScheduleStatus: session?.scheduleStatus ?? null,
     sessionPublishedAt: session?.publishedAt ?? null,
     sessionTitle: session?.title ?? null,
   };
@@ -150,7 +152,8 @@ async function participantsResponse(
   submissionId: string,
   scope: SubmissionContext,
 ) {
-  const { sessionId, sessionContentStatus, sessionPublishedAt, sessionTitle } = scope;
+  const { sessionId, sessionContentStatus, sessionScheduleStatus, sessionPublishedAt, sessionTitle } =
+    scope;
   const submitterPersonId = scope.submission.submitterPersonId;
   const rows = await database
     .select({
@@ -177,6 +180,9 @@ async function participantsResponse(
     .innerJoin(speakers, eq(sessionSpeakers.speakerId, speakers.id))
     .where(and(eq(sessionSpeakers.sessionId, sessionId), isNull(sessionSpeakers.deletedAt)));
   const carried = new Map(onSessionPeople.map((row) => [row.personId, row]));
+  const blockers = sessionContentStatus === null || sessionScheduleStatus === null
+    ? { awaitingContentApproval: false, awaitingPlacement: false }
+    : publishBlockers({ contentStatus: sessionContentStatus, scheduleStatus: sessionScheduleStatus });
   // A hold is a fact about the participation, so the panel reports it in every session state.
   // Reading it back off the session's own publication is what made a re-placement look like
   // there was nothing to confirm, right up until the next publish confirmed it unannounced.
@@ -187,7 +193,8 @@ async function participantsResponse(
     sessionPublishedAt: sessionPublishedAt?.getTime() ?? null,
     sessionPubliclyLive: sessionContentStatus !== null
       && isPubliclyLiveSession({ contentStatus: sessionContentStatus, publishedAt: sessionPublishedAt }),
-    sessionAwaitingContentApproval: sessionId !== null && sessionContentStatus !== "approved",
+    sessionAwaitingContentApproval: sessionId !== null && blockers.awaitingContentApproval,
+    sessionAwaitingPlacement: sessionId !== null && blockers.awaitingPlacement,
     sessionTitle,
     participants: rows.map((row) => {
       const sessionLink = carried.get(row.personId);

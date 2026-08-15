@@ -18,6 +18,7 @@ import {
 } from "../../db/schema.ts";
 import { holdsAccess } from "../access.ts";
 import { boundParameterBudget, chunkIds } from "../d1-limits.ts";
+import { publishBlockers } from "../public-queries.ts";
 import type {
   AgendaConflict,
   AgendaPlacement,
@@ -465,9 +466,10 @@ agendaRoutes.patch("/api/events/:eventId/agenda/sessions/:sessionId/content", as
 });
 
 function publishSkipReasons(session: AgendaSession): AgendaPublishSkipReason[] {
+  const blockers = publishBlockers(session);
   const reasons: AgendaPublishSkipReason[] = [];
-  if (session.contentStatus !== "approved") reasons.push("content_not_approved");
-  if (session.scheduleStatus === "unplaced") reasons.push("not_placed");
+  if (blockers.awaitingContentApproval) reasons.push("content_not_approved");
+  if (blockers.awaitingPlacement) reasons.push("not_placed");
   return reasons;
 }
 
@@ -520,9 +522,7 @@ agendaRoutes.post("/api/events/:eventId/agenda/publish", async (context) => {
   const heldAtStart = await snapshotParticipantPublicationHolds(database, eventId);
   const agenda = await readAgenda(context.env.DB, eventId);
   if (agenda === null) return context.json({ error: "event_not_found" }, 404);
-  const eligible = agenda.sessions.filter((session) =>
-    session.contentStatus === "approved" && session.scheduleStatus !== "unplaced"
-  );
+  const eligible = agenda.sessions.filter((session) => publishSkipReasons(session).length === 0);
   const skipped: AgendaPublishSkip[] = agenda.sessions
     .filter((session) => !eligible.includes(session))
     .map((session) => ({

@@ -50,6 +50,22 @@ export function isPubliclyLiveSession(
   return session.contentStatus === "approved" && session.publishedAt !== null;
 }
 
+/**
+ * What still stands between a session and the next agenda publish. The publish route skips a
+ * session on either count, so every organizer surface that offers to release a pending
+ * participant reads this one rule rather than restating the half of it it happens to know:
+ * naming a republish as the only step left, for a session the publish will skip, leaves the
+ * participant held and the prompt stuck on with nothing the organizer can do about it.
+ */
+export function publishBlockers(
+  session: { contentStatus: string; scheduleStatus: string },
+): { awaitingContentApproval: boolean; awaitingPlacement: boolean } {
+  return {
+    awaitingContentApproval: session.contentStatus !== "approved",
+    awaitingPlacement: session.scheduleStatus === "unplaced",
+  };
+}
+
 // ABOUTME: A participation the public may see: live, carrying no publication hold, on a session
 // whose content organizers have approved. Publication is the session's own fact, never the link's,
 // so a hold is the only per-link exception to it and a link can never read as published on the

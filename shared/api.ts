@@ -513,6 +513,8 @@ export interface SubmissionParticipantsPayload {
   sessionPubliclyLive: boolean;
   /** Whether a held place also needs the session's content approved again before publishing can run. */
   sessionAwaitingContentApproval: boolean;
+  /** Whether a held place also needs the session put back on the schedule before publishing can run. */
+  sessionAwaitingPlacement: boolean;
   sessionTitle: string | null;
   participants: SubmissionParticipantSummary[];
   removal?: ParticipantRemovalOutcome;
@@ -528,7 +530,12 @@ export interface RosterSpeakerSummary extends SpeakerSummary {
   profile: { bioComplete: boolean; headshotComplete: boolean };
   workSummary: { total: number; incomplete: number };
   pendingPublicationSessions: Array<
-    { id: `ses_${string}`; title: string; awaitingContentApproval: boolean }
+    {
+      id: `ses_${string}`;
+      title: string;
+      awaitingContentApproval: boolean;
+      awaitingPlacement: boolean;
+    }
   >;
 }
 
