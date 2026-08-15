@@ -1,7 +1,7 @@
 // ABOUTME: Renders the organizer scheduling board: grid first, live drop feedback, clashes, undo.
 // ABOUTME: Keeps placement non-blocking and every verb on the card it acts on.
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent } from "react";
-import type { AgendaConflict, AgendaPlacement, AgendaPublishResult, AgendaSession, AgendaState } from "../../../shared/api.ts";
+import type { AgendaConflict, AgendaPlacement, AgendaPublishResult, AgendaSession, AgendaState, CreateAgendaSessionResult } from "../../../shared/api.ts";
 import { Button, LoadingState, SelectField, StatusChip, TextField } from "../../components/ui.tsx";
 import {
   countCurrentPublicSessions,
@@ -19,6 +19,7 @@ import {
   type OverlapColumn,
 } from "./board.ts";
 import { AgendaResourceManager } from "./AgendaResourceManager.tsx";
+import { AgendaSessionCreator } from "./AgendaSessionCreator.tsx";
 import "./agenda.css";
 
 const eventId = "evt_devflow_conf_2027";
@@ -656,12 +657,31 @@ export function AgendaPage() {
             </button>
           ))}
         </div>
-        <AgendaResourceManager
-          onChanged={refreshAgenda}
-          rooms={agenda.rooms}
-          sessions={agenda.sessions}
-          tracks={agenda.tracks}
-        />
+        <div className="agenda-strip__actions">
+          <AgendaSessionCreator
+            formats={agenda.formats}
+            onCreated={(result: CreateAgendaSessionResult) => {
+              setAgenda(result.agenda);
+              setSelectedSessionId(result.session.id);
+              setToast({
+                message: `${shortTitle(result.session.title)} added to the inbox.`,
+                detail: "This direct session has no CFP submission. Place and approve it when it is ready.",
+                notes: [],
+                clashes: 0,
+                undo: null,
+                undoSessionId: null,
+                publicationCleared: false,
+              });
+            }}
+            tracks={agenda.tracks}
+          />
+          <AgendaResourceManager
+            onChanged={refreshAgenda}
+            rooms={agenda.rooms}
+            sessions={agenda.sessions}
+            tracks={agenda.tracks}
+          />
+        </div>
         <div className="agenda-publish">
           <span>Public</span>
           <strong>{currentSessionCount}/{agenda.sessions.length} current</strong>
@@ -678,7 +698,7 @@ export function AgendaPage() {
 
       {agenda.sessions.length === 0 ? (
         <section className="agenda-empty">
-          <span>00</span><h2>No accepted sessions yet.</h2><p>Accept a proposal in disposition and it will arrive here ready to place.</p><a href="/organizer/disposition">Open disposition →</a>
+          <span>00</span><h2>No sessions yet.</h2><p>Add a session directly above, or accept a proposal and it will arrive here ready to place.</p><a href="/organizer/disposition">Open disposition →</a>
         </section>
       ) : (
         <>
@@ -966,16 +986,16 @@ export function AgendaPage() {
             <details className="agenda-console">
               <summary>Place without dragging (keyboard-safe)</summary>
               <div className="agenda-console__fields">
-                <SelectField label="Session" onChange={(event) => selectSession(event.target.value)} value={selectedSessionId}>
+                <SelectField id="agenda-placement-session" label="Session" name="agenda-placement-session" onChange={(event) => selectSession(event.target.value)} value={selectedSessionId}>
                   {agenda.sessions.map((session) => <option key={session.id} value={session.id}>{session.title}</option>)}
                 </SelectField>
-                <SelectField label="Day" onChange={(event) => setActiveDay(event.target.value)} value={activeDay}>
+                <SelectField id="agenda-placement-day" label="Day" name="agenda-placement-day" onChange={(event) => setActiveDay(event.target.value)} value={activeDay}>
                   {agenda.days.map((day) => <option key={day} value={day}>{dayLabel(day, true)}</option>)}
                 </SelectField>
-                <SelectField label="Time" onChange={(event) => setSelectedTime(event.target.value)} value={selectedTime}>
+                <SelectField id="agenda-placement-time" label="Time" name="agenda-placement-time" onChange={(event) => setSelectedTime(event.target.value)} value={selectedTime}>
                   {timeSlots.map((time) => <option key={time} value={time}>{timeLabel(time)}</option>)}
                 </SelectField>
-                <SelectField label="Room" onChange={(event) => setSelectedRoomId(event.target.value)} value={selectedRoomId}>
+                <SelectField id="agenda-placement-room" label="Room" name="agenda-placement-room" onChange={(event) => setSelectedRoomId(event.target.value)} value={selectedRoomId}>
                   {agenda.rooms.map((room) => <option key={room.id} value={room.id}>{room.name}</option>)}
                 </SelectField>
                 <div className="agenda-console__actions">
