@@ -49,6 +49,24 @@ describe("typed route map", () => {
     expect(routeMap.speakerContent.access).toBe("speaker");
     expect(routeMap.submitterSubmissions.access).toBe("authenticated");
     expect(routeMap.events.access).toBe("organizer");
+    expect(routeMap.updateEvent).toEqual({
+      method: "PATCH",
+      path: "/api/events/:eventId",
+      module: "events",
+      access: "organizer",
+    });
+    expect(routeMap.uploadEventBranding).toEqual({
+      method: "POST",
+      path: "/api/events/:eventId/branding/:asset",
+      module: "events",
+      access: "organizer",
+    });
+    expect(routeMap.publicEventBranding).toEqual({
+      method: "GET",
+      path: "/api/public/events/:eventId/branding/:asset",
+      module: "public",
+      access: "public",
+    });
     expect(routeMap.deliverables).toMatchObject({ method: "GET", module: "files", access: "organizer" });
     expect(routeMap.fileComments).toMatchObject({ method: "GET", module: "files", access: "authenticated" });
     expect(routeMap.createFileComment).toMatchObject({ method: "POST", module: "files", access: "authenticated" });

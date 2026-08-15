@@ -1,0 +1,371 @@
+// ABOUTME: Exercises organizer event setup through the real Worker and D1 database.
+// ABOUTME: Covers saved event identity, dates, venue, timezone, and branding as one contract.
+import { env } from "cloudflare:workers";
+import { describe, expect, it } from "vitest";
+import worker from "../../worker/index.ts";
+
+async function request(path: string, init?: RequestInit): Promise<Response> {
+  return worker.request(`http://example.test${path}`, init, env);
+}
+
+async function organizerCookie(): Promise<string> {
+  await request("/api/health");
+  const response = await request("/api/auth/sign-in/email", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      email: "sbek-organizer@example.com",
+      password: "SbekTest!2027-org",
+    }),
+  });
+  expect(response.status).toBe(200);
+  return response.headers.get("set-cookie")?.split(";")[0] ?? "";
+}
+
+describe("organizer event setup", () => {
+  it("keeps event setup behind organizer access", async () => {
+    await request("/api/health");
+    const payload = {
+      name: "Hidden Summit",
+      slug: "hidden-summit",
+      tagline: null,
+      description: null,
+      startDate: "2027-09-08",
+      endDate: "2027-09-10",
+      venue: "Pier 27",
+      timezone: "America/Los_Angeles",
+      branding: { primaryColor: "#173B57", accentColor: "#F4B942" },
+    };
+    expect((await request("/api/events/evt_devflow_conf_2027", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    })).status).toBe(401);
+    expect((await request("/api/events/evt_devflow_conf_2027/branding/logo", {
+      method: "POST",
+      body: new FormData(),
+    })).status).toBe(401);
+
+    const reviewerSignIn = await request("/api/auth/sign-in/email", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        email: "sbek-reviewer@example.com",
+        password: "SbekTest!2027-rev",
+      }),
+    });
+    const reviewerCookie = reviewerSignIn.headers.get("set-cookie")?.split(";")[0] ?? "";
+    expect((await request("/api/events/evt_devflow_conf_2027", {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie: reviewerCookie },
+      body: JSON.stringify(payload),
+    })).status).toBe(403);
+    expect((await request("/api/events/evt_devflow_conf_2027/branding/logo", {
+      method: "POST",
+      headers: { cookie: reviewerCookie },
+      body: new FormData(),
+    })).status).toBe(403);
+  });
+
+  it("updates the active event details and branding", async () => {
+    const cookie = await organizerCookie();
+    const response = await request("/api/events/evt_devflow_conf_2027", {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({
+        name: "Signal Summit 2027",
+        slug: "signal-summit-2027",
+        tagline: "Where production systems meet their operators.",
+        description: "A practical gathering for people who run software in the real world.",
+        startDate: "2027-05-11",
+        endDate: "2027-05-15",
+        venue: "Pier 27, San Francisco",
+        timezone: "America/New_York",
+        branding: {
+          primaryColor: "#173B57",
+          accentColor: "#F4B942",
+          logoUrl: "https://images.example.com/signal-mark.png",
+          backgroundImageUrl: "https://images.example.com/signal-stage.png",
+        },
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      id: "evt_devflow_conf_2027",
+      name: "Signal Summit 2027",
+      slug: "signal-summit-2027",
+      tagline: "Where production systems meet their operators.",
+      description: "A practical gathering for people who run software in the real world.",
+      startDate: "2027-05-11",
+      endDate: "2027-05-15",
+      venue: "Pier 27, San Francisco",
+      timezone: "America/New_York",
+      branding: {
+        primaryColor: "#173B57",
+        accentColor: "#F4B942",
+        logoUrl: "https://images.example.com/signal-mark.png",
+        backgroundImageUrl: "https://images.example.com/signal-stage.png",
+      },
+    });
+
+    const agenda = await request("/api/events/evt_devflow_conf_2027/agenda", { headers: { cookie } });
+    expect(agenda.status).toBe(200);
+    await expect(agenda.json()).resolves.toMatchObject({
+      event: { name: "Signal Summit 2027", timezone: "America/New_York" },
+    });
+  });
+
+  it("refuses to exclude scheduled sessions from the event date range", async () => {
+    const cookie = await organizerCookie();
+    const beforeAgenda = await request("/api/events/evt_devflow_conf_2027/agenda", { headers: { cookie } });
+    const previousDates = (await beforeAgenda.json<{ event: { startDate: string; endDate: string } }>()).event;
+    await env.DB.prepare(
+      "update program_session set schedule_status = ?, scheduled_date = ? where id = ?",
+    ).bind("tbd", "2027-05-12", "ses_docs_retrieval").run();
+    const response = await request("/api/events/evt_devflow_conf_2027", {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({
+        name: "DevFlow Conf 2027",
+        slug: "devflow-conf-2027",
+        tagline: null,
+        description: null,
+        startDate: "2027-05-13",
+        endDate: "2027-05-15",
+        venue: "Moscone West",
+        timezone: "America/Los_Angeles",
+        branding: { primaryColor: "#173B57", accentColor: "#F4B942" },
+      }),
+    });
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      error: "scheduled_sessions_outside_event_dates",
+      fields: {
+        startDate: "The event dates must include every scheduled session.",
+        endDate: "The event dates must include every scheduled session.",
+      },
+      message: "Move the scheduled sessions before changing these event dates.",
+    });
+    const agenda = await request("/api/events/evt_devflow_conf_2027/agenda", { headers: { cookie } });
+    await expect(agenda.json()).resolves.toMatchObject({
+      event: previousDates,
+    });
+  });
+
+  it("ignores a scheduled session the agenda no longer carries", async () => {
+    const cookie = await organizerCookie();
+    await env.DB.prepare(
+      "update program_session set schedule_status = ?, scheduled_date = ? where id = ?",
+    ).bind("tbd", "2027-05-12", "ses_docs_retrieval").run();
+    await env.DB.prepare("update submission set status = ? where id = ?")
+      .bind("under_review", "sub_docs_retrieval")
+      .run();
+    const agenda = await request("/api/events/evt_devflow_conf_2027/agenda", { headers: { cookie } });
+    expect((await agenda.json<{ sessions: Array<{ id: string }> }>()).sessions).not.toContainEqual(
+      expect.objectContaining({ id: "ses_docs_retrieval" }),
+    );
+
+    try {
+      const response = await request("/api/events/evt_devflow_conf_2027", {
+        method: "PATCH",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify({
+          name: "DevFlow Conf 2027",
+          slug: "devflow-conf-2027",
+          tagline: null,
+          description: null,
+          startDate: "2027-05-13",
+          endDate: "2027-05-15",
+          venue: "Moscone West",
+          timezone: "America/Los_Angeles",
+          branding: { primaryColor: "#173B57", accentColor: "#F4B942" },
+        }),
+      });
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toMatchObject({
+        startDate: "2027-05-13",
+        endDate: "2027-05-15",
+      });
+    } finally {
+      await env.DB.prepare("update submission set status = ? where id = ?")
+        .bind("accepted", "sub_docs_retrieval")
+        .run();
+    }
+  });
+
+  it("unpublishes placed sessions when the event timezone changes", async () => {
+    const cookie = await organizerCookie();
+    const now = Date.now();
+    await env.DB.prepare("update event set timezone = ? where id = ?")
+      .bind("America/Los_Angeles", "evt_devflow_conf_2027")
+      .run();
+    await env.DB.prepare(
+      "update program_session set content_status = ?, schedule_status = ?, scheduled_date = ?, starts_at = ?, ends_at = ?, published_at = ? where id = ?",
+    ).bind(
+      "approved",
+      "placed",
+      "2027-05-12",
+      Date.parse("2027-05-12T16:00:00Z"),
+      Date.parse("2027-05-12T17:00:00Z"),
+      now,
+      "ses_docs_retrieval",
+    ).run();
+
+    const before = await request("/api/public/events/evt_devflow_conf_2027/sessions");
+    expect((await before.json<{ items: Array<{ id: string }> }>()).items).toContainEqual(
+      expect.objectContaining({ id: "ses_docs_retrieval" }),
+    );
+
+    const response = await request("/api/events/evt_devflow_conf_2027", {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({
+        name: "DevFlow Conf 2027",
+        slug: "devflow-conf-2027",
+        tagline: null,
+        description: null,
+        startDate: "2027-05-12",
+        endDate: "2027-05-14",
+        venue: "Moscone West",
+        timezone: "America/New_York",
+        branding: { primaryColor: "#173B57", accentColor: "#F4B942" },
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      timezone: "America/New_York",
+      scheduleReviewRequired: true,
+    });
+    const stored = await env.DB.prepare(
+      "select published_at from program_session where id = ?",
+    ).bind("ses_docs_retrieval").first<{ published_at: number | null }>();
+    expect(stored?.published_at).toBeNull();
+    const after = await request("/api/public/events/evt_devflow_conf_2027/sessions");
+    expect((await after.json<{ items: Array<{ id: string }> }>()).items).not.toContainEqual(
+      expect.objectContaining({ id: "ses_docs_retrieval" }),
+    );
+  });
+
+  it("returns a field conflict when another event owns the public slug", async () => {
+    const cookie = await organizerCookie();
+    const now = Date.now();
+    await env.DB.prepare(
+      "insert into event (id, slug, name, timezone, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
+    ).bind("evt_reserved_slug", "reserved-event", "Reserved Event", "UTC", now, now).run();
+
+    const response = await request("/api/events/evt_devflow_conf_2027", {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({
+        name: "DevFlow Conf 2027",
+        slug: "reserved-event",
+        tagline: null,
+        description: null,
+        startDate: "2027-05-12",
+        endDate: "2027-05-14",
+        venue: "Moscone West",
+        timezone: "America/Los_Angeles",
+        branding: { primaryColor: "#173B57", accentColor: "#F4B942" },
+      }),
+    });
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      error: "event_slug_conflict",
+      fields: { slug: "This public slug is already in use." },
+      message: "Choose a different public slug.",
+    });
+  });
+
+  it("stores an uploaded brand image and serves only its validated image bytes", async () => {
+    const cookie = await organizerCookie();
+    const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]);
+    const form = new FormData();
+    form.set("file", new File([pngBytes], "event-logo.png", { type: "image/png" }));
+    const response = await request("/api/events/evt_devflow_conf_2027/branding/logo", {
+      method: "POST",
+      headers: { cookie },
+      body: form,
+    });
+
+    expect(response.status).toBe(201);
+    const event = await response.json<{ branding: { logoUrl: string } }>();
+    expect(event.branding.logoUrl).toMatch(
+      /^\/api\/public\/events\/evt_devflow_conf_2027\/branding\/logo\?version=/,
+    );
+    const image = await request(event.branding.logoUrl);
+    expect(image.status).toBe(200);
+    expect(image.headers.get("content-type")).toBe("image/png");
+    expect(image.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(new Uint8Array(await image.arrayBuffer())).toEqual(pngBytes);
+  });
+
+  it("rejects a timezone the scheduling surfaces cannot format", async () => {
+    const cookie = await organizerCookie();
+    const response = await request("/api/events/evt_devflow_conf_2027", {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({
+        name: "DevFlow Conf 2027",
+        slug: "devflow-conf-2027",
+        tagline: null,
+        description: null,
+        startDate: "2027-05-12",
+        endDate: "2027-05-14",
+        venue: "Moscone West",
+        timezone: "Mars/Olympus_Mons",
+        branding: { primaryColor: "#173B57", accentColor: "#F4B942" },
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "invalid_event_setup",
+      fields: { timezone: "Choose a valid IANA timezone." },
+      message: "Check the highlighted event details.",
+    });
+  });
+
+  it("returns field guidance without saving invalid event details", async () => {
+    const cookie = await organizerCookie();
+    const response = await request("/api/events/evt_devflow_conf_2027", {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({
+        name: "   ",
+        slug: "Signal Summit!",
+        tagline: null,
+        description: null,
+        startDate: "2027-09-10",
+        endDate: "2027-09-08",
+        venue: "Pier 27",
+        timezone: "America/Los_Angeles",
+        branding: {
+          primaryColor: "#123",
+          accentColor: "amber",
+          logoUrl: "ftp://images.example.com/signal-mark.png",
+          backgroundImageUrl: "javascript:alert(1)",
+        },
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "invalid_event_setup",
+      fields: {
+        name: "Enter an event name.",
+        slug: "Use lowercase letters, numbers, and single hyphens.",
+        endDate: "The event must end on or after its start date.",
+        "branding.primaryColor": "Choose a six-digit hex color.",
+        "branding.accentColor": "Choose a six-digit hex color.",
+        "branding.logoUrl": "Use an http or https image URL.",
+        "branding.backgroundImageUrl": "Use an http or https image URL.",
+      },
+      message: "Check the highlighted event details.",
+    });
+  });
+});

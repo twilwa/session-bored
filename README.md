@@ -97,6 +97,16 @@ queue with work in it. **Committee setup** in the review workspace lists every
 granted reviewer, including one who still has no remit, and is where an existing
 remit is changed.
 
+## Event setup
+
+**Event setup** in the organizer workspace edits the active event: its name,
+tagline, and description, dates, venue, timezone, public slug, brand colors,
+logo, and background image. The timezone saved here is the one every agenda and
+public schedule time is read in, so changing it takes the placed sessions off
+the public schedule and asks the organizer to review and publish them again. Dates
+that would leave a scheduled session outside the event, and a public slug
+another event already uses, are refused on the field rather than saved.
+
 ## Commands
 
 The standard project commands cover database evolution, verification, and
@@ -122,9 +132,9 @@ printf '%s' 'https://your-worker.example' | npx wrangler secret put BETTER_AUTH_
 npm run db:migrate:remote && npm run deploy
 ```
 
-Speaker file uploads (headshots and task deliverables) store in the R2 bucket
-bound as `FILES` in `wrangler.jsonc`; create that bucket in the new environment
-before deploying.
+Speaker file uploads (headshots and task deliverables) and event branding images
+store in the R2 bucket bound as `FILES` in `wrangler.jsonc`; create that bucket
+in the new environment before deploying.
 
 ## Connecting an email sender
 

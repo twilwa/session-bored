@@ -1,6 +1,6 @@
-// ABOUTME: Lets organizers manage the room and track records that feed CFP and agenda workflows.
-// ABOUTME: Keeps destructive taxonomy changes behind explicit reference checks.
-import { and, eq, isNull } from "drizzle-orm";
+// ABOUTME: Lets organizers manage event identity, branding, rooms, and tracks from one route group.
+// ABOUTME: Validates public brand assets and keeps destructive taxonomy changes reference-safe.
+import { and, eq, gt, inArray, isNotNull, isNull, lt, ne, or } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { Hono } from "hono";
 import { createMiddleware } from "hono/factory";
@@ -10,11 +10,20 @@ import {
   reviewerTracks,
   rooms,
   sessions,
+  submissions,
   submissionTracks,
   tracks,
   type Role,
 } from "../../db/schema.ts";
 import { holdsAccess } from "../access.ts";
+import {
+  getFileObject,
+  headshotLimits,
+  putFileObject,
+  readUploadedFile,
+  validateUpload,
+  validationErrorStatus,
+} from "../storage/files.ts";
 
 type EventSettingsEnvironment = {
   Bindings: CloudflareBindings;
@@ -23,6 +32,165 @@ type EventSettingsEnvironment = {
     roles: Role[] | null;
   };
 };
+
+interface EventSetupInput {
+  name: string;
+  slug: string;
+  tagline: string | null;
+  description: string | null;
+  startDate: string;
+  endDate: string;
+  venue: string | null;
+  timezone: string;
+  branding: Record<string, string>;
+}
+
+interface EventSetupValidation {
+  input: EventSetupInput | null;
+  fields: Record<string, string>;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isTimezone(value: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: value }).format();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
+function imageUrl(
+  value: unknown,
+  field: string,
+  fields: Record<string, string>,
+  eventId: string,
+): string | null {
+  if (value === undefined || value === null || value === "") return null;
+  if (typeof value !== "string") {
+    fields[field] = "Use an http or https image URL.";
+    return null;
+  }
+  const trimmed = value.trim();
+  const ownAssetPrefix = `/api/public/events/${eventId}/branding/`;
+  for (const asset of ["background", "logo"]) {
+    const versionPrefix = `${ownAssetPrefix}${asset}?version=`;
+    if (trimmed.startsWith(versionPrefix) && /^[0-9a-f-]+$/.test(trimmed.slice(versionPrefix.length))) {
+      return trimmed;
+    }
+  }
+  try {
+    const url = new URL(trimmed);
+    if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error("unsupported protocol");
+    return url.toString();
+  } catch {
+    fields[field] = "Use an http or https image URL.";
+    return null;
+  }
+}
+
+function eventSetupInput(payload: unknown, eventId: string): EventSetupValidation {
+  const fields: Record<string, string> = {};
+  if (!isRecord(payload)) return { input: null, fields: { form: "Send event details as a JSON object." } };
+
+  const name = typeof payload.name === "string" ? payload.name.trim() : "";
+  const slug = typeof payload.slug === "string" ? payload.slug.trim() : "";
+  const tagline = typeof payload.tagline === "string" && payload.tagline.trim().length > 0
+    ? payload.tagline.trim()
+    : null;
+  const description = typeof payload.description === "string" && payload.description.trim().length > 0
+    ? payload.description.trim()
+    : null;
+  const startDate = typeof payload.startDate === "string" ? payload.startDate : "";
+  const endDate = typeof payload.endDate === "string" ? payload.endDate : "";
+  const venue = typeof payload.venue === "string" && payload.venue.trim().length > 0
+    ? payload.venue.trim()
+    : null;
+  const timezone = typeof payload.timezone === "string" ? payload.timezone : "";
+  const branding = isRecord(payload.branding) ? payload.branding : {};
+  const primaryColor = typeof branding.primaryColor === "string" ? branding.primaryColor.trim() : "";
+  const accentColor = typeof branding.accentColor === "string" ? branding.accentColor.trim() : "";
+
+  if (name.length === 0) fields.name = "Enter an event name.";
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
+    fields.slug = "Use lowercase letters, numbers, and single hyphens.";
+  }
+  if (!isDate(startDate)) fields.startDate = "Choose a valid start date.";
+  if (!isDate(endDate)) {
+    fields.endDate = "Choose a valid end date.";
+  } else if (isDate(startDate) && endDate < startDate) {
+    fields.endDate = "The event must end on or after its start date.";
+  }
+  if (!isTimezone(timezone)) fields.timezone = "Choose a valid IANA timezone.";
+  if (!/^#[0-9a-fA-F]{6}$/.test(primaryColor)) {
+    fields["branding.primaryColor"] = "Choose a six-digit hex color.";
+  }
+  if (!/^#[0-9a-fA-F]{6}$/.test(accentColor)) {
+    fields["branding.accentColor"] = "Choose a six-digit hex color.";
+  }
+  const logoUrl = imageUrl(branding.logoUrl, "branding.logoUrl", fields, eventId);
+  const backgroundImageUrl = imageUrl(
+    branding.backgroundImageUrl,
+    "branding.backgroundImageUrl",
+    fields,
+    eventId,
+  );
+
+  if (Object.keys(fields).length > 0) return { input: null, fields };
+  return {
+    input: {
+      name,
+      slug,
+      tagline,
+      description,
+      startDate,
+      endDate,
+      venue,
+      timezone,
+      branding: {
+        primaryColor,
+        accentColor,
+        ...(logoUrl === null ? {} : { logoUrl }),
+        ...(backgroundImageUrl === null ? {} : { backgroundImageUrl }),
+      },
+    },
+    fields,
+  };
+}
+
+/**
+ * The sessions the agenda still shows: a directly entered one, or one whose proposal is
+ * still accepted. Un-accepting keeps every schedule field on purpose, so a session read
+ * without this gate can hold dates the organizer has no board affordance left to move.
+ */
+function liveEventSessions(database: ReturnType<typeof drizzle>, eventId: string) {
+  return database
+    .select({ id: sessions.id })
+    .from(sessions)
+    .leftJoin(submissions, eq(sessions.submissionId, submissions.id))
+    .where(and(
+      eq(sessions.eventId, eventId),
+      isNull(sessions.deletedAt),
+      or(eq(sessions.directEntry, true), eq(submissions.status, "accepted")),
+    ));
+}
+
+function brandingAsset(value: string): "background" | "logo" | null {
+  return value === "background" || value === "logo" ? value : null;
+}
+
+function brandingStorageKey(eventId: string, asset: "background" | "logo"): string {
+  return `events/${eventId}/branding/${asset}`;
+}
 
 const eventSettingsRoutes = new Hono<EventSettingsEnvironment>();
 
@@ -38,6 +206,157 @@ eventSettingsRoutes.use("/api/events/:eventId/rooms", requireOrganizer);
 eventSettingsRoutes.use("/api/events/:eventId/rooms/*", requireOrganizer);
 eventSettingsRoutes.use("/api/events/:eventId/tracks", requireOrganizer);
 eventSettingsRoutes.use("/api/events/:eventId/tracks/*", requireOrganizer);
+eventSettingsRoutes.use("/api/events/:eventId/branding/*", requireOrganizer);
+
+eventSettingsRoutes.patch("/api/events/:eventId", requireOrganizer, async (context) => {
+  const eventId = context.req.param("eventId");
+  const validation = eventSetupInput(
+    await context.req.json<unknown>().catch(() => null),
+    eventId,
+  );
+  if (validation.input === null) {
+    return context.json({
+      error: "invalid_event_setup",
+      fields: validation.fields,
+      message: "Check the highlighted event details.",
+    }, 400);
+  }
+  const input = validation.input;
+  const database = drizzle(context.env.DB);
+  const [current] = await database
+    .select()
+    .from(events)
+    .where(and(eq(events.id, eventId), isNull(events.deletedAt)))
+    .limit(1);
+  if (current === undefined) {
+    return context.json({ error: "event_not_found", message: "This event could not be found." }, 404);
+  }
+  const [slugOwner] = await database
+    .select({ id: events.id })
+    .from(events)
+    .where(and(eq(events.slug, input.slug), ne(events.id, eventId)))
+    .limit(1);
+  if (slugOwner !== undefined) {
+    return context.json({
+      error: "event_slug_conflict",
+      fields: { slug: "This public slug is already in use." },
+      message: "Choose a different public slug.",
+    }, 409);
+  }
+  const [outsideDateRange] = await database
+    .select({ id: sessions.id })
+    .from(sessions)
+    .where(and(
+      inArray(sessions.id, liveEventSessions(database, eventId)),
+      isNotNull(sessions.scheduledDate),
+      or(lt(sessions.scheduledDate, input.startDate), gt(sessions.scheduledDate, input.endDate)),
+    ))
+    .limit(1);
+  if (outsideDateRange !== undefined) {
+    const dateMessage = "The event dates must include every scheduled session.";
+    return context.json({
+      error: "scheduled_sessions_outside_event_dates",
+      fields: { startDate: dateMessage, endDate: dateMessage },
+      message: "Move the scheduled sessions before changing these event dates.",
+    }, 409);
+  }
+  const updatedAt = new Date();
+  const updateEvent = database
+    .update(events)
+    .set({
+      name: input.name,
+      slug: input.slug,
+      tagline: input.tagline,
+      description: input.description,
+      startDate: input.startDate,
+      endDate: input.endDate,
+      venue: input.venue,
+      timezone: input.timezone,
+      branding: input.branding,
+      updatedAt,
+    })
+    .where(and(eq(events.id, eventId), isNull(events.deletedAt)))
+    .returning();
+  let updated: typeof current | undefined;
+  let scheduleReviewRequired = false;
+  if (input.timezone !== current.timezone) {
+    const [updatedEvents, unpublishedSessions] = await database.batch([
+      updateEvent,
+      database
+        .update(sessions)
+        .set({ publishedAt: null, updatedAt })
+        .where(and(
+          inArray(sessions.id, liveEventSessions(database, eventId)),
+          eq(sessions.scheduleStatus, "placed"),
+          isNotNull(sessions.publishedAt),
+        ))
+        .returning({ id: sessions.id }),
+    ]);
+    [updated] = updatedEvents;
+    scheduleReviewRequired = unpublishedSessions.length > 0;
+  } else {
+    [updated] = await updateEvent;
+  }
+  return updated === undefined
+    ? context.json({ error: "event_not_found", message: "This event could not be found." }, 404)
+    : context.json({ ...updated, scheduleReviewRequired });
+});
+
+eventSettingsRoutes.post("/api/events/:eventId/branding/:asset", async (context) => {
+  const asset = brandingAsset(context.req.param("asset"));
+  if (asset === null) return context.json({ error: "not_found" }, 404);
+  const database = drizzle(context.env.DB);
+  const [event] = await database
+    .select()
+    .from(events)
+    .where(and(eq(events.id, context.req.param("eventId")), isNull(events.deletedAt)));
+  if (event === undefined) {
+    return context.json({ error: "event_not_found", message: "This event could not be found." }, 404);
+  }
+  const file = readUploadedFile(await context.req.formData().catch(() => null));
+  if (file === null) {
+    return context.json({ error: "file_required", message: "Choose an image to upload." }, 400);
+  }
+  const bytes = await file.arrayBuffer();
+  const validationError = validateUpload(file, headshotLimits, bytes);
+  if (validationError !== null) {
+    return context.json(validationError, validationErrorStatus(validationError.error));
+  }
+  await putFileObject(
+    context.env.FILES,
+    brandingStorageKey(event.id, asset),
+    bytes,
+    file.type,
+  );
+  const publicUrl = `/api/public/events/${event.id}/branding/${asset}?version=${crypto.randomUUID()}`;
+  const urlField = asset === "logo" ? "logoUrl" : "backgroundImageUrl";
+  const [updated] = await database
+    .update(events)
+    .set({
+      branding: { ...(event.branding ?? {}), [urlField]: publicUrl },
+      updatedAt: new Date(),
+    })
+    .where(eq(events.id, event.id))
+    .returning();
+  return context.json(updated, 201);
+});
+
+eventSettingsRoutes.get("/api/public/events/:eventId/branding/:asset", async (context) => {
+  const asset = brandingAsset(context.req.param("asset"));
+  if (asset === null) return context.json({ error: "not_found" }, 404);
+  const object = await getFileObject(
+    context.env.FILES,
+    brandingStorageKey(context.req.param("eventId"), asset),
+  );
+  if (object === null) return context.json({ error: "not_found" }, 404);
+  return new Response(object.body, {
+    headers: {
+      "cache-control": "no-cache, must-revalidate",
+      "content-type": object.httpMetadata?.contentType ?? "application/octet-stream",
+      "x-content-type-options": "nosniff",
+    },
+  });
+});
 
 async function resourceName(request: Request): Promise<string | null> {
   const payload = await request.json<{ name?: unknown }>().catch(() => null);

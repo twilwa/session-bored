@@ -118,6 +118,19 @@ export function validateUpload(
   return null;
 }
 
+/** The uploaded file a multipart form carries, or nothing when it carries no file at all. */
+export function readUploadedFile(formData: FormData | null): File | null {
+  const value = formData?.get("file");
+  return value instanceof File ? value : null;
+}
+
+/** The status each refusal answers with, so every upload door speaks the same one. */
+export function validationErrorStatus(error: FileValidationError["error"]): 400 | 413 | 415 {
+  if (error === "file_too_large") return 413;
+  if (error === "unsupported_file_type") return 415;
+  return 400;
+}
+
 /**
  * Every extension this app knows how to accept, with the single mime type each one must
  * carry. A file request can ask for any of them; anything it names outside this map is

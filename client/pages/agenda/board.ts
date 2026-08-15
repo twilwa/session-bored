@@ -201,6 +201,13 @@ export function zonedEpoch(day: string, time: string, timezone: string): number 
   return guess;
 }
 
+/** The short name the event's timezone goes by on a given day, for the grid's corner label. */
+export function timezoneLabel(day: string, timezone: string): string {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZoneName: "short", timeZone: timezone })
+    .formatToParts(zonedEpoch(day, "12:00", timezone));
+  return parts.find((part) => part.type === "timeZoneName")?.value ?? timezone;
+}
+
 /** The lattice time a placed session sits on, or null when it sits between slots. */
 export function sessionTimeValue(session: AgendaSession, timezone: string): string | null {
   if (session.startsAt === null) return null;
