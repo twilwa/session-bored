@@ -1,11 +1,13 @@
 // ABOUTME: Lets organizers create public, self-updating widgets and copy each supported delivery format.
-// ABOUTME: Mirrors the approved workspace builder while limiting configuration to one public track filter.
+// ABOUTME: Configures widget facets, branding, visible fields, delivery code, and responsive previews.
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import type {
+  EmbedConfig,
   EmbedListResponse,
   EmbedStatus,
   EmbedSummary,
   EmbedWidgetType,
+  EmbedWriteRequest,
   PublicSessionsResponse,
 } from "../../../shared/api.ts";
 import { Button, LoadingState, Modal, SelectField, StatusChip, TextField } from "../../components/ui.tsx";
@@ -23,6 +25,13 @@ const widgetOptions: Array<{ value: EmbedWidgetType; label: string; description:
 
 type DeliveryFormat = "script" | "iframe" | "json" | "ical";
 type PendingAction = { kind: "unpublish" | "delete"; item: EmbedSummary };
+type PreviewSize = "desktop" | "phone";
+
+const defaultColors = {
+  backgroundColor: "#f4f0e6",
+  textColor: "#141425",
+  accentColor: "#3155ff",
+};
 
 function widgetLabel(type: EmbedWidgetType): string {
   return widgetOptions.find((option) => option.value === type)?.label ?? type;
@@ -32,15 +41,40 @@ function tokenLabel(token: string): string {
   return `${token.slice(0, 12)}…`;
 }
 
+function filterSummary(config: EmbedConfig | null): string {
+  const filters = [
+    config?.track === undefined ? null : `Track = ${config.track}`,
+    config?.format === undefined ? null : `Format = ${config.format}`,
+    config?.room === undefined ? null : `Location = ${config.room}`,
+  ].filter((filter): filter is string => filter !== null);
+  return filters.length === 0 ? "All public content" : filters.join(" · ");
+}
+
 export function EmbedsPage() {
   const [items, setItems] = useState<EmbedSummary[]>([]);
   const [tracks, setTracks] = useState<string[]>([]);
+  const [formats, setFormats] = useState<string[]>([]);
+  const [rooms, setRooms] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [name, setName] = useState("");
   const [widgetType, setWidgetType] = useState<EmbedWidgetType>("sessions");
   const [status, setStatus] = useState<EmbedStatus>("draft");
   const [track, setTrack] = useState("");
+  const [sessionFormat, setSessionFormat] = useState("");
+  const [room, setRoom] = useState("");
+  const [backgroundColor, setBackgroundColor] = useState(defaultColors.backgroundColor);
+  const [textColor, setTextColor] = useState(defaultColors.textColor);
+  const [accentColor, setAccentColor] = useState(defaultColors.accentColor);
+  const [showDescription, setShowDescription] = useState(true);
+  const [showSpeakers, setShowSpeakers] = useState(true);
+  const [showLocation, setShowLocation] = useState(true);
+  const [showEventName, setShowEventName] = useState(true);
+  const [showTime, setShowTime] = useState(true);
+  const [showTrack, setShowTrack] = useState(true);
+  const [showFormat, setShowFormat] = useState(true);
+  const [showSpeakerImage, setShowSpeakerImage] = useState(true);
+  const [showSpeakerDetails, setShowSpeakerDetails] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [selected, setSelected] = useState<EmbedSummary | null>(null);
@@ -48,6 +82,7 @@ export function EmbedsPage() {
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [busyActionId, setBusyActionId] = useState<string | null>(null);
   const [format, setFormat] = useState<DeliveryFormat>("script");
+  const [previewSize, setPreviewSize] = useState<PreviewSize>("desktop");
   const formRef = useRef<HTMLElement>(null);
 
   async function load(): Promise<void> {
@@ -60,6 +95,8 @@ export function EmbedsPage() {
       ]);
       setItems(embedData.items);
       setTracks(publicData.facets.tracks);
+      setFormats(publicData.facets.formats);
+      setRooms(publicData.facets.rooms);
     } catch {
       setLoadError(true);
     } finally {
@@ -77,6 +114,20 @@ export function EmbedsPage() {
     setWidgetType("sessions");
     setStatus("draft");
     setTrack("");
+    setSessionFormat("");
+    setRoom("");
+    setBackgroundColor(defaultColors.backgroundColor);
+    setTextColor(defaultColors.textColor);
+    setAccentColor(defaultColors.accentColor);
+    setShowDescription(true);
+    setShowSpeakers(true);
+    setShowLocation(true);
+    setShowEventName(true);
+    setShowTime(true);
+    setShowTrack(true);
+    setShowFormat(true);
+    setShowSpeakerImage(true);
+    setShowSpeakerDetails(true);
   }
 
   function startCreate(): void {
@@ -90,6 +141,20 @@ export function EmbedsPage() {
     setWidgetType(item.widgetType);
     setStatus(item.status);
     setTrack(item.config?.track ?? "");
+    setSessionFormat(item.config?.format ?? "");
+    setRoom(item.config?.room ?? "");
+    setBackgroundColor(item.config?.backgroundColor ?? defaultColors.backgroundColor);
+    setTextColor(item.config?.textColor ?? defaultColors.textColor);
+    setAccentColor(item.config?.accentColor ?? defaultColors.accentColor);
+    setShowDescription(item.config?.showDescription !== false);
+    setShowSpeakers(item.config?.showSpeakers !== false);
+    setShowLocation(item.config?.showLocation !== false);
+    setShowEventName(item.config?.showEventName !== false);
+    setShowTime(item.config?.showTime !== false);
+    setShowTrack(item.config?.showTrack !== false);
+    setShowFormat(item.config?.showFormat !== false);
+    setShowSpeakerImage(item.config?.showSpeakerImage !== false);
+    setShowSpeakerDetails(item.config?.showSpeakerDetails !== false);
     setSelected(item);
     setMessage(null);
     formRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -102,15 +167,16 @@ export function EmbedsPage() {
   }
 
   async function updateEmbed(item: EmbedSummary, nextStatus: EmbedStatus): Promise<EmbedSummary> {
+    const input: EmbedWriteRequest = {
+      name: item.name,
+      widgetType: item.widgetType,
+      status: nextStatus,
+      ...(item.config ?? {}),
+    };
     return requestJson<EmbedSummary>(`/api/events/${DEVFLOW_EVENT_ID}/embeds/${item.id}`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        name: item.name,
-        widgetType: item.widgetType,
-        status: nextStatus,
-        track: item.config?.track ?? "",
-      }),
+      body: JSON.stringify(input),
     });
   }
 
@@ -162,12 +228,32 @@ export function EmbedsPage() {
     setSaving(true);
     setMessage(null);
     try {
+      const input: EmbedWriteRequest = {
+        name,
+        widgetType,
+        status: editing?.status ?? status,
+        track,
+        format: sessionFormat,
+        room,
+        backgroundColor,
+        textColor,
+        accentColor,
+        showDescription,
+        showSpeakers,
+        showLocation,
+        showEventName,
+        showTime,
+        showTrack,
+        showFormat,
+        showSpeakerImage,
+        showSpeakerDetails,
+      };
       const saved = await requestJson<EmbedSummary>(editing === null
         ? `/api/events/${DEVFLOW_EVENT_ID}/embeds`
         : `/api/events/${DEVFLOW_EVENT_ID}/embeds/${editing.id}`, {
         method: editing === null ? "POST" : "PATCH",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name, widgetType, status: editing?.status ?? status, track }),
+        body: JSON.stringify(input),
       });
       if (editing === null) {
         setItems((current) => [saved, ...current]);
@@ -183,7 +269,7 @@ export function EmbedsPage() {
           : "Draft saved. Use Publish when it is ready to share.");
       clearForm();
     } catch {
-      setMessage("The embed could not be saved. Check its name and track, then try again.");
+      setMessage("The embed could not be saved. Check its name and content filters, then try again.");
     } finally {
       setSaving(false);
     }
@@ -263,7 +349,7 @@ export function EmbedsPage() {
                   <tr key={item.id}>
                     <td><button className="embed-list__name" onClick={() => setSelected(item)} type="button">{item.name}</button></td>
                     <td>{widgetLabel(item.widgetType)}</td>
-                    <td>{item.config?.track === undefined ? "All tracks" : `Track = ${item.config.track}`}</td>
+                    <td>{filterSummary(item.config)}</td>
                     <td><StatusChip tone={item.status === "published" ? "good" : "neutral"}>{item.status}</StatusChip></td>
                     <td><code>{tokenLabel(item.publicToken)}</code></td>
                     <td>
@@ -333,6 +419,57 @@ export function EmbedsPage() {
             <option value="">All tracks</option>
             {tracks.map((trackName) => <option key={trackName} value={trackName}>{trackName}</option>)}
           </SelectField>
+          <div className="embed-filter-grid">
+            <SelectField label="Format" name="embed-format-filter" onChange={(event) => setSessionFormat(event.target.value)} value={sessionFormat}>
+              <option value="">All formats</option>
+              {formats.map((formatName) => <option key={formatName} value={formatName}>{formatName}</option>)}
+            </SelectField>
+            <SelectField label="Location" name="embed-room" onChange={(event) => setRoom(event.target.value)} value={room}>
+              <option value="">All locations</option>
+              {rooms.map((roomName) => <option key={roomName} value={roomName}>{roomName}</option>)}
+            </SelectField>
+          </div>
+          <div className="embed-filter-heading">
+            <h3>Style options</h3>
+            <p>These colors belong to this widget and travel with every public delivery URL.</p>
+          </div>
+          <div className="embed-color-grid">
+            {([
+              ["Background color", backgroundColor, setBackgroundColor],
+              ["Text color", textColor, setTextColor],
+              ["Accent color", accentColor, setAccentColor],
+            ] as const).map(([label, value, setValue]) => (
+              <label className="embed-color-field" key={label}>
+                <span className="field__label">{label}</span>
+                <span className="embed-color-field__control">
+                  <input aria-label={label} onChange={(event) => setValue(event.target.value)} type="color" value={value} />
+                  <code>{value}</code>
+                </span>
+              </label>
+            ))}
+          </div>
+          <fieldset className="embed-field-options">
+            <legend>Field options</legend>
+            <p>Keep only the details the host page needs. Session titles and speaker names remain visible.</p>
+            <div>
+              <label><input aria-label="Show description" checked={showDescription} onChange={(event) => setShowDescription(event.target.checked)} type="checkbox" /> Description</label>
+              <label><input aria-label="Display event label" checked={showEventName} onChange={(event) => setShowEventName(event.target.checked)} type="checkbox" /> Event name</label>
+              {widgetType === "speakers" || widgetType === "gallery" ? (
+                <>
+                  <label><input aria-label="Show speaker photo" checked={showSpeakerImage} onChange={(event) => setShowSpeakerImage(event.target.checked)} type="checkbox" /> Speaker photo</label>
+                  <label><input aria-label="Show speaker details" checked={showSpeakerDetails} onChange={(event) => setShowSpeakerDetails(event.target.checked)} type="checkbox" /> Role &amp; organization</label>
+                </>
+              ) : (
+                <>
+                  <label><input aria-label="Display speakers" checked={showSpeakers} onChange={(event) => setShowSpeakers(event.target.checked)} type="checkbox" /> Speaker names</label>
+                  <label><input aria-label="Show location" checked={showLocation} onChange={(event) => setShowLocation(event.target.checked)} type="checkbox" /> Location</label>
+                  <label><input aria-label="Show date and time" checked={showTime} onChange={(event) => setShowTime(event.target.checked)} type="checkbox" /> Date &amp; time</label>
+                  <label><input aria-label="Display taxonomy" checked={showTrack} onChange={(event) => setShowTrack(event.target.checked)} type="checkbox" /> Track</label>
+                  <label><input aria-label="Display session kind" checked={showFormat} onChange={(event) => setShowFormat(event.target.checked)} type="checkbox" /> Format</label>
+                </>
+              )}
+            </div>
+          </fieldset>
           <div className="embed-form-actions">
             {editing === null ? null : <Button disabled={saving} onClick={clearForm} tone="quiet" type="button">Cancel</Button>}
             <Button disabled={saving} tone="signal" type="submit">{saving ? "Saving…" : editing === null ? "Save embed" : "Save changes"}</Button>
@@ -366,12 +503,21 @@ export function EmbedsPage() {
 
           {selected.status === "published" ? (
             <section className="workspace-section">
-              <div className="section-heading"><h2>Preview</h2><StatusChip>Exactly what a visitor gets</StatusChip></div>
-              <iframe
-                className="embed-preview"
-                src={`${delivery.frameUrl}?version=${encodeURIComponent(selected.updatedAt)}`}
-                title={`Preview ${selected.name}`}
-              />
+              <div className="section-heading">
+                <h2>Preview</h2>
+                <div className="embed-preview-controls" role="group" aria-label="Preview size">
+                  <button aria-pressed={previewSize === "desktop"} onClick={() => setPreviewSize("desktop")} type="button">Desktop preview</button>
+                  <button aria-pressed={previewSize === "phone"} onClick={() => setPreviewSize("phone")} type="button">Phone preview</button>
+                </div>
+              </div>
+              <div className={`embed-preview-shell embed-preview-shell--${previewSize}`}>
+                <iframe
+                  className="embed-preview"
+                  src={`${delivery.frameUrl}?version=${encodeURIComponent(selected.updatedAt)}`}
+                  style={{ width: previewSize === "phone" ? "375px" : "100%" }}
+                  title={`Preview ${selected.name}`}
+                />
+              </div>
             </section>
           ) : null}
         </>

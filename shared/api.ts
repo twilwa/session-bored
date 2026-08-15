@@ -1583,6 +1583,26 @@ export type EmbedStatus = "draft" | "published";
 
 export interface EmbedConfig {
   track?: string;
+  format?: string;
+  room?: string;
+  backgroundColor?: string;
+  textColor?: string;
+  accentColor?: string;
+  showDescription?: boolean;
+  showSpeakers?: boolean;
+  showLocation?: boolean;
+  showEventName?: boolean;
+  showTime?: boolean;
+  showTrack?: boolean;
+  showFormat?: boolean;
+  showSpeakerImage?: boolean;
+  showSpeakerDetails?: boolean;
+}
+
+export interface EmbedWriteRequest extends EmbedConfig {
+  name: string;
+  widgetType: EmbedWidgetType;
+  status?: EmbedStatus;
 }
 
 export interface EmbedSummary {
