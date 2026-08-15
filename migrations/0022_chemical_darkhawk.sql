@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX `file_task_speaker_live_unique` ON `file` (`task_id`,`speaker_id`) WHERE "file"."deleted_at" is null and "file"."task_id" is not null;

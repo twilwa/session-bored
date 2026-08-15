@@ -424,7 +424,11 @@ app.get("/api/speaker/content", requireAccess("speaker"), async (context) => {
     })
     .from(files)
     .innerJoin(fileVersions, and(eq(fileVersions.fileId, files.id), eq(fileVersions.latest, true)))
-    .where(and(eq(files.speakerId, profile.speakerId), inArray(files.taskId, taskIds)));
+    .where(and(
+      eq(files.speakerId, profile.speakerId),
+      inArray(files.taskId, taskIds),
+      isNull(files.deletedAt),
+    ));
   const ownFiles = await database
     .select({
       taskId: files.taskId,

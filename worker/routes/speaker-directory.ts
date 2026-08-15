@@ -92,6 +92,30 @@ function preferredText(kept: string | null, merged: string | null): string | nul
   return kept !== null && kept.trim() !== "" ? kept : merged;
 }
 
+/**
+ * Withdrawal is terminal, so it is decided before the ladder rather than sitting at the bottom
+ * of it. Withdrawing is the roster's own decision about a person at an event, and a merge is a
+ * statement about identity: taking the further-along of two rows would let a duplicate's
+ * `invited` row - the one a first CFP draft mints - quietly put a withdrawn speaker back on the
+ * roster and, at `confirmed` or beyond, back on every public surface.
+ */
+function mergedSpeakerStanding(
+  kept: { status: SpeakerStatus; deletedAt: Date | null },
+  merged: { status: SpeakerStatus; deletedAt: Date | null },
+  now: number,
+): { status: SpeakerStatus; deletedAt: number | null } {
+  if (kept.status === "withdrawn" || merged.status === "withdrawn") {
+    const withdrawnAt = kept.deletedAt ?? merged.deletedAt;
+    return { status: "withdrawn", deletedAt: withdrawnAt === null ? now : withdrawnAt.getTime() };
+  }
+  return {
+    status: speakerStatusOrder[merged.status] > speakerStatusOrder[kept.status]
+      ? merged.status
+      : kept.status,
+    deletedAt: null,
+  };
+}
+
 speakerDirectoryRoutes.post("/api/speaker-directory/:personId/merge", requireOrganizer, async (context) => {
   const organizer = context.get("authUser");
   if (organizer === null) return context.json({ error: "authentication_required" }, 401);
@@ -196,19 +220,18 @@ speakerDirectoryRoutes.post("/api/speaker-directory/:personId/merge", requireOrg
       continue;
     }
 
-    const status = speakerStatusOrder[mergedSpeaker.status] > speakerStatusOrder[keptSpeaker.status]
-      ? mergedSpeaker.status
-      : keptSpeaker.status;
+    const standing = mergedSpeakerStanding(keptSpeaker, mergedSpeaker, now);
     const customFields = {
       ...(mergedSpeaker.customFields ?? {}),
       ...(keptSpeaker.customFields ?? {}),
     };
     statements.push(
       context.env.DB.prepare(
-        "update speaker set status = ?, custom_fields = ?, deleted_at = null, updated_at = ? where id = ?",
+        "update speaker set status = ?, custom_fields = ?, deleted_at = ?, updated_at = ? where id = ?",
       ).bind(
-        status,
+        standing.status,
         Object.keys(customFields).length === 0 ? null : JSON.stringify(customFields),
+        standing.deletedAt,
         now,
         keptSpeaker.id,
       ),
@@ -230,6 +253,9 @@ speakerDirectoryRoutes.post("/api/speaker-directory/:personId/merge", requireOrg
       context.env.DB.prepare(
         "update task_assignee as merged set speaker_id = ?, updated_at = ? where merged.speaker_id = ? and not exists (select 1 from task_assignee as kept where kept.task_id = merged.task_id and kept.speaker_id = ?)",
       ).bind(keptSpeaker.id, now, mergedSpeaker.id, keptSpeaker.id),
+      context.env.DB.prepare(
+        "update file as merged set deleted_at = ?, updated_at = ? where merged.speaker_id = ? and merged.kind != 'headshot' and merged.deleted_at is null and merged.task_id is not null and exists (select 1 from file as kept where kept.speaker_id = ? and kept.task_id = merged.task_id and kept.kind != 'headshot' and kept.deleted_at is null)",
+      ).bind(now, now, mergedSpeaker.id, keptSpeaker.id),
       context.env.DB.prepare(
         "update file set speaker_id = ?, updated_at = ? where speaker_id = ? and kind != 'headshot'",
       ).bind(keptSpeaker.id, now, mergedSpeaker.id),
