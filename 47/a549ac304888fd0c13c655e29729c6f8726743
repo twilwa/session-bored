@@ -1,0 +1,24 @@
+tests/integration/speaker-directory.test.ts
+  s_7e51d21061003b::t_2d9c402eebcd33 954-1007
+  s_7e51d21061003b::t_1bba48b449da2b 226,268-271,291,300,305-309,377-378,380-383,398-399,401-405
+  s_7e51d21061003b::t_ef67d37324165b 379,400,808-811
+  s_7e51d21061003b::t_eab3d8538fb1a5 806-807,812
+worker/routes/speaker-directory.ts
+  s_7e51d21061003b::t_ae114aa9c8d3c6 30,427-432,481-482,516-517
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "47a549ac304888fd0c13c655e29729c6f8726743",
+  "prompts": {},
+  "sessions": {
+    "s_7e51d21061003b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a00785-eca6-7013-9891-57aa78a6e70b",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}

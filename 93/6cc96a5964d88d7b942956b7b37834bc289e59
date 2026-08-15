@@ -1,0 +1,19 @@
+tests/integration/speaker-directory.test.ts
+  s_7e51d21061003b::t_eb9bbb4930eeba 754,806-810
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "936cc96a5964d88d7b942956b7b37834bc289e59",
+  "prompts": {},
+  "sessions": {
+    "s_7e51d21061003b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a00785-eca6-7013-9891-57aa78a6e70b",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
