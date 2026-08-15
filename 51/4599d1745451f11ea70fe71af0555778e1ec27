@@ -1,0 +1,78 @@
+client/pages/directory/SpeakerDirectoryPage.tsx
+  s_42c7d58cea0ff7::t_64f8fed913cef3 1-323
+worker/index.ts
+  s_50fe5fcc4fad7f::t_47b75f006b22ab 56,157
+tests/integration/speaker-directory.test.ts
+  s_50fe5fcc4fad7f::t_ac53ab09c0dd29 68
+  s_42c7d58cea0ff7::t_27359e3b5ef0e6 129,167-184,232-243
+  s_50fe5fcc4fad7f::t_14753557d1c541 1-67,69-128,130-166,185-231,244-285,287-300
+  s_42c7d58cea0ff7::t_567ce827e01b86 286
+shared/speaker-directory.ts
+  s_42c7d58cea0ff7::t_4e571fb7e0315c 55
+  s_50fe5fcc4fad7f::t_32d203b3f0f718 1-54,56-68
+tests/unit/speaker-directory.test.ts
+  s_50fe5fcc4fad7f::t_14753557d1c541 1-53
+README.md
+  s_42c7d58cea0ff7::t_cc86ded7a15bb1 110-127,195-196
+migrations/meta/_journal.json
+  s_50fe5fcc4fad7f::t_70449533ccc78c 151-154,171
+  s_e45850ec76bd2e::t_a2bb705c3c7fe1 158-161,171
+db/schema/directory.ts
+  s_50fe5fcc4fad7f::t_32d203b3f0f718 1-26
+migrations/0023_flowery_dorian_gray.sql
+  s_50fe5fcc4fad7f::t_70449533ccc78c 1-14
+db/schema.ts
+  s_50fe5fcc4fad7f::t_32d203b3f0f718 797
+worker/routes/speaker-directory.ts
+  s_42c7d58cea0ff7::t_17074ec4656eb5 154,163-164
+  s_50fe5fcc4fad7f::t_47b75f006b22ab 1-153,155-162,165-244
+worker/speaker-directory.ts
+  s_50fe5fcc4fad7f::t_32d203b3f0f718 1-245
+client/pages/directory/speaker-directory.css
+  s_42c7d58cea0ff7::t_64f8fed913cef3 1-84
+tests/e2e/speaker-directory.spec.ts
+  s_42c7d58cea0ff7::t_f472ac1d2187d1 72
+  s_50fe5fcc4fad7f::t_14753557d1c541 1-41,43-71,73-91
+  s_42c7d58cea0ff7::t_64f8fed913cef3 42
+AGENTS.md
+  s_42c7d58cea0ff7::t_276761a161d2f4 296-305
+migrations/meta/0021_snapshot.json
+  s_50fe5fcc4fad7f::t_70449533ccc78c 1-3,5-1651,1726-5291,5292-5304
+client/App.tsx
+  s_42c7d58cea0ff7::t_64f8fed913cef3 33,178,374-375,377
+  s_42c7d58cea0ff7::t_32c51123698e9d 376
+migrations/meta/0022_snapshot.json
+  s_e45850ec76bd2e::t_a2bb705c3c7fe1 1-3,6-1024,1025-1651,1726-2537,2545-5298,5299-5311
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "514599d1745451f11ea70fe71af0555778e1ec27",
+  "prompts": {},
+  "sessions": {
+    "s_42c7d58cea0ff7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffe3b-cdf3-7191-9dd4-b02d8700f86e",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    },
+    "s_50fe5fcc4fad7f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffe28-e2c3-73a1-9fa9-cfb9b60aeb9e",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    },
+    "s_e45850ec76bd2e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "13ebe572-3fd6-463d-851d-c1c4d90d010a",
+        "model": "claude-opus-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}

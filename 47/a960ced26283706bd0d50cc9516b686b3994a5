@@ -1,0 +1,26 @@
+AGENTS.md
+  s_e45850ec76bd2e::t_0416a2f737d620 308-309,312-317
+tests/integration/decision-notice-correction.test.ts
+  s_e45850ec76bd2e::t_ac31d954f7bf6a 690-812
+worker/email/decision-notices.ts
+  s_e45850ec76bd2e::t_db017c63a60c10 348,355,359-368
+  s_e45850ec76bd2e::t_4f3a80b93d8e88 422-423
+  s_e45850ec76bd2e::t_53f8c99c1e57f1 420-421,424-437
+  s_e45850ec76bd2e::t_d83c9ef9478f89 7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "47a960ced26283706bd0d50cc9516b686b3994a5",
+  "prompts": {},
+  "sessions": {
+    "s_e45850ec76bd2e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "13ebe572-3fd6-463d-851d-c1c4d90d010a",
+        "model": "claude-opus-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
