@@ -64,6 +64,96 @@ test("organizer review makes the coverage and decision sorts primary", async ({ 
   await expect(page.getByText("Priya Raman", { exact: true })).toBeVisible();
 });
 
+test("organizer selects an outstanding reviewer and hands a reminder draft to Communications", async ({ page }) => {
+  const unique = Date.now();
+  const name = `Reminder Reviewer ${unique}`;
+  const email = `reminder-reviewer-${unique}@example.com`;
+  await signIn(page, "sbek-organizer@example.com", "SbekTest!2027-org");
+  await expect(page).toHaveURL(/\/organizer/);
+  const provision = await page.request.post("/api/review/events/evt_devflow_conf_2027/reviewers", {
+    data: {
+      name,
+      email,
+      password: "ReviewTalks!2027",
+      trackIds: [],
+      roundIds: ["rnd_initial_review"],
+    },
+  });
+  expect(provision.status()).toBe(201);
+  const reviewer = await provision.json() as { reviewer: { id: string } };
+  const assignment = await page.request.post("/api/review/rounds/rnd_initial_review/assignments", {
+    data: { reviewerUserId: reviewer.reviewer.id, submissionIds: ["sub_ai_verification"] },
+  });
+  expect(assignment.status()).toBe(201);
+
+  await openCommitteeSetup(page);
+  const reviewerCard = page.locator(".reviewer-progress-list article").filter({ hasText: name });
+  await reviewerCard.getByLabel(`Select ${name} for a reminder`).check();
+  const drafted = page.waitForResponse((response) =>
+    response.request().method() === "POST" &&
+    response.url().endsWith("/api/review/events/evt_devflow_conf_2027/reminders")
+  );
+  await page.getByRole("button", { name: "Draft selected reminders" }).click();
+  expect((await drafted).status()).toBe(201);
+  await expect(page.getByText("1 review reminder draft added to Communications.", { exact: false })).toBeVisible();
+
+  await page.getByRole("button", { name: "Review drafts in Communications" }).click();
+  await expect(page).toHaveURL(/\/organizer\/comms$/);
+  await expect(page.getByRole("region", { name: "Message review queue" }).getByText(email, { exact: true }))
+    .toBeVisible();
+});
+
+test("organizer distributes one track without exceeding the reviewer cap", async ({ page }) => {
+  const unique = Date.now();
+  const roundName = `Distribution round ${unique}`;
+  await signIn(page, "sbek-organizer@example.com", "SbekTest!2027-org");
+  await expect(page).toHaveURL(/\/organizer/);
+  const roundResponse = await page.request.post("/api/review/events/evt_devflow_conf_2027/rounds", {
+    data: { name: roundName, status: "open" },
+  });
+  expect(roundResponse.status()).toBe(201);
+  const round = await roundResponse.json() as { id: string };
+  const reviewerIds: string[] = [];
+  for (const suffix of ["one", "two"]) {
+    const reviewerResponse = await page.request.post("/api/review/events/evt_devflow_conf_2027/reviewers", {
+      data: {
+        name: `Browser Distribution Reviewer ${suffix} ${unique}`,
+        email: `browser-distribution-${suffix}-${unique}@example.com`,
+        password: "ReviewTalks!2027",
+        trackIds: ["trk_developer_experience"],
+        roundIds: [round.id],
+      },
+    });
+    expect(reviewerResponse.status()).toBe(201);
+    reviewerIds.push(((await reviewerResponse.json()) as { reviewer: { id: string } }).reviewer.id);
+  }
+
+  await openCommitteeSetup(page);
+  const form = page.getByRole("heading", { name: "Spread one track." }).locator("..");
+  await form.getByLabel("Review round").selectOption({ label: roundName });
+  await form.getByLabel("Track").selectOption("trk_developer_experience");
+  await form.getByLabel("Maximum assignments per reviewer").fill("1");
+  const distributedResponse = page.waitForResponse((response) =>
+    response.request().method() === "POST" &&
+    response.url().endsWith(`/api/review/rounds/${round.id}/assignments/distribute`)
+  );
+  await form.getByRole("button", { name: "Distribute review work" }).click();
+  const distributed = await distributedResponse;
+  expect(distributed.status()).toBe(201);
+  const result = await distributed.json() as {
+    assignments: Array<{ reviewerUserId: string }>;
+    reviewerLoads: Array<{ reviewerUserId: string; assignmentCount: number; cap: number }>;
+  };
+  expect(result.assignments).toHaveLength(2);
+  expect(result.reviewerLoads).toEqual(expect.arrayContaining(reviewerIds.map((reviewerUserId) => ({
+    reviewerUserId,
+    assignmentCount: 1,
+    cap: 1,
+  }))));
+  await expect(page.getByText("2 review assignments created.", { exact: false })).toBeVisible();
+  await expect(page).toHaveURL(/\/organizer\/review$/);
+});
+
 test("committee setup reports a newly created round without a client error", async ({ page }) => {
   const name = `Browser setup round ${Date.now()}`;
   await signIn(page, "sbek-organizer@example.com", "SbekTest!2027-org");

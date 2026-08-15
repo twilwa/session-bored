@@ -1406,6 +1406,12 @@ export const reviewRouteMap = {
     module: "reviews",
     access: "organizer",
   },
+  reviewReminders: {
+    method: "POST",
+    path: "/api/review/events/:eventId/reminders",
+    module: "reviews",
+    access: "organizer",
+  },
   reviewers: {
     method: "POST",
     path: "/api/review/events/:eventId/reviewers",
@@ -1439,6 +1445,12 @@ export const reviewRouteMap = {
   assignments: {
     method: "POST",
     path: "/api/review/rounds/:roundId/assignments",
+    module: "reviews",
+    access: "organizer",
+  },
+  distributeAssignments: {
+    method: "POST",
+    path: "/api/review/rounds/:roundId/assignments/distribute",
     module: "reviews",
     access: "organizer",
   },
@@ -1482,6 +1494,51 @@ export interface ReviewProgress {
   completedReadSlots: number;
   totalReadSlots: number;
   targetReviews: number;
+}
+
+export interface ReviewReminderDraftRequest {
+  reviewerUserIds: string[];
+}
+
+export interface ReviewReminderDraft {
+  dispatchId: string;
+  reviewerUserId: string;
+  recipientName: string;
+  recipientEmail: string;
+  outstandingReviewCount: number;
+}
+
+export interface ReviewReminderDraftResult {
+  drafts: ReviewReminderDraft[];
+  skipped: Array<{
+    reviewerUserId: string;
+    reason: "no_outstanding_reviews" | "reminder_already_drafted";
+  }>;
+}
+
+export interface BulkReviewAssignmentRequest {
+  trackId: string;
+  maxAssignmentsPerReviewer: number;
+}
+
+export interface BulkReviewAssignmentResult {
+  roundId: string;
+  trackId: string;
+  targetReviewsPerSubmission: number;
+  assignments: Array<{
+    assignmentId: string;
+    reviewerUserId: string;
+    submissionId: string;
+  }>;
+  reviewerLoads: Array<{
+    reviewerUserId: string;
+    assignmentCount: number;
+    cap: number;
+  }>;
+  unfilled: Array<{
+    submissionId: string;
+    remainingAssignments: number;
+  }>;
 }
 
 /**

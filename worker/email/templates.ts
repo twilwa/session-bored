@@ -82,6 +82,13 @@ export interface TaskReminderContext {
   portalUrl: string;
 }
 
+export interface ReviewReminderContext {
+  eventName: string;
+  recipientName: string;
+  outstandingReviewCount: number;
+  reviewUrl: string;
+}
+
 export const submissionConfirmationTemplate = {
   key: "submission_confirmation" as const,
   mergeFields: ["eventName", "recipientName", "submissionTitle", "returnUrl"] as const,
@@ -113,6 +120,18 @@ export const taskReminderTemplate = {
     const subject = `A few things are still open for ${context.eventName}`;
     const text =
       `Hi ${context.recipientName},\n\nA few speaker tasks for ${context.eventName} are past due:\n\n${context.taskList}\n\nYou can complete them from your speaker portal:\n${context.portalUrl}`;
+    return { subject, text, html: textToHtml(text) };
+  },
+};
+
+/** Review reminders resolve reviewers through committee scope, not the speaker recipient picker. */
+export const reviewReminderTemplate = {
+  key: "review_reminder" as const,
+  render(context: ReviewReminderContext): RenderedEmail {
+    const readLabel = context.outstandingReviewCount === 1 ? "proposal still needs" : "proposals still need";
+    const subject = `${context.outstandingReviewCount} ${readLabel} your review for ${context.eventName}`;
+    const text =
+      `Hi ${context.recipientName},\n\n${context.outstandingReviewCount} ${readLabel} your review for ${context.eventName}.\n\nContinue reviewing here:\n${context.reviewUrl}`;
     return { subject, text, html: textToHtml(text) };
   },
 };

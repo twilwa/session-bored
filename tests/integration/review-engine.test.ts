@@ -484,6 +484,410 @@ describe("review engine", () => {
     expect(queue.items.map((item) => item.submissionId)).toEqual(["sub_ai_verification"]);
   });
 
+  it("drafts a selected outstanding-review reminder into Communications without sending it", async () => {
+    await request("/api/health");
+    const organizerCookie = await signIn("sbek-organizer@example.com", "SbekTest!2027-org");
+    const organizerHeaders = { cookie: organizerCookie, "content-type": "application/json" };
+    const provisioned = await (await request(
+      "/api/review/events/evt_devflow_conf_2027/reviewers",
+      {
+        method: "POST",
+        headers: organizerHeaders,
+        body: JSON.stringify({
+          name: "Reminder Reviewer",
+          email: "outstanding-reminder-reviewer@example.com",
+          password: "ReviewTalks!2027",
+          trackIds: [],
+          roundIds: ["rnd_initial_review"],
+        }),
+      },
+    )).json<{ reviewer: { id: string } }>();
+    expect((await request("/api/review/rounds/rnd_initial_review/assignments", {
+      method: "POST",
+      headers: organizerHeaders,
+      body: JSON.stringify({
+        reviewerUserId: provisioned.reviewer.id,
+        submissionIds: ["sub_ai_verification"],
+      }),
+    })).status).toBe(201);
+    const config = await (await request(
+      "/api/review/events/evt_devflow_conf_2027/config",
+      { headers: organizerHeaders },
+    )).json<{
+      reviewers: Array<{
+        id: string;
+        email: string;
+        assignedCount: number;
+        completedCount: number;
+      }>;
+    }>();
+    const reviewer = config.reviewers.find((item) => item.email === "outstanding-reminder-reviewer@example.com");
+    expect(reviewer).toBeDefined();
+    expect(reviewer!.assignedCount - reviewer!.completedCount).toBeGreaterThan(0);
+
+    const response = await request(
+      "/api/review/events/evt_devflow_conf_2027/reminders",
+      {
+        method: "POST",
+        headers: organizerHeaders,
+        body: JSON.stringify({ reviewerUserIds: [reviewer!.id] }),
+      },
+    );
+    expect(response.status).toBe(201);
+    const result = await response.json<{
+      drafts: Array<{
+        dispatchId: string;
+        reviewerUserId: string;
+        outstandingReviewCount: number;
+      }>;
+      skipped: unknown[];
+    }>();
+    expect(result).toEqual({
+      drafts: [expect.objectContaining({
+        dispatchId: expect.stringMatching(/^eml_/),
+        reviewerUserId: reviewer!.id,
+        outstandingReviewCount: reviewer!.assignedCount - reviewer!.completedCount,
+      })],
+      skipped: [],
+    });
+
+    const dispatches = await (await request(
+      "/api/events/evt_devflow_conf_2027/email-dispatches",
+      { headers: organizerHeaders },
+    )).json<{
+      items: Array<{
+        id: string;
+        templateKey: string | null;
+        recipients: Array<{ email: string }>;
+        status: string;
+      }>;
+    }>();
+    expect(dispatches.items.find((item) => item.id === result.drafts[0]!.dispatchId)).toEqual(
+      expect.objectContaining({
+        templateKey: "review_reminder",
+        recipients: [{ email: reviewer!.email, name: expect.any(String) }],
+        status: "draft",
+      }),
+    );
+
+    const repeatedResponse = await request(
+      "/api/review/events/evt_devflow_conf_2027/reminders",
+      {
+        method: "POST",
+        headers: organizerHeaders,
+        body: JSON.stringify({ reviewerUserIds: [reviewer!.id] }),
+      },
+    );
+    expect(repeatedResponse.status).toBe(200);
+    expect(await repeatedResponse.json()).toEqual({
+      drafts: [],
+      skipped: [{ reviewerUserId: reviewer!.id, reason: "reminder_already_drafted" }],
+    });
+  });
+
+  it("reserves review reminders for organizers and skips reviewers with no outstanding reads", async () => {
+    await request("/api/health");
+    const endpoint = "/api/review/events/evt_devflow_conf_2027/reminders";
+    const reviewerCookie = await signIn("sbek-reviewer@example.com", "SbekTest!2027-rev");
+    expect((await request(endpoint, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ reviewerUserIds: ["usr_unknown"] }),
+    })).status).toBe(401);
+    expect((await request(endpoint, {
+      method: "POST",
+      headers: { cookie: reviewerCookie, "content-type": "application/json" },
+      body: JSON.stringify({ reviewerUserIds: ["usr_unknown"] }),
+    })).status).toBe(403);
+
+    const organizerCookie = await signIn("sbek-organizer@example.com", "SbekTest!2027-org");
+    const organizerHeaders = { cookie: organizerCookie, "content-type": "application/json" };
+    const provisioned = await (await request(
+      "/api/review/events/evt_devflow_conf_2027/reviewers",
+      {
+        method: "POST",
+        headers: organizerHeaders,
+        body: JSON.stringify({
+          name: "Finished Reviewer",
+          email: "finished-reviewer@example.com",
+          password: "ReviewTalks!2027",
+          trackIds: [],
+        }),
+      },
+    )).json<{ reviewer: { id: string } }>();
+    const response = await request(endpoint, {
+      method: "POST",
+      headers: organizerHeaders,
+      body: JSON.stringify({ reviewerUserIds: [provisioned.reviewer.id] }),
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      drafts: [],
+      skipped: [{
+        reviewerUserId: provisioned.reviewer.id,
+        reason: "no_outstanding_reviews",
+      }],
+    });
+  });
+
+  it("distributes one track toward coverage without exceeding the per-reviewer cap", async () => {
+    await request("/api/health");
+    const organizerCookie = await signIn("sbek-organizer@example.com", "SbekTest!2027-org");
+    const organizerHeaders = { cookie: organizerCookie, "content-type": "application/json" };
+    const trackResponse = await request("/api/events/evt_devflow_conf_2027/tracks", {
+      method: "POST",
+      headers: organizerHeaders,
+      body: JSON.stringify({ name: "Distribution cap test" }),
+    });
+    expect(trackResponse.status).toBe(201);
+    const track = await trackResponse.json<{ id: string }>();
+    const trackLinkIds = [
+      `strk_distribution_one_${crypto.randomUUID().slice(0, 8)}`,
+      `strk_distribution_two_${crypto.randomUUID().slice(0, 8)}`,
+    ];
+    let roundId: string | undefined;
+
+    try {
+      const now = Date.now();
+      await env.DB.batch([
+        env.DB.prepare(
+          "insert into submission_track (id, submission_id, track_id, created_at, updated_at) values (?, ?, ?, ?, ?)",
+        ).bind(trackLinkIds[0], "sub_docs_retrieval", track.id, now, now),
+        env.DB.prepare(
+          "insert into submission_track (id, submission_id, track_id, created_at, updated_at) values (?, ?, ?, ?, ?)",
+        ).bind(trackLinkIds[1], "sub_ai_verification", track.id, now, now),
+      ]);
+      const roundResponse = await request("/api/review/events/evt_devflow_conf_2027/rounds", {
+        method: "POST",
+        headers: organizerHeaders,
+        body: JSON.stringify({ name: "Distribution cap test", status: "open" }),
+      });
+      expect(roundResponse.status).toBe(201);
+      const round = await roundResponse.json<{ id: string }>();
+      roundId = round.id;
+      const endpoint = `/api/review/rounds/${round.id}/assignments/distribute`;
+      expect((await request(endpoint, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ trackId: track.id, maxAssignmentsPerReviewer: 1 }),
+      })).status).toBe(401);
+      const reviewerCookie = await signIn("sbek-reviewer@example.com", "SbekTest!2027-rev");
+      expect((await request(endpoint, {
+        method: "POST",
+        headers: { cookie: reviewerCookie, "content-type": "application/json" },
+        body: JSON.stringify({ trackId: track.id, maxAssignmentsPerReviewer: 1 }),
+      })).status).toBe(403);
+      expect((await request(endpoint, {
+        method: "POST",
+        headers: organizerHeaders,
+        body: JSON.stringify({ trackId: track.id, maxAssignmentsPerReviewer: 0 }),
+      })).status).toBe(400);
+      const reviewerIds: string[] = [];
+      for (const suffix of ["one", "two"]) {
+        const response = await request("/api/review/events/evt_devflow_conf_2027/reviewers", {
+          method: "POST",
+          headers: organizerHeaders,
+          body: JSON.stringify({
+            name: `Distribution Reviewer ${suffix}`,
+            email: `distribution-reviewer-${suffix}@example.com`,
+            password: "ReviewTalks!2027",
+            trackIds: [track.id],
+            roundIds: [round.id],
+          }),
+        });
+        expect(response.status).toBe(201);
+        reviewerIds.push((await response.json<{ reviewer: { id: string } }>()).reviewer.id);
+      }
+
+      const responses = await Promise.all([request(
+        endpoint,
+        {
+          method: "POST",
+          headers: organizerHeaders,
+          body: JSON.stringify({
+            trackId: track.id,
+            maxAssignmentsPerReviewer: 1,
+          }),
+        },
+      ), request(
+        endpoint,
+        {
+          method: "POST",
+          headers: organizerHeaders,
+          body: JSON.stringify({
+            trackId: track.id,
+            maxAssignmentsPerReviewer: 1,
+          }),
+        },
+      )]);
+      for (const response of responses) {
+        expect([200, 201]).toContain(response.status);
+      }
+      const results = await Promise.all(responses.map((response) => response.json<{
+        assignments: Array<{ assignmentId: string; reviewerUserId: string; submissionId: string }>;
+        unfilled: Array<{ submissionId: string; remainingAssignments: number }>;
+        reviewerLoads: Array<{ reviewerUserId: string; assignmentCount: number; cap: number }>;
+      }>()));
+      const assignments = results.flatMap((result) => result.assignments);
+      expect(assignments).toHaveLength(2);
+      expect(new Set(assignments.map((assignment) => assignment.submissionId))).toEqual(
+        new Set(["sub_docs_retrieval", "sub_ai_verification"]),
+      );
+      const persistedLoads = await env.DB.prepare(
+        "select reviewer_user_id as reviewerUserId, count(*) as assignmentCount from review_assignment where round_id = ? and status <> 'recused' and deleted_at is null group by reviewer_user_id order by reviewer_user_id",
+      ).bind(round.id).all<{ reviewerUserId: string; assignmentCount: number }>();
+      expect(persistedLoads.results).toEqual(reviewerIds.sort().map((reviewerUserId) => ({
+        reviewerUserId,
+        assignmentCount: 1,
+      })));
+
+      const repeatedResponse = await request(endpoint, {
+        method: "POST",
+        headers: organizerHeaders,
+        body: JSON.stringify({
+          trackId: track.id,
+          maxAssignmentsPerReviewer: 1,
+        }),
+      });
+      expect(repeatedResponse.status).toBe(200);
+      expect(await repeatedResponse.json()).toEqual(expect.objectContaining({
+        assignments: [],
+        reviewerLoads: expect.arrayContaining(reviewerIds.map((reviewerUserId) => ({
+          reviewerUserId,
+          assignmentCount: 1,
+          cap: 1,
+        }))),
+        unfilled: expect.arrayContaining([
+          { submissionId: "sub_docs_retrieval", remainingAssignments: 1 },
+          { submissionId: "sub_ai_verification", remainingAssignments: 1 },
+        ]),
+      }));
+    } finally {
+      if (roundId !== undefined) {
+        await env.DB.prepare("delete from review_assignment where round_id = ?").bind(roundId).run();
+        await env.DB.prepare("delete from reviewer_round_pool where round_id = ?").bind(roundId).run();
+        await env.DB.prepare("delete from review_round where id = ?").bind(roundId).run();
+      }
+      await env.DB.prepare("delete from reviewer_track where track_id = ?").bind(track.id).run();
+      await env.DB.prepare("delete from submission_track where track_id = ?").bind(track.id).run();
+      const trackDeleteResponse = await request(
+        `/api/events/evt_devflow_conf_2027/tracks/${track.id}`,
+        { method: "DELETE", headers: { cookie: organizerCookie } },
+      );
+      expect(trackDeleteResponse.status).toBe(204);
+    }
+  });
+
+  it("prioritizes zero-coverage proposals and preserves completed reviews after pool removal", async () => {
+    await request("/api/health");
+    const organizerCookie = await signIn("sbek-organizer@example.com", "SbekTest!2027-org");
+    const organizerHeaders = { cookie: organizerCookie, "content-type": "application/json" };
+    const trackResponse = await request("/api/events/evt_devflow_conf_2027/tracks", {
+      method: "POST",
+      headers: organizerHeaders,
+      body: JSON.stringify({ name: "Distribution coverage test" }),
+    });
+    expect(trackResponse.status).toBe(201);
+    const track = await trackResponse.json<{ id: string }>();
+    const trackLinkIds = [
+      `strk_distribution_coverage_one_${crypto.randomUUID().slice(0, 8)}`,
+      `strk_distribution_coverage_two_${crypto.randomUUID().slice(0, 8)}`,
+    ];
+    let roundId: string | undefined;
+
+    try {
+      const now = Date.now();
+      await env.DB.batch([
+        env.DB.prepare(
+          "insert into submission_track (id, submission_id, track_id, created_at, updated_at) values (?, ?, ?, ?, ?)",
+        ).bind(trackLinkIds[0], "sub_ai_verification", track.id, now, now),
+        env.DB.prepare(
+          "insert into submission_track (id, submission_id, track_id, created_at, updated_at) values (?, ?, ?, ?, ?)",
+        ).bind(trackLinkIds[1], "sub_docs_retrieval", track.id, now, now),
+      ]);
+      const roundResponse = await request("/api/review/events/evt_devflow_conf_2027/rounds", {
+        method: "POST",
+        headers: organizerHeaders,
+        body: JSON.stringify({ name: "Distribution coverage test", status: "open" }),
+      });
+      expect(roundResponse.status).toBe(201);
+      const round = await roundResponse.json<{ id: string }>();
+      roundId = round.id;
+      const reviewerIds: string[] = [];
+      for (const suffix of ["completed", "available"]) {
+        const response = await request("/api/review/events/evt_devflow_conf_2027/reviewers", {
+          method: "POST",
+          headers: organizerHeaders,
+          body: JSON.stringify({
+            name: `Distribution Coverage Reviewer ${suffix}`,
+            email: `distribution-coverage-${suffix}-${crypto.randomUUID()}@example.com`,
+            password: "ReviewTalks!2027",
+            trackIds: [track.id],
+            roundIds: [round.id],
+          }),
+        });
+        expect(response.status).toBe(201);
+        reviewerIds.push((await response.json<{ reviewer: { id: string } }>()).reviewer.id);
+      }
+      const [completedReviewerId, availableReviewerId] = reviewerIds as [string, string];
+      const manualAssignmentResponse = await request(
+        `/api/review/rounds/${round.id}/assignments`,
+        {
+          method: "POST",
+          headers: organizerHeaders,
+          body: JSON.stringify({
+            reviewerUserId: completedReviewerId,
+            submissionIds: ["sub_ai_verification"],
+          }),
+        },
+      );
+      expect(manualAssignmentResponse.status).toBe(201);
+      await env.DB.batch([
+        env.DB.prepare(
+          "update review_assignment set status = 'completed', completed_at = ?, updated_at = ? where round_id = ? and reviewer_user_id = ? and submission_id = ?",
+        ).bind(now, now, round.id, completedReviewerId, "sub_ai_verification"),
+        env.DB.prepare(
+          "update reviewer_round_pool set deleted_at = ?, updated_at = ? where round_id = ? and reviewer_user_id = ?",
+        ).bind(now, now, round.id, completedReviewerId),
+      ]);
+
+      const response = await request(
+        `/api/review/rounds/${round.id}/assignments/distribute`,
+        {
+          method: "POST",
+          headers: organizerHeaders,
+          body: JSON.stringify({ trackId: track.id, maxAssignmentsPerReviewer: 1 }),
+        },
+      );
+      expect(response.status).toBe(201);
+      const result = await response.json<{
+        assignments: Array<{ reviewerUserId: string; submissionId: string }>;
+        unfilled: Array<{ submissionId: string; remainingAssignments: number }>;
+      }>();
+      expect(result.assignments).toEqual([expect.objectContaining({
+        reviewerUserId: availableReviewerId,
+        submissionId: "sub_docs_retrieval",
+      })]);
+      expect(result.unfilled).toEqual(expect.arrayContaining([
+        { submissionId: "sub_ai_verification", remainingAssignments: 1 },
+        { submissionId: "sub_docs_retrieval", remainingAssignments: 1 },
+      ]));
+    } finally {
+      if (roundId !== undefined) {
+        await env.DB.prepare("delete from review_assignment where round_id = ?").bind(roundId).run();
+        await env.DB.prepare("delete from reviewer_round_pool where round_id = ?").bind(roundId).run();
+        await env.DB.prepare("delete from review_round where id = ?").bind(roundId).run();
+      }
+      await env.DB.prepare("delete from reviewer_track where track_id = ?").bind(track.id).run();
+      await env.DB.prepare("delete from submission_track where track_id = ?").bind(track.id).run();
+      const trackDeleteResponse = await request(
+        `/api/events/evt_devflow_conf_2027/tracks/${track.id}`,
+        { method: "DELETE", headers: { cookie: organizerCookie } },
+      );
+      expect(trackDeleteResponse.status).toBe(204);
+    }
+  });
+
   it("combines track responsibility with explicit per-submission overrides", async () => {
     await request("/api/health");
     const organizerCookie = await signIn("sbek-organizer@example.com", "SbekTest!2027-org");
