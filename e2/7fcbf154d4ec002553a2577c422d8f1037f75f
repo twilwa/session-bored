@@ -1,0 +1,40 @@
+client/pages/review/SubmissionParticipants.tsx
+  s_b8bfd6bf5f5986::t_e6c010fa0718a9 187
+  s_b8bfd6bf5f5986::t_01e80b9b4a7f34 220
+  s_b8bfd6bf5f5986::t_897b055f4512a3 182
+worker/routes/participants.ts
+  s_b8bfd6bf5f5986::t_a69973e84a52c5 187
+  s_b8bfd6bf5f5986::t_b03826ee637def 171-175,179
+  s_b8bfd6bf5f5986::t_0a832d985a435a 189-200
+AGENTS.md
+  s_b8bfd6bf5f5986::t_dd2dbf3134aa7a 126-136
+worker/routes/agenda.ts
+  s_b8bfd6bf5f5986::t_28ff7180d020ea 449-450,458-462
+  s_b8bfd6bf5f5986::t_536eaf81e52d3a 3
+tests/integration/submission-participants.test.ts
+  s_b8bfd6bf5f5986::t_0c02aa8c3fe8b1 595-602
+  s_b8bfd6bf5f5986::t_52eb8fcb088bb6 684-688,690-693
+  s_b8bfd6bf5f5986::t_8f118b91139cdd 471,474
+  s_b8bfd6bf5f5986::t_7e43ddf73f080b 549-594,603-625
+tests/e2e/submission-participants.spec.ts
+  s_b8bfd6bf5f5986::t_4c85ee7bbbc604 145-148,157-163
+  s_b8bfd6bf5f5986::t_78990275ca4e57 261-264,277-283
+shared/api.ts
+  s_b8bfd6bf5f5986::t_f3edbe55258c26 506-507
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "e27fcbf154d4ec002553a2577c422d8f1037f75f",
+  "prompts": {},
+  "sessions": {
+    "s_b8bfd6bf5f5986": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6cd03148-03b7-4acf-a06b-463269928458",
+        "model": "claude-opus-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
