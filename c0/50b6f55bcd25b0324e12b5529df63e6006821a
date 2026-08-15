@@ -1,0 +1,28 @@
+scripts/preview-database.d.ts
+  s_c09fb1942ab891::t_4b455cc133004c 1-14
+scripts/preview-database.js
+  s_c09fb1942ab891::t_979d2e2c79bf1e 1-33
+AGENTS.md
+  s_c09fb1942ab891::t_af51604c183471 386-393
+.github/workflows/preview.yml
+  s_c09fb1942ab891::t_920e7cd2ca3e4b 109-111,114-116,118-134
+tests/unit/preview-config.test.ts
+  s_c09fb1942ab891::t_d200c607b59c2f 1-30,32-44
+  s_c09fb1942ab891::t_e2ae2a0e75eb84 31
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "c050b6f55bcd25b0324e12b5529df63e6006821a",
+  "prompts": {},
+  "sessions": {
+    "s_c09fb1942ab891": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7d551997-c51e-4fb2-8192-62b330cc6f4a",
+        "model": "claude-opus-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}

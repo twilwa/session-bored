@@ -1,0 +1,70 @@
+shared/api.ts
+  s_b8bfd6bf5f5986::t_e070c2725bac8a 514-515
+  s_b8bfd6bf5f5986::t_2819ba417eda01 679-686,695
+tests/integration/public-surfaces.test.ts
+  s_b8bfd6bf5f5986::t_1d8fbb4c5596fb 300-306,320-326,328-333,335-338,340-345
+  s_b8bfd6bf5f5986::t_849199127c3339 307-319,327,339,346-352
+  s_b8bfd6bf5f5986::t_23ac1e244d0712 334
+  s_b8bfd6bf5f5986::t_6e6e1788c6701a 195-197
+  s_b8bfd6bf5f5986::t_096729c42ef2cc 219-223
+  s_b8bfd6bf5f5986::t_deb2a18d27bcb3 275-276,278-283,288,293-299
+tests/e2e/public-schedule.spec.ts
+  s_b8bfd6bf5f5986::t_379980e323f611 452-454,456,458-460,465-468,470,472-474
+worker/routes/roster.ts
+  s_b8bfd6bf5f5986::t_ceb201b63034e7 106-108,111
+worker/routes/participants.ts
+  s_b8bfd6bf5f5986::t_1282f57a53e0d0 173,180-182,188-190,198-199
+AGENTS.md
+  s_b8bfd6bf5f5986::t_87cb99881653c0 111-144
+worker/routes/agenda.ts
+  s_b8bfd6bf5f5986::t_82d8ffea65feb3 23
+  s_b8bfd6bf5f5986::t_42a5cbf00cf933 189
+  s_b8bfd6bf5f5986::t_69fcc5674a22c6 229
+  s_b8bfd6bf5f5986::t_f5bff5677eda9d 449,452-453,460,466,468,472,479-492,503-508
+  s_b8bfd6bf5f5986::t_bc0308fd96a8a2 405-412,417,422-424,426-431
+  s_b8bfd6bf5f5986::t_ed0de10f44c901 209
+  s_b8bfd6bf5f5986::t_f6e4f0718767b7 3
+  s_b8bfd6bf5f5986::t_e91e31e6d83096 461-465
+db/schema.ts
+  s_b8bfd6bf5f5986::t_ade4c9b6a495fc 491-494
+client/pages/agenda/AgendaPage.tsx
+  s_b8bfd6bf5f5986::t_a4ca7b9a6326b8 520-522
+client/pages/review/SubmissionParticipants.tsx
+  s_b8bfd6bf5f5986::t_8124310804aab7 229
+  s_b8bfd6bf5f5986::t_72f8c8778c3dcb 165
+  s_b8bfd6bf5f5986::t_3238ff3034bdca 190,192-194,196
+tests/integration/submission-participants.test.ts
+  s_b8bfd6bf5f5986::t_efd15ee75a8c6f 531-542
+  s_b8bfd6bf5f5986::t_4ce2d29aa13fe7 797-1069
+  s_b8bfd6bf5f5986::t_fa02b612ffc705 558-562
+  s_b8bfd6bf5f5986::t_8c65da7490b0f0 688-689,691,693,717,723,725
+  s_b8bfd6bf5f5986::t_861eb31537a6c5 1092-1094
+worker/submission-decision.ts
+  s_b8bfd6bf5f5986::t_a076b183f47321 112-113,115-123,145,151-152,160,171-174,188,196
+migrations/0022_session-speaker-publication-hold.sql
+  s_b8bfd6bf5f5986::t_d10e6713e0996f 1-10
+tests/e2e/submission-participants.spec.ts
+  s_b8bfd6bf5f5986::t_e973242faef682 139
+  s_b8bfd6bf5f5986::t_4b454395816c81 140,143-145
+worker/public-queries.ts
+  s_b8bfd6bf5f5986::t_c00d7fd86fa4c3 181-182,191-195
+  s_b8bfd6bf5f5986::t_4294d1d0331bc6 189
+  s_b8bfd6bf5f5986::t_fbd7843920b287 53-66,71-72,77
+  s_b8bfd6bf5f5986::t_6abc250cea6b77 460
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "7c604d037bc7bd4e66efe81d4b243a3a0808a144",
+  "prompts": {},
+  "sessions": {
+    "s_b8bfd6bf5f5986": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6cd03148-03b7-4acf-a06b-463269928458",
+        "model": "claude-opus-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
