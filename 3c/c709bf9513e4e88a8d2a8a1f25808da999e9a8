@@ -1,0 +1,40 @@
+worker/routes/speaker-directory.ts
+  s_4139fb60a016c8::t_d6066edc16a4b4 231-236
+  s_4139fb60a016c8::t_5865174a47128a 125-130
+  s_4139fb60a016c8::t_3427fe1090ae8a 3,7
+  s_4139fb60a016c8::t_a522b4cbad73c0 144-158,166
+tests/integration/speaker-directory.test.ts
+  s_4139fb60a016c8::t_9d18e4f4d47e67 260-413
+worker/routes/cfp.ts
+  s_4139fb60a016c8::t_16b5563d0f1564 29
+  s_4139fb60a016c8::t_f5758731b9899f 458
+  s_4139fb60a016c8::t_5b6cd627c19806 500
+  s_4139fb60a016c8::t_665e3a74558485 808
+AGENTS.md
+  s_4139fb60a016c8::t_9e5db16bac637b 305-314
+worker/routes/participants.ts
+  s_4139fb60a016c8::t_ef87fd9b68e066 253
+  s_4139fb60a016c8::t_b950d550456c34 20
+worker/routes/roster.ts
+  s_4139fb60a016c8::t_942e9e2a99f56c 33
+  s_4139fb60a016c8::t_93be0c9b3d7650 427
+worker/speaker-directory.ts
+  s_4139fb60a016c8::t_b1d051f03f32a0 3,6
+  s_4139fb60a016c8::t_e880ead0d992da 101-130
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "3cc709bf9513e4e88a8d2a8a1f25808da999e9a8",
+  "prompts": {},
+  "sessions": {
+    "s_4139fb60a016c8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a9d78352-233f-43f9-b89f-c0e3d1e0ab7f",
+        "model": "claude-fable-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}

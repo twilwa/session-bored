@@ -1,0 +1,30 @@
+tests/integration/speaker-directory.test.ts
+  s_e45850ec76bd2e::t_ee03c59c62353a 288-301
+  s_e45850ec76bd2e::t_a88f23b5c7e258 133-134
+  s_e45850ec76bd2e::t_35b318bee27034 211-244
+worker/routes/speaker-directory.ts
+  s_e45850ec76bd2e::t_cf596cd698e71c 222-223
+  s_e45850ec76bd2e::t_0d8f3c5ba69ffe 231-232
+worker/email/decision-notices.ts
+  s_e45850ec76bd2e::t_8ddb5d334f60a2 3
+  s_e45850ec76bd2e::t_65cdafb20d38af 358
+worker/speaker-directory.ts
+  s_e45850ec76bd2e::t_2670395a8a1fbc 3
+  s_e45850ec76bd2e::t_3396a179eee7aa 146-150,159
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "eea3b0af4a64b67d1096aa237e9d790896f63ffd",
+  "prompts": {},
+  "sessions": {
+    "s_e45850ec76bd2e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "13ebe572-3fd6-463d-851d-c1c4d90d010a",
+        "model": "claude-opus-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
