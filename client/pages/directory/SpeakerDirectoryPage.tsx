@@ -24,7 +24,7 @@ import {
   TextField,
   Toast,
 } from "../../components/ui.tsx";
-import { getJson, Link, requestJson } from "../../lib.tsx";
+import { getJson, Link, requestJson, RequestFailure } from "../../lib.tsx";
 import "./speaker-directory.css";
 
 interface MergeIdentity {
@@ -469,7 +469,7 @@ function DirectoryDetail({
           <div className="section-heading">
             <div><p className="section-label">IDENTITY REVIEW / {detail.possibleDuplicates.length}</p><h2>Possible duplicates</h2></div>
           </div>
-          <p className="directory-duplicates__intro">Choose which record remains. Greenroom moves the archived record’s programme, proposals, tasks, and files to the one you keep, and resolves their roster status at any event both records speak at.</p>
+          <p className="directory-duplicates__intro">Choose which record remains. Greenroom treats merging as an identity operation: it moves ownership references that do not collide and leaves roster decisions untouched.</p>
           <div className="directory-duplicate-list">
             {detail.possibleDuplicates.map((candidate) => {
               const candidateIdentity: MergeIdentity = { id: candidate.id, name: candidate.name, email: candidate.email };
@@ -639,7 +639,7 @@ export function SpeakerDirectoryPage({ personId }: { personId?: string }) {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ duplicatePersonId: mergeChoice.archived.id }),
       });
-      const message = `${mergeChoice.archived.name} merged into ${mergeChoice.kept.name}.`;
+      const message = `${mergeChoice.archived.name} merged into ${mergeChoice.kept.name}. ${plural(result.plan.moves.length, "ownership reference")} moved; ${plural(result.plan.retained.length, "existing reference")} stayed unchanged.`;
       setMergeChoice(null);
       // Replaces rather than pushes: the record just archived answers 404 now, so leaving its URL
       // in history would give the organizer a Back button that lands on a record that cannot load.
@@ -647,8 +647,12 @@ export function SpeakerDirectoryPage({ personId }: { personId?: string }) {
       setActivePersonId(result.keptPersonId);
       setReloadCount((count) => count + 1);
       setMessage(message);
-    } catch {
-      setMessage("Those records could not be merged. Nothing was changed.");
+    } catch (error) {
+      setMessage(
+        error instanceof RequestFailure && error.payload?.note !== undefined
+          ? error.payload.note
+          : "Those records could not be merged. Nothing was changed.",
+      );
     } finally {
       setMerging(false);
     }
@@ -713,9 +717,9 @@ export function SpeakerDirectoryPage({ personId }: { personId?: string }) {
         {mergeChoice === null ? null : (
           <div className="directory-merge-confirmation">
             <p><strong>Keep {mergeChoice.kept.email}</strong> as the canonical speaker record.</p>
-            <p><strong>Archive {mergeChoice.archived.email}</strong> after its event, proposal, task, and file links move to the kept record.</p>
-            <p>This preserves the archived profile in the merge log and sends no message.</p>
-            <p>Where both records speak at the same event, the kept record takes the further-along roster status — and stays withdrawn if either was withdrawn. That can change whether this person is listed on the public programme for that event.</p>
+            <p><strong>Archive {mergeChoice.archived.email}</strong> after its non-conflicting identity references move to the kept record.</p>
+            <p>This merge moves only ownership references and preserves the archived profile in the merge log. It sends no message.</p>
+            <p>Roster status, removals, publication, task state, profile fields, and account ownership stay untouched. Greenroom refuses the merge if same-event standing or session participation must be resolved first.</p>
             <div><Button onClick={() => setMergeChoice(null)} tone="quiet">Cancel</Button><Button disabled={merging} onClick={() => void merge()} tone="signal">{merging ? "Merging…" : `Merge and keep ${mergeChoice.kept.email}`}</Button></div>
           </div>
         )}

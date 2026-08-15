@@ -118,8 +118,46 @@ export interface SpeakerDirectoryDetailResponse {
   notes: SpeakerDirectoryNote[];
 }
 
+export type SpeakerDirectoryMergeReference =
+  | "submission"
+  | "submission_speaker"
+  | "speaker"
+  | "session_speaker"
+  | "task_assignee"
+  | "file"
+  | "speaker_directory_contact_tag"
+  | "speaker_directory_custom_field"
+  | "speaker_directory_note";
+
+export interface SpeakerDirectoryReferenceMove {
+  reference: SpeakerDirectoryMergeReference;
+  rowId: string;
+  fromId: string;
+  toId: string;
+}
+
+export interface SpeakerDirectoryRetainedReference {
+  reference: SpeakerDirectoryMergeReference;
+  rowId: string;
+  reason: "target_reference_exists";
+}
+
+export interface SpeakerDirectoryMergeConflict {
+  reference: "speaker" | "session_speaker";
+  rowId: string;
+  targetRowId: string;
+  reason: "standing_differs" | "participation_differs";
+}
+
+export interface SpeakerDirectoryMergePlan {
+  moves: SpeakerDirectoryReferenceMove[];
+  retained: SpeakerDirectoryRetainedReference[];
+  conflicts: SpeakerDirectoryMergeConflict[];
+}
+
 export interface SpeakerDirectoryMergeResult {
   keptPersonId: string;
   mergedPersonId: string;
   reasons: SpeakerDirectoryDuplicateReason[];
+  plan: SpeakerDirectoryMergePlan;
 }
