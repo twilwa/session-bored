@@ -1,6 +1,6 @@
 // ABOUTME: Applies submission status changes and their reversible downstream handoffs.
 // ABOUTME: Gives review and disposition routes one idempotent decision path.
-import { and, eq, inArray, isNotNull, isNull, ne, type SQL } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, ne, sql, type SQL } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import {
   createPublicId,
@@ -31,6 +31,54 @@ type DecisionDatabase = ReturnType<typeof drizzle>;
 interface OnboardingTask {
   id: string;
   title: string;
+}
+
+function publicationHoldForCurrentSession(sessionId: string): SQL {
+  return sql`CASE WHEN EXISTS (
+    SELECT 1 FROM ${sessions}
+    WHERE ${sessions.id} = ${sessionId}
+      AND ${sessions.publishedAt} IS NOT NULL
+  ) THEN CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER) ELSE NULL END`;
+}
+
+/** Records one session link while deriving its publication hold in the same database write. */
+export async function recordSessionParticipation(
+  database: DecisionDatabase,
+  participant: {
+    id: string;
+    sessionId: string;
+    speakerId: string;
+    roleLabel: string;
+    sortOrder: number;
+  },
+): Promise<void> {
+  const publicationHoldAt = publicationHoldForCurrentSession(participant.sessionId);
+  await database
+    .insert(sessionSpeakers)
+    .values({
+      id: participant.id,
+      sessionId: participant.sessionId,
+      speakerId: participant.speakerId,
+      roleLabel: participant.roleLabel,
+      sortOrder: participant.sortOrder,
+      publicationHoldAt,
+    })
+    .onConflictDoNothing();
+  await database
+    .update(sessionSpeakers)
+    .set({
+      roleLabel: participant.roleLabel,
+      sortOrder: participant.sortOrder,
+      publicationHoldAt: sql`CASE
+        WHEN ${sessionSpeakers.deletedAt} IS NULL THEN ${sessionSpeakers.publicationHoldAt}
+        ELSE ${publicationHoldAt}
+      END`,
+      deletedAt: null,
+    })
+    .where(and(
+      eq(sessionSpeakers.sessionId, participant.sessionId),
+      eq(sessionSpeakers.speakerId, participant.speakerId),
+    ));
 }
 
 export interface ParticipantRelease {
@@ -111,6 +159,17 @@ async function resolveOnboardingTasks(
  * them to the session under their own role label, and gives them the same onboarding work as
  * everybody else on it. Archived links are restored rather than duplicated, so a participant
  * who is removed and named again keeps their completion history.
+ *
+ * This is the only door that takes a publication hold, and the link write derives it from the
+ * session in the same statement rather than trusting an earlier read, so acceptance, a repeated
+ * acceptance, and a late organizer addition all resolve it the same way. Joining an
+ * already-published session takes a hold, and the hold is written on every create and restore -
+ * never left to whatever the row said before it was archived, which is how a stale value would
+ * smuggle somebody onto the public lineup. A link
+ * that is already live on the session keeps the answer it has: an already-public participation
+ * is not re-held by a role-label edit or a repeat acceptance, and a held one stays held.
+ * Nothing here touches `speaker.status`, which says whether somebody has agreed to present and
+ * belongs to the roster.
  */
 async function attachParticipant(
   database: DecisionDatabase,
@@ -131,7 +190,12 @@ async function attachParticipant(
   if (speaker === undefined) {
     await database
       .insert(speakers)
-      .values({ id: createPublicId("spk"), personId, eventId, status: "onboarding" })
+      .values({
+        id: createPublicId("spk"),
+        personId,
+        eventId,
+        status: "onboarding",
+      })
       .onConflictDoNothing();
     [speaker] = await database
       .select()
@@ -141,30 +205,22 @@ async function attachParticipant(
   if (speaker === undefined) {
     throw new Error(`Speaker handoff failed for ${personId}`);
   }
-  // ABOUTME: A CFP author already has an `invited` speaker row from their first draft. Being carried
-  // onto a session is what starts onboarding, so promote them the same way a newly adopted
-  // participant starts — otherwise the person who wrote the proposal is the one missing from the
-  // roster's onboarding work and from every public surface that gates on a cleared speaker.
+  // ABOUTME: A CFP author already has an `invited` speaker row from their first draft, and being
+  // carried onto a session starts their onboarding. Whether the public sees them is the hold's
+  // question, not this one's.
   if (speaker.status === "invited") {
     await database
       .update(speakers)
       .set({ status: "onboarding" })
       .where(eq(speakers.id, speaker.id));
   }
-  await database
-    .insert(sessionSpeakers)
-    .values({
-      id: createPublicId("ssnr"),
-      sessionId,
-      speakerId: speaker.id,
-      roleLabel,
-      sortOrder,
-    })
-    .onConflictDoNothing();
-  await database
-    .update(sessionSpeakers)
-    .set({ roleLabel, sortOrder, deletedAt: null })
-    .where(and(eq(sessionSpeakers.sessionId, sessionId), eq(sessionSpeakers.speakerId, speaker.id)));
+  await recordSessionParticipation(database, {
+    id: createPublicId("ssnr"),
+    sessionId,
+    speakerId: speaker.id,
+    roleLabel,
+    sortOrder,
+  });
   for (const task of participant.onboardingTasks) {
     // Only an assignment this handoff actually creates records the session that granted it.
     // Work the person already owed the event keeps whatever provenance it had, so restoring
@@ -203,8 +259,8 @@ async function attachParticipant(
 
 /**
  * Gives an already-accepted proposal's session a participant the program team named after the
- * decision. It runs the acceptance handoff for that one person, so a late addition reaches the
- * session, the roster, and their onboarding work on exactly the same terms as the rest.
+ * decision. It runs the acceptance handoff for that one person, while preserving the public
+ * session's current speaker snapshot until the organizer deliberately republishes.
  */
 export async function carryParticipantIntoSession(
   binding: D1Database,
@@ -213,6 +269,13 @@ export async function carryParticipantIntoSession(
   participant: { personId: string; roleLabel: string; sortOrder: number },
 ): Promise<string> {
   const database = drizzle(binding);
+  const [session] = await database
+    .select({ id: sessions.id })
+    .from(sessions)
+    .where(and(eq(sessions.id, sessionId), eq(sessions.eventId, eventId)));
+  if (session === undefined) {
+    throw new Error(`Session ${sessionId} was not found for participant handoff`);
+  }
   return attachParticipant(database, {
     eventId,
     sessionId,

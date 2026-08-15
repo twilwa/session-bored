@@ -35,15 +35,19 @@ type Placement =
   | { scheduleStatus: "tbd"; scheduledDate: string }
   | { scheduleStatus: "placed"; scheduledDate: string; roomId: string; startsAt: number };
 
-// ABOUTME: Signs in as organizer and drives the real disposition/agenda APIs to give the fixture's one
-// approved session a known placement, then publishes it — the same effect the organizer's own
-// drag-and-drop UI has, without depending on that other test file's exact day/room/time choices.
-async function placeDocsSession(page: Page, placement: Placement): Promise<void> {
+async function signInAsOrganizer(page: Page): Promise<void> {
   await page.goto("/login");
   await page.getByLabel("Email").fill("sbek-organizer@example.com");
   await page.getByLabel("Password").fill("SbekTest!2027-org");
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page).toHaveURL(/\/organizer$/);
+}
+
+// ABOUTME: Signs in as organizer and drives the real disposition/agenda APIs to give the fixture's one
+// approved session a known placement, then publishes it — the same effect the organizer's own
+// drag-and-drop UI has, without depending on that other test file's exact day/room/time choices.
+async function placeDocsSession(page: Page, placement: Placement): Promise<void> {
+  await signInAsOrganizer(page);
 
   const result = await page.evaluate(
     async ({ eventId, submissionId, sessionId, placement }) => {
@@ -76,6 +80,63 @@ async function placeDocsSession(page: Page, placement: Placement): Promise<void>
   expect(result.approvalStatus, "content approval failed").toBe(200);
   expect(result.placedStatus, "agenda placement failed").toBe(200);
   expect(result.publishedStatus, "agenda publish failed").toBe(200);
+}
+
+async function publishHeadshotFixtureParticipation(page: Page): Promise<string> {
+  await signInAsOrganizer(page);
+  const result = await page.evaluate(
+    async ({ eventId, submissionId }) => {
+      const participantsPath = `/api/events/${eventId}/submissions/${submissionId}/participants`;
+      const current = await fetch(participantsPath);
+      const currentBody = await current.json() as { participants: Array<{ id: string; email: string }> };
+      const existing = currentBody.participants.find((participant) => participant.email === "sbek-speaker@example.com");
+      const cleared = existing === undefined
+        ? null
+        : await fetch(`${participantsPath}/${existing.id}`, { method: "DELETE" });
+      const added = await fetch(participantsPath, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          name: "Priya Raman",
+          email: "sbek-speaker@example.com",
+          roleLabel: "co-speaker",
+        }),
+      });
+      const addedBody = await added.json() as { participants?: Array<{ id: string; email: string }> };
+      const participantId = addedBody.participants?.find(
+        (participant) => participant.email === "sbek-speaker@example.com",
+      )?.id ?? null;
+      const published = await fetch(`/api/events/${eventId}/agenda/publish`, { method: "POST" });
+      return {
+        clearedStatus: cleared?.status ?? 204,
+        addedStatus: added.status,
+        participantId,
+        publishedStatus: published.status,
+      };
+    },
+    { eventId: EVENT_ID, submissionId: DOCS_SUBMISSION_ID },
+  );
+  expect([200, 204], "headshot fixture cleanup failed").toContain(result.clearedStatus);
+  expect(result.addedStatus, "headshot fixture participant add failed").toBe(201);
+  expect(result.participantId, "headshot fixture participant id missing").not.toBeNull();
+  expect(result.publishedStatus, "headshot fixture publish failed").toBe(200);
+  await page.context().clearCookies();
+  return result.participantId ?? "";
+}
+
+async function removeHeadshotFixtureParticipation(page: Page, participantId: string): Promise<void> {
+  await signInAsOrganizer(page);
+  const status = await page.evaluate(
+    async ({ eventId, submissionId, participantId }) => {
+      const response = await fetch(
+        `/api/events/${eventId}/submissions/${submissionId}/participants/${participantId}`,
+        { method: "DELETE" },
+      );
+      return response.status;
+    },
+    { eventId: EVENT_ID, submissionId: DOCS_SUBMISSION_ID, participantId },
+  );
+  expect(status, "headshot fixture participant cleanup failed").toBe(200);
 }
 
 async function selectPlacedDay(page: Page): Promise<void> {
@@ -444,31 +505,36 @@ test("a device pick whose session lost publication no longer blocks account sync
 });
 
 test("speaker gallery is alphabetized by surname, searches, and opens a speaker detail", async ({ page }) => {
-  await page.goto("/gallery");
+  const participantId = await publishHeadshotFixtureParticipation(page);
+  try {
+    await page.goto("/gallery");
 
-  await expect(page.getByRole("heading", { name: "Gallery", exact: true })).toBeVisible();
-  // ABOUTME: The heading renders synchronously; the cards depend on an async fetch, so wait for
-  // them to actually land before reading text — a one-shot read here raced the fetch under load.
-  await expect(page.locator(".gallery-card")).toHaveCount(2);
-  const names = await page.locator(".gallery-card__caption h2").allTextContents();
-  expect(names).toEqual(["Marcus Okafor", "Priya Raman"]);
+    await expect(page.getByRole("heading", { name: "Gallery", exact: true })).toBeVisible();
+    // ABOUTME: The heading renders synchronously; the cards depend on an async fetch, so wait for
+    // them to actually land before reading text — a one-shot read here raced the fetch under load.
+    await expect(page.locator(".gallery-card")).toHaveCount(2);
+    const names = await page.locator(".gallery-card__caption h2").allTextContents();
+    expect(names).toEqual(["Marcus Okafor", "Priya Raman"]);
 
-  // Marcus Okafor has no headshot in the fixture and no other spec ever gives him one (unlike
-  // Priya, whose portal e2e coverage legitimately uploads hers), so his card is the stable one
-  // to assert the no-headshot fallback against: it must render initials, not break.
-  const marcusCard = page.locator(".gallery-card", { hasText: "Marcus Okafor" });
-  await expect(marcusCard.locator(".gallery-card__photo--placeholder")).toHaveText("MO");
-  const priyaHeadshot = page.locator(".gallery-card", { hasText: "Priya Raman" }).locator("img");
-  await expect(priyaHeadshot).toHaveAttribute("src", /.+/);
-  await expect.poll(() => priyaHeadshot.evaluate((image) => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+    // Marcus Okafor has no headshot in the fixture and no other spec ever gives him one (unlike
+    // Priya, whose portal e2e coverage legitimately uploads hers), so his card is the stable one
+    // to assert the no-headshot fallback against: it must render initials, not break.
+    const marcusCard = page.locator(".gallery-card", { hasText: "Marcus Okafor" });
+    await expect(marcusCard.locator(".gallery-card__photo--placeholder")).toHaveText("MO");
+    const priyaHeadshot = page.locator(".gallery-card", { hasText: "Priya Raman" }).locator("img");
+    await expect(priyaHeadshot).toHaveAttribute("src", /.+/);
+    await expect.poll(() => priyaHeadshot.evaluate((image) => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
 
-  await page.fill('input[aria-label="Search speakers by name"]', "priya");
-  await expect(page.locator(".gallery-card")).toHaveCount(1);
-  await expect(page.getByText("1 of 2 speakers")).toBeVisible();
+    await page.fill('input[aria-label="Search speakers by name"]', "priya");
+    await expect(page.locator(".gallery-card")).toHaveCount(1);
+    await expect(page.getByText("1 of 2 speakers")).toBeVisible();
 
-  await page.locator(".gallery-card", { hasText: "Priya Raman" }).click();
-  await expect(page).toHaveURL(/\/speakers\/spk_priya_devflow_2027$/);
-  await expect(page.getByRole("heading", { name: "Priya Raman", exact: true })).toBeVisible();
+    await page.locator(".gallery-card", { hasText: "Priya Raman" }).click();
+    await expect(page).toHaveURL(/\/speakers\/spk_priya_devflow_2027$/);
+    await expect(page.getByRole("heading", { name: "Priya Raman", exact: true })).toBeVisible();
+  } finally {
+    await removeHeadshotFixtureParticipation(page, participantId);
+  }
 });
 
 test("a placed session reads identically on the program, agenda, itinerary, and speaker detail surfaces", async ({ page }) => {

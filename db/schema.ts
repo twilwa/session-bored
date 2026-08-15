@@ -488,6 +488,10 @@ export const sessionSpeakers = sqliteTable(
     speakerId: text("speaker_id").notNull().references(() => speakers.id),
     roleLabel: text("role_label").notNull().default("speaker"),
     sortOrder: integer("sort_order").notNull().default(0),
+    // When set, this participation is deliberately withheld from every public surface until an
+    // agenda publish releases it. Null means no hold: the participation is as public as its
+    // session is. Publication itself is the session's fact, never restated here.
+    publicationHoldAt: integer("publication_hold_at", { mode: "timestamp_ms" }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
     deletedAt: deletedAt(),

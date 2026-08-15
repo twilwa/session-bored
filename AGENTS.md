@@ -108,10 +108,41 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   proposal through the CFP edit never carries them onto its session, so a session
   the person never reached was never theirs to lose; and an `approved` session is
   read-only to the speakers who are on it.
-  `PUBLIC_SPEAKER_STATUSES` in `worker/public-queries.ts`
-  is the one rule for whether an event speaker is publicly listed, and the
-  outcome's `listedPublicly` reads it; read it rather than restating the
-  statuses. A collaborator is named, not
+  **Publication is the session's fact, and `session_speaker.publication_hold_at`
+  is its one per-link exception.** A participation is public when its session is
+  public, the link is live, and it carries no hold; nothing stores a link's own
+  publication, so no link can read as published on the strength of a publish that
+  happened before the person was removed. **Exactly two doors write the column.**
+  `attachParticipant` takes the hold - joining an already-published session
+  (`sessions.published_at`) holds the newcomer - and writes it on every create and
+  restore so a restored link never inherits the answer it had before it was
+  archived. It leaves a live link's hold alone, so a repeat acceptance or a
+  role-label edit neither re-holds a public participation nor frees a held one.
+  The agenda publish is the only door that clears it, and it names everybody it
+  released in `AgendaPublishResult.releasedParticipants` and in `notes` - an
+  archived speaker's hold stands, because the agenda never showed it as pending.
+  **Publish writes nothing to `speaker.status`**: whether somebody has agreed to
+  present belongs to the roster, and an agenda action deciding it for them is how
+  a deliberately parked speaker used to get published. That also means a roster
+  workflow edit can neither take nor release a hold.
+  Because a hold belongs to the participation, every affordance reports it in
+  whatever state the session is - `pendingSpeakerCount`, the panel's
+  `publicationPending`, and the roster's `pendingPublicationSessions` all read the
+  column and never `sessions.published_at`, so a re-placement cannot silently turn
+  a signposted hold into an unannounced release. Where the next publish would skip
+  the session anyway - its content approval lapsed, or it came off the schedule -
+  `publishBlockers` in `worker/public-queries.ts` is the one reading of what still
+  stands in the way, and both prompts name that step rather than offering a
+  republish that would leave the hold exactly where it is.
+  A speaker is publicly listed only when a `PUBLIC_SPEAKER_STATUSES` status meets
+  a participation the public may see: live, unheld, on a session organizers have
+  approved. Both halves live in `PUBLIC_SPEAKER_GATE` in
+  `worker/public-queries.ts`, `listedPublicly` and the name search read the same
+  rule, and a speaker with no approved credit is not listed - so removing somebody
+  from their only session takes their directory entry with it while their event
+  `speaker` row, and the roster's power to withdraw it, stand. An already-public
+  event speaker stays public while a *new* session participation is pending, so
+  adding them loses the public site no information. A collaborator is named, not
   admitted: naming somebody mints no author key, grants no dashboard, and never
   overwrites the profile an existing person already has.
 - A sessionless task with no `task_scope` row is an event-wide onboarding
@@ -217,7 +248,9 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   itself. Placement edits clear publication and the agenda tells the organizer
   to publish again. Publishing answers with `AgendaPublishResult`: it names
   every session it published and every one it skipped with the reasons why, so
-  the organizer is never told only about its successes. `worker/public-queries.ts`
+  the organizer is never told only about its successes. It is also the one door
+  that releases a participant's publication hold, under the rules above.
+  `worker/public-queries.ts`
   is the only written form of the public read; route through it rather than
   growing another copy in the router.
 - The organizer board (`client/pages/agenda/`) leads with the grid: a sticky
@@ -367,8 +400,14 @@ isolated test database, so CI does not need a separate migration step.
 For same-repository pull requests, the `Preview` workflow updates one PR comment
 with the branch's stable Workers preview URL. Each PR reuses its own
 `session-bored-pr-<number>` D1 database across pushes; previews never bind the
-production database. Forked pull requests skip deployment because GitHub does
-not provide repository secrets to untrusted forks.
+production database. Because that database outlives a rebase, a branch that
+renames or renumbers a migration it already applied leaves it holding schema no
+migration name accounts for, and every later push fails on `duplicate column` or
+`already exists`. So a preview whose migrations do not apply is deleted and
+rebuilt from empty, and the push carries on against the new database - preview
+data is disposable and nothing else is. A migration that fails against an empty
+database still fails the job. Forked pull requests skip deployment because
+GitHub does not provide repository secrets to untrusted forks.
 
 Preview deployment requires the `CLOUDFLARE_API_TOKEN` and
 `CLOUDFLARE_ACCOUNT_ID` GitHub Actions secrets. The token must be able to upload

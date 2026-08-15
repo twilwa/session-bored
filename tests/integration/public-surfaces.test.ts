@@ -149,6 +149,35 @@ async function seedLeakFixtures(): Promise<void> {
     )
     .bind("ssnr_withdrawn_docs", "ses_docs_retrieval", "spk_withdrawn_secret", Date.now(), Date.now())
     .run();
+  await db.batch([
+    db.prepare("INSERT INTO person (id, name, email, created_at, updated_at) VALUES (?, ?, ?, ?, ?)")
+      .bind(
+        "psn_pending_publication_secret",
+        "Pending Publication Secret",
+        "pending-publication@example.test",
+        Date.now(),
+        Date.now(),
+      ),
+    db.prepare("INSERT INTO speaker (id, person_id, event_id, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)")
+      .bind(
+        "spk_pending_publication_secret",
+        "psn_pending_publication_secret",
+        EVENT_ID,
+        "onboarding",
+        Date.now(),
+        Date.now(),
+      ),
+    db.prepare(
+      "INSERT INTO session_speaker (id, session_id, speaker_id, publication_hold_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+    ).bind(
+      "ssnr_pending_publication_docs",
+      "ses_docs_retrieval",
+      "spk_pending_publication_secret",
+      Date.now(),
+      Date.now(),
+      Date.now(),
+    ),
+  ]);
 }
 
 describe("Public audience surfaces", () => {
@@ -164,10 +193,9 @@ describe("Public audience surfaces", () => {
 
     const speakers = await json<SpeakersPayload>(`/api/public/events/${EVENT_ID}/speakers`);
     expect(speakers.status).toBe(200);
-    expect(speakers.body.items.map((item) => item.name).sort()).toEqual(["Marcus Okafor", "Priya Raman"]);
-    expect(speakers.body.items.find((item) => item.name === "Priya Raman")?.headshotUrl).toBe(
-      "/headshots/priya-raman.jpg",
-    );
+    // The directory stands on approved programme credits: Marcus speaks on the approved docs
+    // session, and Priya, who holds no session yet, is a roster speaker the public cannot see.
+    expect(speakers.body.items.map((item) => item.name).sort()).toEqual(["Marcus Okafor"]);
     expect(speakers.body.items.find((item) => item.name === "Marcus Okafor")?.headshotUrl).toBeNull();
 
     const detail = await json<SpeakerDetailPayload>(
@@ -189,10 +217,11 @@ describe("Public audience surfaces", () => {
     ]);
 
     await request("/api/health");
-    const speakers = await json<SpeakersPayload>(`/api/public/events/${EVENT_ID}/speakers`);
-    expect(speakers.body.items.find((item) => item.name === "Priya Raman")?.headshotUrl).toBe(
-      "/headshots/priya-raman.jpg",
-    );
+    const restored = await env.DB
+      .prepare("select headshot_url as headshotUrl from person where id = ?")
+      .bind("psn_priya_raman")
+      .first<{ headshotUrl: string | null }>();
+    expect(restored?.headshotUrl).toBe("/headshots/priya-raman.jpg");
   });
 
   it("returns facets so the directory can render filter controls", async () => {
@@ -244,23 +273,84 @@ describe("Public audience surfaces", () => {
   });
 
   it("searches the speaker directory without losing the unfiltered total", async () => {
-    const match = await json<SpeakersPayload>(`/api/public/events/${EVENT_ID}/speakers?q=priya`);
-    expect(match.body.items.map((item) => item.name)).toEqual(["Priya Raman"]);
+    const match = await json<SpeakersPayload>(`/api/public/events/${EVENT_ID}/speakers?q=okafor`);
+    expect(match.body.items.map((item) => item.name)).toEqual(["Marcus Okafor"]);
     expect(match.body.filtered).toBe(1);
-    expect(match.body.total).toBe(2);
+    expect(match.body.total).toBe(1);
+
+    // Somebody the directory does not list is not findable by searching their name either.
+    const unlisted = await json<SpeakersPayload>(`/api/public/events/${EVENT_ID}/speakers?q=priya`);
+    expect(unlisted.body.items).toEqual([]);
+    expect(unlisted.body.filtered).toBe(0);
 
     const miss = await json<SpeakersPayload>(`/api/public/events/${EVENT_ID}/speakers?q=zzznomatch`);
     expect(miss.body.items).toEqual([]);
     expect(miss.body.filtered).toBe(0);
-    expect(miss.body.total).toBe(2);
+    expect(miss.body.total).toBe(1);
   });
 
   it("reports each speaker's count of approved sessions", async () => {
     const { body } = await json<SpeakersPayload>(`/api/public/events/${EVENT_ID}/speakers`);
-    const marcus = body.items.find((item) => item.name === "Marcus Okafor");
-    const priya = body.items.find((item) => item.name === "Priya Raman");
-    expect(marcus?.sessionCount).toBe(1);
-    expect(priya?.sessionCount).toBe(0);
+    expect(body.items.find((item) => item.name === "Marcus Okafor")?.sessionCount).toBe(1);
+    // A speaker with no approved session is not in the directory at all, so there is no zero to report.
+    expect(body.items.map((item) => item.name)).not.toContain("Priya Raman");
+    const unlistedDetail = await json<{ error?: string }>(
+      `/api/public/events/${EVENT_ID}/speakers/spk_priya_devflow_2027`,
+    );
+    expect(unlistedDetail.status).toBe(404);
+  });
+
+  it("lists a speaker only on the strength of a session organizers have approved", async () => {
+    await request("/api/health");
+    // An ordinary onboarding speaker - nothing about their own record hides them - whose only
+    // participation is on a session whose content is still a draft.
+    await env.DB.batch([
+      env.DB.prepare(
+        "INSERT INTO program_session (id, event_id, title, content_status, schedule_status, direct_entry, ics_uid, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      ).bind(
+        "ses_unapproved_credit",
+        EVENT_ID,
+        "Unapproved credit session",
+        "draft",
+        "tbd",
+        1,
+        "ses_unapproved_credit@session-bored",
+        Date.now(),
+        Date.now(),
+      ),
+      env.DB.prepare("INSERT INTO person (id, name, email, created_at, updated_at) VALUES (?, ?, ?, ?, ?)")
+        .bind("psn_unapproved_only", "Unapproved Only", "unapproved-only@example.test", Date.now(), Date.now()),
+      env.DB.prepare(
+        "INSERT INTO speaker (id, person_id, event_id, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+      ).bind("spk_unapproved_only", "psn_unapproved_only", EVENT_ID, "onboarding", Date.now(), Date.now()),
+      env.DB.prepare(
+        "INSERT INTO session_speaker (id, session_id, speaker_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+      ).bind("ssnr_unapproved_only", "ses_unapproved_credit", "spk_unapproved_only", Date.now(), Date.now()),
+    ]);
+
+    const directory = await json<SpeakersPayload>(`/api/public/events/${EVENT_ID}/speakers`);
+    expect(directory.body.items.map((item) => item.name)).not.toContain("Unapproved Only");
+    const detail = await json<{ error?: string }>(
+      `/api/public/events/${EVENT_ID}/speakers/spk_unapproved_only`,
+    );
+    expect(detail.status).toBe(404);
+
+    // Approving the session's content is the whole difference.
+    await env.DB.prepare("update program_session set content_status = 'approved' where id = ?")
+      .bind("ses_unapproved_credit").run();
+    const afterApproval = await json<SpeakersPayload>(`/api/public/events/${EVENT_ID}/speakers`);
+    expect(afterApproval.body.items.map((item) => item.name)).toContain("Unapproved Only");
+    // The session itself is still unpublished, so approving revealed a person and no programme.
+    expect(afterApproval.body.items.find((item) => item.name === "Unapproved Only")?.sessionCount).toBe(0);
+    const sessionsAfter = await json<SessionsPayload>(`/api/public/events/${EVENT_ID}/sessions`);
+    expect(sessionsAfter.body.items.flatMap((item) => (item.title ? [item.title] : [])))
+      .not.toContain("Unapproved credit session");
+
+    // A hold on that same credit hides them again, so the directory obeys the hold as well.
+    await env.DB.prepare("update session_speaker set publication_hold_at = ? where id = ?")
+      .bind(Date.now(), "ssnr_unapproved_only").run();
+    const afterHold = await json<SpeakersPayload>(`/api/public/events/${EVENT_ID}/speakers`);
+    expect(afterHold.body.items.map((item) => item.name)).not.toContain("Unapproved Only");
   });
 
   it("404s an unknown speaker and a missing event", async () => {
@@ -289,6 +379,7 @@ describe("Public audience surfaces", () => {
     expect(speakerNames).not.toContain("Wendy Withdrawn");
     expect(speakerNames).not.toContain("invited private speaker");
     expect(speakerNames).not.toContain("pending private speaker");
+    expect(speakerNames).not.toContain("Pending Publication Secret");
 
     const withdrawnDetail = await json<{ error?: string }>(
       `/api/public/events/${EVENT_ID}/speakers/spk_withdrawn_secret`,
@@ -305,7 +396,17 @@ describe("Public audience surfaces", () => {
     const docs = sessions.body.items.find((item) => item.id === "ses_docs_retrieval");
     expect(docs).toBeDefined();
     expect(docs?.speakers.map((speaker) => speaker.name)).not.toContain("Wendy Withdrawn");
+    expect(docs?.speakers.map((speaker) => speaker.name)).not.toContain("Pending Publication Secret");
     expect(docs?.speakers.map((speaker) => speaker.name)).toContain("Marcus Okafor");
+
+    const pendingSearch = await json<SessionsPayload>(
+      `/api/public/events/${EVENT_ID}/sessions?q=pending%20publication`,
+    );
+    expect(pendingSearch.body.items).toEqual([]);
+    const pendingDetail = await json<{ error?: string }>(
+      `/api/public/events/${EVENT_ID}/speakers/spk_pending_publication_secret`,
+    );
+    expect(pendingDetail.status).toBe(404);
   });
 
   it("exports only selected sessions that have passed the public gate", async () => {

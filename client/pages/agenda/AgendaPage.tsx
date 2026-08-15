@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEven
 import type { AgendaConflict, AgendaPlacement, AgendaPublishResult, AgendaSession, AgendaState } from "../../../shared/api.ts";
 import { Button, LoadingState, SelectField, StatusChip, TextField } from "../../components/ui.tsx";
 import {
+  countCurrentPublicSessions,
   nearestFreeStart,
   overlapColumns,
   placementOf,
@@ -515,11 +516,17 @@ export function AgendaPage() {
       const result = await agendaRequest<AgendaPublishResult>(`/api/events/${eventId}/agenda/publish`, { method: "POST" });
       const refreshed = await agendaRequest<AgendaState>(`/api/events/${eventId}/agenda`);
       setAgenda(refreshed);
+      const outcomes = [
+        result.releasedParticipants.length === 0
+          ? null
+          : "This publish put participants who were waiting on the public site.",
+        result.skipped.length === 0
+          ? null
+          : "Only approved, scheduled sessions go public. The rest stayed private.",
+      ].filter((sentence): sentence is string => sentence !== null);
       setToast({
         message: result.message,
-        detail: result.skipped.length === 0
-          ? null
-          : "Only approved, scheduled sessions go public. The rest stayed private:",
+        detail: outcomes.length === 0 ? null : outcomes.join(" "),
         notes: result.notes,
         clashes: 0,
         undo: null,
@@ -556,6 +563,8 @@ export function AgendaPage() {
   }
 
   const conflicts = agenda.conflicts;
+  const pendingSpeakerCount = agenda.sessions.reduce((count, session) => count + session.pendingSpeakerCount, 0);
+  const currentSessionCount = countCurrentPublicSessions(agenda.sessions);
   const conflictingSessionIds = new Set(conflicts.flatMap((conflict) => conflict.sessionIds));
   const timezone = agenda.event.timezone;
   const dayStarts = timeSlots.map((time) => zonedEpoch(activeDay, time, timezone));
@@ -654,8 +663,13 @@ export function AgendaPage() {
         />
         <div className="agenda-publish">
           <span>Public</span>
-          <strong>{agenda.sessions.filter((session) => session.publishedAt !== null).length}/{agenda.sessions.length} current</strong>
-          <Button disabled={busy} onClick={() => void publish()} tone="signal">{busy ? "Saving…" : "Publish agenda ↗"}</Button>
+          <strong>{currentSessionCount}/{agenda.sessions.length} current</strong>
+          {pendingSpeakerCount === 0 ? null : (
+            <small>{pendingSpeakerCount} participant{pendingSpeakerCount === 1 ? "" : "s"} pending</small>
+          )}
+          <Button disabled={busy} onClick={() => void publish()} tone="signal">
+            {busy ? "Saving…" : pendingSpeakerCount > 0 ? "Republish agenda ↗" : "Publish agenda ↗"}
+          </Button>
         </div>
       </div>
 

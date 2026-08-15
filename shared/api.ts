@@ -489,6 +489,7 @@ export interface SubmissionParticipantSummary {
   sortOrder: number;
   isSubmitter: boolean;
   onSession: boolean;
+  publicationPending: boolean;
 }
 
 export interface WithdrawnOnboardingTask {
@@ -525,6 +526,14 @@ export interface SubmissionParticipantsPayload {
   sessionId: `ses_${string}` | null;
   /** Null with no session. Approved content is read-only to its speakers, so removal took no write. */
   sessionContentStatus: SessionContentStatus | null;
+  sessionPublishedAt: number | null;
+  /** Whether the session is on the public site now, so a pending place has a republish to wait for. */
+  sessionPubliclyLive: boolean;
+  /** Whether a held place also needs the session's content approved again before publishing can run. */
+  sessionAwaitingContentApproval: boolean;
+  /** Whether a held place also needs the session put back on the schedule before publishing can run. */
+  sessionAwaitingPlacement: boolean;
+  sessionTitle: string | null;
   participants: SubmissionParticipantSummary[];
   removal?: ParticipantRemovalOutcome;
 }
@@ -538,6 +547,14 @@ export interface RosterSpeakerSummary extends SpeakerSummary {
   socialLinks: Record<string, string> | null;
   profile: { bioComplete: boolean; headshotComplete: boolean };
   workSummary: { total: number; incomplete: number };
+  pendingPublicationSessions: Array<
+    {
+      id: `ses_${string}`;
+      title: string;
+      awaitingContentApproval: boolean;
+      awaitingPlacement: boolean;
+    }
+  >;
 }
 
 export interface RosterTaskSummary {
@@ -640,6 +657,7 @@ export interface AgendaSession {
   startsAt: number | null;
   endsAt: number | null;
   publishedAt: number | null;
+  pendingSpeakerCount: number;
   durationMinutes: number;
   track: null | { id: string; name: string; color: string | null };
   room: null | { id: string; name: string };
@@ -683,6 +701,14 @@ export interface AgendaPublishSkip extends AgendaPublishSession {
   reasons: AgendaPublishSkipReason[];
 }
 
+/** A participant this publish took off a publication hold, and so put on the public site. */
+export interface AgendaPublishRelease {
+  sessionId: `ses_${string}`;
+  sessionTitle: string;
+  speakerId: `spk_${string}`;
+  name: string;
+}
+
 export interface AgendaPublishResult {
   status: "published";
   publishedAt: number;
@@ -691,6 +717,7 @@ export interface AgendaPublishResult {
   alreadyPublicCount: number;
   published: AgendaPublishSession[];
   skipped: AgendaPublishSkip[];
+  releasedParticipants: AgendaPublishRelease[];
   message: string;
   notes: string[];
 }

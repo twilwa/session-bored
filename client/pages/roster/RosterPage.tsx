@@ -19,6 +19,7 @@ import {
   Toast,
 } from "../../components/ui.tsx";
 import { Headshot } from "../../components/Headshot.tsx";
+import { PendingPublicationNotice } from "../../components/PendingPublicationNotice.tsx";
 
 const eventId = "evt_devflow_conf_2027";
 const workflowStatuses = [
@@ -227,6 +228,7 @@ function RosterList() {
                       </div>
                       <div className="speaker-record__readiness">
                         <span>{openWorkLabel(speaker)}</span>
+                        <PendingPublicationNotice sessions={speaker.pendingPublicationSessions} />
                         <div className="completeness-pair">
                           <span className={speaker.profile.bioComplete ? "complete" : "missing"}>{speaker.profile.bioComplete ? "Bio complete" : "Bio missing"}</span>
                           <span className={speaker.profile.headshotComplete ? "complete" : "missing"}>{speaker.profile.headshotComplete ? "Photo complete" : "Photo missing"}</span>

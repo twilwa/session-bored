@@ -1,7 +1,7 @@
 // ABOUTME: Centralizes the public read model for published event content with approval gating.
 // ABOUTME: Keeps the unpublished/withdrawn content rule in one narrow module so it cannot drift.
 import { and, desc, eq, inArray, isNotNull, isNull, like, or, sql } from "drizzle-orm";
-import type { DrizzleD1Database } from "drizzle-orm/d1";
+import { drizzle, type DrizzleD1Database } from "drizzle-orm/d1";
 import {
   events,
   formats,
@@ -15,11 +15,9 @@ import {
 } from "../db/schema.ts";
 import { chunkIds } from "./d1-limits.ts";
 
-// ABOUTME: A session is public only after explicit publication, while its content and source decision remain live.
-// Schedule status is intentionally not a gate because published TBD sessions remain visible.
-const PUBLIC_SESSION_GATE = and(
-  eq(sessions.contentStatus, "approved"),
-  isNotNull(sessions.publishedAt),
+// ABOUTME: A session still standing on the programme: live, and its source decision still accepted.
+// It says nothing about publication, so an organizer surface can ask about a session the public cannot see.
+export const PROGRAMME_SESSION_GATE = and(
   isNull(sessions.deletedAt),
   or(
     eq(sessions.directEntry, true),
@@ -31,15 +29,86 @@ const PUBLIC_SESSION_GATE = and(
   ),
 );
 
+// ABOUTME: A session is public only after explicit publication, while its content and source decision remain live.
+// Schedule status is intentionally not a gate because published TBD sessions remain visible.
+export const PUBLIC_SESSION_GATE = and(
+  eq(sessions.contentStatus, "approved"),
+  isNotNull(sessions.publishedAt),
+  PROGRAMME_SESSION_GATE,
+);
+
+/**
+ * Whether a session is on the public site right now, asked of a row the caller has already
+ * limited to accepted or directly entered sessions. It is the in-memory form of the two columns
+ * `PUBLIC_SESSION_GATE` reads there, for the organizer surfaces that offer to publish a pending
+ * participant: a session the publish route will skip has nothing pending to reveal, so offering
+ * a republish that cannot run leaves the prompt stuck on.
+ */
+export function isPubliclyLiveSession(
+  session: { contentStatus: string; publishedAt: Date | null },
+): boolean {
+  return session.contentStatus === "approved" && session.publishedAt !== null;
+}
+
+/**
+ * What still stands between a session and the next agenda publish. The publish route skips a
+ * session on either count, so every organizer surface that offers to release a pending
+ * participant reads this one rule rather than restating the half of it it happens to know:
+ * naming a republish as the only step left, for a session the publish will skip, leaves the
+ * participant held and the prompt stuck on with nothing the organizer can do about it.
+ */
+export function publishBlockers(
+  session: { contentStatus: string; scheduleStatus: string },
+): { awaitingContentApproval: boolean; awaitingPlacement: boolean } {
+  return {
+    awaitingContentApproval: session.contentStatus !== "approved",
+    awaitingPlacement: session.scheduleStatus === "unplaced",
+  };
+}
+
+// ABOUTME: A participation the public may see: live, carrying no publication hold, on a session
+// whose content organizers have approved. Publication is the session's own fact, never the link's,
+// so a hold is the only per-link exception to it and a link can never read as published on the
+// strength of a publish that happened before the person was removed.
+const PUBLIC_PARTICIPATION = sql`EXISTS (
+  SELECT 1 FROM ${sessionSpeakers}
+  JOIN ${sessions} AS held_session ON held_session.id = ${sessionSpeakers.sessionId}
+  WHERE ${sessionSpeakers.speakerId} = ${speakers.id}
+    AND ${sessionSpeakers.deletedAt} IS NULL
+    AND ${sessionSpeakers.publicationHoldAt} IS NULL
+    AND held_session.deleted_at IS NULL
+    AND held_session.content_status = 'approved'
+)`;
+
 // ABOUTME: Public speakers have cleared invitation and employer-approval states.
 // Confirmed, onboarding, and ready speakers remain visible even when their profiles are incomplete.
 export const PUBLIC_SPEAKER_STATUSES = ["confirmed", "onboarding", "ready"] as const;
 
+// ABOUTME: A speaker is listed only on the strength of a participation the public may see, so a
+// person whose every credit is held or unapproved is not in the directory, the count, or the detail.
 const PUBLIC_SPEAKER_GATE = and(
   inArray(speakers.status, [...PUBLIC_SPEAKER_STATUSES]),
   isNull(speakers.deletedAt),
   isNull(people.deletedAt),
+  PUBLIC_PARTICIPATION,
 );
+
+export async function isPublicSpeaker(
+  database: ReturnType<typeof drizzle>,
+  eventId: string,
+  speakerId: string,
+): Promise<boolean> {
+  const [row] = await database
+    .select({ id: speakers.id })
+    .from(speakers)
+    .innerJoin(people, eq(speakers.personId, people.id))
+    .where(and(
+      eq(speakers.id, speakerId),
+      eq(speakers.eventId, eventId),
+      PUBLIC_SPEAKER_GATE,
+    ));
+  return row !== undefined;
+}
 
 export interface PublicSpeakerRef {
   id: string;
@@ -125,13 +194,21 @@ function searchPredicate(q: string) {
     like(sql`lower(coalesce(${sessions.title}, ''))`, term),
     like(sql`lower(coalesce(${sessions.abstract}, ''))`, term),
     // ABOUTME: Speaker-name match: any session sharing a speaker whose name contains q is a hit.
+    // Only a speaker the lineup itself would show, or searching a held or private name would
+    // reveal the session that name is on.
     sql`EXISTS (
       SELECT 1 FROM ${sessionSpeakers}
       JOIN ${speakers} ON ${speakers}.id = ${sessionSpeakers}.speaker_id
       JOIN ${people} ON ${people}.id = ${speakers}.person_id
       WHERE ${sessionSpeakers}.session_id = ${sessions}.id
         AND ${sessionSpeakers}.deleted_at IS NULL
+        AND ${sessionSpeakers}.publication_hold_at IS NULL
         AND ${speakers}.deleted_at IS NULL
+        AND ${people}.deleted_at IS NULL
+        AND ${speakers}.status IN (${sql.join(
+      PUBLIC_SPEAKER_STATUSES.map((status) => sql`${status}`),
+      sql`, `,
+    )})
         AND lower(coalesce(${people}.name, '')) LIKE ${term} ESCAPE '\\'
     )`,
   );
@@ -203,6 +280,7 @@ export async function fetchPublicSessions(
           .where(
             and(
               isNull(sessionSpeakers.deletedAt),
+              isNull(sessionSpeakers.publicationHoldAt),
               PUBLIC_SPEAKER_GATE,
               inArray(sessionSpeakers.sessionId, sessionIds),
             ),
@@ -319,6 +397,7 @@ export async function fetchPublicSpeakers(
           .where(
             and(
               isNull(sessionSpeakers.deletedAt),
+              isNull(sessionSpeakers.publicationHoldAt),
               eq(sessions.eventId, eventId),
               PUBLIC_SESSION_GATE,
               inArray(sessionSpeakers.speakerId, speakerIds),
@@ -341,7 +420,10 @@ export async function countPublicSpeakers(
     .select({ count: sql<number>`count(*)`.as("count") })
     .from(speakers)
     .innerJoin(people, eq(speakers.personId, people.id))
-    .where(and(eq(speakers.eventId, eventId), PUBLIC_SPEAKER_GATE));
+    .where(and(
+      eq(speakers.eventId, eventId),
+      PUBLIC_SPEAKER_GATE,
+    ));
   return row?.count ?? 0;
 }
 
@@ -363,7 +445,11 @@ export async function fetchPublicSpeaker(
     })
     .from(speakers)
     .innerJoin(people, eq(speakers.personId, people.id))
-    .where(and(eq(speakers.id, speakerId), eq(speakers.eventId, eventId), PUBLIC_SPEAKER_GATE));
+    .where(and(
+      eq(speakers.id, speakerId),
+      eq(speakers.eventId, eventId),
+      PUBLIC_SPEAKER_GATE,
+    ));
   if (row === undefined) {
     return null;
   }
@@ -387,6 +473,7 @@ export async function fetchPublicSpeaker(
         eq(sessionSpeakers.speakerId, speakerId),
         eq(sessions.eventId, eventId),
         isNull(sessionSpeakers.deletedAt),
+        isNull(sessionSpeakers.publicationHoldAt),
         PUBLIC_SESSION_GATE,
       ),
     )

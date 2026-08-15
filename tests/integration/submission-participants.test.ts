@@ -414,6 +414,707 @@ describe("the program team's own hold on the participant list", () => {
     expect(speakerRow?.count).toBe(1);
   });
 
+  it("holds a participant added to a published session until the organizer republishes", async () => {
+    const created = await createPanel("rosa.pending-publication@example.test");
+    await request(`/api/events/${eventId}/disposition`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie: organizerCookie },
+      body: JSON.stringify({ submissionIds: [created.submission.id], status: "accepted" }),
+    });
+    const session = await env.DB.prepare("select id from program_session where submission_id = ?")
+      .bind(created.submission.id).first<{ id: string }>();
+    expect(session).not.toBeNull();
+    await request(`/api/events/${eventId}/agenda/sessions/${session?.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie: organizerCookie },
+      body: JSON.stringify({ scheduleStatus: "tbd", scheduledDate: "2027-05-13" }),
+    });
+    await request(`/api/events/${eventId}/agenda/sessions/${session?.id}/content`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie: organizerCookie },
+      body: JSON.stringify({ contentStatus: "approved" }),
+    });
+    const agendaBeforeFirstPublish = await request(`/api/events/${eventId}/agenda`, {
+      headers: { cookie: organizerCookie },
+    }).then((response) => response.json<{ sessions: Array<{ id: string; pendingSpeakerCount: number }> }>());
+    expect(agendaBeforeFirstPublish.sessions.find((item) => item.id === session?.id)?.pendingSpeakerCount).toBe(0);
+    const firstPublish = await request(`/api/events/${eventId}/agenda/publish`, {
+      method: "POST",
+      headers: { cookie: organizerCookie },
+    });
+    expect(firstPublish.status).toBe(200);
+
+    const repeatedAcceptance = await request(`/api/events/${eventId}/disposition`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie: organizerCookie },
+      body: JSON.stringify({ submissionIds: [created.submission.id], status: "accepted" }),
+    });
+    expect(repeatedAcceptance.status).toBe(200);
+    const publicAfterRepeatedAcceptance = await request(`/api/public/events/${eventId}/sessions`);
+    const publicAfterRepeatedAcceptanceText = await publicAfterRepeatedAcceptance.text();
+    for (const participantName of ["Rosa Okonkwo", "Dev Malhotra", "Ines Brenner"]) {
+      expect(publicAfterRepeatedAcceptanceText).toContain(participantName);
+    }
+
+    const participantsPath = `/api/events/${eventId}/submissions/${created.submission.id}/participants`;
+    const added = await request(participantsPath, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: organizerCookie },
+      body: JSON.stringify({
+        name: "Pending Presenter",
+        email: "pending.presenter@example.test",
+        roleLabel: "co-speaker",
+      }),
+    });
+    expect(added.status).toBe(201);
+    const afterAdd = await added.json<{
+      sessionPubliclyLive: boolean;
+      participants: Array<Participant & { publicationPending: boolean }>;
+    }>();
+    expect(afterAdd.sessionPubliclyLive).toBe(true);
+    expect(afterAdd.participants.find((participant) => participant.name === "Pending Presenter"))
+      .toMatchObject({ onSession: true, publicationPending: true });
+
+    // Re-applying the decision is a silent status change the product allows at any time, and it
+    // must not stand in for the republish that confirms a held participant.
+    const acceptedAgainWhilePending = await request(`/api/events/${eventId}/disposition`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie: organizerCookie },
+      body: JSON.stringify({ submissionIds: [created.submission.id], status: "accepted" }),
+    });
+    expect(acceptedAgainWhilePending.status).toBe(200);
+
+    const publicBefore = await request(`/api/public/events/${eventId}/sessions`);
+    const publicBeforeText = await publicBefore.text();
+    expect(publicBeforeText).toContain("What a panel actually owes its audience");
+    expect(publicBeforeText).not.toContain("Pending Presenter");
+    const directoryBefore = await request(`/api/public/events/${eventId}/speakers`);
+    expect(await directoryBefore.text()).not.toContain("Pending Presenter");
+    const agendaBeforeRepublish = await request(`/api/events/${eventId}/agenda`, {
+      headers: { cookie: organizerCookie },
+    }).then((response) => response.json<{ sessions: Array<{ id: string; pendingSpeakerCount: number }> }>());
+    expect(agendaBeforeRepublish.sessions.find((item) => item.id === session?.id)?.pendingSpeakerCount).toBe(1);
+    const embedResponse = await request(`/api/events/${eventId}/embeds`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: organizerCookie },
+      body: JSON.stringify({ name: "Pending participant proof", widgetType: "sessions", status: "published" }),
+    });
+    expect(embedResponse.status).toBe(201);
+    const embed = await embedResponse.json<{ publicToken: string }>();
+    const embedBefore = await request(`/api/public/embeds/${embed.publicToken}.json`);
+    expect(await embedBefore.text()).not.toContain("Pending Presenter");
+
+    const rosterBefore = await request(`/api/events/${eventId}/roster`, {
+      headers: { cookie: organizerCookie },
+    });
+    const rosterBeforePayload = await rosterBefore.json<{
+      items: Array<{
+        name: string;
+        status: string;
+        pendingPublicationSessions: Array<{ id: string; title: string; awaitingContentApproval: boolean }>;
+      }>;
+    }>();
+    expect(rosterBeforePayload.items.find((speaker) => speaker.name === "Pending Presenter"))
+      .toMatchObject({
+        pendingPublicationSessions: [{
+          id: session?.id,
+          title: "What a panel actually owes its audience",
+          awaitingContentApproval: false,
+        }],
+      });
+
+    const republish = await request(`/api/events/${eventId}/agenda/publish`, {
+      method: "POST",
+      headers: { cookie: organizerCookie },
+    });
+    expect(republish.status).toBe(200);
+    // Nobody becomes public without this publish naming them.
+    const republishBody = await republish.json<{
+      releasedParticipants: Array<{ sessionId: string; sessionTitle: string; name: string }>;
+      notes: string[];
+    }>();
+    expect(republishBody.releasedParticipants).toEqual([{
+      sessionId: session?.id,
+      sessionTitle: "What a panel actually owes its audience",
+      speakerId: expect.stringMatching(/^spk_/),
+      name: "Pending Presenter",
+    }]);
+    expect(republishBody.notes.join(" ")).toContain("Pending Presenter");
+
+    const publicAfter = await request(`/api/public/events/${eventId}/sessions`);
+    expect(await publicAfter.text()).toContain("Pending Presenter");
+    const directoryAfter = await request(`/api/public/events/${eventId}/speakers`);
+    expect(await directoryAfter.text()).toContain("Pending Presenter");
+    const embedAfter = await request(`/api/public/embeds/${embed.publicToken}.json`);
+    expect(await embedAfter.text()).toContain("Pending Presenter");
+    const participantsAfter = await request(participantsPath, { headers: { cookie: organizerCookie } });
+    const participantsAfterPayload = await participantsAfter.json<{
+      participants: Array<Participant & { publicationPending: boolean }>;
+    }>();
+    expect(participantsAfterPayload.participants.find((participant) => participant.name === "Pending Presenter"))
+      .toMatchObject({ publicationPending: false });
+    const rosterAfter = await request(`/api/events/${eventId}/roster`, {
+      headers: { cookie: organizerCookie },
+    }).then((response) =>
+      response.json<{ items: Array<{ name: string; pendingPublicationSessions: unknown[] }> }>()
+    );
+    expect(rosterAfter.items.find((speaker) => speaker.name === "Pending Presenter")?.pendingPublicationSessions)
+      .toEqual([]);
+  });
+
+  it("leaves an archived speaker's pending place pending, however often the agenda is published", async () => {
+    const created = await createPanel("rosa.archived-pending@example.test");
+    await request(`/api/events/${eventId}/disposition`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie: organizerCookie },
+      body: JSON.stringify({ submissionIds: [created.submission.id], status: "accepted" }),
+    });
+    const session = await env.DB.prepare("select id from program_session where submission_id = ?")
+      .bind(created.submission.id).first<{ id: string }>();
+    await request(`/api/events/${eventId}/agenda/sessions/${session?.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie: organizerCookie },
+      body: JSON.stringify({ scheduleStatus: "tbd", scheduledDate: "2027-05-13" }),
+    });
+    await request(`/api/events/${eventId}/agenda/sessions/${session?.id}/content`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie: organizerCookie },
+      body: JSON.stringify({ contentStatus: "approved" }),
+    });
+    const publish = () =>
+      request(`/api/events/${eventId}/agenda/publish`, { method: "POST", headers: { cookie: organizerCookie } });
+    expect((await publish()).status).toBe(200);
+
+    const email = "archived.pending@example.test";
+    const added = await request(`/api/events/${eventId}/submissions/${created.submission.id}/participants`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: organizerCookie },
+      body: JSON.stringify({ name: "Archived Pending", email, roleLabel: "co-speaker" }),
+    });
+    expect(added.status).toBe(201);
+    const readRoster = () =>
+      request(`/api/events/${eventId}/roster`, { headers: { cookie: organizerCookie } })
+        .then((response) => response.json<{ items: Array<{ id: string; name: string; status: string }> }>());
+    const speakerId = (await readRoster()).items.find((speaker) => speaker.name === "Archived Pending")?.id;
+    expect(speakerId).toBeDefined();
+
+    // Archiving takes them off the roster and off the agenda's pending count, so a publish run
+    // for unrelated reasons is one the organizer was never told concerned them.
+    expect((await request(`/api/events/${eventId}/speakers/${speakerId}`, {
+      method: "DELETE",
+      headers: { cookie: organizerCookie },
+    })).status).toBe(200);
+    const agendaWhileArchived = await request(`/api/events/${eventId}/agenda`, {
+      headers: { cookie: organizerCookie },
+    }).then((response) => response.json<{ sessions: Array<{ id: string; pendingSpeakerCount: number }> }>());
+    expect(agendaWhileArchived.sessions.find((item) => item.id === session?.id)?.pendingSpeakerCount).toBe(0);
+    const whileArchived = await request(
+      `/api/events/${eventId}/submissions/${created.submission.id}/participants`,
+      { headers: { cookie: organizerCookie } },
+    ).then((response) =>
+      response.json<{ participants: Array<{ name: string; onSession: boolean; publicationPending: boolean }> }>()
+    );
+    expect(whileArchived.participants.find((participant) => participant.name === "Archived Pending"))
+      .toMatchObject({ onSession: true, publicationPending: false });
+    expect((await publish()).status).toBe(200);
+
+    // Restoring them is not a publication decision, so their place is still waiting for one.
+    const restored = await request(`/api/events/${eventId}/speakers`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: organizerCookie },
+      body: JSON.stringify({ name: "Archived Pending", email, status: "onboarding" }),
+    });
+    expect(restored.status).toBe(200);
+    await expect(restored.json()).resolves.toMatchObject({ restoredSpeaker: true });
+
+    expect(await (await request(`/api/public/events/${eventId}/sessions`)).text())
+      .not.toContain("Archived Pending");
+    const agendaAfterRestore = await request(`/api/events/${eventId}/agenda`, {
+      headers: { cookie: organizerCookie },
+    }).then((response) => response.json<{ sessions: Array<{ id: string; pendingSpeakerCount: number }> }>());
+    expect(agendaAfterRestore.sessions.find((item) => item.id === session?.id)?.pendingSpeakerCount).toBe(1);
+
+    expect((await publish()).status).toBe(200);
+    expect(await (await request(`/api/public/events/${eventId}/sessions`)).text())
+      .toContain("Archived Pending");
+  });
+
+  it("names content approval, not a republish, for a session the publish route would skip", async () => {
+    const created = await createPanel("rosa.unpublishable@example.test");
+    const decide = (status: string) =>
+      request(`/api/events/${eventId}/disposition`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json", cookie: organizerCookie },
+        body: JSON.stringify({ submissionIds: [created.submission.id], status }),
+      });
+    await decide("accepted");
+    const session = await env.DB.prepare("select id from program_session where submission_id = ?")
+      .bind(created.submission.id).first<{ id: string }>();
+    await request(`/api/events/${eventId}/agenda/sessions/${session?.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie: organizerCookie },
+      body: JSON.stringify({ scheduleStatus: "tbd", scheduledDate: "2027-05-13" }),
+    });
+    await request(`/api/events/${eventId}/agenda/sessions/${session?.id}/content`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie: organizerCookie },
+      body: JSON.stringify({ contentStatus: "approved" }),
+    });
+    expect((await request(`/api/events/${eventId}/agenda/publish`, {
+      method: "POST",
+      headers: { cookie: organizerCookie },
+    })).status).toBe(200);
+
+    // Un-accepting returns the session's content to draft and keeps its schedule and publication
+    // marker, so from here on publish skips it however many participants are waiting.
+    expect((await decide("maybe")).status).toBe(200);
+    const participantsPath = `/api/events/${eventId}/submissions/${created.submission.id}/participants`;
+    const added = await request(participantsPath, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: organizerCookie },
+      body: JSON.stringify({
+        name: "Unpublishable Addition",
+        email: "unpublishable.addition@example.test",
+        roleLabel: "co-speaker",
+      }),
+    });
+    expect(added.status).toBe(201);
+    expect((await decide("accepted")).status).toBe(200);
+
+    const agenda = await request(`/api/events/${eventId}/agenda`, { headers: { cookie: organizerCookie } })
+      .then((response) =>
+        response.json<{ sessions: Array<{ id: string; contentStatus: string; pendingSpeakerCount: number }> }>()
+      );
+    // The hold is a fact about the participation, so it is on show even though the session that
+    // would release it is currently unpublishable.
+    expect(agenda.sessions.find((item) => item.id === session?.id))
+      .toMatchObject({ contentStatus: "draft", pendingSpeakerCount: 1 });
+
+    // The roster has to say what clears the hold - a bare republish would skip this session.
+    const roster = await request(`/api/events/${eventId}/roster`, { headers: { cookie: organizerCookie } })
+      .then((response) =>
+        response.json<{
+          items: Array<{
+            name: string;
+            pendingPublicationSessions: Array<{ id: string; title: string; awaitingContentApproval: boolean }>;
+          }>;
+        }>()
+      );
+    expect(roster.items.find((speaker) => speaker.name === "Unpublishable Addition"))
+      .toMatchObject({
+        pendingPublicationSessions: [{
+          id: session?.id,
+          title: "What a panel actually owes its audience",
+          awaitingContentApproval: true,
+        }],
+      });
+
+    const listed = await request(participantsPath, { headers: { cookie: organizerCookie } })
+      .then((response) =>
+        response.json<{
+          sessionPublishedAt: number | null;
+          sessionPubliclyLive: boolean;
+          sessionAwaitingContentApproval: boolean;
+          participants: Array<{ name: string; onSession: boolean; publicationPending: boolean }>;
+        }>()
+      );
+    expect(listed.sessionPublishedAt).not.toBeNull();
+    expect(listed.sessionPubliclyLive).toBe(false);
+    expect(listed.sessionAwaitingContentApproval).toBe(true);
+    expect(listed.participants.find((participant) => participant.name === "Unpublishable Addition"))
+      .toMatchObject({ onSession: true, publicationPending: true });
+
+    // The publish route agrees: it skips the session rather than revealing anybody on it.
+    const publish = await request(`/api/events/${eventId}/agenda/publish`, {
+      method: "POST",
+      headers: { cookie: organizerCookie },
+    });
+    expect(publish.status).toBe(200);
+    const publishBody = await publish.json<{ skipped: Array<{ id: string; reasons: string[] }> }>();
+    expect(publishBody.skipped.find((skip) => skip.id === session?.id)?.reasons).toContain("content_not_approved");
+    const directory = await request(`/api/public/events/${eventId}/speakers`);
+    expect(await directory.text()).not.toContain("Unpublishable Addition");
+  });
+
+  it("leaves a speaker the organizer parked at invited parked when the session first publishes", async () => {
+    const created = await createPanel("rosa.parked@example.test");
+    await request(`/api/events/${eventId}/disposition`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie: organizerCookie },
+      body: JSON.stringify({ submissionIds: [created.submission.id], status: "accepted" }),
+    });
+    const session = await env.DB.prepare("select id from program_session where submission_id = ?")
+      .bind(created.submission.id).first<{ id: string }>();
+
+    // The session has never been published, so this addition starts onboarding like anybody else.
+    const added = await request(`/api/events/${eventId}/submissions/${created.submission.id}/participants`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: organizerCookie },
+      body: JSON.stringify({
+        name: "Parked Presenter",
+        email: "parked.presenter@example.test",
+        roleLabel: "co-speaker",
+      }),
+    });
+    expect(added.status).toBe(201);
+    const readStatus = async () =>
+      (await request(`/api/events/${eventId}/roster`, { headers: { cookie: organizerCookie } })
+        .then((response) => response.json<{ items: Array<{ id: string; name: string; status: string }> }>()))
+        .items.find((speaker) => speaker.name === "Parked Presenter");
+    const speaker = await readStatus();
+    expect(speaker).toMatchObject({ status: "onboarding" });
+
+    // The organizer parks them by hand on the roster. Publishing the agenda is a decision about
+    // the programme, not a licence to overrule a workflow status somebody set deliberately.
+    expect((await request(`/api/events/${eventId}/speakers/${speaker?.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie: organizerCookie },
+      body: JSON.stringify({ status: "invited" }),
+    })).status).toBe(200);
+    await request(`/api/events/${eventId}/agenda/sessions/${session?.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie: organizerCookie },
+      body: JSON.stringify({ scheduleStatus: "tbd", scheduledDate: "2027-05-13" }),
+    });
+    await request(`/api/events/${eventId}/agenda/sessions/${session?.id}/content`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie: organizerCookie },
+      body: JSON.stringify({ contentStatus: "approved" }),
+    });
+    expect((await request(`/api/events/${eventId}/agenda/publish`, {
+      method: "POST",
+      headers: { cookie: organizerCookie },
+    })).status).toBe(200);
+
+    expect(await readStatus()).toMatchObject({ status: "invited" });
+    const programme = await (await request(`/api/public/events/${eventId}/sessions`)).text();
+    expect(programme).toContain("What a panel actually owes its audience");
+    expect(programme).not.toContain("Parked Presenter");
+    expect(await (await request(`/api/public/events/${eventId}/speakers`)).text())
+      .not.toContain("Parked Presenter");
+  });
+
+  it("changes nobody's standing at the event, whichever publish the organizer runs", async () => {
+    const created = await createPanel("rosa.standing@example.test");
+    await request(`/api/events/${eventId}/disposition`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie: organizerCookie },
+      body: JSON.stringify({ submissionIds: [created.submission.id], status: "accepted" }),
+    });
+    const session = await env.DB.prepare("select id from program_session where submission_id = ?")
+      .bind(created.submission.id).first<{ id: string }>();
+    const standings = async () =>
+      (await env.DB.prepare("select id, status from speaker where event_id = ? order by id")
+        .bind(eventId).all<{ id: string; status: string }>()).results;
+    const publish = () =>
+      request(`/api/events/${eventId}/agenda/publish`, { method: "POST", headers: { cookie: organizerCookie } });
+
+    // Publishing with nothing eligible, on a first publish, and on a republish that releases a
+    // hold: an agenda decision never rewrites whether somebody has agreed to present.
+    const beforeAnything = await standings();
+    expect((await publish()).status).toBe(200);
+    expect(await standings()).toEqual(beforeAnything);
+
+    await request(`/api/events/${eventId}/agenda/sessions/${session?.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie: organizerCookie },
+      body: JSON.stringify({ scheduleStatus: "tbd", scheduledDate: "2027-05-13" }),
+    });
+    await request(`/api/events/${eventId}/agenda/sessions/${session?.id}/content`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie: organizerCookie },
+      body: JSON.stringify({ contentStatus: "approved" }),
+    });
+    const beforeFirstPublish = await standings();
+    expect((await publish()).status).toBe(200);
+    expect(await standings()).toEqual(beforeFirstPublish);
+
+    expect((await request(`/api/events/${eventId}/submissions/${created.submission.id}/participants`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: organizerCookie },
+      body: JSON.stringify({ name: "Standing Addition", email: "standing.addition@example.test" }),
+    })).status).toBe(201);
+    const beforeRepublish = await standings();
+    const republish = await publish();
+    expect(republish.status).toBe(200);
+    await expect(republish.json()).resolves.toMatchObject({
+      releasedParticipants: [expect.objectContaining({ name: "Standing Addition" })],
+    });
+    expect(await standings()).toEqual(beforeRepublish);
+  });
+
+  it("keeps a held participant held and on show when the session is re-placed before the republish", async () => {
+    const created = await createPanel("rosa.replaced@example.test");
+    await request(`/api/events/${eventId}/disposition`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie: organizerCookie },
+      body: JSON.stringify({ submissionIds: [created.submission.id], status: "accepted" }),
+    });
+    const session = await env.DB.prepare("select id from program_session where submission_id = ?")
+      .bind(created.submission.id).first<{ id: string }>();
+    const place = (placement: Record<string, unknown>) =>
+      request(`/api/events/${eventId}/agenda/sessions/${session?.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json", cookie: organizerCookie },
+        body: JSON.stringify(placement),
+      });
+    await place({ scheduleStatus: "tbd", scheduledDate: "2027-05-13" });
+    await request(`/api/events/${eventId}/agenda/sessions/${session?.id}/content`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie: organizerCookie },
+      body: JSON.stringify({ contentStatus: "approved" }),
+    });
+    expect((await request(`/api/events/${eventId}/agenda/publish`, {
+      method: "POST",
+      headers: { cookie: organizerCookie },
+    })).status).toBe(200);
+
+    const participantsPath = `/api/events/${eventId}/submissions/${created.submission.id}/participants`;
+    expect((await request(participantsPath, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: organizerCookie },
+      body: JSON.stringify({ name: "Moved Along", email: "moved.along@example.test", roleLabel: "co-speaker" }),
+    })).status).toBe(201);
+
+    const heldCount = async () =>
+      (await env.DB.prepare(
+        `select count(*) as count from session_speaker
+          where session_id = ? and deleted_at is null and publication_hold_at is not null`,
+      ).bind(session?.id).first<{ count: number }>())?.count ?? 0;
+    const affordances = async () => ({
+      held: await heldCount(),
+      agenda: (await request(`/api/events/${eventId}/agenda`, { headers: { cookie: organizerCookie } })
+        .then((response) =>
+          response.json<{ sessions: Array<{ id: string; pendingSpeakerCount: number }> }>()
+        ))
+        .sessions.find((item) => item.id === session?.id)?.pendingSpeakerCount,
+      panel: (await request(participantsPath, { headers: { cookie: organizerCookie } })
+        .then((response) =>
+          response.json<{ participants: Array<{ name: string; publicationPending: boolean }> }>()
+        ))
+        .participants.filter((participant) => participant.publicationPending).length,
+      roster: (await request(`/api/events/${eventId}/roster`, { headers: { cookie: organizerCookie } })
+        .then((response) =>
+          response.json<{ items: Array<{ name: string; pendingPublicationSessions: Array<{ id: string }> }> }>()
+        ))
+        .items.find((speaker) => speaker.name === "Moved Along")?.pendingPublicationSessions.length,
+    });
+    const outstandingSteps = async () => {
+      const roster = await request(`/api/events/${eventId}/roster`, { headers: { cookie: organizerCookie } })
+        .then((response) =>
+          response.json<{
+            items: Array<{
+              name: string;
+              pendingPublicationSessions: Array<
+                { awaitingContentApproval: boolean; awaitingPlacement: boolean }
+              >;
+            }>;
+          }>()
+        );
+      const panel = await request(participantsPath, { headers: { cookie: organizerCookie } })
+        .then((response) =>
+          response.json<{
+            sessionAwaitingContentApproval: boolean;
+            sessionAwaitingPlacement: boolean;
+          }>()
+        );
+      return {
+        roster: roster.items.find((speaker) => speaker.name === "Moved Along")
+          ?.pendingPublicationSessions[0],
+        panel: {
+          awaitingContentApproval: panel.sessionAwaitingContentApproval,
+          awaitingPlacement: panel.sessionAwaitingPlacement,
+        },
+      };
+    };
+    expect(await affordances()).toEqual({ held: 1, agenda: 1, panel: 1, roster: 1 });
+
+    // Every state the session can be dragged into. The hold belongs to the participation, so it
+    // survives placement clearing the session's own publication and stays on show throughout -
+    // otherwise the next publish reveals somebody the organizer was never shown. What the notice
+    // asks for has to follow the state: publishing skips an unplaced session, so offering a bare
+    // republish there leaves the participant held with nothing the organizer can do about it.
+    for (const step of [
+      { placement: { scheduleStatus: "tbd", scheduledDate: "2027-05-14" }, awaitingPlacement: false },
+      { placement: { scheduleStatus: "unplaced" }, awaitingPlacement: true },
+      { placement: { scheduleStatus: "tbd", scheduledDate: "2027-05-12" }, awaitingPlacement: false },
+    ]) {
+      expect((await place(step.placement)).status).toBe(200);
+      expect(await affordances()).toEqual({ held: 1, agenda: 1, panel: 1, roster: 1 });
+      const outstanding = { awaitingContentApproval: false, awaitingPlacement: step.awaitingPlacement };
+      expect(await outstandingSteps()).toMatchObject({ roster: outstanding, panel: outstanding });
+      expect(await (await request(`/api/public/events/${eventId}/sessions`)).text())
+        .not.toContain("Moved Along");
+    }
+
+    // An unplaced session the publish would skip is named as skipped, and the hold stands.
+    expect((await place({ scheduleStatus: "unplaced" })).status).toBe(200);
+    const skippedPublish = await request(`/api/events/${eventId}/agenda/publish`, {
+      method: "POST",
+      headers: { cookie: organizerCookie },
+    });
+    expect(skippedPublish.status).toBe(200);
+    await expect(skippedPublish.json()).resolves.toMatchObject({
+      releasedParticipants: [],
+      skipped: expect.arrayContaining([
+        expect.objectContaining({ id: session?.id, reasons: ["not_placed"] }),
+      ]),
+    });
+    expect(await affordances()).toEqual({ held: 1, agenda: 1, panel: 1, roster: 1 });
+    expect((await place({ scheduleStatus: "tbd", scheduledDate: "2027-05-12" })).status).toBe(200);
+    await request(`/api/events/${eventId}/agenda/sessions/${session?.id}/content`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie: organizerCookie },
+      body: JSON.stringify({ contentStatus: "approved" }),
+    });
+    expect(await affordances()).toEqual({ held: 1, agenda: 1, panel: 1, roster: 1 });
+
+    const released = await request(`/api/events/${eventId}/agenda/publish`, {
+      method: "POST",
+      headers: { cookie: organizerCookie },
+    });
+    expect(released.status).toBe(200);
+    await expect(released.json()).resolves.toMatchObject({
+      releasedParticipants: [expect.objectContaining({ name: "Moved Along" })],
+    });
+    expect(await affordances()).toEqual({ held: 0, agenda: 0, panel: 0, roster: 0 });
+    expect(await (await request(`/api/public/events/${eventId}/sessions`)).text()).toContain("Moved Along");
+  });
+
+  it("decides a restored participant's hold afresh rather than inheriting the old one", async () => {
+    const created = await createPanel("rosa.restored@example.test");
+    await request(`/api/events/${eventId}/disposition`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie: organizerCookie },
+      body: JSON.stringify({ submissionIds: [created.submission.id], status: "accepted" }),
+    });
+    const session = await env.DB.prepare("select id from program_session where submission_id = ?")
+      .bind(created.submission.id).first<{ id: string }>();
+    const participantsPath = `/api/events/${eventId}/submissions/${created.submission.id}/participants`;
+    const holdOf = async (email: string) =>
+      (await env.DB.prepare(
+        `select session_speaker.publication_hold_at as hold from session_speaker
+           join speaker on speaker.id = session_speaker.speaker_id
+           join person on person.id = speaker.person_id
+          where session_speaker.session_id = ? and person.email = ? and session_speaker.deleted_at is null`,
+      ).bind(session?.id, email).first<{ hold: number | null }>())?.hold ?? null;
+    const addAgain = async (name: string, email: string) => {
+      const response = await request(participantsPath, {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie: organizerCookie },
+        body: JSON.stringify({ name, email, roleLabel: "co-speaker" }),
+      });
+      expect(response.status).toBe(201);
+      return response.json<{ participants: Array<{ id: string; name: string }> }>();
+    };
+    const removeNamed = async (name: string) => {
+      const listed = await request(participantsPath, { headers: { cookie: organizerCookie } })
+        .then((response) => response.json<{ participants: Array<{ id: string; name: string }> }>());
+      const target = listed.participants.find((participant) => participant.name === name);
+      expect((await request(`${participantsPath}/${target?.id}`, {
+        method: "DELETE",
+        headers: { cookie: organizerCookie },
+      })).status).toBe(200);
+    };
+
+    // Removed and re-added while the session is unpublished: no hold, whatever the row said before.
+    await addAgain("Return Trip", "return.trip@example.test");
+    expect(await holdOf("return.trip@example.test")).toBeNull();
+    await removeNamed("Return Trip");
+    await addAgain("Return Trip", "return.trip@example.test");
+    expect(await holdOf("return.trip@example.test")).toBeNull();
+
+    await request(`/api/events/${eventId}/agenda/sessions/${session?.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie: organizerCookie },
+      body: JSON.stringify({ scheduleStatus: "tbd", scheduledDate: "2027-05-13" }),
+    });
+    await request(`/api/events/${eventId}/agenda/sessions/${session?.id}/content`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie: organizerCookie },
+      body: JSON.stringify({ contentStatus: "approved" }),
+    });
+    expect((await request(`/api/events/${eventId}/agenda/publish`, {
+      method: "POST",
+      headers: { cookie: organizerCookie },
+    })).status).toBe(200);
+    expect(await holdOf("return.trip@example.test")).toBeNull();
+
+    // Removed while public and re-added: held again, because their public place has to be
+    // confirmed a second time rather than resumed from the publish that predates the removal.
+    await removeNamed("Return Trip");
+    await addAgain("Return Trip", "return.trip@example.test");
+    expect(await holdOf("return.trip@example.test")).not.toBeNull();
+    expect(await (await request(`/api/public/events/${eventId}/sessions`)).text())
+      .not.toContain("Return Trip");
+
+    // And the same removal followed by a re-placement, so the session is unpublished again: the
+    // restored link starts clean rather than carrying the hold it happened to have.
+    await removeNamed("Return Trip");
+    await request(`/api/events/${eventId}/agenda/sessions/${session?.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie: organizerCookie },
+      body: JSON.stringify({ scheduleStatus: "tbd", scheduledDate: "2027-05-14" }),
+    });
+    await addAgain("Return Trip", "return.trip@example.test");
+    expect(await holdOf("return.trip@example.test")).toBeNull();
+  });
+
+  it("never releases or takes a publication hold through a roster workflow edit", async () => {
+    const created = await createPanel("rosa.roster-edit@example.test");
+    await request(`/api/events/${eventId}/disposition`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie: organizerCookie },
+      body: JSON.stringify({ submissionIds: [created.submission.id], status: "accepted" }),
+    });
+    const session = await env.DB.prepare("select id from program_session where submission_id = ?")
+      .bind(created.submission.id).first<{ id: string }>();
+    await request(`/api/events/${eventId}/agenda/sessions/${session?.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie: organizerCookie },
+      body: JSON.stringify({ scheduleStatus: "tbd", scheduledDate: "2027-05-13" }),
+    });
+    await request(`/api/events/${eventId}/agenda/sessions/${session?.id}/content`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie: organizerCookie },
+      body: JSON.stringify({ contentStatus: "approved" }),
+    });
+    expect((await request(`/api/events/${eventId}/agenda/publish`, {
+      method: "POST",
+      headers: { cookie: organizerCookie },
+    })).status).toBe(200);
+    expect((await request(`/api/events/${eventId}/submissions/${created.submission.id}/participants`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: organizerCookie },
+      body: JSON.stringify({ name: "Workflow Edited", email: "workflow.edited@example.test" }),
+    })).status).toBe(201);
+    const speakerId = (await request(`/api/events/${eventId}/roster`, { headers: { cookie: organizerCookie } })
+      .then((response) => response.json<{ items: Array<{ id: string; name: string }> }>()))
+      .items.find((speaker) => speaker.name === "Workflow Edited")?.id;
+    expect(speakerId).toBeDefined();
+    const hold = async () =>
+      (await env.DB.prepare(
+        "select publication_hold_at as hold from session_speaker where session_id = ? and speaker_id = ?",
+      ).bind(session?.id, speakerId).first<{ hold: number | null }>())?.hold ?? null;
+    const takenAt = await hold();
+    expect(takenAt).not.toBeNull();
+
+    // Every workflow status an organizer can set. Agreeing to present is not the same decision
+    // as appearing on the public site, and the roster must not be able to make it.
+    for (const status of ["confirmed", "pending_employer_approval", "ready", "invited", "onboarding"]) {
+      expect((await request(`/api/events/${eventId}/speakers/${speakerId}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json", cookie: organizerCookie },
+        body: JSON.stringify({ status }),
+      })).status).toBe(200);
+      expect(await hold()).toBe(takenAt);
+      expect(await (await request(`/api/public/events/${eventId}/sessions`)).text())
+        .not.toContain("Workflow Edited");
+      expect(await (await request(`/api/public/events/${eventId}/speakers`)).text())
+        .not.toContain("Workflow Edited");
+    }
+  });
+
   it("reports that a removed participant remains an event speaker", async () => {
     const created = await createPanel("rosa.remains@example.test");
     await request(`/api/events/${eventId}/disposition`, {
@@ -436,8 +1137,9 @@ describe("the program team's own hold on the participant list", () => {
     expect(afterRemove.removal).toMatchObject({
       name: "Dev Malhotra",
       remainsEventSpeaker: true,
-      // Acceptance promoted them to onboarding, which is a status the public directory lists.
-      listedPublicly: true,
+      // The proposal's session content was never approved, so the directory never listed them,
+      // and the outcome says so rather than claiming a public place they did not have.
+      listedPublicly: false,
       speaksElsewhereAtEvent: false,
       // Acceptance carried them onto the session, so removal really did take that access.
       heldSessionAccess: true,

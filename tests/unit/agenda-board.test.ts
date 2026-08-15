@@ -2,6 +2,7 @@
 // ABOUTME: Holds the client warning to the same room and speaker rules the server counts.
 import { describe, expect, it } from "vitest";
 import {
+  countCurrentPublicSessions,
   nearestFreeStart,
   overlapColumns,
   placementOf,
@@ -28,6 +29,7 @@ function session(overrides: Partial<AgendaSession> & { id: string; title: string
     contentStatus: "draft",
     editedSinceApproval: false,
     endsAt: startsAt === null ? null : startsAt + durationMinutes * 60_000,
+    pendingSpeakerCount: 0,
     publishedAt: null,
     room: null,
     scheduleStatus: startsAt === null ? "unplaced" : "placed",
@@ -63,6 +65,15 @@ const lightning = session({
   title: "Docs That Answer Back",
   durationMinutes: 10,
   speakers: [marcus],
+});
+
+describe("countCurrentPublicSessions", () => {
+  it("keeps a published session current while a newcomer is held for republish", () => {
+    expect(countCurrentPublicSessions([
+      session({ id: "ses_current", title: "Current", publishedAt: 1, pendingSpeakerCount: 1 }),
+      session({ id: "ses_unpublished", title: "Unpublished", pendingSpeakerCount: 0 }),
+    ])).toBe(1);
+  });
 });
 
 describe("predictDrop", () => {
