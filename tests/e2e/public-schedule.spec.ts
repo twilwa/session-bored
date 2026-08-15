@@ -244,14 +244,15 @@ test("a signed-in account's schedule stays off the device, so signing out restor
   await page.getByRole("button", { name: /Remove Docs That Answer Back.*from my schedule/ }).click();
   await expect(page.getByRole("heading", { name: "No picks", exact: true })).toBeVisible();
 
-  // Signing out on a public page stays in place, so reload to see the anonymous schedule.
+  // Signing out hands the shared device straight back to its anonymous owner: the account's
+  // schedule leaves the rendered page at once, with no navigation and no reload.
   const menuButton = page.locator(".public-header__menu");
   if (await menuButton.isVisible()) {
     await menuButton.click();
   }
   await page.getByRole("banner").getByRole("button", { name: "Sign out" }).click();
   await expect(page.getByRole("banner").getByRole("button", { name: "Sign out" })).toBeHidden();
-  await page.reload();
+  await expect(page).toHaveURL(/\/schedule\/mine$/);
   await expect(page.getByText("Saved on this device · no account needed", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "1 pick", exact: true })).toBeVisible();
   await expect(page.locator(".itinerary-item", { hasText: "Docs That Answer Back" })).toBeVisible();
