@@ -751,7 +751,7 @@ describe("speaker directory", () => {
       isNull(files.deletedAt),
     ))).toHaveLength(1);
   });
-  it("takes the duplicate's withdrawal and carries the work hanging off its archived record", async () => {
+  it("keeps a withdrawn-only duplicate discoverable and carries the work hanging off its archived record", async () => {
     await request("/api/health");
     const database = drizzle(env.DB);
     const now = Date.now();
@@ -803,6 +803,11 @@ describe("speaker directory", () => {
     ]);
 
     const cookie = await organizerCookie();
+    const withdrawnList = await request("/api/speaker-directory?q=Robin%20Standing", { headers: { cookie } });
+    expect(withdrawnList.status).toBe(200);
+    expect((await withdrawnList.json<SpeakerDirectoryListResponse>()).items).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "psn_probe_wd2_dupe", possibleDuplicateCount: 1 }),
+    ]));
     const withdrawnDetail = await request("/api/speaker-directory/psn_probe_wd2_dupe", { headers: { cookie } });
     expect(withdrawnDetail.status).toBe(200);
     const withdrawnContact = await withdrawnDetail.json<SpeakerDirectoryDetailResponse>();
