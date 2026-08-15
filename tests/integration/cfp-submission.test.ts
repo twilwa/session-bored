@@ -185,6 +185,55 @@ describe("public CFP submissions", () => {
     });
   });
 
+  it("keeps a returning speaker's bio when they leave the field untouched", async () => {
+    await request("/api/health");
+    const cookie = await organizerCookie();
+    const existingBio = "An existing speaker bio that must survive another proposal.";
+    const firstResponse = await request("/api/public/cfp/devflow-conf-2027/submissions", {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({
+        intent: "draft",
+        speaker: {
+          name: "Jordan Alvarez",
+          email: "sbek-organizer@example.com",
+          bio: existingBio,
+        },
+        proposal: {
+          title: "Seed the returning speaker bio",
+          answers: {},
+        },
+      }),
+    });
+    expect(firstResponse.status).toBe(201);
+
+    const secondResponse = await request("/api/public/cfp/devflow-conf-2027/submissions", {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({
+        intent: "draft",
+        speaker: {
+          name: "Jordan Alvarez",
+          email: "sbek-organizer@example.com",
+          bio: "",
+        },
+        proposal: {
+          title: "Another proposal with an untouched bio",
+          answers: {},
+        },
+      }),
+    });
+
+    expect(secondResponse.status).toBe(201);
+    await expect(secondResponse.json()).resolves.toMatchObject({
+      submission: {
+        speaker: {
+          bio: existingBio,
+        },
+      },
+    });
+  });
+
   it("refuses an author edit after close with a human explanation", async () => {
     await request("/api/health");
     const createResponse = await request("/api/public/cfp/devflow-conf-2027/submissions", {
