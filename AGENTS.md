@@ -87,7 +87,9 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   stamps it when it inserts a row and never when it restores one, so work the
   person already owed the event, or that an organizer handed them from the roster
   (which clears the stamp when it restores an assignment), survives a removal
-  intact. Without that, the smallest correction round-trip — name somebody, unname
+  intact. When a directory merge folds two assignments for the same task, null
+  provenance wins for the same reason: independently owed work must survive a
+  later session removal. Without that, the smallest correction round-trip — name somebody, unname
   them — emptied their whole event checklist (issue #148). The event `speaker` row — which drives the
   public speaker directory, the roster row, and mail eligibility — deliberately
   stands after removal (issue #127, settled: no automatic withdrawal). What removal owes
@@ -270,7 +272,9 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   rule only holds one way round: withdrawing archives the row it withdraws, so
   a live-rows-only read cannot see a withdrawn duplicate at all, and the
   outcome would depend on which of the two "Keep" buttons the organizer
-  pressed. That read is also what carries an archived duplicate speaker's
+  pressed. The private directory includes archived speaker rows in its identity
+  and event history for the same reason, while active roster and public reads
+  remain live-only. That read is also what carries an archived duplicate speaker's
   sessions, onboarding work, and files onto the kept person instead of leaving
   them on a record no surface can reach. Taking the further-along of the two instead would let
   the `invited` row a first CFP draft mints reverse a roster decision the
