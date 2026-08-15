@@ -1,6 +1,6 @@
 // ABOUTME: Renders Greenroom's anonymous, mobile-first call-for-speakers portal and proposal form.
 // ABOUTME: Preserves drafts through private return links and shows server validation and deadline locks inline.
-import { useEffect, useMemo, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useState, type ChangeEvent, type CSSProperties } from "react";
 import type {
   CfpAvailabilityState,
   CfpOwnSubmission,
@@ -21,6 +21,12 @@ interface EventRecord {
   endDate: string | null;
   venue: string | null;
   timezone: string;
+  branding: {
+    primaryColor?: string;
+    accentColor?: string;
+    logoUrl?: string;
+    backgroundImageUrl?: string;
+  } | null;
 }
 
 interface FormRecord {
@@ -592,6 +598,12 @@ export function CfpPage({ path }: { path: string }) {
   }
   const isExisting = submission !== null;
   const locked = !isPreview && !availability.canWrite;
+  const branding = cfp.event.branding ?? {};
+  const mastheadStyle = {
+    "--event-primary": branding.primaryColor ?? "var(--blue)",
+    "--event-accent": branding.accentColor ?? "var(--signal)",
+    backgroundImage: branding.backgroundImageUrl === undefined ? undefined : `url(${branding.backgroundImageUrl})`,
+  } as CSSProperties;
   return (
     <div className="public-page cfp-portal">
       <PublicHeader />
@@ -606,8 +618,9 @@ export function CfpPage({ path }: { path: string }) {
             <a className="button button--quiet" href="/organizer/cfp">Return to form builder</a>
           </section>
         ) : null}
-        <section className="cfp-masthead">
-          <div>
+        <section className="cfp-masthead" style={mastheadStyle}>
+          <div className="cfp-masthead__copy">
+            {branding.logoUrl === undefined ? null : <img alt={`${cfp.event.name} logo`} className="cfp-masthead__logo" src={branding.logoUrl} />}
             <p className="eyebrow">CALL FOR SPEAKERS · {isPreview ? "preview" : availability.state}</p>
             <h1>{cfp.event.name}</h1>
             <p className="cfp-masthead__tagline">{cfp.event.tagline}</p>

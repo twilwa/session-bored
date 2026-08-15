@@ -28,20 +28,14 @@ import { EmbedFramePage } from "./pages/embeds/EmbedFramePage.tsx";
 import { SignUpPage } from "./pages/account/SignUpPage.tsx";
 import { InvitationPage } from "./pages/account/InvitationPage.tsx";
 import { PeoplePage } from "./pages/people/PeoplePage.tsx";
+import { EventSetupPage } from "./pages/event-setup/EventSetupPage.tsx";
+import { eventSummary, type EventSetupRecord } from "./pages/event-setup/event-setup.ts";
 
 type Role = "organizer" | "reviewer" | "speaker" | "attendee";
 interface SessionPayload {
   user: SessionUser;
 }
-interface EventRecord {
-  id: string;
-  name: string;
-  tagline: string | null;
-  startDate: string | null;
-  endDate: string | null;
-  venue: string | null;
-  timezone: string;
-}
+type EventRecord = EventSetupRecord;
 interface NamedRecord { id: string; name: string }
 interface SubmissionRecord { id: string; title: string | null; status: string; audienceLevel?: string | null }
 interface CfpPayload {
@@ -171,10 +165,13 @@ function LoginPage() {
   );
 }
 
-function RoleShell({ role, children }: { role: Role; children: ReactNode }) {
+function RoleShell({ role, children, event }: { role: Role; children: ReactNode; event?: EventSetupRecord | null }) {
+  const [loadedEvent, setLoadedEvent] = useState<EventSetupRecord | null>(null);
+  const activeEvent = event === undefined ? loadedEvent : event;
   const nav: Array<[string, string, string?]> = role === "organizer"
     ? [
       ["Overview", "/organizer"], ["Call for speakers", "/organizer/cfp"],
+      ["Event setup", "/organizer/event"],
       ["Review", "/organizer/review"],
       ["Disposition", "/organizer/disposition"],
       ["Speakers", "/organizer/roster"], ["Missing info", "/organizer/roster/missing"],
@@ -194,6 +191,24 @@ function RoleShell({ role, children }: { role: Role; children: ReactNode }) {
         ["Files", "/speaker#files", "File history"],
       ];
 
+  useEffect(() => {
+    if (role !== "organizer" || event !== undefined) return undefined;
+    let active = true;
+    const updateActiveEvent = (browserEvent: Event) => {
+      setLoadedEvent((browserEvent as CustomEvent<EventSetupRecord>).detail);
+    };
+    window.addEventListener("greenroom:event-updated", updateActiveEvent);
+    getJson<{ items: EventSetupRecord[] }>("/api/events")
+      .then(({ items }) => {
+        if (active) setLoadedEvent(items[0] ?? null);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+      window.removeEventListener("greenroom:event-updated", updateActiveEvent);
+    };
+  }, [event, role]);
+
   function scrollToWorkspaceSection(event: MouseEvent<HTMLAnchorElement>, href: string, heading: string): void {
     if (event.metaKey || event.ctrlKey || event.shiftKey) return;
     const section = [...document.querySelectorAll<HTMLElement>(".workspace-section")]
@@ -209,7 +224,11 @@ function RoleShell({ role, children }: { role: Role; children: ReactNode }) {
       <PublicHeader navigationLinkPrefix="Public" signedOutHref="/" />
       <div className="app-shell">
         <aside className="side-nav">
-          <div className="event-switcher"><small>ACTIVE EVENT</small><strong>DevFlow Conf 2027</strong><span>May 12–14 · SFO</span></div>
+          <div className="event-switcher">
+            <small>ACTIVE EVENT</small>
+            <strong>{activeEvent?.name ?? "DevFlow Conf 2027"}</strong>
+            <span>{activeEvent === null ? "May 12–14 · SFO" : eventSummary(activeEvent)}</span>
+          </div>
           <nav aria-label={`${role} navigation`}>
             {nav.map(([label, href, heading]) => heading === undefined
               ? <Link className={window.location.pathname === href || (href.endsWith("/review") && window.location.pathname.startsWith(href)) ? "active" : ""} href={href} key={label}>{label}</Link>
@@ -264,7 +283,7 @@ function OrganizerPage() {
     ? "No deadline set"
     : formatFullDateTime(new Date(data.cfp.form.closeAt).getTime(), data.cfp.event.timezone);
   return (
-    <RoleShell role="organizer">
+    <RoleShell role="organizer" event={data?.event ?? null}>
       {data === null ? error === null ? <LoadingState label="Loading organizer workspace" /> : (
         <section className="state-card" role="alert">
           <p>{error}</p>
@@ -343,6 +362,7 @@ function RoutedPage({ path }: { path: string }) {
   }
   if (isCfpSubmissionPath(path)) return <CfpSubmissionPage path={path} />;
   if (path === "/organizer/cfp") return <RoleShell role="organizer"><CfpBuilderPage /></RoleShell>;
+  if (path === "/organizer/event") return <RoleShell role="organizer"><EventSetupPage /></RoleShell>;
   if (path === "/organizer/disposition") return <RoleShell role="organizer"><DispositionPage /></RoleShell>;
   if (path === "/organizer/agenda") return <RoleShell role="organizer"><AgendaPage /></RoleShell>;
   if (path === "/organizer/comms") return <RoleShell role="organizer"><CommsPage /></RoleShell>;

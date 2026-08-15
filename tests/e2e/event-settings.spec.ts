@@ -1,5 +1,5 @@
-// ABOUTME: Exercises organizer room and track management through the real Worker and browser UI.
-// ABOUTME: Covers safe removal messaging and the bounded management modal at desktop and phone widths.
+// ABOUTME: Exercises organizer event, room, and track settings through the real Worker and browser UI.
+// ABOUTME: Covers brand delivery, safe removal messaging, and desktop and phone-width layouts.
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
 async function signInAsOrganizer(page: Page): Promise<void> {
@@ -17,6 +17,61 @@ async function expandSettingsItem(dialog: Locator, itemName: string): Promise<vo
   if (await showDetails.isVisible()) await showDetails.click();
   await expect(hideDetails).toBeVisible();
 }
+
+test("organizer edits event identity, dates, venue, timezone, and branding", async ({ page }) => {
+  await signInAsOrganizer(page);
+  const original = await page.evaluate(async () => {
+    const response = await fetch("/api/events/evt_devflow_conf_2027");
+    return response.json() as Promise<Record<string, unknown>>;
+  });
+
+  try {
+    await page.goto("/organizer/event");
+    await expect(page.getByRole("heading", { name: "Event setup" })).toBeVisible();
+    await page.getByLabel("Event name").fill("Signal Summit 2027");
+    await page.getByLabel("Public slug").fill("signal-summit-2027");
+    await page.getByLabel("Tagline").fill("Where production systems meet their operators.");
+    await page.getByLabel("Description").fill("A practical gathering for people who run software in the real world.");
+    await page.getByLabel("Start date").fill("2027-09-08");
+    await page.getByLabel("End date").fill("2027-09-10");
+    await page.getByLabel("Venue").fill("Pier 27, San Francisco");
+    await page.getByLabel("Timezone").selectOption("America/New_York");
+    await page.getByLabel("Primary color").fill("#173b57");
+    await page.getByLabel("Accent color").fill("#f4b942");
+    await page.getByLabel("Logo image URL").fill("https://images.example.com/signal-mark.png");
+    await page.getByLabel("Background image URL").fill("https://images.example.com/signal-stage.png");
+    await page.getByLabel("Upload logo image").setInputFiles("fixtures/headshot.png");
+    await expect(page.getByRole("status")).toContainText("Logo image uploaded.");
+    await page.getByLabel("Upload background image").setInputFiles("fixtures/headshot.png");
+    await expect(page.getByRole("status")).toContainText("Background image uploaded.");
+    await page.getByRole("button", { name: "Save event" }).click();
+
+    await expect(page.getByRole("status")).toContainText("Event setup saved.");
+    await expect(page.locator(".event-switcher strong")).toHaveText("Signal Summit 2027");
+    await expect(page.locator(".event-switcher")).toContainText("Sep 8–10, 2027 · Pier 27, San Francisco");
+    await expect(page.getByRole("img", { name: "Signal Summit 2027 logo preview" })).toBeVisible();
+
+    await page.goto("/cfp/devflow-conf-2027");
+    await expect(page.getByRole("heading", { name: "Signal Summit 2027" })).toBeVisible();
+    await expect(page.getByText("Where production systems meet their operators.", { exact: true })).toBeVisible();
+    await expect(page.getByRole("img", { name: "Signal Summit 2027 logo" })).toBeVisible();
+    const masthead = page.locator(".cfp-masthead");
+    expect(await masthead.evaluate((element) => getComputedStyle(element).getPropertyValue("--event-primary").trim()))
+      .toBe("#173b57");
+    await expect(masthead).toHaveCSS("background-image", /\/branding\/background/);
+  } finally {
+    await page.goto("/organizer");
+    const restoreStatus = await page.evaluate(async (event) => {
+      const response = await fetch("/api/events/evt_devflow_conf_2027", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(event),
+      });
+      return response.status;
+    }, original);
+    expect(restoreStatus).toBe(200);
+  }
+});
 
 test("organizer creates, renames, and removes a room from the agenda", async ({ page }, testInfo) => {
   const runId = `${testInfo.project.name}-${Date.now().toString(36)}`;

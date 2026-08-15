@@ -27,11 +27,22 @@
 .cfp-preview-actions { background: var(--signal); }
 
 .cfp-masthead {
+  min-width: 0;
   display: grid;
   grid-template-columns: minmax(0, 1.45fr) minmax(260px, 0.55fr);
   gap: clamp(34px, 7vw, 100px);
   align-items: end;
+  padding: clamp(28px, 5vw, 64px);
+  background-color: var(--event-primary);
+  background-position: center;
+  background-size: cover;
+  color: var(--white);
+  border: 1px solid var(--ink);
+  box-shadow: 12px 12px 0 var(--event-accent);
 }
+
+.cfp-masthead__copy { min-width: 0; padding: 22px; background: rgb(20 20 37 / 76%); }
+.cfp-masthead__logo { width: 88px; height: 88px; display: block; margin-bottom: 30px; border: 1px solid var(--white); background: var(--white); object-fit: contain; }
 
 .cfp-masthead h1 {
   max-width: 900px;
@@ -47,7 +58,7 @@
 
 .cfp-masthead__description {
   max-width: 720px;
-  color: var(--muted);
+  color: #e7e4ee;
   font-size: 1.04rem;
 }
 
@@ -58,8 +69,8 @@
   padding: 24px;
   background: var(--ink);
   color: var(--white);
-  border-top: 8px solid var(--signal);
-  box-shadow: 10px 10px 0 var(--blue);
+  border-top: 8px solid var(--event-accent);
+  box-shadow: 10px 10px 0 var(--event-primary);
 }
 
 .cfp-deadline span,
@@ -69,7 +80,7 @@
   text-transform: uppercase;
 }
 
-.cfp-deadline span { color: var(--signal); }
+.cfp-deadline span { color: var(--event-accent); }
 .cfp-deadline strong { font: 1.35rem Georgia, "Times New Roman", serif; }
 .cfp-deadline small { color: #bbb9c3; overflow-wrap: anywhere; }
 
