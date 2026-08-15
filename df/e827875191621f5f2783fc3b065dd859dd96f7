@@ -1,0 +1,23 @@
+tests/integration/review-engine.test.ts
+  s_34989553ce0652::t_e336da8a328e5c 702,712-722,726,730-733,736-739,742,753-866,868-869,871-874
+  s_34989553ce0652::t_36a3edf19fd9a8 723-725
+  s_34989553ce0652::t_f6b375240a331f 867,870
+worker/review-distribution.ts
+  s_34989553ce0652::t_b239423bc99b18 23-82,192-195,206,209,216-219,223-236,238-271,284,290
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "dfe827875191621f5f2783fc3b065dd859dd96f7",
+  "prompts": {},
+  "sessions": {
+    "s_34989553ce0652": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a007a0-3b4e-7900-960b-be58f604a3c3",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
