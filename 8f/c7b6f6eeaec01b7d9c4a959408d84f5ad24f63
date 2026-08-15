@@ -9,6 +9,8 @@ tests/e2e/speaker-directory.spec.ts
 client/pages/directory/SpeakerDirectoryPage.tsx
   s_e45850ec76bd2e::t_ef577262ddcd14 228
   s_e45850ec76bd2e::t_f0be280e4ede16 319-320
+migrations/0023_flowery_dorian_gray.sql
+  s_7e51d21061003b::t_87303d76e3290c 16-17
 ---
 {
   "schema_version": "authorship/3.0.0",
@@ -16,6 +18,14 @@ client/pages/directory/SpeakerDirectoryPage.tsx
   "base_commit_sha": "8fc7b6f6eeaec01b7d9c4a959408d84f5ad24f63",
   "prompts": {},
   "sessions": {
+    "s_7e51d21061003b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a00785-eca6-7013-9891-57aa78a6e70b",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    },
     "s_e45850ec76bd2e": {
       "agent_id": {
         "tool": "claude",
