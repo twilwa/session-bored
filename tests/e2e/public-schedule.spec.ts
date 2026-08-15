@@ -18,11 +18,15 @@ function uniqueEmail(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1e6)}@example.com`;
 }
 
-async function signOut(page: Page): Promise<void> {
+async function openPublicNavigation(page: Page): Promise<void> {
   const menuButton = page.locator(".public-header__menu");
-  if (await menuButton.isVisible()) {
+  if (await menuButton.isVisible() && await menuButton.getAttribute("aria-expanded") === "false") {
     await menuButton.click();
   }
+}
+
+async function signOut(page: Page): Promise<void> {
+  await openPublicNavigation(page);
   await page.getByRole("banner").getByRole("button", { name: "Sign out" }).click();
   await expect(page).toHaveURL(/\/$/);
 }
@@ -271,6 +275,7 @@ test("signing in from the header, without ever reloading, moves the device's pic
   await page.getByRole("button", { name: "Create account" }).click();
   await expect(page).toHaveURL(/\/schedule\/mine$/);
   // Signing out on this page stays in place by design, so it is done inline here.
+  await openPublicNavigation(page);
   await page.getByRole("banner").getByRole("button", { name: "Sign out" }).click();
   await expect(page.getByRole("banner").getByRole("button", { name: "Sign out" })).toBeHidden();
 
@@ -283,6 +288,7 @@ test("signing in from the header, without ever reloading, moves the device's pic
 
   // Every step from here is SPA navigation: the schedule pages unmount, but the schedule they
   // share must still notice that somebody signed in.
+  await openPublicNavigation(page);
   await page.getByRole("banner").getByRole("link", { name: "Sign in", exact: true }).click();
   await expect(page).toHaveURL(/\/login/);
   await page.getByLabel("Email").fill(email);
@@ -324,10 +330,13 @@ test("signing out from another page takes the account schedule off the shared de
   await expect(page.getByRole("heading", { name: "1 pick", exact: true })).toBeVisible();
 
   // Leave the schedule behind, sign out from a page that never renders it, and come back.
+  await openPublicNavigation(page);
   await page.getByRole("banner").getByRole("link", { name: "Program", exact: true }).click();
   await expect(page).toHaveURL(/\/program$/);
+  await openPublicNavigation(page);
   await page.getByRole("banner").getByRole("button", { name: "Sign out" }).click();
   await expect(page.getByRole("banner").getByRole("button", { name: "Sign out" })).toBeHidden();
+  await openPublicNavigation(page);
   await page.getByRole("banner").getByRole("link", { name: "My schedule", exact: true }).click();
 
   await expect(page).toHaveURL(/\/schedule\/mine$/);
@@ -366,10 +375,7 @@ test("a signed-in account's schedule stays off the device, so signing out restor
 
   // Signing out hands the shared device straight back to its anonymous owner: the account's
   // schedule leaves the rendered page at once, with no navigation and no reload.
-  const menuButton = page.locator(".public-header__menu");
-  if (await menuButton.isVisible()) {
-    await menuButton.click();
-  }
+  await openPublicNavigation(page);
   await page.getByRole("banner").getByRole("button", { name: "Sign out" }).click();
   await expect(page.getByRole("banner").getByRole("button", { name: "Sign out" })).toBeHidden();
   await expect(page).toHaveURL(/\/schedule\/mine$/);
