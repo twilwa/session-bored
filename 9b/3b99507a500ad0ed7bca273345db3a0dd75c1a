@@ -1,0 +1,34 @@
+client/pages/people/invitation-remit.ts
+  s_c3efed95f798b2::t_62a4b7f2b1366d 1-23
+AGENTS.md
+  s_c3efed95f798b2::t_bd50b8cdd9e79f 297-303
+client/pages/people/PeoplePage.tsx
+  s_c3efed95f798b2::t_4a4d37e0eede60 8
+  s_c3efed95f798b2::t_a5bd99a3a9446b 145-146,154
+  s_c3efed95f798b2::t_29d469456fe2f5 486-489
+tests/unit/invitation-remit.test.ts
+  s_c3efed95f798b2::t_451cd7abd9c850 1-29
+tests/integration/email-sending.test.ts
+  s_c3efed95f798b2::t_f551a9220340c7 593-597
+  s_c3efed95f798b2::t_814d001f773572 570
+worker/email/reviewer-invitation.ts
+  s_c3efed95f798b2::t_f4f547e19178b6 80
+  s_c3efed95f798b2::t_a1c758321661d7 40-48
+  s_c3efed95f798b2::t_7a6d2ef3e5580a 68-70
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "9b3b99507a500ad0ed7bca273345db3a0dd75c1a",
+  "prompts": {},
+  "sessions": {
+    "s_c3efed95f798b2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "af247dff-2953-4872-a0b1-6f4d4456f955",
+        "model": "claude-opus-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
