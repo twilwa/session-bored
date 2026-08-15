@@ -376,8 +376,26 @@ export function createPersonalScheduleStore(
   };
 }
 
+const stores = new Map<string, PersonalScheduleStore>();
+
+// One schedule per event, shared by every page that shows it. A pick made on the itinerary is
+// still saving when that page unmounts, and the page it leads to must see it rather than read
+// the account past it.
+export function personalScheduleStore(
+  eventId: string,
+  environment?: PersonalScheduleEnvironment,
+): PersonalScheduleStore {
+  const existing = stores.get(eventId);
+  if (existing !== undefined) {
+    return existing;
+  }
+  const store = createPersonalScheduleStore(eventId, environment);
+  stores.set(eventId, store);
+  return store;
+}
+
 export function usePersonalSchedule(eventId: string) {
-  const store = useMemo(() => createPersonalScheduleStore(eventId), [eventId]);
+  const store = useMemo(() => personalScheduleStore(eventId), [eventId]);
   const snapshot = useSyncExternalStore(store.subscribe, store.snapshot, store.snapshot);
 
   useEffect(() => {

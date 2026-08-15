@@ -1,13 +1,13 @@
 // ABOUTME: Persists each signed-in account's selected public sessions across devices.
 // ABOUTME: Filters every saved selection through the same public programme gate attendees browse.
-import { and, eq, getTableColumns, inArray } from "drizzle-orm";
+import { and, desc, eq, getTableColumns, inArray } from "drizzle-orm";
 import { drizzle, type DrizzleD1Database } from "drizzle-orm/d1";
 import { Hono } from "hono";
-import { personalScheduleSessions } from "../../db/schema.ts";
+import { personalScheduleSessions, sessions } from "../../db/schema.ts";
 import { personalScheduleUpdateLimit, type PersonalScheduleResponse } from "../../shared/api.ts";
 import type { AuthSession } from "../auth.ts";
 import { boundParameterBudget, chunkIds } from "../d1-limits.ts";
-import { fetchPublicSessions } from "../public-queries.ts";
+import { filterPublicSessionIds } from "../public-queries.ts";
 
 type PersonalScheduleEnvironment = {
   Bindings: CloudflareBindings;
@@ -17,14 +17,6 @@ type PersonalScheduleEnvironment = {
 };
 
 const personalScheduleRoutes = new Hono<PersonalScheduleEnvironment>();
-
-const publicSessionFilters = {
-  q: undefined,
-  track: undefined,
-  format: undefined,
-  room: undefined,
-  day: undefined,
-};
 
 // A request that fits the route's own id limit still reaches the database as several
 // smaller statements, each within D1's bound-parameter budget.
@@ -43,17 +35,15 @@ function sessionIds(value: unknown): string[] | null {
 async function readSchedule(
   database: DrizzleD1Database,
   userId: string,
-  publicSessions: Awaited<ReturnType<typeof fetchPublicSessions>>,
+  eventId: string,
 ): Promise<string[]> {
-  if (publicSessions.length === 0) {
-    return [];
-  }
   const selected = await database
     .select({ sessionId: personalScheduleSessions.sessionId })
     .from(personalScheduleSessions)
-    .where(eq(personalScheduleSessions.userId, userId));
-  const selectedIds = new Set(selected.map((item) => item.sessionId));
-  return publicSessions.map((session) => session.id).filter((sessionId) => selectedIds.has(sessionId));
+    .innerJoin(sessions, eq(personalScheduleSessions.sessionId, sessions.id))
+    .where(and(eq(personalScheduleSessions.userId, userId), eq(sessions.eventId, eventId)))
+    .orderBy(desc(sessions.scheduledDate), desc(sessions.startsAt), sessions.id);
+  return filterPublicSessionIds(database, eventId, selected.map((item) => item.sessionId));
 }
 
 personalScheduleRoutes.get("/attendee/events/:eventId/schedule", async (context) => {
@@ -62,9 +52,9 @@ personalScheduleRoutes.get("/attendee/events/:eventId/schedule", async (context)
     return context.json({ error: "authentication_required" }, 401);
   }
   const database = drizzle(context.env.DB);
-  const publicSessions = await fetchPublicSessions(database, context.req.param("eventId"), publicSessionFilters);
+  const eventId = context.req.param("eventId");
   return context.json(
-    { sessionIds: await readSchedule(database, user.id, publicSessions) } satisfies PersonalScheduleResponse,
+    { sessionIds: await readSchedule(database, user.id, eventId) } satisfies PersonalScheduleResponse,
   );
 });
 
@@ -87,9 +77,7 @@ personalScheduleRoutes.patch("/attendee/events/:eventId/schedule", async (contex
 
   const database = drizzle(context.env.DB);
   const eventId = context.req.param("eventId");
-  const publicSessions = await fetchPublicSessions(database, eventId, publicSessionFilters);
-  const publicIds = new Set(publicSessions.map((session) => session.id));
-  if (add.some((sessionId) => !publicIds.has(sessionId))) {
+  if ((await filterPublicSessionIds(database, eventId, add)).length !== add.length) {
     return context.json({ error: "invalid_personal_schedule" }, 400);
   }
 
@@ -109,7 +97,7 @@ personalScheduleRoutes.patch("/attendee/events/:eventId/schedule", async (contex
   }
 
   return context.json(
-    { sessionIds: await readSchedule(database, user.id, publicSessions) } satisfies PersonalScheduleResponse,
+    { sessionIds: await readSchedule(database, user.id, eventId) } satisfies PersonalScheduleResponse,
   );
 });
 

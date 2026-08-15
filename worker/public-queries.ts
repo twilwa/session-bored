@@ -238,6 +238,30 @@ export async function countPublicSessions(
   return row?.count ?? 0;
 }
 
+// ABOUTME: Answers which of the named sessions the public programme currently offers, under the
+// same gate as the full read, at a cost that follows the ids rather than the size of the event.
+export async function filterPublicSessionIds(
+  database: DrizzleD1Database,
+  eventId: string,
+  candidateIds: string[],
+): Promise<string[]> {
+  if (candidateIds.length === 0) {
+    return [];
+  }
+  const rows = (
+    await Promise.all(
+      chunkIds(candidateIds).map((ids) =>
+        database
+          .select({ id: sessions.id })
+          .from(sessions)
+          .where(and(eq(sessions.eventId, eventId), PUBLIC_SESSION_GATE, inArray(sessions.id, ids))),
+      ),
+    )
+  ).flat();
+  const publicIds = new Set(rows.map((row) => row.id));
+  return candidateIds.filter((candidateId) => publicIds.has(candidateId));
+}
+
 export async function fetchPublicSpeakers(
   database: DrizzleD1Database,
   eventId: string,

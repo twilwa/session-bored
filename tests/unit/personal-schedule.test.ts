@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { personalScheduleUpdateLimit, type PersonalScheduleChange } from "../../shared/api.ts";
 import {
   createPersonalScheduleStore,
+  personalScheduleStore,
   PersonalScheduleRejected,
   PersonalScheduleUnauthenticated,
   type PersonalScheduleEnvironment,
@@ -33,6 +34,7 @@ class FakeSchedule implements PersonalScheduleEnvironment {
   readonly storage = new Map<string, string>();
   readonly updates: PersonalScheduleChange[] = [];
   account: string[] = [];
+  reads = 0;
   publicIds = new Set<string>();
   userId: string | null = "usr_attendee";
   pendingUserId: Deferred<string | null> | null = null;
@@ -65,6 +67,7 @@ class FakeSchedule implements PersonalScheduleEnvironment {
   }
 
   async readAccountSchedule(): Promise<string[]> {
+    this.reads += 1;
     if (this.readFailure !== null) {
       throw this.readFailure;
     }
@@ -349,6 +352,39 @@ describe("a flush the server refuses part of", () => {
     expect(environment.account).toEqual(["ses_0", "ses_1"]);
     expect(store.snapshot().sessionIds).toEqual(["ses_0", "ses_1"]);
     expect(store.snapshot().storageStatus).toBe("account");
+  });
+});
+
+describe("moving between the pages that show the schedule", () => {
+  // `/schedule` and `/schedule/mine` are one SPA navigation apart, so the itinerary's page
+  // component unmounts while its save is still in flight.
+  it("carries a pick that is still saving onto the next page, and reads the account once", async () => {
+    const navigationEventId = `${EVENT_ID}_navigation`;
+    const environment = new FakeSchedule([]);
+    environment.publicIds = new Set(["ses_first"]);
+    const itinerary = personalScheduleStore(navigationEventId, environment);
+
+    await itinerary.settle();
+    expect(environment.reads).toBe(1);
+
+    const started = deferred<void>();
+    const release = deferred<void>();
+    environment.blockNextUpdate = { started, release };
+    const saving = itinerary.toggle("ses_first");
+    await started.promise;
+
+    const mySchedule = personalScheduleStore(navigationEventId);
+    expect(mySchedule.snapshot().sessionIds).toEqual(["ses_first"]);
+    expect(mySchedule.snapshot().storageStatus).toBe("account");
+
+    release.resolve();
+    await Promise.all([saving, mySchedule.settle()]);
+
+    expect(environment.account).toEqual(["ses_first"]);
+    expect(mySchedule.snapshot().sessionIds).toEqual(["ses_first"]);
+    expect(mySchedule.snapshot().storageStatus).toBe("account");
+    expect(environment.updates).toEqual([{ add: ["ses_first"], remove: [] }]);
+    expect(environment.reads).toBe(1);
   });
 });
 

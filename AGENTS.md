@@ -275,12 +275,17 @@ longer projects it into the session at all.
   `personal_schedule_session` for signed-in accounts. On an account's first
   use per device and event, `client/pages/public/personal-schedule.ts` adds the
   device picks to the account picks, so neither side wins by replacement.
-  `worker/routes/personal-schedule.ts` returns only sessions admitted by
-  `fetchPublicSessions`; the calendar URL remains an explicit selection
-  snapshot rather than an account subscription. The route refuses a whole
-  request that names one non-public session, so the client answers a refusal by
-  re-reading the live programme and dropping only the picks it no longer offers:
-  a stale id never takes its batch peers with it.
+  `worker/routes/personal-schedule.ts` admits a session only through
+  `filterPublicSessionIds` in `worker/public-queries.ts`, which applies the same
+  `PUBLIC_SESSION_GATE` as the full programme read to just the ids in hand - a
+  star click must not cost a whole programme, joins and speaker names included.
+  The calendar URL remains an explicit selection snapshot rather than an account
+  subscription. The route refuses a whole request that names one non-public
+  session, so the client answers a refusal by re-reading the live programme and
+  dropping only the picks it no longer offers: a stale id never takes its batch
+  peers with it. One store per event serves both `/schedule` and
+  `/schedule/mine` (`personalScheduleStore`), because those are one SPA
+  navigation apart and a pick is still saving when the first page unmounts.
 - **A query whose parameter count follows the data goes through
   `worker/d1-limits.ts#chunkIds`.** D1 binds at most 100 per statement, so an
   `inArray` over rows the event owns - the speaker join behind

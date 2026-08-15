@@ -215,6 +215,43 @@ test("an anonymous schedule joins a new attendee account and follows them to ano
   await otherBrowser.close();
 });
 
+test("a pick made on the itinerary is on my schedule the moment I click through to it", async ({ page }) => {
+  await placeDocsSession(page, {
+    scheduleStatus: "placed",
+    scheduledDate: PLACED_DAY,
+    roomId: MAIN_STAGE_ROOM_ID,
+    startsAt: new Date(PLACED_STARTS_AT_ISO).getTime(),
+  });
+  await signOut(page);
+  await page.goto("/schedule");
+  await page.evaluate(() => localStorage.clear());
+
+  const email = uniqueEmail("click-through");
+  await page.goto("/signup");
+  await page.getByLabel("Name").fill("Click Through");
+  await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Password").fill("Greenroom!2027");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await expect(page).toHaveURL(/\/schedule\/mine$/);
+  await expect(page.getByRole("heading", { name: "No picks", exact: true })).toBeVisible();
+
+  // Star a session and leave for the schedule page at once, without waiting for the save.
+  await page.goto("/schedule");
+  await selectPlacedDay(page);
+  await page.getByRole("button", { name: /Save Docs That Answer Back.*to my schedule/ }).click();
+  await page.getByRole("link", { name: "My schedule 1" }).click();
+
+  await expect(page).toHaveURL(/\/schedule\/mine$/);
+  await expect(page.getByText("Saved to your account · available on any device", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "1 pick", exact: true })).toBeVisible();
+  await expect(page.locator(".itinerary-item", { hasText: "Docs That Answer Back" })).toBeVisible();
+
+  // And the pick reached the account, not just this page's memory.
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "1 pick", exact: true })).toBeVisible();
+  await expect(page.locator(".itinerary-item", { hasText: "Docs That Answer Back" })).toBeVisible();
+});
+
 test("a signed-in account's schedule stays off the device, so signing out restores the anonymous picks", async ({ page }) => {
   await placeDocsSession(page, {
     scheduleStatus: "placed",
