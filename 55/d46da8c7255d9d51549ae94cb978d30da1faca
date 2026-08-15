@@ -1,0 +1,39 @@
+shared/api.ts
+  s_7bea4e476b9c92::t_31273f5494548d 366-371
+worker/routes/people.ts
+  s_7bea4e476b9c92::t_31273f5494548d 9,28-31,46-79,245-260,263-273,441-495
+  s_fa37a2aefc59dd::t_973a4c16de8642 496-497
+client/pages/people/people.css
+  s_7bea4e476b9c92::t_60c0f81c00ed97 75
+client/pages/people/PeoplePage.tsx
+  s_7bea4e476b9c92::t_60c0f81c00ed97 19-20,51,138-157,391-411
+tests/e2e/account-access.spec.ts
+  s_7bea4e476b9c92::t_3f207248fa69b2 109
+  s_7bea4e476b9c92::t_968398f0834234 115-124
+tests/integration/email-sending.test.ts
+  s_7bea4e476b9c92::t_a9548a79718213 519,524,535,561,565,568,578-579,585,588-600,602-605
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "55d46da8c7255d9d51549ae94cb978d30da1faca",
+  "prompts": {},
+  "sessions": {
+    "s_7bea4e476b9c92": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffe3b-ba90-7072-a100-5d86ced36312",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    },
+    "s_fa37a2aefc59dd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a186fed2-862e-4c92-88a1-acb28d43c7cf",
+        "model": "claude-fable-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
