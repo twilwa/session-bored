@@ -561,9 +561,15 @@ reason - tests inject a fake one instead of touching the network.
   The refusal names the door that is actually open, which depends on whether
   that account already holds a live reviewer grant - a reviewer onboarded by an
   earlier invitation always does, and People offers no second grant for them.
-  Neither door carries a default remit: People's grant asks for this event's
-  tracks and round in the same step (#166), and for an account that already
-  holds the grant the refusal points at Committee setup instead. Resending
+  Neither door carries a default remit, and every refusal names the remit
+  itself: an account that already holds the grant is sent to Committee setup,
+  which is the only step left for it, and an account without the grant is sent
+  to People's grant (#166) *and then* to Committee setup for this event, because
+  a grant is platform-wide while a queue is per event. Both say plainly that
+  tracks and a review round must be chosen. The other two invitation refusals,
+  `invalid_email` and `open_round_required`, carry a `note` for the same reason:
+  People renders the server's note, so a refusal without one is a dead end.
+  Resending
   (`POST /api/events/:eventId/reviewer-invites/:inviteId/resend`) is open only
   while this invitation's own delivery reads `failed` or `not_attempted`, and
   refuses `invitation_already_sent` once any attempt since its `createdAt`

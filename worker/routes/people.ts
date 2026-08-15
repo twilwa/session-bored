@@ -107,6 +107,17 @@ async function readReviewerInvitationDispatches(
     ));
 }
 
+/** The one single-invite reading of the resend rule, shared by every door that asks it. */
+async function deliveryForInvite(
+  database: ReturnType<typeof drizzle>,
+  invite: OpenReviewerInvite,
+): Promise<ReviewerInvitationDelivery> {
+  return reviewerInvitationDeliveryFor(
+    invite,
+    await readReviewerInvitationDispatches(database, [invite.eventId], invite.createdAt),
+  );
+}
+
 /** The one wire vocabulary both invitation doors report delivery in. */
 function invitationDeliveryResponse(
   result: EmailDeliveryResult,
@@ -137,10 +148,12 @@ async function confirmedAccountFor(
 }
 
 /**
- * Names the door that is actually open. A reviewer onboarded by an earlier invitation is a
- * confirmed account that already holds the grant, and People offers no second grant for it, so
- * for them the only step left is this event's remit, which Committee setup owns. An account
- * without the grant goes through People's own grant, which asks for that remit in the same step.
+ * Names the door that is actually open, and every step behind it. A reviewer onboarded by an
+ * earlier invitation is a confirmed account that already holds the grant, and People offers no
+ * second grant for it, so for them the only step left is this event's remit, which Committee
+ * setup owns. An account without the grant needs the grant first and then that same remit: the
+ * grant carries a remit of its own, but a grant is platform-wide while a queue is per event, so
+ * naming the grant alone can leave a reviewer with access and nothing to read.
  */
 function confirmedAddressRefusalNote(accountName: string, holdsReviewer: boolean): string {
   if (holdsReviewer) {
@@ -149,8 +162,8 @@ function confirmedAddressRefusalNote(accountName: string, holdsReviewer: boolean
       + "Committee setup to put its proposals in their queue.";
   }
   return `${accountName} has already confirmed this address, so an invitation has nothing left to `
-    + "redeem. Grant reviewer access on their account, choosing this event's tracks and a review "
-    + "round in the same step, and its proposals are in their queue when they sign in.";
+    + "redeem. Grant reviewer access on their account, then give them this event's remit on "
+    + "Committee setup. Tracks and a review round must both be chosen, or their queue stays empty.";
 }
 
 const requireOrganizer = createMiddleware<PeopleEnvironment>(async (context, next) => {
@@ -428,7 +441,14 @@ peopleRoutes.delete("/api/people/:userId/grants/:role", requireOrganizer, async 
 peopleRoutes.post("/api/events/:eventId/reviewer-invites", requireOrganizer, async (context) => {
   const payload = await context.req.json<{ email?: unknown; trackIds?: unknown; roundIds?: unknown }>();
   if (typeof payload.email !== "string" || !payload.email.includes("@")) {
-    return context.json({ error: "invalid_email" }, 400);
+    return context.json(
+      {
+        error: "invalid_email",
+        note: "An invitation is redeemed by confirming the address it was sent to, so it needs a "
+          + "valid email address. Check the address and send it again.",
+      },
+      400,
+    );
   }
   const organizer = context.get("authUser");
   if (organizer === null) {
@@ -463,10 +483,7 @@ peopleRoutes.post("/api/events/:eventId/reviewer-invites", requireOrganizer, asy
     );
   if (existing !== undefined) {
     const openInvite = { id: existing.id, email, eventId, createdAt: existing.createdAt };
-    const alreadySent = reviewerInvitationDeliveryFor(
-      openInvite,
-      await readReviewerInvitationDispatches(database, [eventId], existing.createdAt),
-    ) === "sent";
+    const alreadySent = await deliveryForInvite(database, openInvite) === "sent";
     return context.json(
       {
         error: "invite_already_open",
@@ -492,7 +509,14 @@ peopleRoutes.post("/api/events/:eventId/reviewer-invites", requireOrganizer, asy
   ]);
   const defaultRound = openRounds[0];
   if (defaultRound === undefined) {
-    return context.json({ error: "open_round_required" }, 409);
+    return context.json(
+      {
+        error: "open_round_required",
+        note: "This event has no open review round, so a redeemed invitation would open an empty "
+          + "queue. Open a review round on Committee setup, then send this invitation again.",
+      },
+      409,
+    );
   }
   const requestedRoundIds = Array.isArray(payload.roundIds)
     ? payload.roundIds.filter((id): id is string => typeof id === "string")
@@ -554,8 +578,7 @@ peopleRoutes.post("/api/events/:eventId/reviewer-invites/:inviteId/resend", requ
   if (invite === undefined) {
     return context.json({ error: "invite_not_found" }, 404);
   }
-  const dispatches = await readReviewerInvitationDispatches(database, [eventId], invite.createdAt);
-  if (reviewerInvitationDeliveryFor(invite, dispatches) === "sent") {
+  if (await deliveryForInvite(database, invite) === "sent") {
     return context.json({ error: "invitation_already_sent" }, 409);
   }
   const delivery = await sendReviewerInvitationEmail({

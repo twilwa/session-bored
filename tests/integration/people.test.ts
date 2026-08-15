@@ -2,7 +2,7 @@
 // ABOUTME: Confirms only an organizer can open the gate and that a grant is always attributed.
 import { env } from "cloudflare:workers";
 import { drizzle } from "drizzle-orm/d1";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { reviewerInvites, reviewRounds, tracks, users } from "../../db/schema.ts";
 import type { PersonAccountSummary } from "../../shared/api.ts";
@@ -243,6 +243,50 @@ describe("organizer People surface", () => {
     expect(stored?.roundIds).toEqual([openRoundIds[0]]);
   });
 
+  it("names the fix when an invitation cannot be recorded", async () => {
+    await request("/api/health");
+    const cookie = await organizerCookie();
+    const database = drizzle(env.DB);
+    const eventId = "evt_devflow_conf_2027";
+    const invited = "no-open-round-invite@example.com";
+
+    const inviteReviewer = async (email: string) =>
+      request(`/api/events/${eventId}/reviewer-invites`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+
+    const malformed = await inviteReviewer("not-an-address");
+    expect(malformed.status).toBe(400);
+    const malformedRefusal = await malformed.json<{ error: string; note: string }>();
+    expect(malformedRefusal.error).toBe("invalid_email");
+    expect(malformedRefusal.note).toContain("valid email address");
+
+    const openRoundIds = (
+      await database
+        .select({ id: reviewRounds.id })
+        .from(reviewRounds)
+        .where(and(eq(reviewRounds.eventId, eventId), eq(reviewRounds.status, "open")))
+    ).map((round) => round.id);
+    expect(openRoundIds.length).toBeGreaterThan(0);
+    await database.update(reviewRounds).set({ status: "closed" }).where(inArray(reviewRounds.id, openRoundIds));
+
+    const refused = await inviteReviewer(invited);
+    expect(refused.status).toBe(409);
+    const refusal = await refused.json<{ error: string; note: string }>();
+    expect(refusal.error).toBe("open_round_required");
+    expect(refusal.note).toContain("review round");
+    expect(refusal.note).toContain("Committee setup");
+    // Nothing was recorded, so nobody waits on an invitation that would redeem into an empty queue.
+    expect((await loadPeople(cookie)).invites.map((invite) => invite.email)).not.toContain(invited);
+
+    // And the recourse the note names is the fix: with a round open again the invitation records.
+    await database.update(reviewRounds).set({ status: "open" }).where(inArray(reviewRounds.id, openRoundIds));
+    expect((await inviteReviewer(invited)).status).toBe(201);
+    expect((await loadPeople(cookie)).invites.map((invite) => invite.email)).toContain(invited);
+  });
+
   it("requires a remit when People grants reviewer and opens that reviewer's queue", async () => {
     await request("/api/health");
     const cookie = await organizerCookie();
@@ -322,10 +366,13 @@ describe("organizer People surface", () => {
     expect(refused.status).toBe(409);
     const refusal = await refused.json<{ error: string; userId: string; holdsReviewer: boolean; note: string }>();
     expect(refusal).toMatchObject({ error: "account_already_confirmed", userId, holdsReviewer: false });
-    // An account without the grant is sent to People's own grant, which takes the remit with it,
-    // so this refusal has no separate Committee setup step to name.
+    // An account without the grant needs both steps, and in this order: the grant opens the area,
+    // Committee setup gives this event's remit. Naming only the first can leave a reviewer with
+    // access and an empty queue, so the note names the remit and what it takes.
     expect(refusal.note).toContain("Grant reviewer access");
-    expect(refusal.note).not.toContain("Committee setup");
+    expect(refusal.note).toContain("Committee setup");
+    expect(refusal.note.indexOf("Grant reviewer access")).toBeLessThan(refusal.note.indexOf("Committee setup"));
+    expect(refusal.note).toContain("Tracks and a review round");
 
     // Nothing was recorded, so no invitation waits on a confirmation that already happened.
     expect((await loadPeople(cookie)).invites.map((invite) => invite.email)).not.toContain(invited);
