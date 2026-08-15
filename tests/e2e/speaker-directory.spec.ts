@@ -134,6 +134,10 @@ test("organizer reviews and merges a likely duplicate while choosing the kept re
   const dialog = page.getByRole("dialog", { name: "Confirm speaker merge" });
   await expect(dialog).toContainText(`Keep ${priya!.email}`);
   await expect(dialog).toContainText(`Archive ${duplicateEmail}`);
+  // A merge resolves roster status where both records speak at one event, which the public
+  // programme reads. The organizer is told that before they commit, not after.
+  await expect(dialog).toContainText("stays withdrawn if either was withdrawn");
+  await expect(dialog).toContainText("listed on the public programme");
   await dialog.getByRole("button", { name: `Merge and keep ${priya!.email}` }).click();
 
   await expect(page).toHaveURL(/\/organizer\/directory\/psn_priya_raman$/);

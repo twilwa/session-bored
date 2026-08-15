@@ -121,6 +121,12 @@ other record is archived with an attributed merge log, while its proposal,
 session, onboarding-task, and file relationships move to the kept record.
 Greenroom refuses to merge records owned by two different accounts.
 
+At any event both records speak at, the merge also resolves their roster status:
+the kept record takes the further-along status, except that withdrawal wins
+whenever either record was withdrawn. Because the public programme lists a
+speaker on roster status alone, a merge can therefore add a person to it or take
+them off it. The confirmation dialog says so before the organizer commits.
+
 This is the first directory slice. CSV import, tags, segments, custom fields,
 segment outreach, and directory analytics remain separate follow-up work. The
 existing **Speakers** roster remains the workflow view for the active event.
