@@ -64,6 +64,46 @@ async function clickSpeakerAction(
   await button.click();
 }
 
+test("organizer previews row outcomes and imports valid speakers from CSV", async ({ page }) => {
+  await signInAsOrganizer(page);
+  const suffix = Date.now();
+  const existingEmail = `csv-existing-${suffix}@example.test`;
+  const importedEmail = `csv-imported-${suffix}@example.test`;
+  const existingResponse = await page.request.post("/api/events/evt_devflow_conf_2027/speakers", {
+    data: { name: `Existing CSV ${suffix}`, email: existingEmail, status: "invited" },
+  });
+  expect(existingResponse.status()).toBe(201);
+
+  await page.goto("/organizer/roster");
+  await page.getByRole("button", { name: "Import CSV" }).click();
+  await expect(page.getByRole("heading", { name: "Import speakers from CSV" })).toBeVisible();
+  const csv = [
+    "name,email,title,company,bio",
+    `Existing CSV ${suffix},${existingEmail},Changed title,Changed company,Must remain unchanged`,
+    `Imported CSV ${suffix},${importedEmail},Engineering Manager,Substrate,Imported through browser`,
+    "Broken CSV,not-an-email,Engineer,Example,Invalid row",
+  ].join("\n");
+  await page.getByLabel("Speaker CSV file").evaluate((element, contents) => {
+    const transfer = new DataTransfer();
+    transfer.items.add(new File([contents], "speakers.csv", { type: "text/csv" }));
+    const input = element as HTMLInputElement;
+    input.files = transfer.files;
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  }, csv);
+
+  await expect(page.getByText("1 ready to import")).toBeVisible();
+  await expect(page.getByText("Already on this roster")).toBeVisible();
+  await expect(page.getByText("Email must be a valid address.")).toBeVisible();
+  await expect(page.getByText("Name ← name")).toBeVisible();
+  await page.getByRole("button", { name: "Import 1 speaker" }).click();
+  await expect(page.getByText("1 created · 2 skipped or invalid")).toBeVisible();
+  await page.getByRole("button", { name: "Close import" }).click();
+
+  await expect(page.locator(".speaker-record").filter({ hasText: `Imported CSV ${suffix}` })).toContainText(importedEmail);
+  const existingCard = page.locator(".speaker-record").filter({ hasText: `Existing CSV ${suffix}` });
+  await expect(existingCard).not.toContainText("Changed title");
+});
+
 test("organizer sees sessionless onboarding assignments in the chase list", async ({ page }) => {
   await signInAsOrganizer(page);
 

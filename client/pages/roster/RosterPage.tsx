@@ -4,7 +4,10 @@ import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "re
 import {
   fileRequestKindOf,
   pictureRequestFileTypes,
+  speakerImportRowLimit,
   type MissingInformationItem,
+  type SpeakerImportOutcome,
+  type SpeakerImportResponse,
   type RosterSpeakerSummary,
   type RosterTaskSummary,
 } from "../../../shared/api.ts";
@@ -125,6 +128,180 @@ function openWorkLabel(speaker: RosterSpeakerSummary): ReactNode {
   return <><strong>{incomplete} open item{incomplete === 1 ? "" : "s"}</strong><small>{total} work item{total === 1 ? "" : "s"} tracked</small></>;
 }
 
+function importFieldLabel(field: SpeakerImportResponse["mappings"][number]["target"]): string {
+  return field === "jobTitle" ? "Job title" : field.charAt(0).toUpperCase() + field.slice(1);
+}
+
+function importOutcomeLabel(outcome: SpeakerImportOutcome): string {
+  const labels: Record<SpeakerImportOutcome, string> = {
+    will_create: "Ready — new speaker",
+    will_add_existing: "Ready — existing person",
+    will_restore: "Ready — restore roster record",
+    skipped_existing: "Already on this roster",
+    skipped_duplicate_file: "Duplicate email in this file",
+    invalid: "Needs correction",
+    blocked_identity_conflict: "Duplicate identities need review",
+    blocked_archived_identity: "Archived identity needs review",
+    created: "Created",
+    added_existing: "Added existing person",
+    restored: "Restored to roster",
+  };
+  return labels[outcome];
+}
+
+const importRefusalCopy: Record<string, string> = {
+  invalid_speaker_csv: "That file could not be read as a CSV. Upload a plain text CSV file under 1 MB.",
+  event_not_found: "This event could not be found, so nothing was changed.",
+  authentication_required: "Your session has expired. Sign in again to import speakers.",
+  forbidden: "You do not have organizer access to this event.",
+};
+
+function importFailureMessage(caught: unknown, fallback: string): string {
+  if (!(caught instanceof Error)) return fallback;
+  return importRefusalCopy[caught.message] ?? fallback;
+}
+
+function ImportSpeakersModal({ onClose, onImported }: { onClose: () => void; onImported: () => Promise<void> }) {
+  const [csv, setCsv] = useState("");
+  const [fileName, setFileName] = useState("");
+  const [result, setResult] = useState<SpeakerImportResponse | null>(null);
+  const [complete, setComplete] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function previewFile(file: File): Promise<void> {
+    setBusy(true);
+    setError(null);
+    setComplete(false);
+    try {
+      const contents = await file.text();
+      const preview = await requestJson<SpeakerImportResponse>(`/api/events/${eventId}/speakers/import/preview`, {
+        method: "POST",
+        body: JSON.stringify({ csv: contents }),
+      });
+      setCsv(contents);
+      setFileName(file.name);
+      setResult(preview);
+    } catch (caught) {
+      setResult(null);
+      setError(importFailureMessage(caught, "The CSV could not be previewed."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function commitImport(): Promise<void> {
+    setBusy(true);
+    setError(null);
+    let imported: SpeakerImportResponse;
+    try {
+      imported = await requestJson<SpeakerImportResponse>(`/api/events/${eventId}/speakers/import`, {
+        method: "POST",
+        body: JSON.stringify({ csv }),
+      });
+    } catch (caught) {
+      setError(importFailureMessage(caught, "The CSV could not be imported."));
+      setBusy(false);
+      return;
+    }
+    setResult(imported);
+    setComplete(true);
+    try {
+      await onImported();
+    } catch {
+      setError("The speakers were imported, but the roster list could not be refreshed. Reload the page to see them.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const importable = result?.summary.importable ?? 0;
+  const created = result?.summary.created ?? 0;
+  const addedExisting = result?.summary.addedExisting ?? 0;
+  const restored = result?.summary.restored ?? 0;
+  const notImported = (result?.summary.skipped ?? 0) + (result?.summary.invalid ?? 0);
+  const completionSummary = [
+    `${created} created`,
+    ...(addedExisting === 0 ? [] : [`${addedExisting} existing ${addedExisting === 1 ? "person" : "people"} added`]),
+    ...(restored === 0 ? [] : [`${restored} restored`]),
+    `${notImported} skipped or invalid`,
+  ].join(" · ");
+  return (
+    <Modal onClose={onClose} open title="Import speakers from CSV">
+      <div className="speaker-import">
+        <div className="speaker-import__intro">
+          <p>Upload a CSV to review every row before anything changes. Existing people are matched by email and their profile or account is never overwritten.</p>
+          <a className="text-link" download href={`/api/events/${eventId}/speakers/import-template.csv`}>Download CSV template</a>
+        </div>
+        <label className="field" htmlFor="speaker-import-file">
+          <span className="field__label">Speaker CSV file</span>
+          <input
+            accept=".csv,text/csv"
+            className="field__control"
+            id="speaker-import-file"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file !== undefined) void previewFile(file);
+            }}
+            type="file"
+          />
+          <span className="field__hint">Required headers: name and email. Optional: title, company, bio. Up to {speakerImportRowLimit} rows per file.</span>
+        </label>
+        {busy && result === null ? <LoadingState label="Reading speaker CSV" /> : null}
+        {error === null ? null : <p className="form-error" role="alert">{error}</p>}
+        {result === null ? null : (
+          <>
+            <section className="speaker-import__mapping" aria-label="Mapped CSV fields">
+              <p className="section-label">MAPPED FIELDS / {fileName}</p>
+              <div>{result.mappings.map((mapping) => (
+                <span key={`${mapping.source}-${mapping.target}`}>{importFieldLabel(mapping.target)} ← {mapping.source}</span>
+              ))}</div>
+            </section>
+            {result.errors.length === 0 ? null : (
+              <div className="speaker-import__file-errors" role="alert">
+                {result.errors.map((message) => <p key={message}>{message}</p>)}
+              </div>
+            )}
+            <div className="speaker-import__summary" role="status">
+              {complete
+                ? <strong>{completionSummary}</strong>
+                : <strong>{importable} ready to import</strong>}
+              <span>{result.summary.total} row{result.summary.total === 1 ? "" : "s"} reviewed</span>
+            </div>
+            {result.rows.length === 0 ? null : (
+              <div className="table-scroll speaker-import__rows">
+                <table className="data-table">
+                  <caption>Speaker CSV row review</caption>
+                  <thead><tr><th>Row</th><th>Speaker</th><th>Mapped profile</th><th>Outcome</th></tr></thead>
+                  <tbody>{result.rows.map((row) => (
+                    <tr key={row.rowNumber}>
+                      <td>{row.rowNumber}</td>
+                      <td><strong>{row.values.name || "Name missing"}</strong><small>{row.values.email || "Email missing"}</small></td>
+                      <td><strong>{row.values.jobTitle || "Title not supplied"}</strong><small>{row.values.organization || "Company not supplied"}</small></td>
+                      <td>
+                        <strong>{importOutcomeLabel(row.outcome)}</strong>
+                        {row.errors.map((message) => <small className="speaker-import__row-error" key={message}>{message}</small>)}
+                      </td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+              </div>
+            )}
+          </>
+        )}
+        <div className="modal-actions">
+          <Button onClick={onClose} tone="quiet" type="button">Close import</Button>
+          {complete || result === null || result.errors.length > 0 ? null : (
+            <Button disabled={busy || importable === 0} onClick={() => void commitImport()} type="button">
+              {busy ? "Importing…" : `Import ${importable} speaker${importable === 1 ? "" : "s"}`}
+            </Button>
+          )}
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 // The name is already announced beside it, so the avatar stays decorative whether
 // it renders a headshot or initials. A headshot that fails to load falls back to
 // the initials rather than leaving an empty block.
@@ -137,6 +314,7 @@ function RosterList() {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("all");
   const [addOpen, setAddOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [editing, setEditing] = useState<RosterSpeakerSummary | null>(null);
   const [removing, setRemoving] = useState<RosterSpeakerSummary | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -193,7 +371,10 @@ function RosterList() {
           <option value="all">All statuses</option>
           {workflowStatuses.map((value) => <option key={value} value={value}>{formatStatus(value)}</option>)}
         </SelectField>
-        <Button onClick={() => setAddOpen(true)} tone="signal">Add speaker</Button>
+        <div className="roster-toolbar__actions">
+          <Button onClick={() => setImportOpen(true)} tone="quiet">Import CSV</Button>
+          <Button onClick={() => setAddOpen(true)} tone="signal">Add speaker</Button>
+        </div>
       </section>
       {speakers === null ? <LoadingState label="Loading speaker roster" /> : (
         <section className="workspace-section roster-table-card">
@@ -287,6 +468,12 @@ function RosterList() {
         onSaved={async (savedMessage) => { setAddOpen(false); setMessage(savedMessage); await loadRoster(); }}
         open={addOpen}
       />
+      {importOpen ? (
+        <ImportSpeakersModal
+          onClose={() => setImportOpen(false)}
+          onImported={loadRoster}
+        />
+      ) : null}
       <SpeakerFormModal
         onClose={() => setEditing(null)}
         onSaved={async (savedMessage) => { setEditing(null); setMessage(savedMessage); await loadRoster(); }}

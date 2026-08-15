@@ -424,6 +424,24 @@ export interface PersonAccountSummary {
 export const rosterRouteMap = {
   roster: { method: "GET", path: "/api/events/:eventId/roster", module: "speakers", access: "organizer" },
   addSpeaker: { method: "POST", path: "/api/events/:eventId/speakers", module: "speakers", access: "organizer" },
+  speakerImportTemplate: {
+    method: "GET",
+    path: "/api/events/:eventId/speakers/import-template.csv",
+    module: "speakers",
+    access: "organizer",
+  },
+  previewSpeakerImport: {
+    method: "POST",
+    path: "/api/events/:eventId/speakers/import/preview",
+    module: "speakers",
+    access: "organizer",
+  },
+  commitSpeakerImport: {
+    method: "POST",
+    path: "/api/events/:eventId/speakers/import",
+    module: "speakers",
+    access: "organizer",
+  },
   updateSpeaker: { method: "PATCH", path: "/api/events/:eventId/speakers/:speakerId", module: "speakers", access: "organizer" },
   tasks: { method: "GET", path: "/api/events/:eventId/tasks", module: "tasks", access: "organizer" },
   createTask: { method: "POST", path: "/api/events/:eventId/tasks", module: "tasks", access: "organizer" },
@@ -440,6 +458,56 @@ export const rosterRouteMap = {
     access: "organizer",
   },
 } as const satisfies Record<string, RouteContract>;
+
+export type SpeakerImportField = "name" | "email" | "jobTitle" | "organization" | "bio";
+
+/**
+ * The most speaker rows one CSV may carry. A commit re-reads each row's identity against the
+ * live roster before it writes, so the work a file costs grows with its row count; the ceiling
+ * keeps a single import inside one request rather than dying part-written.
+ */
+export const speakerImportRowLimit = 200;
+
+export type SpeakerImportOutcome =
+  | "will_create"
+  | "will_add_existing"
+  | "will_restore"
+  | "skipped_existing"
+  | "skipped_duplicate_file"
+  | "invalid"
+  | "blocked_identity_conflict"
+  | "blocked_archived_identity"
+  | "created"
+  | "added_existing"
+  | "restored";
+
+export interface SpeakerImportValues {
+  name: string;
+  email: string;
+  jobTitle: string;
+  organization: string;
+  bio: string;
+}
+
+export interface SpeakerImportResponse {
+  errors: string[];
+  mappings: Array<{ source: string; target: SpeakerImportField }>;
+  rows: Array<{
+    rowNumber: number;
+    values: SpeakerImportValues;
+    errors: string[];
+    outcome: SpeakerImportOutcome;
+  }>;
+  summary: {
+    total: number;
+    importable?: number;
+    skipped: number;
+    invalid: number;
+    created?: number;
+    addedExisting?: number;
+    restored?: number;
+  };
+}
 
 /**
  * The program team's own hold on a proposal's participant list. Organizers work the same
