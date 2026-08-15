@@ -461,6 +461,13 @@ export const rosterRouteMap = {
 
 export type SpeakerImportField = "name" | "email" | "jobTitle" | "organization" | "bio";
 
+/**
+ * The most speaker rows one CSV may carry. A commit re-reads each row's identity against the
+ * live roster before it writes, so the work a file costs grows with its row count; the ceiling
+ * keeps a single import inside one request rather than dying part-written.
+ */
+export const speakerImportRowLimit = 200;
+
 export type SpeakerImportOutcome =
   | "will_create"
   | "will_add_existing"

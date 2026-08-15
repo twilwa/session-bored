@@ -1,6 +1,11 @@
 // ABOUTME: Parses organizer speaker CSV files into a stable import preview.
 // ABOUTME: Maps supported headers and keeps validation errors attached to their source rows.
-import type { SpeakerImportField, SpeakerImportOutcome, SpeakerImportValues } from "../shared/api.ts";
+import {
+  speakerImportRowLimit,
+  type SpeakerImportField,
+  type SpeakerImportOutcome,
+  type SpeakerImportValues,
+} from "../shared/api.ts";
 
 export interface ParsedSpeakerImportRow {
   rowNumber: number;
@@ -145,6 +150,14 @@ export function parseSpeakerImport(csv: string): SpeakerImportDocument {
     })
     .filter((row): row is ParsedSpeakerImportRow => row !== null);
 
+  if (rows.length > speakerImportRowLimit) {
+    return {
+      mappings,
+      rows: [],
+      errors: [`CSV has ${rows.length} speaker rows; import at most ${speakerImportRowLimit} rows at a time.`],
+    };
+  }
+
   return { mappings, rows, errors };
 }
 
@@ -180,7 +193,10 @@ export function planSpeakerImport(
     } else {
       outcome = "will_create";
     }
-    if (row.errors.length === 0 && row.values.email.length > 0) seenEmails.add(row.values.email);
+    const blocked = outcome === "invalid" ||
+      outcome === "blocked_identity_conflict" ||
+      outcome === "blocked_archived_identity";
+    if (!blocked && row.values.email.length > 0) seenEmails.add(row.values.email);
     return {
       ...row,
       errors,

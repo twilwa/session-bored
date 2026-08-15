@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "re
 import {
   fileRequestKindOf,
   pictureRequestFileTypes,
+  speakerImportRowLimit,
   type MissingInformationItem,
   type SpeakerImportOutcome,
   type SpeakerImportResponse,
@@ -148,6 +149,18 @@ function importOutcomeLabel(outcome: SpeakerImportOutcome): string {
   return labels[outcome];
 }
 
+const importRefusalCopy: Record<string, string> = {
+  invalid_speaker_csv: "That file could not be read as a CSV. Upload a plain text CSV file under 1 MB.",
+  event_not_found: "This event could not be found, so nothing was changed.",
+  authentication_required: "Your session has expired. Sign in again to import speakers.",
+  forbidden: "You do not have organizer access to this event.",
+};
+
+function importFailureMessage(caught: unknown, fallback: string): string {
+  if (!(caught instanceof Error)) return fallback;
+  return importRefusalCopy[caught.message] ?? fallback;
+}
+
 function ImportSpeakersModal({ onClose, onImported }: { onClose: () => void; onImported: () => Promise<void> }) {
   const [csv, setCsv] = useState("");
   const [fileName, setFileName] = useState("");
@@ -171,7 +184,7 @@ function ImportSpeakersModal({ onClose, onImported }: { onClose: () => void; onI
       setResult(preview);
     } catch (caught) {
       setResult(null);
-      setError(caught instanceof Error ? caught.message : "The CSV could not be previewed.");
+      setError(importFailureMessage(caught, "The CSV could not be previewed."));
     } finally {
       setBusy(false);
     }
@@ -180,16 +193,23 @@ function ImportSpeakersModal({ onClose, onImported }: { onClose: () => void; onI
   async function commitImport(): Promise<void> {
     setBusy(true);
     setError(null);
+    let imported: SpeakerImportResponse;
     try {
-      const imported = await requestJson<SpeakerImportResponse>(`/api/events/${eventId}/speakers/import`, {
+      imported = await requestJson<SpeakerImportResponse>(`/api/events/${eventId}/speakers/import`, {
         method: "POST",
         body: JSON.stringify({ csv }),
       });
-      setResult(imported);
-      setComplete(true);
-      await onImported();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "The CSV could not be imported.");
+      setError(importFailureMessage(caught, "The CSV could not be imported."));
+      setBusy(false);
+      return;
+    }
+    setResult(imported);
+    setComplete(true);
+    try {
+      await onImported();
+    } catch {
+      setError("The speakers were imported, but the roster list could not be refreshed. Reload the page to see them.");
     } finally {
       setBusy(false);
     }
@@ -225,7 +245,7 @@ function ImportSpeakersModal({ onClose, onImported }: { onClose: () => void; onI
             }}
             type="file"
           />
-          <span className="field__hint">Required headers: name and email. Optional: title, company, bio.</span>
+          <span className="field__hint">Required headers: name and email. Optional: title, company, bio. Up to {speakerImportRowLimit} rows per file.</span>
         </label>
         {busy && result === null ? <LoadingState label="Reading speaker CSV" /> : null}
         {error === null ? null : <p className="form-error" role="alert">{error}</p>}

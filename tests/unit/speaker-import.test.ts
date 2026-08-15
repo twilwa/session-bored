@@ -1,6 +1,7 @@
 // ABOUTME: Specifies CSV parsing and validation for organizer speaker imports.
 // ABOUTME: Keeps fixture headers, quoted content, and row-level failures predictable before database writes.
 import { describe, expect, it } from "vitest";
+import { speakerImportRowLimit } from "../../shared/api.ts";
 import { parseSpeakerImport, planSpeakerImport } from "../../worker/speaker-import.ts";
 
 describe("speaker CSV import parsing", () => {
@@ -98,6 +99,43 @@ describe("speaker CSV import parsing", () => {
       outcome: "blocked_identity_conflict",
       errors: ["Email matches more than one person record; review the duplicate identities manually."],
     });
+  });
+
+  it("refuses a file with more rows than one import may carry, leaving nothing to write", () => {
+    const rows = Array.from(
+      { length: speakerImportRowLimit + 1 },
+      (_, index) => `Speaker ${index},speaker-${index}@example.com`,
+    );
+
+    expect(parseSpeakerImport(["name,email", ...rows].join("\n"))).toMatchObject({
+      rows: [],
+      errors: [`CSV has ${speakerImportRowLimit + 1} speaker rows; import at most ${speakerImportRowLimit} rows at a time.`],
+    });
+    expect(parseSpeakerImport(["name,email", ...rows.slice(1)].join("\n")).rows).toHaveLength(speakerImportRowLimit);
+  });
+
+  it("repeats the blocking reason on a later row rather than calling it a file duplicate", () => {
+    const document = parseSpeakerImport([
+      "name,email",
+      "Casey Archived,casey@example.com",
+      "Casey Archived,CASEY@example.com",
+    ].join("\n"));
+
+    const planned = planSpeakerImport(document, [
+      {
+        personId: "psn_archived",
+        email: "casey@example.com",
+        personDeleted: true,
+        speakerId: null,
+        speakerDeleted: false,
+      },
+    ]);
+
+    expect(planned.map((row) => row.outcome)).toEqual([
+      "blocked_archived_identity",
+      "blocked_archived_identity",
+    ]);
+    expect(planned[1]?.errors).toEqual(["Email belongs to an archived person record; review it manually."]);
   });
 
   it("allows a valid row after an invalid row uses the same email", () => {
