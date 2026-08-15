@@ -1,0 +1,106 @@
+worker/reviewer-invites.ts
+  s_c9dc6faa557803::t_df6b46c3d97b30 62-107,109-115,143-145
+tests/integration/email-sending.test.ts
+  s_c9dc6faa557803::t_235239a04c6669 560-562
+  s_c9dc6faa557803::t_a2b8a3051d95a2 7,570-595
+  s_c2f671f98d3fd7::t_8e50f072818f29 596-597
+tests/e2e/account-access.spec.ts
+  s_c9dc6faa557803::t_6952b1e40962af 186-187,207
+  s_c9dc6faa557803::t_fd4d6468490c73 195
+  s_c9dc6faa557803::t_1c90eff7034f1b 210,212-224,226-239
+  s_c9dc6faa557803::t_eb995a888a4576 185
+  s_c9dc6faa557803::t_5d570cfe5b1037 225
+  s_c9dc6faa557803::t_d8ca72c89e269d 9-16,184,205
+  s_c9dc6faa557803::t_b6588d00164ac1 122,138-177,188-194,196-197,203-204,208-209
+  s_c9dc6faa557803::t_f949a80bccc7a3 178-183,198-202,206
+  s_e3f3e39dba9889::t_e0ffcd2b81bed7 211
+worker/email/reviewer-invitation.ts
+  s_c9dc6faa557803::t_2f216df747db30 13-19,24-39,44,46,58,60-66
+client/pages/people/PeoplePage.tsx
+  s_c9dc6faa557803::t_69c752d702afd6 452-453,469-572,582-588
+  s_c9dc6faa557803::t_e0ffeda6c21bc6 173-177
+  s_c9dc6faa557803::t_207abbde555acc 598-609
+  s_c9dc6faa557803::t_209090ba1195e4 122-141,144-147,152-155,158-172,178,180-182,189-209,211
+  s_c9dc6faa557803::t_ee28377379a688 21-30,61-66
+  s_c2f671f98d3fd7::t_f868061c011573 210,212
+README.md
+  s_c9dc6faa557803::t_6c7ab93822bc26 71,73-79
+tests/integration/account-access.test.ts
+  s_c9dc6faa557803::t_00493b98e9a8c9 8-18
+  s_c9dc6faa557803::t_14500a6c6fe1aa 439,442-444,446-449
+  s_c9dc6faa557803::t_d4a574474aed5b 134,271-438,450-509
+  s_c9dc6faa557803::t_e49508b693a829 112-115,122-124,131-133
+  s_c9dc6faa557803::t_a6b9e1847d10ad 440-441,445
+  s_3a79969d781133::t_13cc28c4bf79a1 135
+client/App.tsx
+  s_c9dc6faa557803::t_8503b0b45f8ee3 29,346-348
+tests/integration/people.test.ts
+  s_c9dc6faa557803::t_68c609a6b2f47a 491-493
+  s_c9dc6faa557803::t_1708362d4f4779 7-16,60-88
+  s_c9dc6faa557803::t_a3b4639b2cae01 378-490,494-531,534-557,559-601
+  s_c9dc6faa557803::t_57d4c6d4c8fe90 49,532-533,558
+  s_3a79969d781133::t_0ef1cd21de8e7e 89
+client/pages/account/InvitationPage.tsx
+  s_c9dc6faa557803::t_84a1f825b1026b 3,5,33,45-58,60-69,71-72,82,84,88-90,110,155,157-160
+  s_c9dc6faa557803::t_d13ac2cdad8021 1-2,4,6-32,34-44,59,70,73-81,83,85-87,91-109,111-154,156,161-205
+AGENTS.md
+  s_c9dc6faa557803::t_de787b260168bd 153-159,280-292
+worker/routes/people.ts
+  s_c9dc6faa557803::t_4f6bacb20872d3 33,35-41,132-153,155-169,171-179,181-183,185-187
+  s_c9dc6faa557803::t_6dc68054f28f6a 325-337,342
+  s_c9dc6faa557803::t_aa1cc2af6979b4 154,350
+  s_c9dc6faa557803::t_5f581e057e4a14 483-486,488-504,510-511,515-550,555,557,563-569,575-578
+  s_c9dc6faa557803::t_6233b369594bd5 10
+  s_c9dc6faa557803::t_0641df631066b2 170,180,184
+  s_c9dc6faa557803::t_f5a9950e20e3ec 624-626,631,633,659-709,714-809
+  s_c9dc6faa557803::t_0c7ac747c9b7d7 710-713
+  s_92b72f7fee59ce::t_61ea1e5ae86d4b 29,188,810
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "0e64c34440bb1346a8fda1a761f392eb0f6705e2",
+  "prompts": {},
+  "sessions": {
+    "s_3a79969d781133": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f43b60c0-1d66-4cff-9e7a-a84eebe2624c",
+        "model": "claude-opus-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    },
+    "s_92b72f7fee59ce": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffe3b-d2f2-75a2-b6a7-09b2cc066278",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    },
+    "s_c2f671f98d3fd7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4a5f0993-fb4e-44fd-a1d3-6633e6999570",
+        "model": "claude-opus-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    },
+    "s_c9dc6faa557803": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a002b3-c76d-7639-97fb-8e1de24e8070",
+        "model": "glm-5.3"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    },
+    "s_e3f3e39dba9889": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffe3b-d895-7c03-8bcd-216fdc06109f",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
