@@ -1,0 +1,36 @@
+README.md
+  s_72d73ad342d220::t_f4cd13fdbfb57b 82-83
+  s_72d73ad342d220::t_356e46c833155f 84
+  s_72d73ad342d220::t_1f6b6de82794e9 85-87
+  s_72d73ad342d220::t_241414639c847b 88
+  s_213f0438115689::t_564c9af408dcdf 89-92
+AGENTS.md
+  s_72d73ad342d220::t_7a9e2f2cade4e4 602
+  s_213f0438115689::t_55688f43914176 599-601,603-606,609-612
+worker/reviewer-invites.ts
+  s_72d73ad342d220::t_adfe292889fb23 2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "e3afd19874abe7c40408e0568493f7be583e7d87",
+  "prompts": {},
+  "sessions": {
+    "s_213f0438115689": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "097528da-0a32-42fe-8349-0d6dd6395930",
+        "model": "claude-opus-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    },
+    "s_72d73ad342d220": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5d6d9610-2d78-483f-a9a5-1e4287fb2a00",
+        "model": "claude-opus-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
