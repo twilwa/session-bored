@@ -1,0 +1,73 @@
+client/pages/event-setup/EventSetupPage.tsx
+  s_a2c2b575bba1b2::t_c5d40bdb63a131 214,231
+  s_a2c2b575bba1b2::t_737a29c9b06439 121-131
+  s_a2c2b575bba1b2::t_bb190d553204e5 1-43,45-103,140-213,215,229-230,232,246-261,263-269
+  s_a2c2b575bba1b2::t_e33f5b783a1e92 44,104-120,132-139,216-228,233-245,262
+client/pages/event-setup/event-setup.css
+  s_a2c2b575bba1b2::t_bb190d553204e5 1-13,17-38
+  s_a2c2b575bba1b2::t_e33f5b783a1e92 14-16
+tests/e2e/event-settings.spec.ts
+  s_a2c2b575bba1b2::t_8b843b5d5b20b3 43-46,61
+  s_a2c2b575bba1b2::t_9aa4fe069d8717 60
+  s_a2c2b575bba1b2::t_7df6006120323a 1-2
+  s_a2c2b575bba1b2::t_c7506c7f72d707 21-42,47-56,62-75
+  s_a2c2b575bba1b2::t_c59d9c7312281e 57-59
+tests/unit/route-map.test.ts
+  s_a2c2b575bba1b2::t_298f22932c1485 58-69
+  s_a2c2b575bba1b2::t_25ba74ee1dc820 52-57
+tests/integration/event-setup.test.ts
+  s_a2c2b575bba1b2::t_01d4a5cc64146b 119-141
+  s_a2c2b575bba1b2::t_b5b64e0381e6a5 118,142-166
+  s_a2c2b575bba1b2::t_7a97d69518b69e 167-205
+  s_a2c2b575bba1b2::t_ccfb1de53ece6d 26-43,48-61,67-69
+  s_a2c2b575bba1b2::t_0385e7b3931b8e 1-25,70-117,206
+  s_a2c2b575bba1b2::t_4d954ef2d86caa 44-47,62-66
+client/pages/cfp/CfpPage.tsx
+  s_a2c2b575bba1b2::t_ed37554b0293d4 3,24-29,601-606,621-623
+client/pages/event-setup/event-setup.ts
+  s_a2c2b575bba1b2::t_a31f20387baebc 1-2,23-48
+  s_a2c2b575bba1b2::t_bb190d553204e5 3-22
+client/App.tsx
+  s_a2c2b575bba1b2::t_23fcc71b9c2bfb 31-32,38,174,194,196-197,199-202,204-209,227-231,365
+  s_a2c2b575bba1b2::t_e86dd895711681 168-170,195,198,203,210,286
+  s_eaa1cd6835e027::t_37973aa8e3cbe0 211
+client/pages/cfp/cfp.css
+  s_a2c2b575bba1b2::t_ed37554b0293d4 30,35-41,44-46,61,72-73,83
+shared/api.ts
+  s_a2c2b575bba1b2::t_cd268e03cbbbb8 35
+  s_a2c2b575bba1b2::t_0ef70a490b645b 36-47
+worker/routes/event-settings.ts
+  s_a2c2b575bba1b2::t_3992213b5f8b1c 28-39,194-195,208-226,283
+  s_a2c2b575bba1b2::t_98222267348de6 40-48,55-63,70-74,83,85-92,94-123,125-131,133-136,138-159,200,203,207
+  s_a2c2b575bba1b2::t_d5b3e8b92b482a 49-54,124,160-161,201-202,204-206
+  s_a2c2b575bba1b2::t_c5d40bdb63a131 64-69,75-82,84,93,132,137,196-199
+  s_a2c2b575bba1b2::t_7df6006120323a 1-2
+  s_a2c2b575bba1b2::t_86fe204dc23017 256,260
+  s_a2c2b575bba1b2::t_f9715c97a3f139 18,162-178,193,227-255,257-259,261-282
+tests/unit/event-setup.test.ts
+  s_a2c2b575bba1b2::t_c7f3e3ad06e533 1-18
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "7cde379bab3f51c6f0437964b1c15fbc2d4ee779",
+  "prompts": {},
+  "sessions": {
+    "s_a2c2b575bba1b2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a003f3-3237-7562-999f-d807f2500e60",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    },
+    "s_eaa1cd6835e027": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0029a-9613-7853-b340-8157cd3ad345",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
