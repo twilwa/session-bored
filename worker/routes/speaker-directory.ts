@@ -1,19 +1,38 @@
-// ABOUTME: Serves organizer-only all-event speaker directory list, detail, and merge actions.
-// ABOUTME: Archives detected duplicates while atomically preserving their active product relationships.
+// ABOUTME: Serves organizer-only speaker directory filters, profiles, metadata, and merge actions.
+// ABOUTME: Keeps private contact context separate while preserving active product relationships.
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { Hono } from "hono";
 import { createMiddleware } from "hono/factory";
-import { files, people, speakers, type Role, type SpeakerStatus } from "../../db/schema.ts";
+import {
+  files,
+  people,
+  speakerDirectoryNotes,
+  speakerDirectorySegments,
+  speakers,
+  type Role,
+  type SpeakerStatus,
+} from "../../db/schema.ts";
 import type {
   SpeakerDirectoryDetailResponse,
   SpeakerDirectoryDuplicate,
+  SpeakerDirectoryFilters,
   SpeakerDirectoryListResponse,
   SpeakerDirectoryMergeResult,
+  SpeakerDirectoryMetadata,
+  SpeakerDirectoryNote,
+  SpeakerDirectorySavedFilters,
+  SpeakerDirectorySegment,
+  SpeakerDirectorySort,
 } from "../../shared/speaker-directory.ts";
 import { holdsAccess } from "../access.ts";
 import type { AuthSession } from "../auth.ts";
-import { duplicateReasonsFor, loadSpeakerDirectory } from "../speaker-directory.ts";
+import {
+  duplicateReasonsFor,
+  filterSpeakerDirectory,
+  loadSpeakerDirectory,
+  loadSpeakerDirectoryNotes,
+} from "../speaker-directory.ts";
 
 type SpeakerDirectoryEnvironment = {
   Bindings: CloudflareBindings;
@@ -32,18 +51,146 @@ const requireOrganizer = createMiddleware<SpeakerDirectoryEnvironment>(async (co
   await next();
 });
 
+function positiveInteger(value: string | null, fallback: number): number {
+  if (value === null || !/^\d+$/.test(value)) return fallback;
+  return Math.max(1, Number.parseInt(value, 10));
+}
+
+function directoryFilters(url: string): SpeakerDirectoryFilters {
+  const parameters = new URL(url).searchParams;
+  const sortValue = parameters.get("sort");
+  const sort: SpeakerDirectorySort = sortValue === "updated" || sortValue === "events"
+    ? sortValue
+    : "name";
+  const customFields = parameters.getAll("field").flatMap((value) => {
+    const separator = value.indexOf(":");
+    if (separator < 1 || separator === value.length - 1) return [];
+    return [{ name: value.slice(0, separator), value: value.slice(separator + 1) }];
+  });
+  return {
+    search: parameters.get("q") ?? "",
+    tags: parameters.getAll("tag"),
+    customFields,
+    sort,
+    direction: parameters.get("direction") === "desc" ? "desc" : "asc",
+    page: positiveInteger(parameters.get("page"), 1),
+    pageSize: Math.min(100, positiveInteger(parameters.get("pageSize"), 25)),
+  };
+}
+
 speakerDirectoryRoutes.get("/api/speaker-directory", requireOrganizer, async (context) => {
-  const directory = await loadSpeakerDirectory(drizzle(context.env.DB));
+  const database = drizzle(context.env.DB);
+  const [directory, segmentRows] = await Promise.all([
+    loadSpeakerDirectory(database),
+    database.select().from(speakerDirectorySegments).orderBy(speakerDirectorySegments.name),
+  ]);
+  const filtered = filterSpeakerDirectory(directory.items, directoryFilters(context.req.url));
+  const tags = [...new Set(directory.items.flatMap((person) => person.tags))]
+    .sort((first, second) => first.localeCompare(second));
+  const fieldValues = new Map<string, Set<string>>();
+  for (const person of directory.items) {
+    for (const [name, value] of Object.entries(person.customFields)) {
+      const values = fieldValues.get(name);
+      if (values === undefined) fieldValues.set(name, new Set([value]));
+      else values.add(value);
+    }
+  }
   const response: SpeakerDirectoryListResponse = {
-    items: directory.items,
+    ...filtered,
     possibleDuplicateGroups: directory.groups.length,
+    facets: {
+      tags,
+      customFields: [...fieldValues.entries()]
+        .sort(([first], [second]) => first.localeCompare(second))
+        .map(([name, values]) => ({
+          name,
+          values: [...values].sort((first, second) => first.localeCompare(second)),
+        })),
+    },
+    overview: {
+      people: directory.items.length,
+      events: new Set(
+        [...directory.eventHistory.values()].flatMap((history) => history.map((event) => event.id)),
+      ).size,
+      sessions: directory.items.reduce((sum, person) => sum + person.sessionCount, 0),
+      proposals: directory.items.reduce((sum, person) => sum + person.proposalCount, 0),
+      taggedPeople: directory.items.filter((person) => person.tags.length > 0).length,
+    },
+    savedSegments: segmentRows.map((segment) => ({
+      id: segment.id,
+      name: segment.name,
+      filters: segment.filters,
+      createdAt: segment.createdAt.toISOString(),
+    })),
   };
   return context.json(response);
 });
 
+function savedFilters(value: unknown): SpeakerDirectorySavedFilters | null {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return null;
+  const candidate = value as Partial<SpeakerDirectorySavedFilters>;
+  if (
+    typeof candidate.search !== "string"
+    || !Array.isArray(candidate.tags)
+    || candidate.tags.some((tag) => typeof tag !== "string")
+    || !Array.isArray(candidate.customFields)
+    || candidate.customFields.some((field) => (
+      field === null
+      || typeof field !== "object"
+      || typeof field.name !== "string"
+      || typeof field.value !== "string"
+    ))
+    || (candidate.sort !== "name" && candidate.sort !== "updated" && candidate.sort !== "events")
+    || (candidate.direction !== "asc" && candidate.direction !== "desc")
+    || candidate.search.length > 200
+    || candidate.tags.length > 20
+    || candidate.customFields.length > 20
+  ) return null;
+  return {
+    search: candidate.search.trim(),
+    tags: candidate.tags.map(displayText),
+    customFields: candidate.customFields.map((field) => ({
+      name: displayText(field.name),
+      value: displayText(field.value),
+    })),
+    sort: candidate.sort,
+    direction: candidate.direction,
+  };
+}
+
+speakerDirectoryRoutes.post("/api/speaker-directory/segments", requireOrganizer, async (context) => {
+  const organizer = context.get("authUser");
+  if (organizer === null) return context.json({ error: "authentication_required" }, 401);
+  const payload = await context.req.json<{ name?: unknown; filters?: unknown }>().catch(() => null);
+  const name = typeof payload?.name === "string" ? displayText(payload.name) : "";
+  const filters = savedFilters(payload?.filters);
+  if (name === "" || name.length > 60 || filters === null) {
+    return context.json({ error: "invalid_directory_segment" }, 400);
+  }
+  const database = drizzle(context.env.DB);
+  const [created] = await database.insert(speakerDirectorySegments).values({
+    name,
+    normalizedName: normalizedText(name),
+    filters,
+    createdByUserId: organizer.id,
+  }).onConflictDoNothing().returning();
+  if (created === undefined) return context.json({ error: "segment_name_conflict" }, 409);
+  const response: SpeakerDirectorySegment = {
+    id: created.id,
+    name: created.name,
+    filters: created.filters,
+    createdAt: created.createdAt.toISOString(),
+  };
+  return context.json(response, 201);
+});
+
 speakerDirectoryRoutes.get("/api/speaker-directory/:personId", requireOrganizer, async (context) => {
-  const directory = await loadSpeakerDirectory(drizzle(context.env.DB));
+  const database = drizzle(context.env.DB);
   const personId = context.req.param("personId");
+  const [directory, notes] = await Promise.all([
+    loadSpeakerDirectory(database),
+    loadSpeakerDirectoryNotes(database, personId),
+  ]);
   const summary = directory.itemsById.get(personId);
   const person = directory.peopleById.get(personId);
   if (summary === undefined || person === undefined) return context.json({ error: "not_found" }, 404);
@@ -75,8 +222,130 @@ speakerDirectoryRoutes.get("/api/speaker-directory/:personId", requireOrganizer,
       events: directory.eventHistory.get(personId) ?? [],
     },
     possibleDuplicates,
+    notes,
   };
   return context.json(response);
+});
+
+function displayText(value: string): string {
+  return value.normalize("NFKC").trim().replaceAll(/\s+/g, " ");
+}
+
+function normalizedText(value: string): string {
+  return displayText(value).toLocaleLowerCase("en-US");
+}
+
+speakerDirectoryRoutes.put("/api/speaker-directory/:personId/metadata", requireOrganizer, async (context) => {
+  const payload = await context.req.json<{ tags?: unknown; customFields?: unknown }>().catch(() => null);
+  if (
+    payload === null
+    || !Array.isArray(payload.tags)
+    || payload.tags.some((tag) => typeof tag !== "string")
+    || payload.customFields === null
+    || typeof payload.customFields !== "object"
+    || Array.isArray(payload.customFields)
+  ) {
+    return context.json({ error: "invalid_directory_metadata" }, 400);
+  }
+  const tagByNormalizedName = new Map<string, string>();
+  for (const rawTag of payload.tags as string[]) {
+    const name = displayText(rawTag);
+    if (name === "" || name.length > 40) {
+      return context.json({ error: "invalid_directory_metadata" }, 400);
+    }
+    tagByNormalizedName.set(normalizedText(name), name);
+  }
+  const fieldByNormalizedName = new Map<string, { name: string; value: string }>();
+  for (const [rawName, rawValue] of Object.entries(payload.customFields as Record<string, unknown>)) {
+    if (typeof rawValue !== "string") {
+      return context.json({ error: "invalid_directory_metadata" }, 400);
+    }
+    const name = displayText(rawName);
+    const value = displayText(rawValue);
+    if (name === "" || name.length > 40 || value === "" || value.length > 200) {
+      return context.json({ error: "invalid_directory_metadata" }, 400);
+    }
+    fieldByNormalizedName.set(normalizedText(name), { name, value });
+  }
+  if (tagByNormalizedName.size > 20 || fieldByNormalizedName.size > 20) {
+    return context.json({ error: "invalid_directory_metadata" }, 400);
+  }
+
+  const database = drizzle(context.env.DB);
+  const directory = await loadSpeakerDirectory(database);
+  const personId = context.req.param("personId");
+  if (!directory.itemsById.has(personId)) return context.json({ error: "not_found" }, 404);
+  const now = Date.now();
+  const statements: D1PreparedStatement[] = [];
+  for (const [normalizedName, name] of tagByNormalizedName) {
+    statements.push(context.env.DB.prepare(
+      "insert into speaker_directory_tag (id, name, normalized_name, created_at, updated_at) values (?, ?, ?, ?, ?) on conflict (normalized_name) do nothing",
+    ).bind(`dtag_${crypto.randomUUID().replaceAll("-", "")}`, name, normalizedName, now, now));
+  }
+  statements.push(context.env.DB.prepare(
+    "delete from speaker_directory_contact_tag where person_id = ?",
+  ).bind(personId));
+  for (const normalizedName of tagByNormalizedName.keys()) {
+    statements.push(context.env.DB.prepare(
+      "insert into speaker_directory_contact_tag (person_id, tag_id, created_at) select ?, id, ? from speaker_directory_tag where normalized_name = ?",
+    ).bind(personId, now, normalizedName));
+  }
+  statements.push(context.env.DB.prepare(
+    "delete from speaker_directory_custom_field where person_id = ?",
+  ).bind(personId));
+  for (const [normalizedName, field] of fieldByNormalizedName) {
+    statements.push(context.env.DB.prepare(
+      "insert into speaker_directory_custom_field (id, person_id, name, normalized_name, value, normalized_value, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?)",
+    ).bind(
+      `dcf_${crypto.randomUUID().replaceAll("-", "")}`,
+      personId,
+      field.name,
+      normalizedName,
+      field.value,
+      normalizedText(field.value),
+      now,
+      now,
+    ));
+  }
+  await context.env.DB.batch(statements);
+  const refreshed = await loadSpeakerDirectory(database);
+  const saved = refreshed.itemsById.get(personId)!;
+  const response: SpeakerDirectoryMetadata = {
+    tags: saved.tags,
+    customFields: saved.customFields,
+  };
+  return context.json(response);
+});
+
+speakerDirectoryRoutes.post("/api/speaker-directory/:personId/notes", requireOrganizer, async (context) => {
+  const organizer = context.get("authUser");
+  if (organizer === null) return context.json({ error: "authentication_required" }, 401);
+  const payload = await context.req.json<{ body?: unknown }>().catch(() => null);
+  const body = typeof payload?.body === "string" ? payload.body.trim() : "";
+  if (body === "" || body.length > 2_000) {
+    return context.json({ error: "invalid_directory_note" }, 400);
+  }
+  const database = drizzle(context.env.DB);
+  const personId = context.req.param("personId");
+  const directory = await loadSpeakerDirectory(database);
+  if (!directory.itemsById.has(personId)) return context.json({ error: "not_found" }, 404);
+  const id = `dnote_${crypto.randomUUID().replaceAll("-", "")}`;
+  const createdAt = new Date();
+  await database.insert(speakerDirectoryNotes).values({
+    id,
+    personId,
+    authorUserId: organizer.id,
+    body,
+    createdAt,
+    updatedAt: createdAt,
+  });
+  const response: SpeakerDirectoryNote = {
+    id,
+    body,
+    author: organizer.name,
+    createdAt: createdAt.toISOString(),
+  };
+  return context.json(response, 201);
 });
 
 const speakerStatusOrder: Record<SpeakerStatus, number> = {

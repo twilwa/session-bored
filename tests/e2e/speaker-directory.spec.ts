@@ -1,5 +1,5 @@
 // ABOUTME: Walks the private cross-event speaker directory in a real organizer browser.
-// ABOUTME: Proves list, detail, duplicate review, merge confirmation, and phone-width layout.
+// ABOUTME: Proves metadata, filters, notes, history, merges, and phone-width layout.
 import { expect, test } from "@playwright/test";
 
 async function signInAsOrganizer(page: import("@playwright/test").Page): Promise<void> {
@@ -16,15 +16,57 @@ test("organizer browses the all-event directory and opens a speaker history", as
 
   await expect(page.getByRole("heading", { name: "Speaker directory." })).toBeVisible();
   await expect(page.getByText("SPEAKER MEMORY / ALL EVENTS")).toBeVisible();
-  await expect(page.getByText("Priya Raman", { exact: true })).toBeVisible();
-  await expect(page.getByText("Marcus Okafor", { exact: true })).toBeVisible();
 
   await page.getByLabel("Search directory").fill("Marcus");
+  await page.getByRole("button", { name: "Apply filters" }).click();
   const marcus = page.locator(".directory-row").filter({ hasText: "Marcus Okafor" });
   await marcus.getByRole("link", { name: "View Marcus Okafor" }).click();
   await expect(page.getByRole("heading", { name: "Marcus Okafor" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Event history" })).toBeVisible();
   await expect(page.locator(".directory-event")).toContainText("DevFlow Conf 2027");
+
+  const width = await page.evaluate(() => document.documentElement.scrollWidth);
+  expect(width).toBeLessThanOrEqual(await page.evaluate(() => window.innerWidth));
+});
+
+test("organizer enriches a private contact and reruns combined filters without a page load", async ({ page }, testInfo) => {
+  await signInAsOrganizer(page);
+  await page.goto("/organizer/directory");
+  await page.getByLabel("Search directory").fill("sbek-speaker@example.com");
+  await page.getByRole("button", { name: "Apply filters" }).click();
+  await page.locator(".directory-row").filter({ hasText: "Priya Raman" })
+    .getByRole("link", { name: "View Priya Raman" }).click();
+
+  await page.getByRole("button", { name: "Edit directory details" }).click();
+  await page.getByLabel("Tags").fill("Keynote, Accessibility");
+  await page.getByLabel("Custom fields").fill("Region: EMEA\nAudience: Engineering leaders");
+  await page.getByRole("button", { name: "Save directory details" }).click();
+  await expect(page.getByText("Accessibility", { exact: true })).toBeVisible();
+  await expect(page.getByText("Engineering leaders", { exact: true })).toBeVisible();
+
+  const note = `Private CRM note ${testInfo.project.name}-${Date.now()}`;
+  await page.getByLabel("Add internal note").fill(note);
+  await page.getByRole("button", { name: "Add private note" }).click();
+  await expect(page.locator(".directory-note-list").getByText(note, { exact: true })).toBeVisible();
+
+  await page.getByRole("link", { name: "All speaker records" }).click();
+  await page.getByRole("checkbox", { name: "Keynote", exact: true }).check();
+  await page.getByRole("checkbox", { name: "Region: EMEA", exact: true }).check();
+  const beforePath = new URL(page.url()).pathname;
+  await page.getByRole("button", { name: "Apply filters" }).click();
+  await expect(page.locator(".directory-row").filter({ hasText: "Priya Raman" })).toBeVisible();
+  await expect(page.getByText("Marcus Okafor", { exact: true })).toHaveCount(0);
+  expect(new URL(page.url()).pathname).toBe(beforePath);
+
+  const segmentName = `EMEA keynotes ${testInfo.project.name}-${Date.now()}`;
+  await page.getByLabel("Segment name").fill(segmentName);
+  await page.getByRole("button", { name: "Save segment" }).click();
+  await expect(page.locator(".toast")).toContainText("Segment saved");
+  await page.getByRole("button", { name: "Clear filters" }).click();
+  await page.getByLabel("Saved segment").selectOption({ label: segmentName });
+  await page.getByRole("button", { name: "Run segment" }).click();
+  await expect(page.locator(".directory-row").filter({ hasText: "Priya Raman" })).toBeVisible();
+  await expect(page.getByText("Marcus Okafor", { exact: true })).toHaveCount(0);
 
   const width = await page.evaluate(() => document.documentElement.scrollWidth);
   expect(width).toBeLessThanOrEqual(await page.evaluate(() => window.innerWidth));
@@ -65,6 +107,7 @@ test("the record an organizer keeps reloads without its archived duplicate", asy
   await signInAsOrganizer(page);
   await page.goto("/organizer/directory");
   await page.getByLabel("Search directory").fill(keptEmail);
+  await page.getByRole("button", { name: "Apply filters" }).click();
   await page.locator(".directory-row").filter({ hasText: keptEmail })
     .getByRole("link", { name: `View ${name}` }).click();
   await expect(page.getByRole("heading", { name: "Possible duplicates" })).toBeVisible();
@@ -83,7 +126,7 @@ test("the record an organizer keeps reloads without its archived duplicate", asy
 
 test("organizer reviews and merges a likely duplicate while choosing the kept record", async ({ page }, testInfo) => {
   await signInAsOrganizer(page);
-  const directoryResponse = await page.request.get("/api/speaker-directory");
+  const directoryResponse = await page.request.get("/api/speaker-directory?q=sbek-speaker%40example.com");
   expect(directoryResponse.status()).toBe(200);
   const directory = await directoryResponse.json() as {
     items: Array<{ id: string; name: string; email: string; organization: string | null }>;
@@ -125,6 +168,7 @@ test("organizer reviews and merges a likely duplicate while choosing the kept re
   await signInAsOrganizer(page);
   await page.goto("/organizer/directory");
   await page.getByLabel("Search directory").fill(duplicateEmail);
+  await page.getByRole("button", { name: "Apply filters" }).click();
   const duplicate = page.locator(".directory-row").filter({ hasText: duplicateEmail });
   await expect(duplicate).toContainText("Possible duplicate");
   await duplicate.getByRole("link", { name: `View ${priya!.name}` }).click();
@@ -142,5 +186,5 @@ test("organizer reviews and merges a likely duplicate while choosing the kept re
 
   await expect(page).toHaveURL(/\/organizer\/directory\/psn_priya_raman$/);
   await expect(page.locator(".toast")).toContainText("merged into");
-  await expect(page.getByRole("heading", { name: priya!.name })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: priya!.name })).toBeVisible();
 });

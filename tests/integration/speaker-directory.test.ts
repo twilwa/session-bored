@@ -1,5 +1,5 @@
 // ABOUTME: Exercises the private cross-event speaker directory and its merge boundary.
-// ABOUTME: Verifies organizer access, event history, atomic relationship transfer, and account safety.
+// ABOUTME: Verifies organizer metadata, filters, history, relationship transfer, and account safety.
 import { env } from "cloudflare:workers";
 import { drizzle } from "drizzle-orm/d1";
 import { and, eq, isNull } from "drizzle-orm";
@@ -116,6 +116,105 @@ describe("speaker directory", () => {
         sessions: [expect.objectContaining({ title: "Designing durable communities" })],
       }),
     ]));
+  });
+
+  it("saves private tags and custom fields and combines them in a paginated filter", async () => {
+    await request("/api/health");
+    const cookie = await organizerCookie();
+    const saved = await request("/api/speaker-directory/psn_priya_raman/metadata", {
+      method: "PUT",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({
+        tags: ["Keynote", "AI"],
+        customFields: { Region: "EMEA", Language: "English" },
+      }),
+    });
+    expect(saved.status).toBe(200);
+    expect(await saved.json()).toEqual({
+      tags: ["AI", "Keynote"],
+      customFields: { Language: "English", Region: "EMEA" },
+    });
+
+    const detail = await request("/api/speaker-directory/psn_priya_raman", { headers: { cookie } });
+    expect((await detail.json<SpeakerDirectoryDetailResponse>()).person).toMatchObject({
+      tags: ["AI", "Keynote"],
+      customFields: { Language: "English", Region: "EMEA" },
+    });
+
+    const filtered = await request(
+      "/api/speaker-directory?tag=keynote&field=region%3Aemea&sort=name&direction=asc&page=1&pageSize=1",
+      { headers: { cookie } },
+    );
+    expect(filtered.status).toBe(200);
+    expect(await filtered.json()).toMatchObject({
+      total: 1,
+      page: 1,
+      pageSize: 1,
+      pageCount: 1,
+      items: [expect.objectContaining({ id: "psn_priya_raman" })],
+    });
+
+    const publicSpeakers = await request("/api/public/events/evt_devflow_conf_2027/speakers");
+    expect(await publicSpeakers.text()).not.toContain("EMEA");
+  });
+
+  it("adds an attributed internal note without exposing it publicly", async () => {
+    await request("/api/health");
+    const cookie = await organizerCookie();
+    const body = "Invite back for the private accessibility roundtable.";
+    const created = await request("/api/speaker-directory/psn_priya_raman/notes", {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ body }),
+    });
+    expect(created.status).toBe(201);
+    expect(await created.json()).toMatchObject({ body, author: "Jordan Alvarez" });
+
+    const detail = await request("/api/speaker-directory/psn_priya_raman", { headers: { cookie } });
+    expect((await detail.json<SpeakerDirectoryDetailResponse>()).notes).toEqual([
+      expect.objectContaining({ body, author: "Jordan Alvarez" }),
+    ]);
+
+    const publicSpeakers = await request("/api/public/events/evt_devflow_conf_2027/speakers");
+    expect(await publicSpeakers.text()).not.toContain(body);
+  });
+
+  it("saves a named segment with the exact filters an organizer can rerun", async () => {
+    await request("/api/health");
+    const cookie = await organizerCookie();
+    await request("/api/speaker-directory/psn_priya_raman/metadata", {
+      method: "PUT",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ tags: ["Keynote"], customFields: { Region: "EMEA" } }),
+    });
+    const filters = {
+      search: "Priya",
+      tags: ["Keynote"],
+      customFields: [{ name: "Region", value: "EMEA" }],
+      sort: "name",
+      direction: "asc",
+    };
+    const created = await request("/api/speaker-directory/segments", {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ name: "EMEA keynotes", filters }),
+    });
+    expect(created.status).toBe(201);
+    expect(await created.json()).toMatchObject({ name: "EMEA keynotes", filters });
+
+    const list = await request("/api/speaker-directory", { headers: { cookie } });
+    expect(await list.json()).toMatchObject({
+      savedSegments: [expect.objectContaining({ name: "EMEA keynotes", filters })],
+    });
+
+    const rerun = await request(
+      "/api/speaker-directory?q=Priya&tag=Keynote&field=Region%3AEMEA&sort=name&direction=asc",
+      { headers: { cookie } },
+    );
+    expect(await rerun.json()).toMatchObject({
+      total: 1,
+      items: [expect.objectContaining({ id: "psn_priya_raman" })],
+    });
   });
 
   it("merges a detected duplicate without losing programme, proposal, task, or file links", async () => {
@@ -824,5 +923,68 @@ describe("speaker directory", () => {
     expect(ownRows).toHaveLength(1);
     expect(ownRows[0]?.assignment.status).toBe("completed");
     expect(ownRows[0]?.file?.displayName).toBe("folded-slides.pdf");
+  });
+
+  it("keeps multi-criteria filter, sort, and pagination under the admin-table latency budget", async () => {
+    await request("/api/health");
+    const now = Date.now();
+    await env.DB.prepare(
+      "insert into speaker_directory_tag (id, name, normalized_name, created_at, updated_at) values (?, ?, ?, ?, ?)",
+    ).bind("dtag_performance", "Performance", "performance", now, now).run();
+    for (let offset = 0; offset < 300; offset += 25) {
+      const statements: D1PreparedStatement[] = [];
+      for (let index = offset; index < offset + 25; index += 1) {
+        const suffix = String(index).padStart(3, "0");
+        const personId = `psn_performance_${suffix}`;
+        const speakerId = `spk_performance_${suffix}`;
+        statements.push(
+          env.DB.prepare(
+            "insert into person (id, name, email, organization, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
+          ).bind(
+            personId,
+            `Performance Contact ${suffix}`,
+            `performance-${suffix}@example.com`,
+            "Performance Labs",
+            now,
+            now,
+          ),
+          env.DB.prepare(
+            "insert into speaker (id, person_id, event_id, status, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
+          ).bind(speakerId, personId, "evt_devflow_conf_2027", "invited", now, now),
+          env.DB.prepare(
+            "insert into speaker_directory_contact_tag (person_id, tag_id, created_at) values (?, ?, ?)",
+          ).bind(personId, "dtag_performance", now),
+          env.DB.prepare(
+            "insert into speaker_directory_custom_field (id, person_id, name, normalized_name, value, normalized_value, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?)",
+          ).bind(
+            `dcf_performance_${suffix}`,
+            personId,
+            "Region",
+            "region",
+            index % 2 === 0 ? "EMEA" : "North America",
+            index % 2 === 0 ? "emea" : "north america",
+            now,
+            now,
+          ),
+        );
+      }
+      await env.DB.batch(statements);
+    }
+
+    const cookie = await organizerCookie();
+    const durations: number[] = [];
+    for (let index = 0; index < 20; index += 1) {
+      const startedAt = performance.now();
+      const response = await request(
+        "/api/speaker-directory?q=Performance&tag=Performance&field=Region%3AEMEA&sort=events&direction=desc&page=3&pageSize=25",
+        { headers: { cookie } },
+      );
+      durations.push(performance.now() - startedAt);
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({ total: 150, page: 3, pageSize: 25, pageCount: 6 });
+    }
+    durations.sort((first, second) => first - second);
+    const p95 = durations[Math.ceil(durations.length * 0.95) - 1]!;
+    expect(p95).toBeLessThan(200);
   });
 });

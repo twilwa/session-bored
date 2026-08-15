@@ -169,6 +169,27 @@
       "when": 1786748000000,
       "tag": "0023_flowery_dorian_gray",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1786833168430,
+      "tag": "0024_luxuriant_wasp",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "6",
+      "when": 1786833261782,
+      "tag": "0025_stiff_goblin_queen",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "6",
+      "when": 1786833807595,
+      "tag": "0026_gray_squadron_supreme",
+      "breakpoints": true
     }
   ]
 }

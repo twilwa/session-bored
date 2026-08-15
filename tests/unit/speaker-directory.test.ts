@@ -1,8 +1,9 @@
-// ABOUTME: Exercises conservative duplicate detection for the cross-event speaker directory.
-// ABOUTME: Keeps weak similarities from becoming destructive merge recommendations.
+// ABOUTME: Exercises identity and filter rules for the private cross-event speaker directory.
+// ABOUTME: Keeps weak matches separate while combining organizer filters deterministically.
 import { describe, expect, it } from "vitest";
 import {
   duplicateReasonsFor,
+  filterSpeakerDirectory,
   indexPossibleDuplicates,
   possibleDuplicateGroups,
 } from "../../worker/speaker-directory.ts";
@@ -79,5 +80,60 @@ describe("speaker directory duplicate detection", () => {
       { id: "psn_second", name: "Ana", email: "ana.lee@example.net", organization: "Lee Corp" },
     ]);
     expect(groups).toEqual([]);
+  });
+});
+
+describe("speaker directory filters", () => {
+  it("combines tags and custom fields before sorting and pagination", () => {
+    const filtered = filterSpeakerDirectory([
+      {
+        id: "psn_ada",
+        name: "Ada Lovelace",
+        email: "ada@example.com",
+        organization: "Analytical Engines",
+        jobTitle: "Founder",
+        events: ["Compute Summit"],
+        tags: ["Keynote", "AI"],
+        customFields: { Region: "EMEA", Language: "English" },
+        eventCount: 2,
+        updatedAt: "2026-08-15T12:00:00.000Z",
+      },
+      {
+        id: "psn_grace",
+        name: "Grace Hopper",
+        email: "grace@example.com",
+        organization: "US Navy",
+        jobTitle: "Rear admiral",
+        events: ["Compiler Week"],
+        tags: ["Keynote"],
+        customFields: { Region: "North America", Language: "English" },
+        eventCount: 3,
+        updatedAt: "2026-08-15T13:00:00.000Z",
+      },
+      {
+        id: "psn_margaret",
+        name: "Margaret Hamilton",
+        email: "margaret@example.com",
+        organization: "NASA",
+        jobTitle: "Director",
+        events: ["Compute Summit"],
+        tags: ["Keynote"],
+        customFields: { Region: "EMEA", Language: "English" },
+        eventCount: 1,
+        updatedAt: "2026-08-15T14:00:00.000Z",
+      },
+    ], {
+      search: "",
+      tags: ["keynote"],
+      customFields: [{ name: "region", value: "emea" }],
+      sort: "name",
+      direction: "desc",
+      page: 1,
+      pageSize: 1,
+    });
+
+    expect(filtered.total).toBe(2);
+    expect(filtered.pageCount).toBe(2);
+    expect(filtered.items.map((person) => person.id)).toEqual(["psn_margaret"]);
   });
 });

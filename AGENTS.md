@@ -298,7 +298,13 @@ This file is the project's committed home for project-intrinsic agent knowledge:
 - `worker/speaker-directory.ts` and `worker/routes/speaker-directory.ts` own the
   organizer-only, all-event speaker directory. The directory is a read model
   over canonical `person`, proposal, event-speaker, and session rows; the event
-  roster remains the active event's workflow surface. Duplicate detection is
+  roster remains the active event's workflow surface. Private contact metadata
+  lives only in the `speaker_directory_*` tables in `db/schema/directory.ts`:
+  tags and custom fields feed `filterSpeakerDirectory`, attributed notes appear
+  only on the contact profile, and saved segments freeze the filter criteria an
+  organizer can rerun. The list route applies every criterion before stable
+  sort and pagination and returns unfiltered overview/facet counts; public read
+  models never join these tables. Duplicate detection is
   deliberately conservative: normalized email, or normalized name plus a
   non-empty matching organization. A confirmed merge keeps both person rows,
   archives the duplicate, records the attributed profile snapshot in

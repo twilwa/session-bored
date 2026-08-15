@@ -1,21 +1,28 @@
-// ABOUTME: Builds the private all-event speaker index and conservative duplicate groups.
-// ABOUTME: Aggregates canonical people, proposals, event speakers, and sessions without changing roster rules.
-import { and, asc, eq, isNull } from "drizzle-orm";
+// ABOUTME: Builds the private all-event speaker index, metadata facets, and duplicate groups.
+// ABOUTME: Aggregates canonical people, organizer metadata, and programme history without changing rosters.
+import { and, asc, desc, eq, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import {
   directoryMerges,
   events,
   people,
+  speakerDirectoryContactTags,
+  speakerDirectoryCustomFields,
+  speakerDirectoryNotes,
+  speakerDirectoryTags,
   sessions,
   sessionSpeakers,
   speakers,
   submissions,
   submissionSpeakers,
+  users,
 } from "../db/schema.ts";
 import type {
   SpeakerDirectoryDuplicateReason,
   SpeakerDirectoryEvent,
+  SpeakerDirectoryFilters,
   SpeakerDirectoryListItem,
+  SpeakerDirectoryNote,
 } from "../shared/speaker-directory.ts";
 
 export interface DuplicateIdentity {
@@ -137,6 +144,82 @@ export function possibleDuplicateGroups(peopleToCompare: DuplicateIdentity[]): P
   return indexPossibleDuplicates(peopleToCompare).groups;
 }
 
+type FilterableDirectoryItem = Pick<
+  SpeakerDirectoryListItem,
+  | "id"
+  | "name"
+  | "email"
+  | "organization"
+  | "jobTitle"
+  | "events"
+  | "tags"
+  | "customFields"
+  | "eventCount"
+  | "updatedAt"
+>;
+
+export interface FilteredSpeakerDirectory<Item extends FilterableDirectoryItem> {
+  items: Item[];
+  total: number;
+  page: number;
+  pageSize: number;
+  pageCount: number;
+}
+
+/**
+ * Applies every organizer criterion before sorting and slicing one stable page. Values use the
+ * same normalization as duplicate review so casing and incidental spacing do not change a match.
+ */
+export function filterSpeakerDirectory<Item extends FilterableDirectoryItem>(
+  items: Item[],
+  filters: SpeakerDirectoryFilters,
+): FilteredSpeakerDirectory<Item> {
+  const search = normalized(filters.search);
+  const tags = filters.tags.map(normalized).filter((tag) => tag !== "");
+  const customFields = filters.customFields
+    .map((field) => ({ name: normalized(field.name), value: normalized(field.value) }))
+    .filter((field) => field.name !== "" && field.value !== "");
+  const matching = items.filter((item) => {
+    const itemTags = new Set(item.tags.map(normalized));
+    if (!tags.every((tag) => itemTags.has(tag))) return false;
+    const itemFields = new Map(
+      Object.entries(item.customFields).map(([name, value]) => [normalized(name), normalized(value)]),
+    );
+    if (!customFields.every((field) => itemFields.get(field.name) === field.value)) return false;
+    if (search === "") return true;
+    return [
+      item.name,
+      item.email,
+      item.organization,
+      item.jobTitle,
+      ...item.events,
+      ...item.tags,
+      ...Object.keys(item.customFields),
+      ...Object.values(item.customFields),
+    ].some((value) => value !== null && normalized(value).includes(search));
+  });
+  const direction = filters.direction === "desc" ? -1 : 1;
+  matching.sort((first, second) => {
+    let order: number;
+    if (filters.sort === "updated") order = first.updatedAt.localeCompare(second.updatedAt);
+    else if (filters.sort === "events") order = first.eventCount - second.eventCount;
+    else order = first.name.localeCompare(second.name);
+    if (order === 0) order = first.id.localeCompare(second.id);
+    return order * direction;
+  });
+  const pageSize = Math.max(1, Math.min(100, Math.trunc(filters.pageSize)));
+  const pageCount = Math.max(1, Math.ceil(matching.length / pageSize));
+  const page = Math.max(1, Math.min(pageCount, Math.trunc(filters.page)));
+  const offset = (page - 1) * pageSize;
+  return {
+    items: matching.slice(offset, offset + pageSize),
+    total: matching.length,
+    page,
+    pageSize,
+    pageCount,
+  };
+}
+
 type Database = ReturnType<typeof drizzle>;
 
 /**
@@ -202,7 +285,7 @@ function byPersonId<Row extends { personId: string }>(rows: Row[]): Map<string, 
 }
 
 export async function loadSpeakerDirectory(database: Database): Promise<DirectorySnapshot> {
-  const [personRows, speakerRows, proposalRows, sessionRows] = await Promise.all([
+  const [personRows, speakerRows, proposalRows, sessionRows, tagRows, customFieldRows] = await Promise.all([
     database.select({
       id: people.id,
       userId: people.userId,
@@ -269,11 +352,24 @@ export async function loadSpeakerDirectory(database: Database): Promise<Director
         isNull(sessions.deletedAt),
         isNull(events.deletedAt),
       )),
+    database.select({
+      personId: speakerDirectoryContactTags.personId,
+      name: speakerDirectoryTags.name,
+    })
+      .from(speakerDirectoryContactTags)
+      .innerJoin(speakerDirectoryTags, eq(speakerDirectoryContactTags.tagId, speakerDirectoryTags.id)),
+    database.select({
+      personId: speakerDirectoryCustomFields.personId,
+      name: speakerDirectoryCustomFields.name,
+      value: speakerDirectoryCustomFields.value,
+    }).from(speakerDirectoryCustomFields),
   ]);
 
   const speakerRowsByPersonId = byPersonId(speakerRows);
   const proposalRowsByPersonId = byPersonId(proposalRows);
   const sessionRowsByPersonId = byPersonId(sessionRows);
+  const tagRowsByPersonId = byPersonId(tagRows);
+  const customFieldRowsByPersonId = byPersonId(customFieldRows);
   const eligibleIds = new Set([...speakerRowsByPersonId.keys(), ...proposalRowsByPersonId.keys()]);
   const directoryPeople = personRows.filter((person) => eligibleIds.has(person.id));
   const { groups, reasonsByPersonId } = indexPossibleDuplicates(directoryPeople);
@@ -328,6 +424,14 @@ export async function loadSpeakerDirectory(database: Database): Promise<Director
       sessionCount: history.reduce((count, event) => count + event.sessions.length, 0),
       proposalCount: history.reduce((count, event) => count + event.proposalCount, 0),
       events: history.map((event) => event.name),
+      tags: (tagRowsByPersonId.get(person.id) ?? [])
+        .map((tag) => tag.name)
+        .sort((first, second) => first.localeCompare(second)),
+      customFields: Object.fromEntries(
+        (customFieldRowsByPersonId.get(person.id) ?? [])
+          .sort((first, second) => first.name.localeCompare(second.name))
+          .map((field) => [field.name, field.value]),
+      ),
       possibleDuplicateCount: duplicateCountById.get(person.id) ?? 0,
       updatedAt: person.updatedAt.toISOString(),
     };
@@ -342,4 +446,29 @@ export async function loadSpeakerDirectory(database: Database): Promise<Director
     duplicateReasonsByPersonId: reasonsByPersonId,
     groups,
   };
+}
+
+export async function loadSpeakerDirectoryNotes(
+  database: Database,
+  personId: string,
+): Promise<SpeakerDirectoryNote[]> {
+  const rows = await database.select({
+    id: speakerDirectoryNotes.id,
+    body: speakerDirectoryNotes.body,
+    author: users.name,
+    createdAt: speakerDirectoryNotes.createdAt,
+  })
+    .from(speakerDirectoryNotes)
+    .innerJoin(users, eq(speakerDirectoryNotes.authorUserId, users.id))
+    .where(and(
+      eq(speakerDirectoryNotes.personId, personId),
+      isNull(speakerDirectoryNotes.deletedAt),
+    ))
+    .orderBy(desc(speakerDirectoryNotes.createdAt));
+  return rows.map((note) => ({
+    id: note.id,
+    body: note.body,
+    author: note.author,
+    createdAt: note.createdAt.toISOString(),
+  }));
 }

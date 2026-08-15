@@ -2,6 +2,32 @@
 // ABOUTME: Keeps directory identity, history, duplicate review, and merge results distinct from event rosters.
 export type SpeakerDirectoryDuplicateReason = "same_email" | "same_name_and_organization";
 
+export type SpeakerDirectorySort = "name" | "updated" | "events";
+
+export interface SpeakerDirectoryCustomFieldFilter {
+  name: string;
+  value: string;
+}
+
+export interface SpeakerDirectoryFilters {
+  search: string;
+  tags: string[];
+  customFields: SpeakerDirectoryCustomFieldFilter[];
+  sort: SpeakerDirectorySort;
+  direction: "asc" | "desc";
+  page: number;
+  pageSize: number;
+}
+
+export type SpeakerDirectorySavedFilters = Omit<SpeakerDirectoryFilters, "page" | "pageSize">;
+
+export interface SpeakerDirectorySegment {
+  id: string;
+  name: string;
+  filters: SpeakerDirectorySavedFilters;
+  createdAt: string;
+}
+
 export interface SpeakerDirectoryListItem {
   id: string;
   name: string;
@@ -14,13 +40,36 @@ export interface SpeakerDirectoryListItem {
   sessionCount: number;
   proposalCount: number;
   events: string[];
+  tags: string[];
+  customFields: Record<string, string>;
   possibleDuplicateCount: number;
   updatedAt: string;
 }
 
 export interface SpeakerDirectoryListResponse {
   items: SpeakerDirectoryListItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+  pageCount: number;
   possibleDuplicateGroups: number;
+  facets: {
+    tags: string[];
+    customFields: Array<{ name: string; values: string[] }>;
+  };
+  overview: {
+    people: number;
+    events: number;
+    sessions: number;
+    proposals: number;
+    taggedPeople: number;
+  };
+  savedSegments: SpeakerDirectorySegment[];
+}
+
+export interface SpeakerDirectoryMetadata {
+  tags: string[];
+  customFields: Record<string, string>;
 }
 
 export interface SpeakerDirectorySession {
@@ -37,6 +86,13 @@ export interface SpeakerDirectoryEvent {
   speakerStatus: string | null;
   proposalCount: number;
   sessions: SpeakerDirectorySession[];
+}
+
+export interface SpeakerDirectoryNote {
+  id: string;
+  body: string;
+  author: string;
+  createdAt: string;
 }
 
 export interface SpeakerDirectoryDuplicate {
@@ -59,6 +115,7 @@ export interface SpeakerDirectoryDetailResponse {
     events: SpeakerDirectoryEvent[];
   };
   possibleDuplicates: SpeakerDirectoryDuplicate[];
+  notes: SpeakerDirectoryNote[];
 }
 
 export interface SpeakerDirectoryMergeResult {

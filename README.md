@@ -110,9 +110,16 @@ another event already uses, are refused on the field rather than saved.
 ## Speaker directory
 
 Organizers can open **Speaker directory** at `/organizer/directory` to search
-the private, cross-event record of everyone who has submitted or spoken. Each
-person's detail page shows their proposals, sessions, event history, and saved
-profile information without changing the event-specific roster.
+the private, cross-event record of everyone who has submitted or spoken. The
+paginated index combines text, tag, and custom-field filters, supports stable
+sorting, and lets an organizer save the current criteria as a named segment to
+run again. Its overview keeps people, event, session, and curated-contact counts
+visible even while the result set is filtered.
+
+Each person's detail page shows their proposals, sessions, and event history,
+alongside organizer-only tags, custom fields, and attributed internal notes.
+Those directory details do not change the event-specific roster and are never
+included in public speaker, session, schedule, or embed responses.
 
 Greenroom flags conservative duplicate candidates when normalized email
 addresses match, or when both normalized name and organization match. A merge
@@ -127,9 +134,11 @@ whenever either record was withdrawn. Because the public programme lists a
 speaker on roster status alone, a merge can therefore add a person to it or take
 them off it. The confirmation dialog says so before the organizer commits.
 
-This is the first directory slice. CSV import, tags, segments, custom fields,
-segment outreach, and directory analytics remain separate follow-up work. The
-existing **Speakers** roster remains the workflow view for the active event.
+The existing **Speakers** roster remains the workflow view for the active event,
+including its event-scoped CSV import. Staged sourcing, pushing a directory
+contact into an event, and segment outreach remain separate follow-up work;
+outreach must reuse Communications and its tracked dispatch log rather than
+introducing another sender.
 
 ## Commands
 
