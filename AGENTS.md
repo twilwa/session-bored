@@ -320,10 +320,13 @@ longer projects it into the session at all.
   which requires a signed-in account whose confirmed address is the invited
   one, because an account that verified long ago never re-fires verification);
   and an organizer upgrading an already-confirmed account at invite time or
-  through the upgrade route. The emailed link is one URL for every path -
-  `/invitations/:inviteId` - never a second signup-only link.
-  `tests/integration/account-access.test.ts` runs the guessed-address attack -
-  keep it.
+  through the upgrade route. The emailed link is one URL for every path that
+  still has to redeem - `/invitations/:inviteId` - never a second signup-only
+  link. An invite-time upgrade leaves nothing to redeem, so that mail alone
+  links `/reviewer`: the workspace gate routes a signed-out visit through
+  sign-in and back, while the invitation's own page would only report that it is
+  spent. `tests/integration/account-access.test.ts` runs the guessed-address
+  attack - keep it.
 - `emailVerification.sendOnSignUp` is on and never blocks signing in. Account
   mail carries `eventId: "platform"` and goes straight to the delivery rather
   than `sendTrackedEmail`, because `email_dispatch.event_id` references a real

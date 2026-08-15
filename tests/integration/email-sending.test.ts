@@ -590,7 +590,7 @@ describe("reviewer invitation dispatch", () => {
     expect(resend.calls).toHaveLength(1);
   });
 
-  it("tells a confirmed account that reviewer access is already open, with the same link", async () => {
+  it("sends an already-upgraded account to the reviewer area, not to its spent invitation", async () => {
     const recipientEmail = `reviewer-invite-existing-${crypto.randomUUID()}@greenroom-mail.dev`;
     await request("/api/auth/sign-up/email", {
       method: "POST",
@@ -613,8 +613,11 @@ describe("reviewer invitation dispatch", () => {
     expect(response.status).toBe(201);
     const payload = await response.json<{ invite: { id: string }; accountStatus: string; upgraded: boolean }>();
     expect(payload).toMatchObject({ accountStatus: "confirmed", upgraded: true });
-    // The same one link serves every path; only the copy around it changes.
-    expect(resend.calls[0]?.text).toContain(`/invitations/${payload.invite.id}`);
+    // The upgrade already spent this invitation, so its link would land on a page saying so.
+    // The mail points at the work instead; the workspace gate routes a signed-out visit
+    // through sign-in and back.
+    expect(resend.calls[0]?.text).toContain("/reviewer");
+    expect(resend.calls[0]?.text).not.toContain(`/invitations/${payload.invite.id}`);
     expect(resend.calls[0]?.text).toContain("Reviewer access is already open with your existing account");
   });
 

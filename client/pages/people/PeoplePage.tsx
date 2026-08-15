@@ -5,6 +5,7 @@ import { Button, EmptyState, LoadingState, SelectField, StatusChip, TextField, T
 import { getJson, RequestFailure, requestJson } from "../../lib.tsx";
 import type { PersonAccountSummary } from "../../../shared/api.ts";
 import { effectiveRoleOf, evidenceSummary } from "../../../shared/people.ts";
+import { invitationRemitSelection } from "./invitation-remit.ts";
 import "./people.css";
 
 const eventId = "evt_devflow_conf_2027";
@@ -151,9 +152,8 @@ export function PeoplePage() {
   async function invite(): Promise<void> {
     setInviting(true);
     try {
-      // An explicit remit is sent only when the organizer chose one: it is what lets the route
-      // open access immediately for an address that already has a confirmed account.
-      const choseRemit = inviteTrackIds.length > 0 && inviteRoundIds.length > 0;
+      // Naming both halves is what lets the route open access immediately for an address that
+      // already has a confirmed account; a half-chosen remit still travels as chosen.
       const result = await requestJson<InviteResult>(
         `/api/events/${eventId}/reviewer-invites`,
         {
@@ -161,7 +161,7 @@ export function PeoplePage() {
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
             email: inviteEmail,
-            ...(choseRemit ? { trackIds: inviteTrackIds, roundIds: inviteRoundIds } : {}),
+            ...invitationRemitSelection(inviteTrackIds, inviteRoundIds),
           }),
         },
       );
@@ -495,9 +495,10 @@ export function PeoplePage() {
             }}
           >
             <p>
-              Naming a remit lets the invitation open reviewer access immediately for an address
-              that already has a confirmed account. Left unset, it covers every track in the first
-              open review round and opens when the person uses the invitation link.
+              The invitation carries exactly what you tick here. Ticking both a track and a round
+              opens reviewer access immediately for an address that already has a confirmed
+              account. A half you leave untouched falls back to its own default - every track, and
+              the first open review round - and the invitation opens when the person uses its link.
             </p>
             <fieldset>
               <legend>Track remit</legend>

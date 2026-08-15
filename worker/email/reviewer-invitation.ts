@@ -37,6 +37,15 @@ export function reviewerInvitationUrl(
   return url.toString();
 }
 
+/**
+ * Where a recipient whose reviewer access is already open belongs: the review work itself.
+ * The workspace gate meets a signed-out visit with sign-in and returns them here, so the one
+ * link serves both states - and never sends them to an invitation that is already spent.
+ */
+export function reviewerAreaUrl(appOrigin: string): string {
+  return new URL("/reviewer", appOrigin).toString();
+}
+
 export async function sendReviewerInvitationEmail(input: {
   database: EmailDatabase;
   env: EmailEnvironment;
@@ -56,7 +65,9 @@ export async function sendReviewerInvitationEmail(input: {
     return { status: "event_not_found" };
   }
 
-  const invitationUrl = reviewerInvitationUrl(input.env.APP_ORIGIN, input.inviteId, input.recipientEmail);
+  const destination = input.reviewerAccessOpened
+    ? reviewerAreaUrl(input.env.APP_ORIGIN)
+    : reviewerInvitationUrl(input.env.APP_ORIGIN, input.inviteId, input.recipientEmail);
   const subject = `Review proposals for ${event.name}`;
   const lead = input.reviewerAccessOpened
     ? `You've been invited to review proposals for ${event.name}. Reviewer access is already open with your existing account.`
@@ -66,7 +77,7 @@ export async function sendReviewerInvitationEmail(input: {
     ? `You've been invited to review proposals for ${event.name}. You already have a Greenroom account for this address - confirming the address opens the review committee.`
     : `You've been invited to review proposals for ${event.name}. Create your Greenroom account using this email address, then confirm the address to open the review committee.`;
   const action = input.reviewerAccessOpened ? "Sign in to start reviewing:" : "Open the invitation:";
-  const text = [lead, "", action, invitationUrl].join("\n");
+  const text = [lead, "", action, destination].join("\n");
 
   return sendTrackedEmail({
     database: input.database,
