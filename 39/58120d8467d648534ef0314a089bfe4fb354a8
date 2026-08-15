@@ -1,0 +1,19 @@
+README.md
+  s_68ae4352dad936::t_8974ddbf5d3958 74-76
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "3958120d8467d648534ef0314a089bfe4fb354a8",
+  "prompts": {},
+  "sessions": {
+    "s_68ae4352dad936": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "07ae2dbe-c3a6-4c23-a3bd-4426fd34d238",
+        "model": "claude-opus-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}

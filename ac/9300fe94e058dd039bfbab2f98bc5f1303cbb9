@@ -1,0 +1,48 @@
+tests/e2e/account-access.spec.ts
+  s_9c235ce18d2e44::t_c0126098c3505c 164
+  s_9c235ce18d2e44::t_1dd2a00a44953a 126-132,137-163,165-169
+  s_94b062bcfab24b::t_57d91b71469cfc 170-171
+worker/routes/people.ts
+  s_9c235ce18d2e44::t_c6f225e6a08217 438
+  s_9c235ce18d2e44::t_237b11abb862ac 449-453,458-461
+  s_9c235ce18d2e44::t_acc26023451e78 454-457,462-464
+  s_9c235ce18d2e44::t_15a7097437c0a4 430-432
+client/pages/people/PeoplePage.tsx
+  s_9c235ce18d2e44::t_cfd421c6dfba9a 5
+  s_9c235ce18d2e44::t_6ac231bebb6a10 59
+  s_9c235ce18d2e44::t_2b987bdc44b1b1 116,118-125,133-136
+  s_9c235ce18d2e44::t_1140965800f304 391-392
+  s_9c235ce18d2e44::t_0b1b36f8544ee2 163-164
+  s_9c235ce18d2e44::t_7e3e173cbe2622 43-50
+client/lib.tsx
+  s_9c235ce18d2e44::t_32c43c34f27c3b 111-127,142-145
+tests/integration/people.test.ts
+  s_9c235ce18d2e44::t_a20dd3bf7c9c91 167-170,177-185
+  s_9c235ce18d2e44::t_8ed780ed539b73 326,331,339-366
+tests/integration/email-sending.test.ts
+  s_9c235ce18d2e44::t_c92cacf00b1d0a 566-588
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "ac9300fe94e058dd039bfbab2f98bc5f1303cbb9",
+  "prompts": {},
+  "sessions": {
+    "s_94b062bcfab24b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0029a-a38d-7702-863b-f2de72655267",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    },
+    "s_9c235ce18d2e44": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "13de8c2b-3b53-47cf-827d-fc7b714954df",
+        "model": "claude-opus-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
