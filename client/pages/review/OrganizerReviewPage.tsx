@@ -87,10 +87,10 @@ export function OrganizerReviewPage({ path }: { path: string }) {
   if (path.startsWith(detailPrefix)) {
     return <SubmissionReviewPage role="organizer" submissionId={decodeURIComponent(path.slice(detailPrefix.length))} />;
   }
-  return <OrganizerReviewWorklist />;
+  return <OrganizerReviewWorklist openSetup={path === "/organizer/review/setup"} />;
 }
 
-function OrganizerReviewWorklist() {
+function OrganizerReviewWorklist({ openSetup }: { openSetup: boolean }) {
   const [sort, setSort] = useState<ReviewSort>("coverage");
   const [worklist, setWorklist] = useState<WorklistPayload | null>(null);
   const [config, setConfig] = useState<ReviewConfig | null>(null);
@@ -412,7 +412,7 @@ function OrganizerReviewWorklist() {
         </section>
       )}
 
-      <details className="review-setup">
+      <details className="review-setup" open={openSetup || undefined}>
         <summary><span><strong>Committee setup</strong><small>Reviewers, track remits, explicit assignments, rounds, pools, and scorecards</small></span><span>Open setup +</span></summary>
         {config === null ? <LoadingState label="Loading committee setup" /> : (
           <div className="setup-grid">

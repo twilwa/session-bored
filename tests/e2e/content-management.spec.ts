@@ -51,15 +51,17 @@ test("speaker and organizer discuss a delivered file from the content board", as
   await signIn(page, "sbek-organizer@example.com", "SbekTest!2027-org", "/organizer");
   await page.goto("/organizer/content");
   await expect(page.getByRole("heading", { name: "Know what landed. Chase what didn’t." })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Delivered 1", exact: true })).toBeVisible();
-  const emptyRequest = page.locator("li.deliverable-card", { hasText: "Upload headshot" }).filter({
+  const deliveredFilter = page.getByRole("button", { name: /^Delivered \d+$/ });
+  await expect(deliveredFilter).toBeVisible();
+  const headshotRequest = page.locator("li.deliverable-card", { hasText: "Upload headshot" }).filter({
     has: page.getByText("Priya Raman", { exact: true }),
   });
-  await expect(emptyRequest).toContainText(/completed/i);
-  await expect(emptyRequest).toContainText("Marked complete; no task file is attached.");
+  await expect(headshotRequest).toContainText(/delivered/i);
+  await expect(headshotRequest.getByRole("link", { name: "headshot.png", exact: true })).toBeVisible();
+  await expect(headshotRequest).not.toContainText("Marked complete; no task file is attached.");
 
-  await page.getByRole("button", { name: "Delivered 1", exact: true }).click();
-  await expect(emptyRequest).toHaveCount(0);
+  await deliveredFilter.click();
+  await expect(headshotRequest).toHaveCount(1);
   await page.getByLabel("Search speaker, task, or file").fill("Priya");
   const delivered = page.locator("li.deliverable-card").filter({
     has: page.getByRole("link", { name: "slides.pdf", exact: true }),
