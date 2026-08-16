@@ -16,7 +16,7 @@ test("speaker manages their own bio, headshot, and files end to end", async ({ p
   const bioTask = page.locator("li.task-row", { hasText: "Complete bio and profile" });
   await expect(bioTask.getByText("completed", { exact: true })).toBeVisible();
 
-  await page.locator(".headshot-picker input[type='file']").setInputFiles("fixtures/headshot.png");
+  await page.locator(".headshot-picker input[type='file']").setInputFiles("public/headshots/priya-raman.jpg");
   await expect(page.getByText("Headshot uploaded.")).toBeVisible();
   await expect(page.getByRole("img", { name: "Priya Raman headshot" })).toBeVisible();
 

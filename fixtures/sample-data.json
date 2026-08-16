@@ -101,7 +101,7 @@
     "Sign speaker release form"
   ],
   "files": {
-    "headshot": "fixtures/headshot.png",
+    "headshot": "public/headshots/priya-raman.jpg",
     "slides": "fixtures/slides.pdf",
     "speakers_csv": "fixtures/speakers.csv"
   },

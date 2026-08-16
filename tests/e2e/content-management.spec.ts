@@ -16,7 +16,7 @@ test("speaker and organizer discuss a delivered file from the content board", as
   const organizerNote = `Organizer response from ${runMarker}.`;
   await signIn(page, "sbek-speaker@example.com", "SbekTest!2027-spk", "/speaker");
   await expect(page.getByRole("heading", { name: "Priya Raman" })).toBeVisible();
-  await page.locator(".headshot-picker input[type='file']").setInputFiles("fixtures/headshot.png");
+  await page.locator(".headshot-picker input[type='file']").setInputFiles("public/headshots/priya-raman.jpg");
   await expect(page.getByText("Headshot uploaded.")).toBeVisible();
 
   const slidesTask = page.locator("li.task-row", { hasText: "Upload final slides" });
@@ -57,7 +57,7 @@ test("speaker and organizer discuss a delivered file from the content board", as
     has: page.getByText("Priya Raman", { exact: true }),
   });
   await expect(headshotRequest).toContainText(/delivered/i);
-  await expect(headshotRequest.getByRole("link", { name: "headshot.png", exact: true })).toBeVisible();
+  await expect(headshotRequest.getByRole("link", { name: "priya-raman.jpg", exact: true })).toBeVisible();
   await expect(headshotRequest).not.toContainText("Marked complete; no task file is attached.");
 
   await deliveredFilter.click();
