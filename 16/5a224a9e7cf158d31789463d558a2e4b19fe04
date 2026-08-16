@@ -1,0 +1,21 @@
+production-qa-inventory-2026-08-16.md
+  s_9df749784a2cc6::t_6b0b9fc8934c2f 158-159,164-168,170-183,194-198,219-254,273-281
+  s_9df749784a2cc6::t_b7b16627637b59 282-316
+  s_9df749784a2cc6::t_bf009359d77c74 1-157,160-163,169,184-193,199-218,255-272
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "165a224a9e7cf158d31789463d558a2e4b19fe04",
+  "prompts": {},
+  "sessions": {
+    "s_9df749784a2cc6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a00c4a-cdab-7a93-b3f7-cc4fd3ef632a",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
