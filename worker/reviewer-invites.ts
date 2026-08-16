@@ -1,13 +1,15 @@
 // ABOUTME: Turns an organizer's reviewer invitation into a real grant, only once the address is proved.
 // ABOUTME: Signing up as an invited address grants nothing; a confirmed address is what redeems it.
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import {
   createPublicId,
   reviewerInvites,
   reviewerRoundPools,
   reviewerTracks,
+  reviewRounds,
 } from "../db/schema.ts";
+import { chunkIds } from "./d1-limits.ts";
 import { grantRole } from "./roles.ts";
 
 type Database = ReturnType<typeof drizzle>;
@@ -30,26 +32,67 @@ export async function applyReviewerRemit(
     roundIds: readonly string[];
   },
 ): Promise<void> {
-  for (const trackId of input.trackIds) {
-    await database
-      .insert(reviewerTracks)
-      .values({
+  const trackIds = [...new Set(input.trackIds)];
+  const roundIds = [...new Set(input.roundIds)];
+  const eventRoundIds = database
+    .select({ id: reviewRounds.id })
+    .from(reviewRounds)
+    .where(eq(reviewRounds.eventId, input.eventId));
+  const [currentTracks, currentRounds] = await Promise.all([
+    database
+      .select({ id: reviewerTracks.id, trackId: reviewerTracks.trackId })
+      .from(reviewerTracks)
+      .where(and(
+        eq(reviewerTracks.eventId, input.eventId),
+        eq(reviewerTracks.reviewerUserId, input.reviewerUserId),
+      )),
+    database
+      .select({ id: reviewerRoundPools.id, roundId: reviewerRoundPools.roundId })
+      .from(reviewerRoundPools)
+      .innerJoin(reviewRounds, eq(reviewerRoundPools.roundId, reviewRounds.id))
+      .where(and(
+        eq(reviewRounds.eventId, input.eventId),
+        eq(reviewerRoundPools.reviewerUserId, input.reviewerUserId),
+      )),
+  ]);
+  const keptTrackIds = new Set(trackIds);
+  const removeTracks = chunkIds(currentTracks.filter((row) => !keptTrackIds.has(row.trackId)).map((row) => row.id))
+    .map((ids) =>
+      database.delete(reviewerTracks).where(and(
+        eq(reviewerTracks.eventId, input.eventId),
+        eq(reviewerTracks.reviewerUserId, input.reviewerUserId),
+        inArray(reviewerTracks.id, ids),
+      ))
+    );
+  const keptRoundIds = new Set(roundIds);
+  const removeRounds = chunkIds(currentRounds.filter((row) => !keptRoundIds.has(row.roundId)).map((row) => row.id))
+    .map((ids) =>
+      database.delete(reviewerRoundPools).where(and(
+        eq(reviewerRoundPools.reviewerUserId, input.reviewerUserId),
+        inArray(reviewerRoundPools.roundId, eventRoundIds),
+        inArray(reviewerRoundPools.id, ids),
+      ))
+    );
+  const heldTrackIds = new Set(currentTracks.map((row) => row.trackId));
+  const addTracks = trackIds.filter((trackId) => !heldTrackIds.has(trackId)).map((trackId) =>
+    database.insert(reviewerTracks).values({
         id: createPublicId("rtrk"),
         eventId: input.eventId,
         reviewerUserId: input.reviewerUserId,
         trackId,
-      })
-      .onConflictDoNothing();
-  }
-  for (const roundId of input.roundIds) {
-    await database
-      .insert(reviewerRoundPools)
-      .values({
+      }).onConflictDoNothing()
+  );
+  const heldRoundIds = new Set(currentRounds.map((row) => row.roundId));
+  const addRounds = roundIds.filter((roundId) => !heldRoundIds.has(roundId)).map((roundId) =>
+    database.insert(reviewerRoundPools).values({
         id: createPublicId("rpool"),
         roundId,
         reviewerUserId: input.reviewerUserId,
-      })
-      .onConflictDoNothing();
+      }).onConflictDoNothing()
+  );
+  const [first, ...rest] = [...removeTracks, ...removeRounds, ...addTracks, ...addRounds];
+  if (first !== undefined) {
+    await database.batch([first, ...rest]);
   }
 }
 

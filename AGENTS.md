@@ -198,6 +198,10 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   remit the organizer explicitly named - the People grant door's rule (#166),
   never the silent default - and reports `grantedReviewerRole: false` when the
   person was already a reviewer, because what extended was their remit.
+  `worker/reviewer-invites.ts#applyReviewerRemit` is authoritative for one
+  reviewer and event: every call reconciles both tracks and round pools to the
+  submitted selection, so re-granting cannot restore access from an earlier
+  grant or alter another reviewer's remit.
   `PATCH /review/events/:eventId/reviewers/:reviewerUserId` replaces that remit
   in both directions, so narrowing takes effect on the reviewer's next read. It
   reports `retainedAssignments` because an explicit assignment still grants
