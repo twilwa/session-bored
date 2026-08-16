@@ -498,7 +498,7 @@ test("picture requests disclose their public headshot effect before and after up
   await expect(documentRequest.getByText("This picture will become your public profile photo.")).toHaveCount(0);
   await expect(documentRequest.getByText("Uploading will replace your public profile photo.")).toHaveCount(0);
 
-  await pictureRequest.locator("input[type='file']").setInputFiles("fixtures/headshot.png");
+  await pictureRequest.locator("input[type='file']").setInputFiles("public/headshots/priya-raman.jpg");
   await expect(page.getByText("File uploaded. This is now your profile photo on the public programme.")).toBeVisible();
 });
 
