@@ -95,7 +95,7 @@ async function submitProposalAs(
   expect(submitted.status(), await submitted.text()).toBe(201);
 }
 
-test("the record an organizer keeps reloads without its archived duplicate", async ({ page }, testInfo) => {
+test("organizer cannot merge two speaker records from the same event", async ({ page }, testInfo) => {
   const suffix = `${testInfo.project.name}-${Date.now()}`;
   const name = `Directory Twin ${suffix}`;
   const organization = `Northwind ${suffix}`;
@@ -118,10 +118,16 @@ test("the record an organizer keeps reloads without its archived duplicate", asy
   await expect(dialog).toContainText(`Archive ${archivedEmail}`);
   await dialog.getByRole("button", { name: `Merge and keep ${keptEmail}` }).click();
 
-  await expect(page.locator(".toast")).toContainText("merged into");
-  await expect(page.getByRole("heading", { name: "Possible duplicates" })).toBeHidden();
-  await expect(page.getByText(archivedEmail)).toHaveCount(0);
-  await expect(page.locator(".directory-event__work")).toContainText("2 proposals");
+  await expect(page.locator(".toast")).toContainText("Resolve the same-event speaker records");
+  await expect(page.getByRole("heading", { name: "Possible duplicates" })).toBeVisible();
+  await expect(candidate).toBeVisible();
+
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await page.getByRole("link", { name: "All speaker records" }).click();
+  await page.getByLabel("Search directory").fill(name);
+  await page.getByRole("button", { name: "Apply filters" }).click();
+  await expect(page.locator(".directory-row").filter({ hasText: keptEmail })).toBeVisible();
+  await expect(page.locator(".directory-row").filter({ hasText: archivedEmail })).toBeVisible();
 });
 
 test("organizer reviews and merges a likely duplicate while choosing the kept record", async ({ page }, testInfo) => {

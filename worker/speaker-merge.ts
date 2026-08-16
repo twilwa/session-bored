@@ -152,6 +152,12 @@ export function planSpeakerMergeReferences(input: SpeakerMergeReferenceInput): S
       continue;
     }
     retained.push(retain("speaker", row.id));
+    conflicts.push({
+      reference: "speaker",
+      rowId: row.id,
+      targetRowId: keptSpeaker.id,
+      reason: "event_speaker_collision",
+    });
     if (
       row.status !== keptSpeaker.status
       || timestampOf(row.deletedAt) !== timestampOf(keptSpeaker.deletedAt)
@@ -262,6 +268,69 @@ const referenceLocations: Record<
   speaker_directory_note: { table: "speaker_directory_note", rowColumn: "id", ownerColumn: "person_id" },
 };
 
+const directPersonReferences = [
+  "submission",
+  "submission_speaker",
+  "speaker",
+  "speaker_directory_contact_tag",
+  "speaker_directory_custom_field",
+  "speaker_directory_note",
+] as const satisfies readonly SpeakerDirectoryMergeReference[];
+
+export class SpeakerMergePlanStaleError extends Error {
+  constructor() {
+    super("speaker merge plan is stale");
+    this.name = "SpeakerMergePlanStaleError";
+  }
+}
+
+function expectedDirectReferenceIds(
+  plan: SpeakerDirectoryMergePlan,
+  reference: typeof directPersonReferences[number],
+  mergedPersonId: string,
+): string[] {
+  return [
+    ...plan.moves
+      .filter((referenceMove) => (
+        referenceMove.reference === reference
+        && referenceMove.fromId === mergedPersonId
+      ))
+      .map((referenceMove) => referenceMove.rowId),
+    ...plan.retained
+      .filter((retainedReference) => retainedReference.reference === reference)
+      .map((retainedReference) => retainedReference.rowId),
+  ].sort((left, right) => left.localeCompare(right));
+}
+
+function currentPlanPersonQuery(
+  plan: SpeakerDirectoryMergePlan,
+  mergedPersonId: string,
+): { sql: string; bindings: unknown[] } {
+  const conditions: string[] = [];
+  const bindings: unknown[] = [mergedPersonId];
+  for (const reference of directPersonReferences) {
+    const location = referenceLocations[reference];
+    conditions.push(
+      `coalesce((select json_group_array(reference_id) from (select ${location.rowColumn} as reference_id from ${location.table} where ${location.ownerColumn} = ? order by ${location.rowColumn})), '[]') = ?`,
+    );
+    bindings.push(
+      mergedPersonId,
+      JSON.stringify(expectedDirectReferenceIds(plan, reference, mergedPersonId)),
+    );
+  }
+  return {
+    sql: `select id from person where id = ? and deleted_at is null and user_id is null and ${conditions.join(" and ")}`,
+    bindings,
+  };
+}
+
+async function speakerMergePlanIsCurrent(input: ApplySpeakerMergeInput): Promise<boolean> {
+  const currentPerson = currentPlanPersonQuery(input.plan, input.mergedPersonId);
+  return await input.database.prepare(currentPerson.sql)
+    .bind(...currentPerson.bindings)
+    .first<{ id: string }>() !== null;
+}
+
 interface ApplySpeakerMergeInput {
   database: D1Database;
   plan: SpeakerDirectoryMergePlan;
@@ -277,6 +346,9 @@ export async function applySpeakerMerge(input: ApplySpeakerMergeInput): Promise<
   if (input.plan.conflicts.length > 0) {
     throw new Error("speaker merge plan has unresolved conflicts");
   }
+  if (!(await speakerMergePlanIsCurrent(input))) {
+    throw new SpeakerMergePlanStaleError();
+  }
   const movesByRoute = new Map<string, SpeakerDirectoryReferenceMove[]>();
   for (const referenceMove of input.plan.moves) {
     const route = JSON.stringify([
@@ -289,7 +361,21 @@ export async function applySpeakerMerge(input: ApplySpeakerMergeInput): Promise<
     else moves.push(referenceMove);
   }
 
-  const statements: D1PreparedStatement[] = [];
+  const mergeId = `pmg_${crypto.randomUUID().replaceAll("-", "")}`;
+  const currentPerson = currentPlanPersonQuery(input.plan, input.mergedPersonId);
+  const statements: D1PreparedStatement[] = [
+    input.database.prepare(
+      `insert into directory_merge (id, kept_person_id, merged_person_id, merged_by_user_id, reasons, merged_profile, created_at) values (?, (select id from person where id = ? and deleted_at is null), (${currentPerson.sql}), ?, ?, ?, ?)`,
+    ).bind(
+      mergeId,
+      input.keptPersonId,
+      ...currentPerson.bindings,
+      input.mergedByUserId,
+      JSON.stringify(input.reasons),
+      JSON.stringify(input.mergedProfile),
+      input.timestamp,
+    ),
+  ];
   for (const moves of movesByRoute.values()) {
     const first = moves[0]!;
     const location = referenceLocations[first.reference];
@@ -301,25 +387,17 @@ export async function applySpeakerMerge(input: ApplySpeakerMergeInput): Promise<
     }
   }
 
-  // Both person ids are read back from live rows so a merge that raced another one - the same pair
-  // in the opposite direction, archiving the record this batch is keeping - hits the column's not
-  // null constraint and rolls the whole batch back, rather than half-applying into a merge cycle.
-  const mergeId = `pmg_${crypto.randomUUID().replaceAll("-", "")}`;
   statements.push(
-    input.database.prepare(
-      "insert into directory_merge (id, kept_person_id, merged_person_id, merged_by_user_id, reasons, merged_profile, created_at) values (?, (select id from person where id = ? and deleted_at is null), (select id from person where id = ? and deleted_at is null), ?, ?, ?, ?)",
-    ).bind(
-      mergeId,
-      input.keptPersonId,
-      input.mergedPersonId,
-      input.mergedByUserId,
-      JSON.stringify(input.reasons),
-      JSON.stringify(input.mergedProfile),
-      input.timestamp,
-    ),
     input.database.prepare(
       "update person set deleted_at = ?, updated_at = ? where id = ? and deleted_at is null",
     ).bind(input.timestamp, input.timestamp, input.mergedPersonId),
   );
-  await input.database.batch(statements);
+  try {
+    await input.database.batch(statements);
+  } catch (error) {
+    if (!(await speakerMergePlanIsCurrent(input))) {
+      throw new SpeakerMergePlanStaleError();
+    }
+    throw error;
+  }
 }

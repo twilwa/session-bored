@@ -143,7 +143,7 @@ describe("speaker directory filters", () => {
 });
 
 describe("speaker merge ownership", () => {
-  it("plans only identity-reference moves and retains colliding decisions", () => {
+  it("plans only identity-reference moves and refuses a same-event speaker collision", () => {
     expect(speakerMergeReferenceClasses).toMatchObject({
       "submission.submitter_person_id": "identity_reference",
       "submission_speaker.person_id": "identity_reference",
@@ -221,6 +221,11 @@ describe("speaker merge ownership", () => {
       { reference: "speaker_directory_contact_tag", rowId: "dtag_collision", reason: "target_reference_exists" },
       { reference: "speaker_directory_custom_field", rowId: "dcf_retained", reason: "target_reference_exists" },
     ]);
-    expect(plan.conflicts).toEqual([]);
+    expect(plan.conflicts).toEqual([{
+      reference: "speaker",
+      rowId: "spk_retained",
+      targetRowId: "spk_kept",
+      reason: "event_speaker_collision",
+    }]);
   });
 });

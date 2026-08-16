@@ -146,7 +146,7 @@ export interface SpeakerDirectoryMergeConflict {
   reference: "speaker" | "session_speaker";
   rowId: string;
   targetRowId: string;
-  reason: "standing_differs" | "participation_differs";
+  reason: "event_speaker_collision" | "standing_differs" | "participation_differs";
 }
 
 export interface SpeakerDirectoryMergePlan {

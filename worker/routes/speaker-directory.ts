@@ -39,7 +39,11 @@ import {
   loadSpeakerDirectory,
   loadSpeakerDirectoryNotes,
 } from "../speaker-directory.ts";
-import { applySpeakerMerge, planSpeakerMergeReferences } from "../speaker-merge.ts";
+import {
+  applySpeakerMerge,
+  planSpeakerMergeReferences,
+  SpeakerMergePlanStaleError,
+} from "../speaker-merge.ts";
 
 type SpeakerDirectoryEnvironment = {
   Bindings: CloudflareBindings;
@@ -454,7 +458,7 @@ speakerDirectoryRoutes.post("/api/speaker-directory/:personId/merge", requireOrg
     return context.json({
       error: "merge_requires_resolution",
       conflicts: plan.conflicts,
-      note: "Resolve the conflicting roster standing or session participation before merging these records.",
+      note: "Resolve the same-event speaker records or conflicting session participation before merging these records.",
     }, 409);
   }
 
@@ -470,6 +474,12 @@ speakerDirectoryRoutes.post("/api/speaker-directory/:personId/merge", requireOrg
       timestamp: Date.now(),
     });
   } catch (error) {
+    if (error instanceof SpeakerMergePlanStaleError) {
+      return context.json({
+        error: "merge_plan_stale",
+        note: "The records changed while this merge was being prepared. Review them again before merging.",
+      }, 409);
+    }
     const stillLive = await database
       .select({ id: people.id })
       .from(people)
