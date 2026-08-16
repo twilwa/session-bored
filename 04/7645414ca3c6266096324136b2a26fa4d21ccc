@@ -1,0 +1,28 @@
+tests/e2e/roster.spec.ts
+  s_b163417ee9072e::t_6f8f72652c94cd 501
+tests/unit/demo-data.test.ts
+  s_b163417ee9072e::t_cb63e414c4a7b2 1-12
+fixtures/sample-data.json
+  s_b163417ee9072e::t_6f8f72652c94cd 104
+tests/e2e/portal.spec.ts
+  s_b163417ee9072e::t_6f8f72652c94cd 19
+tests/e2e/content-management.spec.ts
+  s_b163417ee9072e::t_6f8f72652c94cd 19
+  s_b163417ee9072e::t_26105e063f00bb 60
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "047645414ca3c6266096324136b2a26fa4d21ccc",
+  "prompts": {},
+  "sessions": {
+    "s_b163417ee9072e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a00c62-2706-7a23-95f7-2de8c896d73d",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
