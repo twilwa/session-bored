@@ -75,29 +75,42 @@ async function loadOwnSpeaker(
   return profile;
 }
 
-async function completeMatchingTasks(
+interface MatchingTask {
+  taskId: string;
+  taskType: "general" | "file_request";
+}
+
+async function findMatchingTasks(
   database: ReturnType<typeof drizzle>,
   speakerId: string,
   titlePattern: RegExp,
-): Promise<void> {
+): Promise<MatchingTask[]> {
   const assigned = await database
-    .select({ taskId: tasks.id, title: tasks.title })
+    .select({ taskId: tasks.id, taskType: tasks.taskType, title: tasks.title })
     .from(taskAssignees)
     .innerJoin(tasks, eq(taskAssignees.taskId, tasks.id))
     .where(and(
       eq(taskAssignees.speakerId, speakerId),
-      ne(taskAssignees.status, "completed"),
       isNull(taskAssignees.deletedAt),
       isNull(tasks.deletedAt),
     ));
-  const matchingTaskIds = assigned.filter((task) => titlePattern.test(task.title)).map((task) => task.taskId);
-  if (matchingTaskIds.length === 0) {
-    return;
-  }
+  return assigned.filter((task) => titlePattern.test(task.title));
+}
+
+async function completeTasks(
+  database: ReturnType<typeof drizzle>,
+  speakerId: string,
+  taskIds: string[],
+): Promise<void> {
+  if (taskIds.length === 0) return;
   await database
     .update(taskAssignees)
     .set({ status: "completed", completedAt: new Date() })
-    .where(and(eq(taskAssignees.speakerId, speakerId), inArray(taskAssignees.taskId, matchingTaskIds)));
+    .where(and(
+      eq(taskAssignees.speakerId, speakerId),
+      inArray(taskAssignees.taskId, taskIds),
+      ne(taskAssignees.status, "completed"),
+    ));
 }
 
 async function recordFileVersion(
@@ -222,7 +235,8 @@ portalRoutes.patch("/portal/profile", requireSpeaker, async (context) => {
   }
   await database.update(people).set(update).where(eq(people.id, profile.personId));
   if (typeof update.bio === "string" && update.bio.length > 0) {
-    await completeMatchingTasks(database, profile.speakerId, /bio|profile/i);
+    const matchingTasks = await findMatchingTasks(database, profile.speakerId, /bio|profile/i);
+    await completeTasks(database, profile.speakerId, matchingTasks.map((task) => task.taskId));
   }
   const [updated] = await database
     .select({
@@ -251,6 +265,7 @@ async function storeSpeakerHeadshot(
   file: File,
   bytes: ArrayBuffer,
   uploadedByUserId: string,
+  deliveredTaskId: string | null = null,
 ): Promise<{ fileId: string; version: number; headshotUrl: string }> {
   const [existing] = await database
     .select({ id: files.id })
@@ -268,7 +283,30 @@ async function storeSpeakerHeadshot(
   });
   const headshotUrl = `/api/public/portal/speakers/${profile.speakerId}/headshot?version=${version}`;
   await database.update(people).set({ headshotUrl }).where(eq(people.id, profile.personId));
-  await completeMatchingTasks(database, profile.speakerId, /headshot/i);
+  const matchingTasks = await findMatchingTasks(database, profile.speakerId, /headshot/i);
+  for (const matchingTask of matchingTasks) {
+    if (matchingTask.taskType !== "file_request" || matchingTask.taskId === deliveredTaskId) continue;
+    const [existingDeliverable] = await database
+      .select({ id: files.id })
+      .from(files)
+      .where(and(
+        eq(files.taskId, matchingTask.taskId),
+        eq(files.speakerId, profile.speakerId),
+        eq(files.kind, "deliverable"),
+        isNull(files.deletedAt),
+      ));
+    await recordFileVersion(env, database, {
+      existingFileId: existingDeliverable?.id ?? null,
+      eventId: profile.eventId,
+      speakerId: profile.speakerId,
+      taskId: matchingTask.taskId,
+      kind: "deliverable",
+      file,
+      bytes,
+      uploadedByUserId,
+    });
+  }
+  await completeTasks(database, profile.speakerId, matchingTasks.map((task) => task.taskId));
   return { fileId, version, headshotUrl };
 }
 
@@ -470,7 +508,7 @@ portalRoutes.post("/portal/tasks/:taskId/files", requireSpeaker, async (context)
   // upload also becomes their profile photo. The deliverable itself stays a task file
   // behind the same authentication as every other one; only the headshot serves publicly.
   const headshotUrl = isPictureRequest(assignment)
-    ? (await storeSpeakerHeadshot(context.env, database, profile, file, bytes, user.id)).headshotUrl
+    ? (await storeSpeakerHeadshot(context.env, database, profile, file, bytes, user.id, taskId)).headshotUrl
     : null;
   return context.json({ fileId, version, taskId, status: "completed", headshotUrl }, 201);
 });

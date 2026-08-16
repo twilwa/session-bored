@@ -376,7 +376,7 @@ function RoutedPage({ path }: { path: string }) {
     return <RoleShell role="organizer"><SpeakerDirectoryPage personId={path.split("/")[3]!} /></RoleShell>;
   }
   if (path === "/organizer/content") return <RoleShell role="organizer"><ContentPage /></RoleShell>;
-  if (path === "/organizer/review" || hasOnePathSegment(path, "/organizer/review/submissions/")) {
+  if (path === "/organizer/review" || path === "/organizer/review/setup" || hasOnePathSegment(path, "/organizer/review/submissions/")) {
     return <RoleShell role="organizer"><OrganizerReviewPage path={path} /></RoleShell>;
   }
   if (path === "/organizer/roster" || path === "/organizer/roster/missing" || path === "/organizer/roster/tasks") {

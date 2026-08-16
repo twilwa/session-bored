@@ -128,10 +128,12 @@ describe("speaker portal content", () => {
     const after = await request("/api/speaker/content", { headers: { cookie: priyaCookie } });
     const afterBody = await after.json<{
       profile: { headshotUrl: string | null };
-      tasks: Array<{ id: string; status: string }>;
+      tasks: Array<{ id: string; status: string; file: { displayName: string } | null }>;
     }>();
     expect(afterBody.profile.headshotUrl).toBe(uploadBody.headshotUrl);
-    expect(afterBody.tasks.find((task) => task.id === "tsk_fixture_1")?.status).toBe("completed");
+    const completedHeadshotTask = afterBody.tasks.find((task) => task.id === "tsk_fixture_1");
+    expect(completedHeadshotTask?.status).toBe("completed");
+    expect(completedHeadshotTask?.file?.displayName).toBe("priya.png");
 
     const publicResponse = await request(uploadBody.headshotUrl);
     expect(publicResponse.status).toBe(200);

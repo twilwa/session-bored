@@ -359,7 +359,7 @@ test("organizer can add, edit, invite, update, and remove a speaker from the ros
   await expect(speakerCard).toHaveCount(0);
 });
 
-test("chase list states its sort and filters collapsed speaker queues", async ({ page }) => {
+test("direct chase list resolves with the organizer session and filters collapsed speaker queues", async ({ page }) => {
   await signInAsOrganizer(page);
   await page.goto("/organizer/roster/missing");
 
@@ -372,6 +372,10 @@ test("chase list states its sort and filters collapsed speaker queues", async ({
     throw new Error("The seeded chase list must include a speaker.");
   }
 
+  const navigationButton = page.getByRole("button", { name: "Open navigation" });
+  if (await navigationButton.isVisible()) await navigationButton.click();
+  await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
+  await expect(page.getByLabel("Finding missing speaker information")).toHaveCount(0);
   await expect(page.getByText("Sorted by most overdue, then nearest due, then undated.", { exact: true })).toBeVisible();
   const chaseCards = page.locator(".chase-card");
   await expect(chaseCards).toHaveCount(worklist.items.length);

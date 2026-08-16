@@ -17,6 +17,16 @@ async function openCommitteeSetup(page: import("@playwright/test").Page) {
   await page.getByText("Committee setup", { exact: true }).click();
 }
 
+test("organizer opens committee setup from its direct URL", async ({ page }) => {
+  await signIn(page, "sbek-organizer@example.com", "SbekTest!2027-org");
+  await expect(page).toHaveURL(/\/organizer$/);
+  await page.goto("/organizer/review/setup");
+
+  await expect(page).toHaveURL(/\/organizer\/review\/setup$/);
+  await expect(page.getByText("AI never records a score or decision.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "This workspace page doesn’t exist." })).toHaveCount(0);
+});
+
 test("an out-of-remit proposal explains the assignment boundary without leaking content", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
   await signIn(page, "sbek-reviewer@example.com", "SbekTest!2027-rev");
