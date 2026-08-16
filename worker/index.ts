@@ -55,6 +55,7 @@ import peopleRoutes from "./routes/people.ts";
 import personalScheduleRoutes from "./routes/personal-schedule.ts";
 import speakerDirectoryRoutes from "./routes/speaker-directory.ts";
 import { protectedPageRoutes } from "./page-routes.ts";
+import { conciseAgentGuide, fullOrganizerReference } from "./agent-reference.ts";
 
 type SessionUser = AuthSession["user"];
 type AppEnvironment = {
@@ -142,6 +143,9 @@ app.onError((error, context) => {
   );
   return context.json({ error: "internal_server_error" }, 500);
 });
+
+app.get("/llms.txt", (context) => context.text(conciseAgentGuide()));
+app.get("/llms-full.txt", (context) => context.text(fullOrganizerReference()));
 
 app.use("/api/*", prepareRequest);
 app.route("/", dispositionRoutes);
