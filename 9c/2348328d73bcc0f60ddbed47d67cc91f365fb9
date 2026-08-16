@@ -1,0 +1,19 @@
+.github/eval-preview-marker.md
+  s_6ca5ba9ad65ef3::t_08f1f92f50fd68 1-4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "9c2348328d73bcc0f60ddbed47d67cc91f365fb9",
+  "prompts": {},
+  "sessions": {
+    "s_6ca5ba9ad65ef3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a00c59-8c4a-7a31-ba8b-c0294a35d25d",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
