@@ -687,3 +687,126 @@ describe("a letter cannot be cancelled and sent at the same time", () => {
     expect(cancelled?.failureReason).toContain("Queued to the wrong address.");
   });
 });
+
+/**
+ * A merged-away duplicate keeps its address forever, because `person_email_unique` is not
+ * partial. That address is still this person's own history, so correcting a letter back to it
+ * must be allowed - while an address that resolves to somebody else stays refused.
+ */
+describe("correcting a recipient to an address the directory merged away", () => {
+  const eventIdTyped = eventId as `evt_${string}`;
+  const archivedPersonId = "psn_probe_merged_duplicate";
+  const mergeId = "pmg_probe_merged_duplicate";
+  const archivedEmail = "merged-away@directory-probe.dev";
+  let cookie: string;
+  let headers: Record<string, string>;
+
+  async function submitterPersonId(): Promise<string> {
+    const row = await env.DB.prepare("select submitter_person_id as id from submission where id = ?")
+      .bind(submissionId).first<{ id: string }>();
+    return row!.id;
+  }
+
+  async function personEmail(id: string): Promise<string | undefined> {
+    const row = await env.DB.prepare("select email from person where id = ?").bind(id)
+      .first<{ email: string }>();
+    return row?.email;
+  }
+
+  beforeEach(async () => {
+    await request("/api/health");
+    cookie = await signIn("sbek-organizer@example.com", "SbekTest!2027-org");
+    headers = { cookie, "content-type": "application/json" };
+    await env.DB.prepare("delete from decision_notice where submission_id = ?").bind(submissionId).run();
+    await env.DB.prepare("delete from decision_batch_item where submission_id = ?").bind(submissionId).run();
+    await env.DB.batch([
+      env.DB.prepare("delete from directory_merge where id = ?").bind(mergeId),
+      env.DB.prepare("delete from person where id = ?").bind(archivedPersonId),
+    ]);
+    await env.DB.prepare(
+      "update person set email = 'sbek-speaker@example.com' where id = (select submitter_person_id from submission where id = ?)",
+    ).bind(submissionId).run();
+  });
+
+  /** Archives a duplicate of the submitter exactly as a confirmed directory merge leaves it. */
+  async function mergeDuplicateAway(): Promise<void> {
+    const keptPersonId = await submitterPersonId();
+    const organizer = await env.DB.prepare("select id from user where email = ?")
+      .bind("sbek-organizer@example.com").first<{ id: string }>();
+    const now = Date.now();
+    await env.DB.batch([
+      env.DB.prepare(
+        "insert into person (id, name, email, created_at, updated_at, deleted_at) values (?, ?, ?, ?, ?, ?)",
+      ).bind(archivedPersonId, "Priya Raman", archivedEmail, now, now, now),
+      env.DB.prepare(
+        "insert into directory_merge (id, kept_person_id, merged_person_id, merged_by_user_id, reasons, merged_profile, created_at) values (?, ?, ?, ?, ?, ?, ?)",
+      ).bind(mergeId, keptPersonId, archivedPersonId, organizer!.id, "[\"same_email\"]", "{}", now),
+    ]);
+  }
+
+  async function queueLetterForCancellation(): Promise<void> {
+    await request(`/api/events/${eventId}/disposition`, {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify({ submissionIds: [submissionId], status: "declined" }),
+    });
+    const batch = await (await request(`/api/events/${eventId}/decision-batches`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ submissionIds: [submissionId] }),
+    })).json<{ id: string }>();
+    await request(`/api/events/${eventId}/decision-batches/${batch.id}/dispatch`, {
+      method: "POST",
+      headers: { cookie },
+    });
+  }
+
+  it("adopts the address, because the merged record is this same person", async () => {
+    await mergeDuplicateAway();
+    await queueLetterForCancellation();
+    const keptPersonId = await submitterPersonId();
+    const organizer = await env.DB.prepare("select id from user where email = ?")
+      .bind("sbek-organizer@example.com").first<{ id: string }>();
+
+    const result = await cancelDecisionNotice({
+      database: drizzle(env.DB),
+      eventId: eventIdTyped,
+      submissionId,
+      noticeId: (await noticesFor(submissionId)).find((row) => row.cancelled_at === null)!.id,
+      cancelledByUserId: organizer!.id,
+      correctedRecipientEmail: archivedEmail,
+    });
+
+    expect(result).toEqual({ status: "cancelled", submissionId, recipientEmail: archivedEmail });
+    expect(await personEmail(keptPersonId)).toBe(archivedEmail);
+    // The two rows traded addresses, so the address the person just left still leads back here.
+    expect(await personEmail(archivedPersonId)).toBe("sbek-speaker@example.com");
+    expect((await noticesFor(submissionId)).every((row) => row.cancelled_at !== null)).toBe(true);
+  });
+
+  it("still refuses an address that answers to a genuinely different person", async () => {
+    await mergeDuplicateAway();
+    await queueLetterForCancellation();
+    const keptPersonId = await submitterPersonId();
+    const organizer = await env.DB.prepare("select id from user where email = ?")
+      .bind("sbek-organizer@example.com").first<{ id: string }>();
+    const other = await env.DB.prepare(
+      "select id, email from person where deleted_at is null and id <> ? limit 1",
+    ).bind(keptPersonId).first<{ id: string; email: string }>();
+
+    const result = await cancelDecisionNotice({
+      database: drizzle(env.DB),
+      eventId: eventIdTyped,
+      submissionId,
+      noticeId: (await noticesFor(submissionId)).find((row) => row.cancelled_at === null)!.id,
+      cancelledByUserId: organizer!.id,
+      correctedRecipientEmail: other!.email,
+    });
+
+    expect(result).toEqual({ status: "recipient_taken" });
+    expect(await personEmail(keptPersonId)).toBe("sbek-speaker@example.com");
+    expect(await personEmail(other!.id)).toBe(other!.email);
+    // The refusal is not a cancellation: the letter the organizer was correcting is still live.
+    expect((await noticesFor(submissionId)).some((row) => row.cancelled_at === null)).toBe(true);
+  });
+});

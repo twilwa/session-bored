@@ -1,9 +1,10 @@
 // ABOUTME: Fills disposition.ts's dispatch seam - sends the letters it already rendered and queued.
 // ABOUTME: Owns per-recipient delivery outcome and the one send path for a letter still undelivered.
-import { and, eq, isNull, lt, ne, or, sql } from "drizzle-orm";
+import { and, eq, isNull, lt, ne, or } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { decisionBatchItems, decisionBatches, decisionNotices, people, submissions } from "../../db/schema.ts";
 import { resolveEmailDelivery, type EmailDelivery, type EmailEnvironment } from "../email.ts";
+import { resolvePersonByEmail } from "../speaker-directory.ts";
 import { sendTrackedEmail, textToHtml } from "./send.ts";
 
 type EmailDatabase = ReturnType<typeof drizzle>;
@@ -344,20 +345,27 @@ export async function cancelDecisionNotice(params: {
   // is actually retired, so a cancellation that loses the race below leaves no half-applied edit.
   let recipientEmail = submission.currentEmail;
   let correctionToApply: string | null = null;
+  let releaseAddressFromPersonId: string | null = null;
   if (params.correctedRecipientEmail !== undefined) {
     const corrected = params.correctedRecipientEmail.trim().toLowerCase();
     if (!corrected.includes("@") || corrected.startsWith("@") || corrected.endsWith("@")) {
       return { status: "invalid_recipient" };
     }
     if (corrected !== submission.currentEmail) {
-      const [taken] = await database
+      const [holder] = await database
         .select({ id: people.id })
         .from(people)
-        .where(and(sql`lower(${people.email}) = ${corrected}`, sql`${people.id} <> ${submission.personId}`));
-      // Someone else already answers to this address, so adopting it would silently merge two
-      // people. Nothing is cancelled: the correction the organizer asked for did not happen.
-      if (taken !== undefined) {
-        return { status: "recipient_taken" };
+        .where(and(eq(people.email, corrected), ne(people.id, submission.personId)));
+      if (holder !== undefined) {
+        // A row answering to the address is not yet a different person: a duplicate merged into
+        // this one keeps its address forever, and that address is this person's own history.
+        // Only a resolution that lands somewhere else is somebody else, and adopting that would
+        // silently merge two people. Nothing is cancelled: the correction did not happen.
+        const resolved = await resolvePersonByEmail(database, corrected);
+        if (resolved === undefined || resolved.id !== submission.personId) {
+          return { status: "recipient_taken" };
+        }
+        releaseAddressFromPersonId = holder.id;
       }
       correctionToApply = corrected;
     }
@@ -409,10 +417,24 @@ export async function cancelDecisionNotice(params: {
   // The letter is retired, so the correction can be applied. Only now: had the write above lost,
   // the person's address would have been changed for a letter that went out unchanged.
   if (correctionToApply !== null) {
-    await database
-      .update(people)
-      .set({ email: correctionToApply })
-      .where(eq(people.id, submission.personId));
+    if (releaseAddressFromPersonId === null) {
+      await database
+        .update(people)
+        .set({ email: correctionToApply })
+        .where(eq(people.id, submission.personId));
+    } else {
+      // The address is held by an archived duplicate of this same person, and `person_email_unique`
+      // is not partial, so the two rows trade addresses rather than both claiming one. Both keep
+      // resolving to this person afterwards - the archived row through its recorded merge - and the
+      // park in between is what keeps SQLite's per-row uniqueness check from refusing the trade.
+      const parked = `merged-${releaseAddressFromPersonId}@invalid`;
+      await database.batch([
+        database.update(people).set({ email: parked }).where(eq(people.id, releaseAddressFromPersonId)),
+        database.update(people).set({ email: correctionToApply }).where(eq(people.id, submission.personId)),
+        database.update(people).set({ email: submission.currentEmail })
+          .where(eq(people.id, releaseAddressFromPersonId)),
+      ]);
+    }
   }
   return { status: "cancelled", submissionId, recipientEmail };
 }

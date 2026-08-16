@@ -667,6 +667,12 @@ export const files = sqliteTable(
     index("file_event_idx").on(table.eventId),
     index("file_speaker_kind_idx").on(table.speakerId, table.kind),
     check("file_kind_check", sql`${table.kind} in ('headshot','deliverable')`),
+    // One live file per speaker per request. A directory merge may hand a speaker a second
+    // upload for the same task, and it keeps that one as archived history rather than as a
+    // second answer nothing can choose between.
+    uniqueIndex("file_task_speaker_live_unique")
+      .on(table.taskId, table.speakerId)
+      .where(sql`${table.deletedAt} is null and ${table.taskId} is not null`),
   ],
 );
 
@@ -794,3 +800,4 @@ export * from "./schema/cfp-builder.ts";
 export * from "./schema/roster.ts";
 export * from "./schema/ai-review.ts";
 export * from "./schema/communications.ts";
+export * from "./schema/directory.ts";

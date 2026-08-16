@@ -107,6 +107,39 @@ the public schedule and asks the organizer to review and publish them again. Dat
 that would leave a scheduled session outside the event, and a public slug
 another event already uses, are refused on the field rather than saved.
 
+## Speaker directory
+
+Organizers can open **Speaker directory** at `/organizer/directory` to search
+the private, cross-event record of everyone who has submitted or spoken. The
+paginated index combines text, tag, and custom-field filters, supports stable
+sorting, and lets an organizer save the current criteria as a named segment to
+run again. Its overview keeps people, event, session, and curated-contact counts
+visible even while the result set is filtered.
+
+Each person's detail page shows their proposals, sessions, and event history,
+alongside organizer-only tags, custom fields, and attributed internal notes.
+Those directory details do not change the event-specific roster and are never
+included in public speaker, session, schedule, or embed responses.
+
+Greenroom flags conservative duplicate candidates when normalized email
+addresses match, or when both normalized name and organization match. A merge
+requires the organizer to choose the record to keep and confirm the choice. The
+other record is archived with an attributed merge log, while its proposal,
+session, onboarding-task, and file relationships move to the kept record.
+Greenroom refuses to merge records owned by two different accounts.
+
+At any event both records speak at, the merge also resolves their roster status:
+the kept record takes the further-along status, except that withdrawal wins
+whenever either record was withdrawn. Because the public programme lists a
+speaker on roster status alone, a merge can therefore add a person to it or take
+them off it. The confirmation dialog says so before the organizer commits.
+
+The existing **Speakers** roster remains the workflow view for the active event,
+including its event-scoped CSV import. Staged sourcing, pushing a directory
+contact into an event, and segment outreach remain separate follow-up work;
+outreach must reuse Communications and its tracked dispatch log rather than
+introducing another sender.
+
 ## Commands
 
 The standard project commands cover database evolution, verification, and
@@ -174,6 +207,8 @@ built by Vite and served by the Worker.
 
 - `db/schema.ts` is the authoritative domain and authentication schema.
 - `shared/api.ts` exports the typed route map and shared response summaries.
+- `shared/speaker-directory.ts` defines the private cross-event directory
+  contract.
 - `worker/access.ts` owns role and direct-resource access policy.
 - `worker/seed.ts` imports `fixtures/sample-data.json` and seeds it idempotently.
 - `client/components/ui.tsx` provides the shared M0 UI primitives.

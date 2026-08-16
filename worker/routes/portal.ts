@@ -451,7 +451,7 @@ portalRoutes.post("/portal/tasks/:taskId/files", requireSpeaker, async (context)
   const [existing] = await database
     .select({ id: files.id })
     .from(files)
-    .where(and(eq(files.taskId, taskId), eq(files.speakerId, profile.speakerId)));
+    .where(and(eq(files.taskId, taskId), eq(files.speakerId, profile.speakerId), isNull(files.deletedAt)));
   const { fileId, version } = await recordFileVersion(context.env, database, {
     existingFileId: existing?.id ?? null,
     eventId: profile.eventId,
