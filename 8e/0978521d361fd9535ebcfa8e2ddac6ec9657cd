@@ -1,0 +1,42 @@
+tests/integration/speaker-directory.test.ts
+  s_99b604a001264c::t_5a068fe066cb61 28,548-613
+  s_99b604a001264c::t_f38b846bd910be 484-491,497
+  s_99b604a001264c::t_e2045219b3c97e 928-938
+  s_99b604a001264c::t_1e6d8d2635161d 477-483,492-496,498-547,614-615
+  s_99b604a001264c::t_c9fa5985d74833 674-679
+  s_99b604a001264c::t_58edabb61d07a9 232,255-257,260,303,318,324,331,345,379,426-429,441,453,457,463
+  s_99b604a001264c::t_23a49cdaa3d239 1075-1079,1295-1298,1319,1334-1336
+  s_99b604a001264c::t_87d6661be15a7f 926-927,939-943,968
+  s_99b604a001264c::t_4fadc4941934a4 758,800-804,814-815,820,862-866,872,874,876
+  s_99b604a001264c::t_3d4784697b87f3 808,810,812
+  s_99b604a001264c::t_3b2aeb96ead8e3 944-953
+tests/unit/speaker-directory.test.ts
+  s_99b604a001264c::t_768959b6f5032b 146,224-229
+worker/routes/speaker-directory.ts
+  s_99b604a001264c::t_3b2f638e10bea4 42-46,477-482
+  s_99b604a001264c::t_44ef6a0e93aa08 461
+tests/e2e/speaker-directory.spec.ts
+  s_99b604a001264c::t_ba3e87810c4aec 98,121-124,126-130
+  s_99b604a001264c::t_30982634e85c5b 125
+shared/speaker-directory.ts
+  s_99b604a001264c::t_c3c19fcd1560d9 149
+worker/speaker-merge.ts
+  s_99b604a001264c::t_c3c19fcd1560d9 155-160
+  s_99b604a001264c::t_3b2f638e10bea4 271-333,349-351,364-378,395-402
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "8e0978521d361fd9535ebcfa8e2ddac6ec9657cd",
+  "prompts": {},
+  "sessions": {
+    "s_99b604a001264c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a007b9-8146-7550-b8a4-f35d924492ad",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
