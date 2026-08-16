@@ -1,0 +1,45 @@
+worker/agent-reference.ts
+  s_2210f92264ef42::t_709488cc81e96d 401-406
+  s_2210f92264ef42::t_52755d52b2b96a 13
+  s_2210f92264ef42::t_2c58318350a3d0 3-9,21-28,35-96,104-182,366-376,412-450
+  s_2210f92264ef42::t_2e767ce71a3704 1-2,10-12,14-20,377-400,407-411,451-452
+  s_2210f92264ef42::t_680ceb99ac7c58 29-34,97-103,183-365
+wrangler.jsonc
+  s_2210f92264ef42::t_70cf5f53b4bc38 14-15
+tests/integration/agent-reference.test.ts
+  s_2210f92264ef42::t_de351892fa14da 22-26
+  s_2210f92264ef42::t_ef96882e23153f 43-79,110
+  s_2210f92264ef42::t_119b0df5a1e61f 1-3,5,11,29-42,111
+  s_2210f92264ef42::t_680ceb99ac7c58 83-87,89,106
+  s_2210f92264ef42::t_0e4740d4fd3db4 4,6-10,12-21,27-28,80-82,88,90-105,107-109
+tests/unit/agent-route-registration.test.ts
+  s_2210f92264ef42::t_85050ae37e064f 1-16
+worker/index.ts
+  s_2210f92264ef42::t_2c58318350a3d0 58,148
+  s_2210f92264ef42::t_2e767ce71a3704 147
+  s_6fc67565eb3e18::t_13256d4ad4c112 149
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "ca3af32ab1999ba5df7a1f5d6a175eaeb6afce2c",
+  "prompts": {},
+  "sessions": {
+    "s_2210f92264ef42": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a00c57-39ee-7603-9e44-bbdab9b31c91",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    },
+    "s_6fc67565eb3e18": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8a1b5b6a-bd49-4d11-bc25-ada584760f5a",
+        "model": "claude-opus-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
