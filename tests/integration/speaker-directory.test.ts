@@ -19,8 +19,13 @@ import {
   tasks,
   users,
 } from "../../db/schema.ts";
-import type { SpeakerDirectoryDetailResponse, SpeakerDirectoryListResponse } from "../../shared/speaker-directory.ts";
+import type {
+  SpeakerDirectoryDetailResponse,
+  SpeakerDirectoryListResponse,
+  SpeakerDirectoryMergeResult,
+} from "../../shared/speaker-directory.ts";
 import worker from "../../worker/index.ts";
+import { applySpeakerMerge, planSpeakerMergeReferences } from "../../worker/speaker-merge.ts";
 
 async function request(path: string, init?: RequestInit): Promise<Response> {
   return worker.request(`http://example.test${path}`, init, env);
@@ -217,13 +222,14 @@ describe("speaker directory", () => {
     });
   });
 
-  it("merges a detected duplicate without losing programme, proposal, task, or file links", async () => {
+  it("moves identity references without rewriting standing, removals, or publication", async () => {
     await request("/api/health");
     const database = drizzle(env.DB);
     const [kept] = await database.select().from(people).where(eq(people.id, "psn_priya_raman"));
     expect(kept).toBeDefined();
     const now = Date.now();
     const publicationHoldAt = now - 30_000;
+    const identityEventId = "evt_directory_identity";
     const duplicatePersonId = "psn_directory_duplicate";
     const duplicateSpeakerId = "spk_directory_duplicate";
     const submissionId = "sub_directory_duplicate";
@@ -247,8 +253,11 @@ describe("speaker directory", () => {
         now,
       ),
       env.DB.prepare(
+        "insert into event (id, name, slug, timezone, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
+      ).bind(identityEventId, "Directory Identity Summit", "directory-identity-summit", "UTC", now, now),
+      env.DB.prepare(
         "insert into speaker (id, person_id, event_id, status, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
-      ).bind(duplicateSpeakerId, duplicatePersonId, "evt_devflow_conf_2027", "ready", now, now),
+      ).bind(duplicateSpeakerId, duplicatePersonId, identityEventId, "ready", now, now),
       env.DB.prepare(
         "insert into submission (id, event_id, form_id, form_version, submitter_person_id, status, is_draft, title, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       ).bind(
@@ -291,7 +300,7 @@ describe("speaker directory", () => {
         "insert into program_session (id, event_id, title, content_status, schedule_status, direct_entry, ics_uid, published_at, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       ).bind(
         sessionId,
-        "evt_devflow_conf_2027",
+        identityEventId,
         "A duplicate person's session",
         "draft",
         "tbd",
@@ -305,27 +314,21 @@ describe("speaker directory", () => {
         "insert into session_speaker (id, session_id, speaker_id, role_label, sort_order, publication_hold_at, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?)",
       ).bind("ssnr_directory_duplicate", sessionId, duplicateSpeakerId, "moderator", 2, publicationHoldAt, now, now),
       env.DB.prepare(
-        "insert into session_speaker (id, session_id, speaker_id, role_label, sort_order, created_at, updated_at, deleted_at) values (?, ?, ?, ?, ?, ?, ?, ?)",
-      ).bind("ssnr_directory_kept_archived", sessionId, "spk_priya_devflow_2027", "speaker", 9, now, now, now),
-      env.DB.prepare(
         "insert into task (id, event_id, title, status, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
-      ).bind(taskId, "evt_devflow_conf_2027", "Duplicate profile task", "active", now, now),
-      env.DB.prepare(
-        "insert into task_assignee (id, task_id, speaker_id, granted_by_session_id, status, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?)",
-      ).bind("tassn_directory_kept", taskId, "spk_priya_devflow_2027", sessionId, "assigned", now, now),
+      ).bind(taskId, identityEventId, "Duplicate profile task", "active", now, now),
       env.DB.prepare(
         "insert into task_assignee (id, task_id, speaker_id, status, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
       ).bind("tassn_directory_duplicate", taskId, duplicateSpeakerId, "in_progress", now, now),
       env.DB.prepare(
         "insert into file (id, event_id, task_id, speaker_id, kind, display_name, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?)",
-      ).bind(fileId, "evt_devflow_conf_2027", taskId, duplicateSpeakerId, "deliverable", "slides.pdf", now, now),
+      ).bind(fileId, identityEventId, taskId, duplicateSpeakerId, "deliverable", "slides.pdf", now, now),
       // A session the duplicate was removed from after finishing its onboarding work. Removal
       // archives both links precisely so the completion survives being restored later.
       env.DB.prepare(
         "insert into program_session (id, event_id, title, content_status, schedule_status, direct_entry, ics_uid, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?)",
       ).bind(
         releasedSessionId,
-        "evt_devflow_conf_2027",
+        identityEventId,
         "A session the duplicate was removed from",
         "draft",
         "tbd",
@@ -339,7 +342,7 @@ describe("speaker directory", () => {
       ).bind("ssnr_directory_released", releasedSessionId, duplicateSpeakerId, "speaker", 0, now, now, now),
       env.DB.prepare(
         "insert into task (id, event_id, session_id, title, status, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?)",
-      ).bind(releasedTaskId, "evt_devflow_conf_2027", releasedSessionId, "Released session task", "active", now, now),
+      ).bind(releasedTaskId, identityEventId, releasedSessionId, "Released session task", "active", now, now),
       env.DB.prepare(
         "insert into task_assignee (id, task_id, speaker_id, granted_by_session_id, status, completed_at, created_at, updated_at, deleted_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?)",
       ).bind(
@@ -368,18 +371,45 @@ describe("speaker directory", () => {
       body: JSON.stringify({ duplicatePersonId }),
     });
     expect(merged.status).toBe(200);
-    expect(await merged.json()).toMatchObject({ keptPersonId: "psn_priya_raman", mergedPersonId: duplicatePersonId });
+    const mergeResult = await merged.json<SpeakerDirectoryMergeResult>();
+    expect(mergeResult).toMatchObject({ keptPersonId: "psn_priya_raman", mergedPersonId: duplicatePersonId });
+    expect(mergeResult.plan.conflicts).toEqual([]);
+    expect(mergeResult.plan.moves).toEqual(expect.arrayContaining([
+      expect.objectContaining({ reference: "submission", rowId: submissionId }),
+      expect.objectContaining({ reference: "speaker", rowId: duplicateSpeakerId }),
+    ]));
+    expect(mergeResult.plan.retained).toEqual(expect.arrayContaining([
+      expect.objectContaining({ reference: "submission_speaker", rowId: "sspk_directory_duplicate" }),
+    ]));
 
     const [archivedPerson] = await database.select().from(people).where(eq(people.id, duplicatePersonId));
     expect(archivedPerson?.deletedAt).not.toBeNull();
+    expect(archivedPerson).toMatchObject({
+      userId: null,
+      jobTitle: "Principal Engineer",
+      bio: "Profile detail retained on the archived record.",
+    });
+    const [unchangedKeptPerson] = await database.select().from(people).where(eq(people.id, "psn_priya_raman"));
+    expect(unchangedKeptPerson).toMatchObject({
+      userId: kept!.userId,
+      jobTitle: kept!.jobTitle,
+      bio: kept!.bio,
+    });
     expect((await database.select().from(submissions).where(eq(submissions.id, submissionId)))[0]?.submitterPersonId)
       .toBe("psn_priya_raman");
     const mergedProposalLinks = await database.select().from(submissionSpeakers)
       .where(eq(submissionSpeakers.submissionId, submissionId));
-    expect(mergedProposalLinks.find((participant) => participant.deletedAt === null)).toMatchObject({
-      personId: "psn_priya_raman",
+    expect(mergedProposalLinks.find((participant) => participant.id === "sspk_directory_duplicate")).toMatchObject({
+      personId: duplicatePersonId,
       roleLabel: "moderator",
       sortOrder: 2,
+      deletedAt: null,
+    });
+    expect(mergedProposalLinks.find((participant) => participant.id === "sspk_directory_kept_archived")).toMatchObject({
+      personId: "psn_priya_raman",
+      roleLabel: "speaker",
+      sortOrder: 9,
+      deletedAt: expect.any(Date),
     });
     const [archivedSubmission] = await database.select().from(submissions)
       .where(eq(submissions.id, archivedSubmissionId));
@@ -393,37 +423,46 @@ describe("speaker directory", () => {
       personId: "psn_priya_raman",
       deletedAt: expect.any(Date),
     });
-    const [archivedSpeaker] = await database.select().from(speakers).where(eq(speakers.id, duplicateSpeakerId));
-    expect(archivedSpeaker?.deletedAt).not.toBeNull();
+    const [adoptedSpeaker] = await database.select().from(speakers).where(eq(speakers.id, duplicateSpeakerId));
+    expect(adoptedSpeaker).toMatchObject({
+      personId: "psn_priya_raman",
+      status: "ready",
+      deletedAt: null,
+    });
     const mergedSessionLinks = await database.select().from(sessionSpeakers)
       .where(eq(sessionSpeakers.sessionId, sessionId));
-    expect(mergedSessionLinks.find((participant) => participant.deletedAt === null)).toMatchObject({
-      speakerId: "spk_priya_devflow_2027",
+    expect(mergedSessionLinks.find((participant) => participant.id === "ssnr_directory_duplicate")).toMatchObject({
+      speakerId: duplicateSpeakerId,
       roleLabel: "moderator",
       sortOrder: 2,
       publicationHoldAt: new Date(publicationHoldAt),
+      deletedAt: null,
     });
-    const [keptAssignment] = await database.select().from(taskAssignees)
-      .where(eq(taskAssignees.id, "tassn_directory_kept"));
-    expect(keptAssignment).toMatchObject({
-      speakerId: "spk_priya_devflow_2027",
+    expect(mergedSessionLinks).toHaveLength(1);
+    expect((await database.select().from(sessions).where(eq(sessions.id, sessionId)))[0]?.publishedAt?.getTime())
+      .toBe(now - 60_000);
+    const [duplicateAssignment] = await database.select().from(taskAssignees)
+      .where(eq(taskAssignees.id, "tassn_directory_duplicate"));
+    expect(duplicateAssignment).toMatchObject({
+      speakerId: duplicateSpeakerId,
       status: "in_progress",
       grantedBySessionId: null,
       deletedAt: null,
     });
     expect((await database.select().from(files).where(eq(files.id, fileId)))[0]?.speakerId)
-      .toBe("spk_priya_devflow_2027");
+      .toBe(duplicateSpeakerId);
     const [releasedSessionLink] = await database.select().from(sessionSpeakers)
       .where(eq(sessionSpeakers.id, "ssnr_directory_released"));
     expect(releasedSessionLink).toMatchObject({
-      speakerId: "spk_priya_devflow_2027",
+      speakerId: duplicateSpeakerId,
       deletedAt: expect.any(Date),
     });
     const [releasedAssignment] = await database.select().from(taskAssignees)
       .where(eq(taskAssignees.id, "tassn_directory_released"));
     expect(releasedAssignment).toMatchObject({
-      speakerId: "spk_priya_devflow_2027",
+      speakerId: duplicateSpeakerId,
       status: "completed",
+      grantedBySessionId: releasedSessionId,
       completedAt: expect.any(Date),
       deletedAt: expect.any(Date),
     });
@@ -433,6 +472,243 @@ describe("speaker directory", () => {
     ))).toHaveLength(1);
     expect(await database.select().from(people).where(and(eq(people.id, duplicatePersonId), isNull(people.deletedAt))))
       .toHaveLength(0);
+  });
+
+  it("refuses to strand either speaker row when both people have standing in one event", async () => {
+    await request("/api/health");
+    const database = drizzle(env.DB);
+    const now = Date.now();
+    await env.DB.batch([
+      env.DB.prepare(
+        "insert into person (id, name, email, organization, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
+      ).bind(
+        "psn_event_collision_kept",
+        "Morgan Collision",
+        "morgan.collision.kept@example.com",
+        "Collision Works",
+        now,
+        now,
+      ),
+      env.DB.prepare(
+        "insert into person (id, name, email, organization, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
+      ).bind(
+        "psn_event_collision_duplicate",
+        "Morgan Collision",
+        "morgan.collision.duplicate@example.com",
+        "Collision Works",
+        now,
+        now,
+      ),
+      env.DB.prepare(
+        "insert into speaker (id, person_id, event_id, status, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
+      ).bind(
+        "spk_event_collision_kept",
+        "psn_event_collision_kept",
+        "evt_devflow_conf_2027",
+        "ready",
+        now,
+        now,
+      ),
+      env.DB.prepare(
+        "insert into speaker (id, person_id, event_id, status, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
+      ).bind(
+        "spk_event_collision_duplicate",
+        "psn_event_collision_duplicate",
+        "evt_devflow_conf_2027",
+        "ready",
+        now,
+        now,
+      ),
+    ]);
+
+    const merged = await request("/api/speaker-directory/psn_event_collision_kept/merge", {
+      method: "POST",
+      headers: { cookie: await organizerCookie(), "content-type": "application/json" },
+      body: JSON.stringify({ duplicatePersonId: "psn_event_collision_duplicate" }),
+    });
+    expect(merged.status).toBe(409);
+    expect(await merged.json()).toMatchObject({
+      error: "merge_requires_resolution",
+      conflicts: [expect.objectContaining({
+        reference: "speaker",
+        rowId: "spk_event_collision_duplicate",
+        targetRowId: "spk_event_collision_kept",
+        reason: "event_speaker_collision",
+      })],
+    });
+
+    expect((await database.select().from(people)
+      .where(eq(people.id, "psn_event_collision_duplicate")))[0]?.deletedAt).toBeNull();
+    expect((await database.select().from(speakers)
+      .where(eq(speakers.id, "spk_event_collision_duplicate")))[0]).toMatchObject({
+      personId: "psn_event_collision_duplicate",
+      status: "ready",
+      deletedAt: null,
+    });
+  });
+
+  it("aborts when a direct reference arrives between plan and apply", async () => {
+    await request("/api/health");
+    const database = drizzle(env.DB);
+    const now = Date.now();
+    await env.DB.batch([
+      env.DB.prepare(
+        "insert into person (id, name, email, organization, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
+      ).bind("psn_stale_kept", "Riley Race", "riley.kept@example.com", "Race Works", now, now),
+      env.DB.prepare(
+        "insert into person (id, name, email, organization, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
+      ).bind("psn_stale_duplicate", "Riley Race", "riley.duplicate@example.com", "Race Works", now, now),
+    ]);
+    const [duplicatePerson] = await database.select().from(people)
+      .where(eq(people.id, "psn_stale_duplicate"));
+    const [organizer] = await database.select().from(users)
+      .where(eq(users.email, "sbek-organizer@example.com"));
+    expect(duplicatePerson).toBeDefined();
+    expect(organizer).toBeDefined();
+
+    const plan = planSpeakerMergeReferences({
+      keptPersonId: "psn_stale_kept",
+      mergedPersonId: "psn_stale_duplicate",
+      submissions: [],
+      submissionSpeakers: [],
+      speakers: [],
+      sessionSpeakers: [],
+      taskAssignees: [],
+      files: [],
+      contactTags: [],
+      customFields: [],
+      notes: [],
+    });
+    await env.DB.prepare(
+      "insert into submission (id, event_id, form_id, form_version, submitter_person_id, status, is_draft, title, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    ).bind(
+      "sub_stale_reference",
+      "evt_devflow_conf_2027",
+      "frm_devflow_cfp_2027",
+      1,
+      "psn_stale_duplicate",
+      "draft",
+      1,
+      "A reference created after planning",
+      now,
+      now,
+    ).run();
+
+    await expect(applySpeakerMerge({
+      database: env.DB,
+      plan,
+      keptPersonId: "psn_stale_kept",
+      mergedPersonId: "psn_stale_duplicate",
+      mergedByUserId: organizer!.id,
+      reasons: ["same_name_and_organization"],
+      mergedProfile: duplicatePerson,
+      timestamp: now + 1,
+    })).rejects.toThrow("speaker merge plan is stale");
+
+    expect((await database.select().from(people)
+      .where(eq(people.id, "psn_stale_duplicate")))[0]?.deletedAt).toBeNull();
+    expect((await database.select().from(submissions)
+      .where(eq(submissions.id, "sub_stale_reference")))[0]?.submitterPersonId).toBe("psn_stale_duplicate");
+    expect(await database.select().from(directoryMerges)
+      .where(eq(directoryMerges.mergedPersonId, "psn_stale_duplicate"))).toHaveLength(0);
+  });
+
+  it("refuses to revive an archived session participation or copy its publication state", async () => {
+    await request("/api/health");
+    const database = drizzle(env.DB);
+    const now = Date.now();
+    const publicationHoldAt = now - 30_000;
+    const publishedAt = now - 60_000;
+    await env.DB.batch([
+      env.DB.prepare(
+        "insert into person (id, name, email, organization, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
+      ).bind("psn_hold_kept", "Taylor Merge", "taylor.kept@example.com", "Merge Works", now, now),
+      env.DB.prepare(
+        "insert into person (id, name, email, organization, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
+      ).bind("psn_hold_duplicate", "Taylor Merge", "taylor.duplicate@example.com", "Merge Works", now, now),
+      env.DB.prepare(
+        "insert into speaker (id, person_id, event_id, status, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
+      ).bind("spk_hold_kept", "psn_hold_kept", "evt_devflow_conf_2027", "ready", now, now),
+      env.DB.prepare(
+        "insert into speaker (id, person_id, event_id, status, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
+      ).bind("spk_hold_duplicate", "psn_hold_duplicate", "evt_devflow_conf_2027", "ready", now, now),
+      env.DB.prepare(
+        "insert into program_session (id, event_id, title, content_status, schedule_status, direct_entry, ics_uid, published_at, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      ).bind(
+        "ses_hold_collision",
+        "evt_devflow_conf_2027",
+        "Publication belongs to the participation",
+        "approved",
+        "tbd",
+        1,
+        "ses_hold_collision@session-bored",
+        publishedAt,
+        now,
+        now,
+      ),
+      env.DB.prepare(
+        "insert into session_speaker (id, session_id, speaker_id, role_label, sort_order, created_at, updated_at, deleted_at) values (?, ?, ?, ?, ?, ?, ?, ?)",
+      ).bind("ssnr_hold_kept", "ses_hold_collision", "spk_hold_kept", "speaker", 9, now, now, now),
+      env.DB.prepare(
+        "insert into session_speaker (id, session_id, speaker_id, role_label, sort_order, publication_hold_at, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?)",
+      ).bind(
+        "ssnr_hold_duplicate",
+        "ses_hold_collision",
+        "spk_hold_duplicate",
+        "moderator",
+        2,
+        publicationHoldAt,
+        now,
+        now,
+      ),
+    ]);
+
+    const merged = await request("/api/speaker-directory/psn_hold_kept/merge", {
+      method: "POST",
+      headers: { cookie: await organizerCookie(), "content-type": "application/json" },
+      body: JSON.stringify({ duplicatePersonId: "psn_hold_duplicate" }),
+    });
+    expect(merged.status).toBe(409);
+    expect(await merged.json()).toMatchObject({
+      error: "merge_requires_resolution",
+      conflicts: expect.arrayContaining([expect.objectContaining({
+        reference: "speaker",
+        rowId: "spk_hold_duplicate",
+        targetRowId: "spk_hold_kept",
+        reason: "event_speaker_collision",
+      })]),
+    });
+
+    const [keptPerson] = await database.select().from(people).where(eq(people.id, "psn_hold_kept"));
+    const [duplicatePerson] = await database.select().from(people).where(eq(people.id, "psn_hold_duplicate"));
+    expect(keptPerson?.deletedAt).toBeNull();
+    expect(duplicatePerson?.deletedAt).toBeNull();
+
+    const [keptSpeaker] = await database.select().from(speakers).where(eq(speakers.id, "spk_hold_kept"));
+    const [duplicateSpeaker] = await database.select().from(speakers).where(eq(speakers.id, "spk_hold_duplicate"));
+    expect(keptSpeaker).toMatchObject({ status: "ready", deletedAt: null });
+    expect(duplicateSpeaker).toMatchObject({ status: "ready", deletedAt: null });
+
+    const [keptParticipation] = await database.select().from(sessionSpeakers)
+      .where(eq(sessionSpeakers.id, "ssnr_hold_kept"));
+    const [duplicateParticipation] = await database.select().from(sessionSpeakers)
+      .where(eq(sessionSpeakers.id, "ssnr_hold_duplicate"));
+    expect(keptParticipation).toMatchObject({
+      roleLabel: "speaker",
+      sortOrder: 9,
+      publicationHoldAt: null,
+      deletedAt: expect.any(Date),
+    });
+    expect(duplicateParticipation).toMatchObject({
+      roleLabel: "moderator",
+      sortOrder: 2,
+      publicationHoldAt: new Date(publicationHoldAt),
+      deletedAt: null,
+    });
+    expect((await database.select().from(sessions).where(eq(sessions.id, "ses_hold_collision")))[0]?.publishedAt)
+      .toEqual(new Date(publishedAt));
+    expect(await database.select().from(directoryMerges)
+      .where(eq(directoryMerges.mergedPersonId, "psn_hold_duplicate"))).toHaveLength(0);
   });
 
   it("attaches work adopted through a merged person's email to the person the organizer kept", async () => {
@@ -479,7 +755,7 @@ describe("speaker directory", () => {
     await expect(organizerDoor.json()).resolves.toMatchObject({ error: "participant_already_named" });
   });
 
-  it("carries a merged speaker's only headshot to the kept speaker with a URL that still serves", async () => {
+  it("refuses to choose between same-event speaker rows with a headshot", async () => {
     await request("/api/health");
     const database = drizzle(env.DB);
     const now = Date.now();
@@ -507,7 +783,7 @@ describe("speaker directory", () => {
       ).bind("spk_directory_photo_kept", "psn_directory_photo_kept", "evt_devflow_conf_2027", "confirmed", now, now),
       env.DB.prepare(
         "insert into speaker (id, person_id, event_id, status, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
-      ).bind("spk_directory_photo_merged", "psn_directory_photo_merged", "evt_devflow_conf_2027", "ready", now, now),
+      ).bind("spk_directory_photo_merged", "psn_directory_photo_merged", "evt_devflow_conf_2027", "confirmed", now, now),
       env.DB.prepare(
         "insert into file (id, event_id, speaker_id, kind, display_name, created_at, updated_at) values (?, ?, ?, 'headshot', ?, ?, ?)",
       ).bind("fil_directory_photo_merged", "evt_devflow_conf_2027", "spk_directory_photo_merged", "headshot.png", now, now),
@@ -521,18 +797,27 @@ describe("speaker directory", () => {
       headers: { cookie: await organizerCookie(), "content-type": "application/json" },
       body: JSON.stringify({ duplicatePersonId: "psn_directory_photo_merged" }),
     });
-    expect(merged.status).toBe(200);
+    expect(merged.status).toBe(409);
+    expect(await merged.json()).toMatchObject({
+      error: "merge_requires_resolution",
+      conflicts: expect.arrayContaining([expect.objectContaining({ reason: "event_speaker_collision" })]),
+    });
 
     const [keptPerson] = await database.select().from(people).where(eq(people.id, "psn_directory_photo_kept"));
-    expect(keptPerson?.headshotUrl).toBe("/api/public/portal/speakers/spk_directory_photo_kept/headshot?version=1");
+    expect(keptPerson?.headshotUrl).toBeNull();
+    const [duplicatePerson] = await database.select().from(people)
+      .where(eq(people.id, "psn_directory_photo_merged"));
+    expect(duplicatePerson?.headshotUrl)
+      .toBe("/api/public/portal/speakers/spk_directory_photo_merged/headshot?version=1");
+    expect(duplicatePerson?.deletedAt).toBeNull();
     expect((await database.select().from(files).where(eq(files.id, "fil_directory_photo_merged")))[0]?.speakerId)
-      .toBe("spk_directory_photo_kept");
-    const served = await request(keptPerson!.headshotUrl!);
+      .toBe("spk_directory_photo_merged");
+    const served = await request("/api/public/portal/speakers/spk_directory_photo_merged/headshot?version=1");
     expect(served.status).toBe(200);
     expect(served.headers.get("content-type")).toBe("image/png");
   });
 
-  it("keeps the kept speaker's own headshot when both merge sides have one", async () => {
+  it("leaves profile and file headshots unchanged when same-event standing collides", async () => {
     await request("/api/health");
     const database = drizzle(env.DB);
     const now = Date.now();
@@ -557,7 +842,7 @@ describe("speaker directory", () => {
       ).bind("spk_directory_photo2_kept", "psn_directory_photo2_kept", "evt_devflow_conf_2027", "confirmed", now, now),
       env.DB.prepare(
         "insert into speaker (id, person_id, event_id, status, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
-      ).bind("spk_directory_photo2_merged", "psn_directory_photo2_merged", "evt_devflow_conf_2027", "ready", now, now),
+      ).bind("spk_directory_photo2_merged", "psn_directory_photo2_merged", "evt_devflow_conf_2027", "confirmed", now, now),
       env.DB.prepare(
         "insert into file (id, event_id, speaker_id, kind, display_name, created_at, updated_at) values (?, ?, ?, 'headshot', ?, ?, ?)",
       ).bind("fil_directory_photo2_kept", "evt_devflow_conf_2027", "spk_directory_photo2_kept", "kept.png", now, now),
@@ -574,7 +859,11 @@ describe("speaker directory", () => {
       headers: { cookie: await organizerCookie(), "content-type": "application/json" },
       body: JSON.stringify({ duplicatePersonId: "psn_directory_photo2_merged" }),
     });
-    expect(merged.status).toBe(200);
+    expect(merged.status).toBe(409);
+    expect(await merged.json()).toMatchObject({
+      error: "merge_requires_resolution",
+      conflicts: expect.arrayContaining([expect.objectContaining({ reason: "event_speaker_collision" })]),
+    });
 
     const keptHeadshots = await database.select().from(files).where(and(
       eq(files.speakerId, "spk_directory_photo2_kept"),
@@ -584,9 +873,11 @@ describe("speaker directory", () => {
     expect((await database.select().from(files).where(eq(files.id, "fil_directory_photo2_merged")))[0]?.speakerId)
       .toBe("spk_directory_photo2_merged");
     expect((await database.select().from(files).where(eq(files.id, "fil_directory_photo2_slides")))[0]?.speakerId)
-      .toBe("spk_directory_photo2_kept");
+      .toBe("spk_directory_photo2_merged");
     expect((await database.select().from(people).where(eq(people.id, "psn_directory_photo2_kept")))[0]?.headshotUrl)
       .toBe(keptUrl);
+    expect((await database.select().from(people).where(eq(people.id, "psn_directory_photo2_merged")))[0]?.headshotUrl)
+      .toBe("/api/public/portal/speakers/spk_directory_photo2_merged/headshot?version=1");
   });
 
   it("refuses to collapse two distinct accounts", async () => {
@@ -629,7 +920,54 @@ describe("speaker directory", () => {
     expect((await database.select().from(people).where(eq(people.id, "psn_directory_account_conflict")))[0]?.deletedAt)
       .toBeNull();
   });
-  it("keeps a withdrawn speaker withdrawn when the duplicate's live record would promote them", async () => {
+  it("refuses a merge that would adopt the duplicate's account", async () => {
+    await request("/api/health");
+    const database = drizzle(env.DB);
+    const now = Date.now();
+    const accountId = "usr_directory_account_adoption";
+    await env.DB.prepare(
+      "insert into user (id, name, email, email_verified, role, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?)",
+    ).bind(
+      accountId,
+      "Morgan Credential",
+      "directory-account-adoption@example.com",
+      1,
+      "speaker",
+      now,
+      now,
+    ).run();
+    await env.DB.batch([
+      env.DB.prepare(
+        "insert into person (id, name, email, organization, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
+      ).bind("psn_directory_account_kept", "Morgan Credential", "morgan.kept@example.com", "Credential Works", now, now),
+      env.DB.prepare(
+        "insert into person (id, user_id, name, email, organization, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?)",
+      ).bind(
+        "psn_directory_account_adoption",
+        accountId,
+        "Morgan Credential",
+        "morgan.account-person@example.com",
+        "Credential Works",
+        now,
+        now,
+      ),
+    ]);
+
+    const response = await request("/api/speaker-directory/psn_directory_account_kept/merge", {
+      method: "POST",
+      headers: { cookie: await organizerCookie(), "content-type": "application/json" },
+      body: JSON.stringify({ duplicatePersonId: "psn_directory_account_adoption" }),
+    });
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ error: "account_conflict" });
+    const [keptPerson] = await database.select().from(people)
+      .where(eq(people.id, "psn_directory_account_kept"));
+    const [duplicatePerson] = await database.select().from(people)
+      .where(eq(people.id, "psn_directory_account_adoption"));
+    expect(keptPerson).toMatchObject({ userId: null, deletedAt: null });
+    expect(duplicatePerson).toMatchObject({ userId: accountId, deletedAt: null });
+  });
+  it("refuses a merge when same-event speaker standings disagree", async () => {
     await request("/api/health");
     const database = drizzle(env.DB);
     const now = Date.now();
@@ -663,19 +1001,29 @@ describe("speaker directory", () => {
       headers: { cookie: await organizerCookie(), "content-type": "application/json" },
       body: JSON.stringify({ duplicatePersonId: "psn_probe_withdrawn_dupe" }),
     });
-    expect(merged.status).toBe(200);
+    expect(merged.status).toBe(409);
+    expect(await merged.json()).toMatchObject({ error: "merge_requires_resolution" });
 
     const [keptSpeaker] = await database.select().from(speakers)
       .where(eq(speakers.id, "spk_probe_withdrawn_kept"));
     expect(keptSpeaker?.status).toBe("withdrawn");
     expect(keptSpeaker?.deletedAt?.getTime()).toBe(withdrawnAt);
+    const [duplicateSpeaker] = await database.select().from(speakers)
+      .where(eq(speakers.id, "spk_probe_withdrawn_dupe"));
+    expect(duplicateSpeaker).toMatchObject({
+      personId: "psn_probe_withdrawn_dupe",
+      status: "ready",
+      deletedAt: null,
+    });
+    expect((await database.select().from(people).where(eq(people.id, "psn_probe_withdrawn_dupe")))[0]?.deletedAt)
+      .toBeNull();
 
     const publicSpeakers = await (await request("/api/public/events/evt_devflow_conf_2027/speakers"))
       .json<{ items: Array<{ name: string }> }>();
     expect(publicSpeakers.items.some((speaker) => speaker.name === "Wren Terminal")).toBe(false);
   });
 
-  it("leaves one live deliverable per request and keeps the duplicate's as archived history", async () => {
+  it("leaves colliding deliverables live on their original records", async () => {
     await request("/api/health");
     const database = drizzle(env.DB);
     const now = Date.now();
@@ -724,10 +1072,12 @@ describe("speaker directory", () => {
       headers: { cookie, "content-type": "application/json" },
       body: JSON.stringify({ duplicatePersonId: "psn_probe_file_dupe" }),
     });
-    expect(merged.status).toBe(200);
+    expect(merged.status).toBe(409);
+    expect(await merged.json()).toMatchObject({
+      error: "merge_requires_resolution",
+      conflicts: expect.arrayContaining([expect.objectContaining({ reason: "event_speaker_collision" })]),
+    });
 
-    // The organizer's deliverables list joins live files per assignment, so a second live row
-    // for the same request would show the speaker's task twice with no way to tell them apart.
     const deliverables = await (await request("/api/events/evt_devflow_conf_2027/deliverables", {
       headers: { cookie },
     })).json<{ items: Array<{ taskId: string; speaker: { id: string }; file: { displayName: string } | null }> }>();
@@ -736,12 +1086,10 @@ describe("speaker directory", () => {
     expect(ownRows).toHaveLength(1);
     expect(ownRows[0]?.file?.displayName).toBe("kept-slides.pdf");
 
-    // The duplicate's upload is not discarded and does not stay on the archived identity: it
-    // belongs to the kept speaker as archived history, with its versions still downloadable.
-    const [archivedFile] = await database.select().from(files).where(eq(files.id, "fil_probe_file_dupe"));
-    expect(archivedFile).toMatchObject({
-      speakerId: "spk_probe_file_kept",
-      deletedAt: expect.any(Date),
+    const [duplicateFile] = await database.select().from(files).where(eq(files.id, "fil_probe_file_dupe"));
+    expect(duplicateFile).toMatchObject({
+      speakerId: "spk_probe_file_dupe",
+      deletedAt: null,
     });
     expect(await database.select().from(fileVersions).where(eq(fileVersions.fileId, "fil_probe_file_dupe")))
       .toHaveLength(1);
@@ -750,8 +1098,13 @@ describe("speaker directory", () => {
       eq(files.speakerId, "spk_probe_file_kept"),
       isNull(files.deletedAt),
     ))).toHaveLength(1);
+    expect(await database.select().from(files).where(and(
+      eq(files.taskId, taskId),
+      eq(files.speakerId, "spk_probe_file_dupe"),
+      isNull(files.deletedAt),
+    ))).toHaveLength(1);
   });
-  it("keeps a withdrawn-only duplicate discoverable and carries the work hanging off its archived record", async () => {
+  it("refuses conflicting withdrawal without moving any attached work", async () => {
     await request("/api/health");
     const database = drizzle(env.DB);
     const now = Date.now();
@@ -828,24 +1181,32 @@ describe("speaker directory", () => {
       headers: { cookie, "content-type": "application/json" },
       body: JSON.stringify({ duplicatePersonId: "psn_probe_wd2_dupe" }),
     });
-    expect(merged.status).toBe(200);
+    expect(merged.status).toBe(409);
+    expect(await merged.json()).toMatchObject({ error: "merge_requires_resolution" });
 
     const [keptSpeaker] = await database.select().from(speakers).where(eq(speakers.id, "spk_probe_wd2_kept"));
-    expect(keptSpeaker?.status).toBe("withdrawn");
-    expect(keptSpeaker?.deletedAt?.getTime()).toBe(withdrawnAt);
+    expect(keptSpeaker).toMatchObject({ status: "confirmed", deletedAt: null });
+    const [duplicateSpeaker] = await database.select().from(speakers)
+      .where(eq(speakers.id, "spk_probe_wd2_dupe"));
+    expect(duplicateSpeaker).toMatchObject({
+      personId: "psn_probe_wd2_dupe",
+      status: "withdrawn",
+    });
+    expect(duplicateSpeaker?.deletedAt?.getTime()).toBe(withdrawnAt);
 
     const [carriedSession] = await database.select().from(sessionSpeakers)
       .where(eq(sessionSpeakers.id, "ssnr_probe_wd2"));
-    expect(carriedSession?.speakerId).toBe("spk_probe_wd2_kept");
+    expect(carriedSession?.speakerId).toBe("spk_probe_wd2_dupe");
     const [carriedAssignment] = await database.select().from(taskAssignees)
       .where(eq(taskAssignees.id, "tassn_probe_wd2"));
-    expect(carriedAssignment).toMatchObject({ speakerId: "spk_probe_wd2_kept", status: "completed" });
+    expect(carriedAssignment).toMatchObject({ speakerId: "spk_probe_wd2_dupe", status: "completed" });
 
-    // An archived duplicate record at an event the kept person never reached belongs to them
-    // now, still archived and still withdrawn, rather than being stranded on an archived person.
+    // The refusal is atomic: even an otherwise movable event record stays with the duplicate.
     const [onlySpeaker] = await database.select().from(speakers).where(eq(speakers.id, "spk_probe_wd2_only"));
-    expect(onlySpeaker).toMatchObject({ personId: "psn_probe_wd2_kept", status: "withdrawn" });
+    expect(onlySpeaker).toMatchObject({ personId: "psn_probe_wd2_dupe", status: "withdrawn" });
     expect(onlySpeaker?.deletedAt?.getTime()).toBe(withdrawnAt);
+    expect((await database.select().from(people).where(eq(people.id, "psn_probe_wd2_dupe")))[0]?.deletedAt)
+      .toBeNull();
 
     const publicSpeakers = await (await request("/api/public/events/evt_devflow_conf_2027/speakers"))
       .json<{ items: Array<{ name: string }> }>();
@@ -863,7 +1224,7 @@ describe("speaker directory", () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({ error: "invalid_merge" });
   });
-  it("folds an archived duplicate assignment's completion into the kept one it cannot replace", async () => {
+  it("does not fold assignment provenance when both speaker records hold the task", async () => {
     await request("/api/health");
     const database = drizzle(env.DB);
     const now = Date.now();
@@ -931,14 +1292,31 @@ describe("speaker directory", () => {
       headers: { cookie, "content-type": "application/json" },
       body: JSON.stringify({ duplicatePersonId: "psn_probe_fold_dupe" }),
     });
-    expect(merged.status).toBe(200);
+    expect(merged.status).toBe(409);
+    expect(await merged.json()).toMatchObject({
+      error: "merge_requires_resolution",
+      conflicts: expect.arrayContaining([expect.objectContaining({ reason: "event_speaker_collision" })]),
+    });
 
     const [keptAssignment] = await database.select().from(taskAssignees)
       .where(eq(taskAssignees.id, "tassn_probe_fold_kept"));
-    expect(keptAssignment).toMatchObject({ status: "completed", grantedBySessionId: null, deletedAt: null });
-    expect(keptAssignment?.completedAt?.getTime()).toBe(completedAt);
+    expect(keptAssignment).toMatchObject({
+      status: "assigned",
+      grantedBySessionId: "ses_probe_fold_grant",
+      completedAt: null,
+      deletedAt: null,
+    });
+    const [duplicateAssignment] = await database.select().from(taskAssignees)
+      .where(eq(taskAssignees.id, "tassn_probe_fold_dupe"));
+    expect(duplicateAssignment).toMatchObject({
+      speakerId: "spk_probe_fold_dupe",
+      status: "completed",
+      grantedBySessionId: null,
+      deletedAt: expect.any(Date),
+    });
+    expect(duplicateAssignment?.completedAt?.getTime()).toBe(completedAt);
 
-    // The file follows the person, so the request must not read as still outstanding beside it.
+    // Refusing the identity merge leaves both assignment decisions and file ownership unchanged.
     const deliverables = await (await request("/api/events/evt_devflow_conf_2027/deliverables", {
       headers: { cookie },
     })).json<{
@@ -952,8 +1330,10 @@ describe("speaker directory", () => {
     const ownRows = deliverables.items.filter((item) =>
       item.taskId === taskId && item.speaker.id === "spk_probe_fold_kept");
     expect(ownRows).toHaveLength(1);
-    expect(ownRows[0]?.assignment.status).toBe("completed");
-    expect(ownRows[0]?.file?.displayName).toBe("folded-slides.pdf");
+    expect(ownRows[0]?.assignment.status).toBe("assigned");
+    expect(ownRows[0]?.file).toBeNull();
+    expect((await database.select().from(files).where(eq(files.id, "fil_probe_fold")))[0]?.speakerId)
+      .toBe("spk_probe_fold_dupe");
   });
 
   it("merges a directory history larger than D1's per-statement binding ceiling", async () => {

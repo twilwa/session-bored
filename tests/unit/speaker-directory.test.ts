@@ -7,6 +7,10 @@ import {
   indexPossibleDuplicates,
   possibleDuplicateGroups,
 } from "../../worker/speaker-directory.ts";
+import {
+  planSpeakerMergeReferences,
+  speakerMergeReferenceClasses,
+} from "../../worker/speaker-merge.ts";
 
 const priya = {
   id: "psn_priya",
@@ -135,5 +139,93 @@ describe("speaker directory filters", () => {
     expect(filtered.total).toBe(2);
     expect(filtered.pageCount).toBe(2);
     expect(filtered.items.map((person) => person.id)).toEqual(["psn_margaret"]);
+  });
+});
+
+describe("speaker merge ownership", () => {
+  it("plans only identity-reference moves and refuses a same-event speaker collision", () => {
+    expect(speakerMergeReferenceClasses).toMatchObject({
+      "submission.submitter_person_id": "identity_reference",
+      "submission_speaker.person_id": "identity_reference",
+      "speaker.person_id": "identity_reference",
+      "session_speaker.speaker_id": "identity_reference",
+      "task_assignee.speaker_id": "identity_reference",
+      "file.speaker_id": "identity_reference",
+      "person.user_id": "credential",
+      "speaker.status": "decision",
+      "speaker.deleted_at": "decision",
+      "session_speaker.publication_hold_at": "decision",
+      "task_assignee.granted_by_session_id": "decision",
+      "decision_notice.recipient": "communication",
+    });
+
+    const plan = planSpeakerMergeReferences({
+      keptPersonId: "psn_kept",
+      mergedPersonId: "psn_merged",
+      submissions: [{ id: "sub_owned", personId: "psn_merged" }],
+      submissionSpeakers: [
+        { id: "sspk_move", submissionId: "sub_move", personId: "psn_merged" },
+        { id: "sspk_kept", submissionId: "sub_collision", personId: "psn_kept" },
+        { id: "sspk_retained", submissionId: "sub_collision", personId: "psn_merged" },
+      ],
+      speakers: [
+        { id: "spk_kept", eventId: "evt_collision", personId: "psn_kept", status: "ready", deletedAt: null },
+        { id: "spk_move", eventId: "evt_move", personId: "psn_merged", status: "ready", deletedAt: null },
+        { id: "spk_retained", eventId: "evt_collision", personId: "psn_merged", status: "ready", deletedAt: null },
+      ],
+      sessionSpeakers: [
+        { id: "ssnr_kept", sessionId: "ses_collision", speakerId: "spk_kept", roleLabel: "speaker", sortOrder: 0, publicationHoldAt: null, deletedAt: null },
+        { id: "ssnr_retained", sessionId: "ses_collision", speakerId: "spk_retained", roleLabel: "speaker", sortOrder: 0, publicationHoldAt: null, deletedAt: null },
+        { id: "ssnr_move", sessionId: "ses_move", speakerId: "spk_retained", roleLabel: "speaker", sortOrder: 0, publicationHoldAt: null, deletedAt: null },
+      ],
+      taskAssignees: [
+        { id: "tassn_kept", taskId: "tsk_collision", speakerId: "spk_kept" },
+        { id: "tassn_retained", taskId: "tsk_collision", speakerId: "spk_retained" },
+        { id: "tassn_move", taskId: "tsk_move", speakerId: "spk_retained" },
+      ],
+      files: [
+        { id: "fil_kept", taskId: "tsk_file_collision", speakerId: "spk_kept", deletedAt: null },
+        { id: "fil_retained", taskId: "tsk_file_collision", speakerId: "spk_retained", deletedAt: null },
+        { id: "fil_move", taskId: "tsk_file_move", speakerId: "spk_retained", deletedAt: null },
+      ],
+      contactTags: [
+        { personId: "psn_kept", tagId: "dtag_collision" },
+        { personId: "psn_merged", tagId: "dtag_collision" },
+        { personId: "psn_merged", tagId: "dtag_move" },
+      ],
+      customFields: [
+        { id: "dcf_kept", personId: "psn_kept", normalizedName: "region" },
+        { id: "dcf_retained", personId: "psn_merged", normalizedName: "region" },
+        { id: "dcf_move", personId: "psn_merged", normalizedName: "audience" },
+      ],
+      notes: [{ id: "dnote_move", personId: "psn_merged" }],
+    });
+
+    expect(plan.moves).toEqual([
+      { reference: "submission", rowId: "sub_owned", fromId: "psn_merged", toId: "psn_kept" },
+      { reference: "submission_speaker", rowId: "sspk_move", fromId: "psn_merged", toId: "psn_kept" },
+      { reference: "speaker", rowId: "spk_move", fromId: "psn_merged", toId: "psn_kept" },
+      { reference: "session_speaker", rowId: "ssnr_move", fromId: "spk_retained", toId: "spk_kept" },
+      { reference: "task_assignee", rowId: "tassn_move", fromId: "spk_retained", toId: "spk_kept" },
+      { reference: "file", rowId: "fil_move", fromId: "spk_retained", toId: "spk_kept" },
+      { reference: "speaker_directory_contact_tag", rowId: "dtag_move", fromId: "psn_merged", toId: "psn_kept" },
+      { reference: "speaker_directory_custom_field", rowId: "dcf_move", fromId: "psn_merged", toId: "psn_kept" },
+      { reference: "speaker_directory_note", rowId: "dnote_move", fromId: "psn_merged", toId: "psn_kept" },
+    ]);
+    expect(plan.retained).toEqual([
+      { reference: "submission_speaker", rowId: "sspk_retained", reason: "target_reference_exists" },
+      { reference: "speaker", rowId: "spk_retained", reason: "target_reference_exists" },
+      { reference: "session_speaker", rowId: "ssnr_retained", reason: "target_reference_exists" },
+      { reference: "task_assignee", rowId: "tassn_retained", reason: "target_reference_exists" },
+      { reference: "file", rowId: "fil_retained", reason: "target_reference_exists" },
+      { reference: "speaker_directory_contact_tag", rowId: "dtag_collision", reason: "target_reference_exists" },
+      { reference: "speaker_directory_custom_field", rowId: "dcf_retained", reason: "target_reference_exists" },
+    ]);
+    expect(plan.conflicts).toEqual([{
+      reference: "speaker",
+      rowId: "spk_retained",
+      targetRowId: "spk_kept",
+      reason: "event_speaker_collision",
+    }]);
   });
 });

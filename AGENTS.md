@@ -87,9 +87,9 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   stamps it when it inserts a row and never when it restores one, so work the
   person already owed the event, or that an organizer handed them from the roster
   (which clears the stamp when it restores an assignment), survives a removal
-  intact. When a directory merge folds two assignments for the same task, null
-  provenance wins for the same reason: independently owed work must survive a
-  later session removal. Without that, the smallest correction round-trip — name somebody, unname
+  intact. A directory merge never folds two assignments or rewrites their
+  provenance; `worker/speaker-merge.ts` leaves a colliding assignment on its
+  original speaker row. Without that, the smallest correction round-trip — name somebody, unname
   them — emptied their whole event checklist (issue #148). The event `speaker` row — which drives the
   public speaker directory, the roster row, and mail eligibility — deliberately
   stands after removal (issue #127, settled: no automatic withdrawal). What removal owes
@@ -306,11 +306,22 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   sort and pagination and returns unfiltered overview/facet counts; public read
   models never join these tables. Duplicate detection is
   deliberately conservative: normalized email, or normalized name plus a
-  non-empty matching organization. A confirmed merge keeps both person rows,
-  archives the duplicate, records the attributed profile snapshot in
-  `directory_merge`, and moves its live proposal, session, task, and file links
-  to the organizer-selected canonical record. Two different owned accounts are
-  never collapsed. A merge is the only writer of `person.deleted_at`, and
+  non-empty matching organization. `worker/speaker-merge.ts` owns the
+  classify-plan-apply contract. Its classification table is exhaustive: the
+  merge may update only identity reference columns, archive the duplicate
+  `person`, and add the attributed `directory_merge` record. The pure plan names
+  every moved reference and every collision it leaves on the original row; the
+  apply phase groups those exact moves under D1's parameter ceiling and commits
+  them in one batch. It never writes profile fields, credentials, roster status,
+  custom fields, removals, participation role/order, publication holds, task
+  progress/completion/provenance, file removal, snapshots, or communications.
+  `person.user_id` never moves, and a merge that would adopt the duplicate's
+  account refuses with `account_conflict`. Same-event speaker standing must
+  agree, as must the state of two links to the same session; otherwise the whole
+  operation refuses with `merge_requires_resolution` before any write. This
+  keeps public visibility unchanged while making the roster and agenda the only
+  repair doors for their decisions.
+  A merge is the only writer of `person.deleted_at`, and
   `person_email_unique` still holds the archived row's address, so every door
   that adopts a person by email — CFP author and collaborator, organizer
   participants, roster, and the decision letter's recipient correction —
@@ -321,33 +332,10 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   different person: `cancelDecisionNotice` refuses `recipient_taken` only when
   the address *resolves* elsewhere, and when it resolves back to the letter's
   own person the two rows trade addresses, because that index is not partial
-  and both addresses must keep leading to the live record.
-  The merge also never gives the kept speaker a second `headshot` file:
-  a merged speaker's headshot moves only when the kept speaker has none, and an
-  adopted `headshot_url` is rewritten to name the speaker row that owns the
-  file after the batch. Nor a second live answer to one file request: a
-  duplicate's deliverable moves to the kept speaker like every other file, but
-  arrives archived when the kept speaker already answered that task, so all the
-  submitted versions stay downloadable while the active views still name one
-  file. `file_task_speaker_live_unique` enforces that rather than trusting the
-  merge to, so every reader that picks a task's file — the portal upload it
-  appends versions to, the speaker's task card, the organizer deliverables list
-  — must filter `deleted_at`.
-  **Withdrawal is terminal to a merge.** `mergedSpeakerStanding` decides it
-  before the status ladder: if either same-event `speaker` row is `withdrawn`
-  the merged row stays `withdrawn` and stays archived, keeping the earlier
-  withdrawal's timestamp. Both sides are read *including* archived rows, or the
-  rule only holds one way round: withdrawing archives the row it withdraws, so
-  a live-rows-only read cannot see a withdrawn duplicate at all, and the
-  outcome would depend on which of the two "Keep" buttons the organizer
-  pressed. The private directory includes archived speaker rows in its identity
-  and event history for the same reason, while active roster and public reads
-  remain live-only. That read is also what carries an archived duplicate speaker's
-  sessions, onboarding work, and files onto the kept person instead of leaving
-  them on a record no surface can reach. Taking the further-along of the two instead would let
-  the `invited` row a first CFP draft mints reverse a roster decision the
-  roster alone owns (issue #127), and at `confirmed` or beyond it would cross
-  `PUBLIC_SPEAKER_STATUSES` and republish the person.
+  and both addresses must keep leading to the live record. A file reference
+  moves only when the kept speaker has no live file for the same task; a
+  collision remains live on its original speaker. Profile `headshot_url` values
+  stay unchanged even when the underlying file ownership can move.
 
 ## Accounts and access
 

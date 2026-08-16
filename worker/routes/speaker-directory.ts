@@ -7,11 +7,16 @@ import { createMiddleware } from "hono/factory";
 import {
   files,
   people,
+  sessionSpeakers,
+  speakerDirectoryContactTags,
+  speakerDirectoryCustomFields,
   speakerDirectoryNotes,
   speakerDirectorySegments,
   speakers,
+  submissions,
+  submissionSpeakers,
+  taskAssignees,
   type Role,
-  type SpeakerStatus,
 } from "../../db/schema.ts";
 import type {
   SpeakerDirectoryDetailResponse,
@@ -34,6 +39,11 @@ import {
   loadSpeakerDirectory,
   loadSpeakerDirectoryNotes,
 } from "../speaker-directory.ts";
+import {
+  applySpeakerMerge,
+  planSpeakerMergeReferences,
+  SpeakerMergePlanStaleError,
+} from "../speaker-merge.ts";
 
 type SpeakerDirectoryEnvironment = {
   Bindings: CloudflareBindings;
@@ -349,45 +359,6 @@ speakerDirectoryRoutes.post("/api/speaker-directory/:personId/notes", requireOrg
   return context.json(response, 201);
 });
 
-const speakerStatusOrder: Record<SpeakerStatus, number> = {
-  withdrawn: 0,
-  invited: 1,
-  pending_employer_approval: 2,
-  confirmed: 3,
-  onboarding: 4,
-  ready: 5,
-};
-
-function preferredText(kept: string | null, merged: string | null): string | null {
-  return kept !== null && kept.trim() !== "" ? kept : merged;
-}
-
-/**
- * Withdrawal is terminal, so it is decided before the ladder rather than sitting at the bottom
- * of it. Withdrawing is the roster's own decision about a person at an event, and a merge is a
- * statement about identity: taking the further-along of two rows would let a duplicate's
- * `invited` row - the one a first CFP draft mints - quietly put a withdrawn speaker back on the
- * roster and, at `confirmed` or beyond, back on every public surface.
- */
-function mergedSpeakerStanding(
-  kept: { status: SpeakerStatus; deletedAt: Date | null },
-  merged: { status: SpeakerStatus; deletedAt: Date | null },
-  now: number,
-): { status: SpeakerStatus; deletedAt: number | null } {
-  if (kept.status === "withdrawn" || merged.status === "withdrawn") {
-    const archivedAt = [kept.deletedAt, merged.deletedAt]
-      .filter((value): value is Date => value !== null)
-      .map((value) => value.getTime());
-    return { status: "withdrawn", deletedAt: archivedAt.length === 0 ? now : Math.min(...archivedAt) };
-  }
-  return {
-    status: speakerStatusOrder[merged.status] > speakerStatusOrder[kept.status]
-      ? merged.status
-      : kept.status,
-    deletedAt: null,
-  };
-}
-
 speakerDirectoryRoutes.post("/api/speaker-directory/:personId/merge", requireOrganizer, async (context) => {
   const organizer = context.get("authUser");
   if (organizer === null) return context.json({ error: "authentication_required" }, 401);
@@ -408,191 +379,107 @@ speakerDirectoryRoutes.post("/api/speaker-directory/:personId/merge", requireOrg
   if (keptPerson === undefined || mergedPerson === undefined) return context.json({ error: "not_found" }, 404);
   const reasons = duplicateReasonsFor(keptPerson, mergedPerson);
   if (reasons.length === 0) return context.json({ error: "not_duplicate_candidate" }, 409);
-  if (
-    keptPerson.userId !== null
-    && mergedPerson.userId !== null
-    && keptPerson.userId !== mergedPerson.userId
-  ) {
+  if (mergedPerson.userId !== null && keptPerson.userId !== mergedPerson.userId) {
     return context.json({ error: "account_conflict" }, 409);
   }
 
-  // Both sides include archived speaker rows. Withdrawing on the roster archives the row it
-  // withdraws, so reading only live ones would skip the duplicate's withdrawal - and leave its
-  // sessions, onboarding work, and files hanging off a speaker row no surface can reach.
-  const [mergedSpeakers, keptSpeakers] = await Promise.all([
-    database.select().from(speakers).where(eq(speakers.personId, mergedPerson.id)),
-    database.select().from(speakers).where(eq(speakers.personId, keptPerson.id)),
+  const personIds = [keptPerson.id, mergedPerson.id];
+  const [speakerRows, submissionRows, submissionSpeakerRows, contactTagRows, customFieldRows, noteRows] = await Promise.all([
+    database.select({
+      id: speakers.id,
+      personId: speakers.personId,
+      eventId: speakers.eventId,
+      status: speakers.status,
+      deletedAt: speakers.deletedAt,
+    })
+      .from(speakers)
+      .where(inArray(speakers.personId, personIds)),
+    database.select({ id: submissions.id, personId: submissions.submitterPersonId })
+      .from(submissions)
+      .where(eq(submissions.submitterPersonId, mergedPerson.id)),
+    database.select({
+      id: submissionSpeakers.id,
+      submissionId: submissionSpeakers.submissionId,
+      personId: submissionSpeakers.personId,
+    }).from(submissionSpeakers).where(inArray(submissionSpeakers.personId, personIds)),
+    database.select({
+      personId: speakerDirectoryContactTags.personId,
+      tagId: speakerDirectoryContactTags.tagId,
+    }).from(speakerDirectoryContactTags).where(inArray(speakerDirectoryContactTags.personId, personIds)),
+    database.select({
+      id: speakerDirectoryCustomFields.id,
+      personId: speakerDirectoryCustomFields.personId,
+      normalizedName: speakerDirectoryCustomFields.normalizedName,
+    }).from(speakerDirectoryCustomFields).where(inArray(speakerDirectoryCustomFields.personId, personIds)),
+    database.select({ id: speakerDirectoryNotes.id, personId: speakerDirectoryNotes.personId })
+      .from(speakerDirectoryNotes)
+      .where(inArray(speakerDirectoryNotes.personId, personIds)),
   ]);
-  const speakerIds = [...new Set([...mergedSpeakers, ...keptSpeakers].map((speaker) => speaker.id))];
-  const headshotOwners = speakerIds.length === 0 ? [] : (await Promise.all(
-    chunkIds(speakerIds).map((ids) => database
-      .select({ speakerId: files.speakerId })
-      .from(files)
-      .where(and(eq(files.kind, "headshot"), inArray(files.speakerId, ids)))),
-  )).flat();
-  const speakersWithHeadshot = new Set(headshotOwners.map((row) => row.speakerId));
-  const now = Date.now();
-  const statements: D1PreparedStatement[] = [];
-
-  if (mergedPerson.userId !== null) {
-    statements.push(context.env.DB.prepare(
-      "update person set user_id = null, updated_at = ? where id = ? and deleted_at is null",
-    ).bind(now, mergedPerson.id));
+  const speakerIds = speakerRows.map((speaker) => speaker.id);
+  const speakerIdChunks = chunkIds(speakerIds);
+  const [sessionSpeakerRows, taskAssigneeRows, fileRows] = await Promise.all([
+    Promise.all(speakerIdChunks.map((ids) => database.select({
+      id: sessionSpeakers.id,
+      sessionId: sessionSpeakers.sessionId,
+      speakerId: sessionSpeakers.speakerId,
+      roleLabel: sessionSpeakers.roleLabel,
+      sortOrder: sessionSpeakers.sortOrder,
+      publicationHoldAt: sessionSpeakers.publicationHoldAt,
+      deletedAt: sessionSpeakers.deletedAt,
+    }).from(sessionSpeakers).where(inArray(sessionSpeakers.speakerId, ids)))).then((rows) => rows.flat()),
+    Promise.all(speakerIdChunks.map((ids) => database.select({
+      id: taskAssignees.id,
+      taskId: taskAssignees.taskId,
+      speakerId: taskAssignees.speakerId,
+    }).from(taskAssignees).where(inArray(taskAssignees.speakerId, ids)))).then((rows) => rows.flat()),
+    Promise.all(speakerIdChunks.map((ids) => database.select({
+      id: files.id,
+      taskId: files.taskId,
+      speakerId: files.speakerId,
+      deletedAt: files.deletedAt,
+    }).from(files).where(inArray(files.speakerId, ids)))).then((rows) => rows.flatMap((rowsForIds) => (
+      rowsForIds.filter((row): row is typeof row & { speakerId: string } => row.speakerId !== null)
+    ))),
+  ]);
+  const plan = planSpeakerMergeReferences({
+    keptPersonId: keptPerson.id,
+    mergedPersonId: mergedPerson.id,
+    submissions: submissionRows,
+    submissionSpeakers: submissionSpeakerRows,
+    speakers: speakerRows,
+    sessionSpeakers: sessionSpeakerRows,
+    taskAssignees: taskAssigneeRows,
+    files: fileRows,
+    contactTags: contactTagRows,
+    customFields: customFieldRows,
+    notes: noteRows,
+  });
+  if (plan.conflicts.length > 0) {
+    return context.json({
+      error: "merge_requires_resolution",
+      conflicts: plan.conflicts,
+      note: "Resolve the same-event speaker records or conflicting session participation before merging these records.",
+    }, 409);
   }
-
-  const socialLinks = {
-    ...(mergedPerson.socialLinks ?? {}),
-    ...(keptPerson.socialLinks ?? {}),
-  };
-  const keptHasHeadshotUrl = keptPerson.headshotUrl !== null && keptPerson.headshotUrl.trim() !== "";
-  let headshotUrl = keptHasHeadshotUrl ? keptPerson.headshotUrl : mergedPerson.headshotUrl;
-  if (!keptHasHeadshotUrl && headshotUrl !== null) {
-    const urlSpeakerId = /^\/api\/public\/portal\/speakers\/([^/?]+)\/headshot/.exec(headshotUrl)?.[1];
-    const archivedSpeaker = mergedSpeakers.find((speaker) => speaker.id === urlSpeakerId);
-    const successor = archivedSpeaker === undefined
-      ? undefined
-      : keptSpeakers.find((speaker) => speaker.eventId === archivedSpeaker.eventId);
-    if (
-      archivedSpeaker !== undefined && successor !== undefined
-      && speakersWithHeadshot.has(archivedSpeaker.id) && !speakersWithHeadshot.has(successor.id)
-    ) {
-      headshotUrl = headshotUrl.replace(`/speakers/${archivedSpeaker.id}/`, `/speakers/${successor.id}/`);
-    }
-  }
-  statements.push(context.env.DB.prepare(
-    "update person set user_id = ?, job_title = ?, organization = ?, bio = ?, headshot_url = ?, twitter = ?, linkedin = ?, social_links = ?, updated_at = ? where id = ? and deleted_at is null",
-  ).bind(
-    keptPerson.userId ?? mergedPerson.userId,
-    preferredText(keptPerson.jobTitle, mergedPerson.jobTitle),
-    preferredText(keptPerson.organization, mergedPerson.organization),
-    preferredText(keptPerson.bio, mergedPerson.bio),
-    headshotUrl,
-    preferredText(keptPerson.twitter, mergedPerson.twitter),
-    preferredText(keptPerson.linkedin, mergedPerson.linkedin),
-    Object.keys(socialLinks).length === 0 ? null : JSON.stringify(socialLinks),
-    now,
-    keptPerson.id,
-  ));
-  statements.push(
-    context.env.DB.prepare(
-      "update submission set submitter_person_id = ?, updated_at = ? where submitter_person_id = ?",
-    ).bind(keptPerson.id, now, mergedPerson.id),
-    context.env.DB.prepare(
-      "update submission_speaker as kept set role_label = (select merged.role_label from submission_speaker as merged where merged.submission_id = kept.submission_id and merged.person_id = ? and merged.deleted_at is null), sort_order = (select merged.sort_order from submission_speaker as merged where merged.submission_id = kept.submission_id and merged.person_id = ? and merged.deleted_at is null), deleted_at = null, updated_at = ? where kept.person_id = ? and exists (select 1 from submission_speaker as merged where merged.submission_id = kept.submission_id and merged.person_id = ? and merged.deleted_at is null)",
-    ).bind(mergedPerson.id, mergedPerson.id, now, keptPerson.id, mergedPerson.id),
-    context.env.DB.prepare(
-      "update submission_speaker as merged set deleted_at = ?, updated_at = ? where merged.person_id = ? and merged.deleted_at is null and exists (select 1 from submission_speaker as kept where kept.submission_id = merged.submission_id and kept.person_id = ?)",
-    ).bind(now, now, mergedPerson.id, keptPerson.id),
-    context.env.DB.prepare(
-      "update submission_speaker as merged set person_id = ?, updated_at = ? where merged.person_id = ? and not exists (select 1 from submission_speaker as kept where kept.submission_id = merged.submission_id and kept.person_id = ?)",
-    ).bind(keptPerson.id, now, mergedPerson.id, keptPerson.id),
-  );
-
-  for (const mergedSpeaker of mergedSpeakers) {
-    const keptSpeaker = keptSpeakers.find((speaker) => speaker.eventId === mergedSpeaker.eventId);
-    if (keptSpeaker === undefined) {
-      statements.push(context.env.DB.prepare(
-        "update speaker set person_id = ?, updated_at = ? where id = ?",
-      ).bind(keptPerson.id, now, mergedSpeaker.id));
-      continue;
-    }
-
-    const standing = mergedSpeakerStanding(keptSpeaker, mergedSpeaker, now);
-    const customFields = {
-      ...(mergedSpeaker.customFields ?? {}),
-      ...(keptSpeaker.customFields ?? {}),
-    };
-    statements.push(
-      context.env.DB.prepare(
-        "update speaker set status = ?, custom_fields = ?, deleted_at = ?, updated_at = ? where id = ?",
-      ).bind(
-        standing.status,
-        Object.keys(customFields).length === 0 ? null : JSON.stringify(customFields),
-        standing.deletedAt,
-        now,
-        keptSpeaker.id,
-      ),
-      context.env.DB.prepare(
-        "update session_speaker as kept set role_label = (select merged.role_label from session_speaker as merged where merged.session_id = kept.session_id and merged.speaker_id = ? and merged.deleted_at is null), sort_order = (select merged.sort_order from session_speaker as merged where merged.session_id = kept.session_id and merged.speaker_id = ? and merged.deleted_at is null), publication_hold_at = (select merged.publication_hold_at from session_speaker as merged where merged.session_id = kept.session_id and merged.speaker_id = ? and merged.deleted_at is null), deleted_at = null, updated_at = ? where kept.speaker_id = ? and exists (select 1 from session_speaker as merged where merged.session_id = kept.session_id and merged.speaker_id = ? and merged.deleted_at is null)",
-      ).bind(mergedSpeaker.id, mergedSpeaker.id, mergedSpeaker.id, now, keptSpeaker.id, mergedSpeaker.id),
-      context.env.DB.prepare(
-        "update session_speaker as merged set deleted_at = ?, updated_at = ? where merged.speaker_id = ? and merged.deleted_at is null and exists (select 1 from session_speaker as kept where kept.session_id = merged.session_id and kept.speaker_id = ?)",
-      ).bind(now, now, mergedSpeaker.id, keptSpeaker.id),
-      context.env.DB.prepare(
-        "update session_speaker as merged set speaker_id = ?, updated_at = ? where merged.speaker_id = ? and not exists (select 1 from session_speaker as kept where kept.session_id = merged.session_id and kept.speaker_id = ?)",
-      ).bind(keptSpeaker.id, now, mergedSpeaker.id, keptSpeaker.id),
-      // Null provenance means the person owes this work independently of any session. If either
-      // identity carried that standing, a later session removal must not archive the merged work.
-      context.env.DB.prepare(
-        "update task_assignee as kept set status = case when kept.status = 'completed' or exists (select 1 from task_assignee as merged where merged.task_id = kept.task_id and merged.speaker_id = ? and merged.status = 'completed') then 'completed' when kept.status = 'in_progress' or exists (select 1 from task_assignee as merged where merged.task_id = kept.task_id and merged.speaker_id = ? and merged.status = 'in_progress') then 'in_progress' else 'assigned' end, completed_at = coalesce(kept.completed_at, (select merged.completed_at from task_assignee as merged where merged.task_id = kept.task_id and merged.speaker_id = ?)), granted_by_session_id = case when kept.granted_by_session_id is null or exists (select 1 from task_assignee as merged where merged.task_id = kept.task_id and merged.speaker_id = ? and merged.granted_by_session_id is null) then null else kept.granted_by_session_id end, deleted_at = null, updated_at = ? where kept.speaker_id = ? and exists (select 1 from task_assignee as merged where merged.task_id = kept.task_id and merged.speaker_id = ? and merged.deleted_at is null)",
-      ).bind(
-        mergedSpeaker.id,
-        mergedSpeaker.id,
-        mergedSpeaker.id,
-        mergedSpeaker.id,
-        now,
-        keptSpeaker.id,
-        mergedSpeaker.id,
-      ),
-      // `task_assignee_unique` leaves nowhere to carry an archived duplicate assignment that the
-      // kept speaker already holds, so what it knows is folded in instead: work the person did
-      // under the other record stays done, without that archived row reviving the kept one.
-      context.env.DB.prepare(
-        "update task_assignee as kept set status = case when kept.status = 'completed' or exists (select 1 from task_assignee as merged where merged.task_id = kept.task_id and merged.speaker_id = ? and merged.status = 'completed') then 'completed' when kept.status = 'in_progress' or exists (select 1 from task_assignee as merged where merged.task_id = kept.task_id and merged.speaker_id = ? and merged.status = 'in_progress') then 'in_progress' else kept.status end, completed_at = coalesce(kept.completed_at, (select merged.completed_at from task_assignee as merged where merged.task_id = kept.task_id and merged.speaker_id = ?)), granted_by_session_id = case when kept.granted_by_session_id is null or exists (select 1 from task_assignee as merged where merged.task_id = kept.task_id and merged.speaker_id = ? and merged.granted_by_session_id is null) then null else kept.granted_by_session_id end, updated_at = ? where kept.speaker_id = ? and exists (select 1 from task_assignee as merged where merged.task_id = kept.task_id and merged.speaker_id = ? and merged.deleted_at is not null)",
-      ).bind(
-        mergedSpeaker.id,
-        mergedSpeaker.id,
-        mergedSpeaker.id,
-        mergedSpeaker.id,
-        now,
-        keptSpeaker.id,
-        mergedSpeaker.id,
-      ),
-      context.env.DB.prepare(
-        "update task_assignee as merged set deleted_at = ?, updated_at = ? where merged.speaker_id = ? and merged.deleted_at is null and exists (select 1 from task_assignee as kept where kept.task_id = merged.task_id and kept.speaker_id = ?)",
-      ).bind(now, now, mergedSpeaker.id, keptSpeaker.id),
-      context.env.DB.prepare(
-        "update task_assignee as merged set speaker_id = ?, updated_at = ? where merged.speaker_id = ? and not exists (select 1 from task_assignee as kept where kept.task_id = merged.task_id and kept.speaker_id = ?)",
-      ).bind(keptSpeaker.id, now, mergedSpeaker.id, keptSpeaker.id),
-      context.env.DB.prepare(
-        "update file as merged set deleted_at = ?, updated_at = ? where merged.speaker_id = ? and merged.kind != 'headshot' and merged.deleted_at is null and merged.task_id is not null and exists (select 1 from file as kept where kept.speaker_id = ? and kept.task_id = merged.task_id and kept.kind != 'headshot' and kept.deleted_at is null)",
-      ).bind(now, now, mergedSpeaker.id, keptSpeaker.id),
-      context.env.DB.prepare(
-        "update file set speaker_id = ?, updated_at = ? where speaker_id = ? and kind != 'headshot'",
-      ).bind(keptSpeaker.id, now, mergedSpeaker.id),
-      context.env.DB.prepare(
-        "update file set speaker_id = ?, updated_at = ? where speaker_id = ? and kind = 'headshot' and not exists (select 1 from file as kept_headshot where kept_headshot.speaker_id = ? and kept_headshot.kind = 'headshot')",
-      ).bind(keptSpeaker.id, now, mergedSpeaker.id, keptSpeaker.id),
-      context.env.DB.prepare(
-        "update speaker set deleted_at = ?, updated_at = ? where id = ? and deleted_at is null",
-      ).bind(now, now, mergedSpeaker.id),
-    );
-  }
-
-  // Both person ids are read back from live rows so a merge that raced another one - the same pair
-  // in the opposite direction, archiving the record this batch is keeping - hits the column's not
-  // null constraint and rolls the whole batch back, rather than half-applying into a merge cycle.
-  const mergeId = `pmg_${crypto.randomUUID().replaceAll("-", "")}`;
-  statements.push(
-    context.env.DB.prepare(
-      "insert into directory_merge (id, kept_person_id, merged_person_id, merged_by_user_id, reasons, merged_profile, created_at) values (?, (select id from person where id = ? and deleted_at is null), (select id from person where id = ? and deleted_at is null), ?, ?, ?, ?)",
-    ).bind(
-      mergeId,
-      keptPerson.id,
-      mergedPerson.id,
-      organizer.id,
-      JSON.stringify(reasons),
-      JSON.stringify(mergedPerson),
-      now,
-    ),
-    context.env.DB.prepare(
-      "update person set deleted_at = ?, updated_at = ? where id = ? and deleted_at is null",
-    ).bind(now, now, mergedPerson.id),
-  );
 
   try {
-    await context.env.DB.batch(statements);
+    await applySpeakerMerge({
+      database: context.env.DB,
+      plan,
+      keptPersonId: keptPerson.id,
+      mergedPersonId: mergedPerson.id,
+      mergedByUserId: organizer.id,
+      reasons,
+      mergedProfile: mergedPerson,
+      timestamp: Date.now(),
+    });
   } catch (error) {
+    if (error instanceof SpeakerMergePlanStaleError) {
+      return context.json({
+        error: "merge_plan_stale",
+        note: "The records changed while this merge was being prepared. Review them again before merging.",
+      }, 409);
+    }
     const stillLive = await database
       .select({ id: people.id })
       .from(people)
@@ -604,6 +491,7 @@ speakerDirectoryRoutes.post("/api/speaker-directory/:personId/merge", requireOrg
     keptPersonId: keptPerson.id,
     mergedPersonId: mergedPerson.id,
     reasons,
+    plan,
   };
   return context.json(response);
 });

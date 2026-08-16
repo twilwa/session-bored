@@ -95,7 +95,7 @@ async function submitProposalAs(
   expect(submitted.status(), await submitted.text()).toBe(201);
 }
 
-test("the record an organizer keeps reloads without its archived duplicate", async ({ page }, testInfo) => {
+test("organizer cannot merge two speaker records from the same event", async ({ page }, testInfo) => {
   const suffix = `${testInfo.project.name}-${Date.now()}`;
   const name = `Directory Twin ${suffix}`;
   const organization = `Northwind ${suffix}`;
@@ -118,10 +118,16 @@ test("the record an organizer keeps reloads without its archived duplicate", asy
   await expect(dialog).toContainText(`Archive ${archivedEmail}`);
   await dialog.getByRole("button", { name: `Merge and keep ${keptEmail}` }).click();
 
-  await expect(page.locator(".toast")).toContainText("merged into");
-  await expect(page.getByRole("heading", { name: "Possible duplicates" })).toBeHidden();
-  await expect(page.getByText(archivedEmail)).toHaveCount(0);
-  await expect(page.locator(".directory-event__work")).toContainText("2 proposals");
+  await expect(page.locator(".toast")).toContainText("Resolve the same-event speaker records");
+  await expect(page.getByRole("heading", { name: "Possible duplicates" })).toBeVisible();
+  await expect(candidate).toBeVisible();
+
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await page.getByRole("link", { name: "All speaker records" }).click();
+  await page.getByLabel("Search directory").fill(name);
+  await page.getByRole("button", { name: "Apply filters" }).click();
+  await expect(page.locator(".directory-row").filter({ hasText: keptEmail })).toBeVisible();
+  await expect(page.locator(".directory-row").filter({ hasText: archivedEmail })).toBeVisible();
 });
 
 test("organizer reviews and merges a likely duplicate while choosing the kept record", async ({ page }, testInfo) => {
@@ -178,13 +184,12 @@ test("organizer reviews and merges a likely duplicate while choosing the kept re
   const dialog = page.getByRole("dialog", { name: "Confirm speaker merge" });
   await expect(dialog).toContainText(`Keep ${priya!.email}`);
   await expect(dialog).toContainText(`Archive ${duplicateEmail}`);
-  // A merge resolves roster status where both records speak at one event, which the public
-  // programme reads. The organizer is told that before they commit, not after.
-  await expect(dialog).toContainText("stays withdrawn if either was withdrawn");
-  await expect(dialog).toContainText("listed on the public programme");
+  await expect(dialog).toContainText("moves only ownership references");
+  await expect(dialog).toContainText("Roster status, removals, publication, task state, profile fields, and account ownership stay untouched");
   await dialog.getByRole("button", { name: `Merge and keep ${priya!.email}` }).click();
 
   await expect(page).toHaveURL(/\/organizer\/directory\/psn_priya_raman$/);
   await expect(page.locator(".toast")).toContainText("merged into");
+  await expect(page.locator(".toast")).toContainText("ownership reference");
   await expect(page.getByRole("heading", { level: 1, name: priya!.name })).toBeVisible();
 });

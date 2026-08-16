@@ -124,15 +124,17 @@ included in public speaker, session, schedule, or embed responses.
 Greenroom flags conservative duplicate candidates when normalized email
 addresses match, or when both normalized name and organization match. A merge
 requires the organizer to choose the record to keep and confirm the choice. The
-other record is archived with an attributed merge log, while its proposal,
-session, onboarding-task, and file relationships move to the kept record.
-Greenroom refuses to merge records owned by two different accounts.
+other record is archived with an attributed merge log. Greenroom first plans
+each ownership-reference move, then applies only those moves. References that
+already exist on the kept side stay on their original rows and appear in the
+merge result.
 
-At any event both records speak at, the merge also resolves their roster status:
-the kept record takes the further-along status, except that withdrawal wins
-whenever either record was withdrawn. Because the public programme lists a
-speaker on roster status alone, a merge can therefore add a person to it or take
-them off it. The confirmation dialog says so before the organizer commits.
+A merge never combines profile fields, accounts, roster status, removals,
+publication state, task progress, or assignment provenance. It refuses when
+archiving either record would require choosing between conflicting same-event
+standing or session participation. It also refuses whenever the merge would
+adopt the archived record's account. Resolve those facts in their owning
+workflow before merging the identity records.
 
 The existing **Speakers** roster remains the workflow view for the active event,
 including its event-scoped CSV import. Staged sourcing, pushing a directory
