@@ -1,6 +1,7 @@
 // ABOUTME: Walks the real front door in a browser: sign up, land as an attendee, get granted.
 // ABOUTME: Confirms an attendee sees a readable refusal at every workspace rather than a JSON body.
 import { expect, test } from "@playwright/test";
+import { execFileSync } from "node:child_process";
 
 function uniqueEmail(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1e6)}@example.com`;
@@ -20,6 +21,22 @@ async function signUp(page: import("@playwright/test").Page, name: string, email
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password").fill("Greenroom!2027");
   await page.getByRole("button", { name: "Create account" }).click();
+}
+
+/** Seeds the historical access-only state whose server gate remains covered by issue #149. */
+function grantSpeakerAccessWithoutProfile(userId: string): void {
+  const now = Date.now();
+  const grantId = `rgrant_access_only_${crypto.randomUUID().replaceAll("-", "")}`;
+  const statement = [
+    "insert into role_grant",
+    "(id, user_id, role, source, granted_at, created_at, updated_at)",
+    `values ('${grantId}', '${userId}', 'speaker', 'backfill', ${now}, ${now}, ${now})`,
+  ].join(" ");
+  execFileSync(
+    "npx",
+    ["wrangler", "d1", "execute", "session-bored", "--local", "--command", statement],
+    { stdio: "pipe" },
+  );
 }
 
 test("the submitter gate explains sign-in and then admits an authenticated account", async ({ page }) => {
@@ -110,6 +127,38 @@ test("an organizer grants access from People and takes it back", async ({ page }
   await row.getByRole("button", { name: "Remove speaker" }).click();
   await expect(page.locator(".toast")).toContainText("no longer has speaker access");
   await expect(row.getByText("attendee", { exact: true })).toBeVisible();
+});
+
+test("an organizer promotes an account into a speaker profile it can complete", async ({ page }) => {
+  const email = uniqueEmail("promoted-speaker");
+  await signUp(page, "Promoted Speaker", email);
+  await page.request.post("/api/auth/sign-out", { data: {} });
+
+  await page.goto("/login");
+  await page.getByLabel("Email").fill("sbek-organizer@example.com");
+  await page.getByLabel("Password").fill("SbekTest!2027-org");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page).toHaveURL(/\/organizer$/);
+
+  await page.goto("/organizer/people");
+  await page.getByLabel("Search people").fill(email);
+  const row = page.locator(".people-row").filter({ hasText: email });
+  await expect(row).toBeVisible();
+  await row.getByRole("button", { name: "Grant speaker" }).click();
+  await expect(page.locator(".toast")).toContainText("is now a speaker");
+  await page.request.post("/api/auth/sign-out", { data: {} });
+
+  await page.goto("/login");
+  await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Password").fill("Greenroom!2027");
+  await page.getByRole("button", { name: "Sign in" }).click();
+
+  await expect(page).toHaveURL(/\/speaker$/);
+  await expect(page.getByRole("heading", { name: "Promoted Speaker", level: 1 })).toBeVisible();
+  await expect(page.getByText("No speaker profile is linked to this account yet.")).toHaveCount(0);
+  await page.getByLabel("Bio").fill("A profile completed after organizer promotion.");
+  await page.getByRole("button", { name: "Save profile" }).click();
+  await expect(page.locator(".toast")).toContainText("Profile saved");
 });
 
 test("an invitation is recorded as pending, not as access", async ({ page }) => {
@@ -311,8 +360,13 @@ test("an account granted two areas can reach both of them from the header", asyn
   await reviewerGrant.getByRole("group", { name: "Review round" }).getByRole("checkbox").first().check();
   await reviewerGrant.getByRole("button", { name: "Grant reviewer with remit" }).click();
   await expect(page.locator(".toast")).toContainText("is now a reviewer");
-  await row.getByRole("button", { name: "Grant speaker" }).click();
-  await expect(page.locator(".toast")).toContainText("is now a speaker");
+  const people = await page.request.get("/api/people");
+  expect(people.status()).toBe(200);
+  const peoplePayload = await people.json() as { items: Array<{ id: string; email: string }> };
+  const account = peoplePayload.items
+    .find((person) => person.email === email);
+  expect(account).toBeDefined();
+  grantSpeakerAccessWithoutProfile(account!.id);
   await page.request.post("/api/auth/sign-out", { data: {} });
 
   await page.goto("/login");

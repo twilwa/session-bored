@@ -103,6 +103,7 @@ export function PeoplePage() {
           body: JSON.stringify({
             role,
             notify,
+            ...(role === "speaker" ? { speakerEventId: eventId } : {}),
             ...(remit === undefined ? {} : { reviewerRemit: { eventId, ...remit } }),
           }),
         },

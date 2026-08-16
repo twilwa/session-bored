@@ -6,11 +6,13 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import {
   events,
+  people,
   reviewerInvites,
   reviewerRoundPools,
   reviewerTracks,
   reviewRounds,
   roleGrants,
+  speakers,
   tracks,
   users,
 } from "../../db/schema.ts";
@@ -147,12 +149,35 @@ describe("organizer People surface", () => {
     const granted = await request(`/api/people/${userId}/grants`, {
       method: "POST",
       headers: { cookie, "content-type": "application/json" },
-      body: JSON.stringify({ role: "speaker", note: "Filling in for a withdrawn talk." }),
+      body: JSON.stringify({
+        role: "speaker",
+        speakerEventId: "evt_devflow_conf_2027",
+        note: "Filling in for a withdrawn talk.",
+      }),
     });
     expect(granted.status).toBe(200);
     // Silent by default: nothing is emailed unless the organizer ticks notify.
     expect(await granted.json()).toEqual({ granted: true, role: "speaker", notified: false });
-    expect((await request("/api/speaker/content", { headers: { cookie: attendeeCookie } })).status).toBe(200);
+    const speakerContent = await request("/api/speaker/content", { headers: { cookie: attendeeCookie } });
+    expect(speakerContent.status).toBe(200);
+    expect((await speakerContent.json<{ profile: { name: string; email: string } | null }>()).profile).toMatchObject({
+      name: "Rising Star",
+      email: "rising-star@example.com",
+    });
+
+    const [speakerProfile] = await drizzle(env.DB)
+      .select({ personUserId: people.userId, eventId: speakers.eventId })
+      .from(people)
+      .innerJoin(speakers, eq(speakers.personId, people.id))
+      .where(and(eq(people.userId, userId), eq(speakers.eventId, "evt_devflow_conf_2027")));
+    expect(speakerProfile).toEqual({ personUserId: userId, eventId: "evt_devflow_conf_2027" });
+
+    const completedProfile = await request("/api/portal/profile", {
+      method: "PATCH",
+      headers: { cookie: attendeeCookie, "content-type": "application/json" },
+      body: JSON.stringify({ bio: "Ready to complete onboarding." }),
+    });
+    expect(completedProfile.status).toBe(200);
 
     const afterGrant = await loadPeople(cookie);
     const person = afterGrant.items.find((item) => item.id === userId);
