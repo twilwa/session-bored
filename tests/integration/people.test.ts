@@ -374,6 +374,93 @@ describe("organizer People surface", () => {
     expect((await queue.json<{ items: unknown[] }>()).items.length).toBeGreaterThan(0);
   });
 
+  it("replaces a revoked reviewer's previous remit when granting a narrower one", async () => {
+    await request("/api/health");
+    const cookie = await organizerCookie();
+    const eventId = "evt_devflow_conf_2027";
+    const email = "narrowed-regrant@example.com";
+    await signUp("Narrowed Regrant", email);
+    const userId = await userIdFor(email);
+    const headers = { cookie, "content-type": "application/json" };
+
+    const createdRound = await request(`/api/review/events/${eventId}/rounds`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ name: `Regrant ${crypto.randomUUID()}`, status: "open" }),
+    });
+    expect(createdRound.status).toBe(201);
+
+    const config = await (await request(`/api/review/events/${eventId}/config`, { headers: { cookie } })).json<{
+      tracks: Array<{ id: string }>;
+      rounds: Array<{ id: string; status: string; reviewerPool: Array<{ id: string }> }>;
+      reviewers: Array<{ id: string; trackIds: string[] }>;
+    }>();
+    const wideTrackIds = config.tracks.map((track) => track.id);
+    const wideRoundIds = config.rounds.filter((round) => round.status === "open").map((round) => round.id);
+    expect(wideTrackIds.length).toBeGreaterThan(1);
+    expect(wideRoundIds.length).toBeGreaterThan(1);
+
+    const grantReviewer = async (reviewerUserId: string, trackIds: string[], roundIds: string[]) => {
+      const response = await request(`/api/people/${reviewerUserId}/grants`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ role: "reviewer", reviewerRemit: { eventId, trackIds, roundIds } }),
+      });
+      expect(response.status).toBe(200);
+    };
+    const readRemit = async (reviewerUserId: string) => {
+      const effective = await (await request(`/api/review/events/${eventId}/config`, { headers: { cookie } })).json<{
+        rounds: Array<{ id: string; reviewerPool: Array<{ id: string }> }>;
+        reviewers: Array<{ id: string; trackIds: string[] }>;
+      }>();
+      return {
+        trackIds: effective.reviewers.find((reviewer) => reviewer.id === reviewerUserId)?.trackIds.toSorted(),
+        roundIds: effective.rounds
+          .filter((round) => round.reviewerPool.some((reviewer) => reviewer.id === reviewerUserId))
+          .map((round) => round.id)
+          .toSorted(),
+      };
+    };
+    await grantReviewer(userId, wideTrackIds, wideRoundIds);
+    expect((await request(`/api/people/${userId}/grants/reviewer`, { method: "DELETE", headers: { cookie } })).status)
+      .toBe(200);
+
+    const narrowTrackIds = [wideTrackIds[0]!];
+    const narrowRoundIds = [wideRoundIds[0]!];
+    await grantReviewer(userId, narrowTrackIds, narrowRoundIds);
+    expect(await readRemit(userId)).toEqual({
+      trackIds: narrowTrackIds.toSorted(),
+      roundIds: narrowRoundIds.toSorted(),
+    });
+
+    const otherEmail = "isolated-regrant@example.com";
+    await signUp("Isolated Regrant", otherEmail);
+    const otherUserId = await userIdFor(otherEmail);
+    const otherTrackIds = [wideTrackIds.at(-1)!];
+    const otherRoundIds = [wideRoundIds.at(-1)!];
+    await grantReviewer(otherUserId, otherTrackIds, otherRoundIds);
+
+    await grantReviewer(userId, narrowTrackIds, narrowRoundIds);
+    expect(await readRemit(userId)).toEqual({
+      trackIds: narrowTrackIds.toSorted(),
+      roundIds: narrowRoundIds.toSorted(),
+    });
+    expect(await readRemit(otherUserId)).toEqual({
+      trackIds: otherTrackIds.toSorted(),
+      roundIds: otherRoundIds.toSorted(),
+    });
+
+    await grantReviewer(userId, wideTrackIds, wideRoundIds);
+    expect(await readRemit(userId)).toEqual({
+      trackIds: wideTrackIds.toSorted(),
+      roundIds: wideRoundIds.toSorted(),
+    });
+    expect(await readRemit(otherUserId)).toEqual({
+      trackIds: otherTrackIds.toSorted(),
+      roundIds: otherRoundIds.toSorted(),
+    });
+  });
+
   it("keeps an invitation resendable while no email sender is connected", async () => {
     await request("/api/health");
     const cookie = await organizerCookie();
