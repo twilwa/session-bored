@@ -1,7 +1,6 @@
 // ABOUTME: Walks the real front door in a browser: sign up, land as an attendee, get granted.
 // ABOUTME: Confirms an attendee sees a readable refusal at every workspace rather than a JSON body.
 import { expect, test } from "@playwright/test";
-import { execFileSync } from "node:child_process";
 
 function uniqueEmail(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1e6)}@example.com`;
@@ -24,19 +23,12 @@ async function signUp(page: import("@playwright/test").Page, name: string, email
 }
 
 /** Seeds the historical access-only state whose server gate remains covered by issue #149. */
-function grantSpeakerAccessWithoutProfile(userId: string): void {
-  const now = Date.now();
-  const grantId = `rgrant_access_only_${crypto.randomUUID().replaceAll("-", "")}`;
-  const statement = [
-    "insert into role_grant",
-    "(id, user_id, role, source, granted_at, created_at, updated_at)",
-    `values ('${grantId}', '${userId}', 'speaker', 'backfill', ${now}, ${now}, ${now})`,
-  ].join(" ");
-  execFileSync(
-    "npx",
-    ["wrangler", "d1", "execute", "session-bored", "--local", "--command", statement],
-    { stdio: "pipe" },
-  );
+async function grantSpeakerAccessWithoutProfile(
+  page: import("@playwright/test").Page,
+  userId: string,
+): Promise<void> {
+  const response = await page.request.post("/api/e2e/speaker-access-only", { data: { userId } });
+  expect(response.status()).toBe(201);
 }
 
 test("the submitter gate explains sign-in and then admits an authenticated account", async ({ page }) => {
@@ -366,7 +358,7 @@ test("an account granted two areas can reach both of them from the header", asyn
   const account = peoplePayload.items
     .find((person) => person.email === email);
   expect(account).toBeDefined();
-  grantSpeakerAccessWithoutProfile(account!.id);
+  await grantSpeakerAccessWithoutProfile(page, account!.id);
   await page.request.post("/api/auth/sign-out", { data: {} });
 
   await page.goto("/login");
