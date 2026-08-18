@@ -44,7 +44,7 @@ import submitterRoutes from "./routes/submitter.ts";
 import { ensureSeeded, fixture, fixtureIds } from "./seed.ts";
 import { livingSessionSpeakers, livingSubmissionParticipants, sentDecisionLetter } from "./speaker-access.ts";
 import { activeSpeakerEventFor } from "./speaker-event.ts";
-import { filenameForVersion } from "./storage/file-versions.ts";
+import { fileVersionSummary } from "./storage/file-versions.ts";
 import { limitsForTask } from "./storage/files.ts";
 import dispositionRoutes from "./routes/disposition.ts";
 import rosterRoutes from "./routes/roster.ts";
@@ -634,15 +634,12 @@ app.get("/api/speaker/content", requireAccess("speaker"), async (context) => {
       versions: storedVersions
         .filter((version) => version.fileId === file.fileId)
         .sort((first, second) => second.version - first.version)
-        .map((version): PortalFileVersion => ({
-          version: version.version,
-          displayName: filenameForVersion(version, file.displayName),
-          sizeBytes: version.sizeBytes,
-          uploadedAt: version.uploadedAt.toISOString(),
-          current: version.latest,
-          supersededByMerge: version.supersededByMergeId !== null,
-          downloadUrl: `/api/portal/files/${file.fileId}?version=${version.version}&eventId=${encodeURIComponent(eventId)}`,
-        })),
+        .map((version): PortalFileVersion => fileVersionSummary(
+          version,
+          file.displayName,
+          eventId,
+          version.supersededByMergeId !== null,
+        )),
     })),
   });
 });

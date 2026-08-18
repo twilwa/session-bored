@@ -37,6 +37,7 @@ function pdfUpload(
 
 const eventId = "evt_devflow_conf_2027";
 const organizerCredentials = { email: "sbek-organizer@example.com", password: "SbekTest!2027-org" };
+const reviewerCredentials = { email: "sbek-reviewer@example.com", password: "SbekTest!2027-rev" };
 const priyaCredentials = { email: "sbek-speaker@example.com", password: "SbekTest!2027-spk" };
 const marcusCredentials = { email: "sbek-speaker2@example.com", password: "SbekTest!2027-spk2" };
 
@@ -256,6 +257,7 @@ describe("content management", () => {
         displayName: "final-deck.pdf",
         sizeBytes: 4,
         current: true,
+        supersededByMerge: false,
         downloadUrl: `/api/portal/files/${first.fileId}?version=2&eventId=${eventId}`,
       }),
       expect.objectContaining({
@@ -263,6 +265,7 @@ describe("content management", () => {
         displayName: "draft-deck.pdf",
         sizeBytes: 4,
         current: false,
+        supersededByMerge: false,
         downloadUrl: `/api/portal/files/${first.fileId}?version=1&eventId=${eventId}`,
       }),
     ]);
@@ -272,6 +275,40 @@ describe("content management", () => {
     });
     expect(previousVersion.status).toBe(200);
     expect(previousVersion.headers.get("content-disposition")).toBe('attachment; filename="draft-deck.pdf"');
+  });
+
+  it("keeps the organizer listing private and refuses another speaker's file download", async () => {
+    const upload = await request("/api/portal/tasks/tsk_fixture_3/files", {
+      method: "POST",
+      headers: { cookie: priyaCookie },
+      body: pdfUpload("organizer-only-history.pdf"),
+    });
+    expect(upload.status).toBe(201);
+    const { fileId } = await upload.json<{ fileId: string }>();
+    const reviewerCookie = await signIn(reviewerCredentials.email, reviewerCredentials.password);
+
+    for (const cookie of [priyaCookie, marcusCookie, reviewerCookie]) {
+      const listing = await request(`/api/events/${eventId}/deliverables`, { headers: { cookie } });
+      expect(listing.status).toBe(403);
+      await expect(listing.json()).resolves.toEqual({ error: "forbidden" });
+    }
+
+    const anotherSpeakerDownload = await request(`/api/portal/files/${fileId}`, {
+      headers: { cookie: marcusCookie },
+    });
+    expect(anotherSpeakerDownload.status).toBe(403);
+    await expect(anotherSpeakerDownload.json()).resolves.toEqual({ error: "forbidden" });
+
+    const reviewerDownload = await request(`/api/portal/files/${fileId}`, {
+      headers: { cookie: reviewerCookie },
+    });
+    expect(reviewerDownload.status).toBe(403);
+    await expect(reviewerDownload.json()).resolves.toEqual({ error: "forbidden" });
+
+    const organizerDownload = await request(`/api/portal/files/${fileId}`, {
+      headers: { cookie: organizerCookie },
+    });
+    expect(organizerDownload.status).toBe(200);
   });
 
   it("downloads selected deliverables as a ZIP containing their latest versions", async () => {
