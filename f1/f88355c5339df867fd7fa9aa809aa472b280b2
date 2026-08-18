@@ -1,0 +1,21 @@
+playwright.config.ts
+  s_44cd3006146635::t_4e7c676f71797c 18
+vitest.integration.config.ts
+  s_44cd3006146635::t_4e7c676f71797c 16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "f1f88355c5339df867fd7fa9aa809aa472b280b2",
+  "prompts": {},
+  "sessions": {
+    "s_44cd3006146635": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a016ea-a2dc-7200-99c3-bd9864d48610",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
