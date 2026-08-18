@@ -325,11 +325,8 @@ describe("organizer People surface", () => {
     const previousContent = await request(`/api/speaker/content?eventId=${otherEventId}`, {
       headers: { cookie: speakerCookie },
     });
-    expect(previousContent.status).toBe(200);
-    expect(await previousContent.json()).toMatchObject({
-      profile: { speakerId: otherSpeakerId },
-      sessions: [{ id: otherSessionId }],
-    });
+    expect(previousContent.status).toBe(400);
+    await expect(previousContent.json()).resolves.toEqual({ error: "invalid_speaker_event" });
 
     const crossEventWrite = await request(
       `/api/portal/sessions/${otherSessionId}?eventId=evt_devflow_conf_2027`,
@@ -346,7 +343,8 @@ describe("organizer People surface", () => {
       headers: { cookie: speakerCookie, "content-type": "application/json" },
       body: JSON.stringify({ title: "Previous event revision" }),
     });
-    expect(previousEventWrite.status).toBe(200);
+    expect(previousEventWrite.status).toBe(400);
+    await expect(previousEventWrite.json()).resolves.toEqual({ error: "invalid_speaker_event" });
   });
 
   it("refuses a role that is not grantable, including attendee", async () => {

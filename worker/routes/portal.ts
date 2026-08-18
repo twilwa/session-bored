@@ -20,6 +20,7 @@ import {
 import { holdsAccess } from "../access.ts";
 import type { AuthSession } from "../auth.ts";
 import { livingSessionSpeakers } from "../speaker-access.ts";
+import { activeSpeakerEventFor } from "../speaker-event.ts";
 import { filenameForVersion } from "../storage/file-versions.ts";
 import {
   buildStorageKey,
@@ -59,11 +60,11 @@ const requireSpeaker = createMiddleware<PortalEnvironment>(async (context, next)
 });
 
 const requireSpeakerEvent = createMiddleware<PortalEnvironment>(async (context, next) => {
-  const eventId = context.req.query("eventId");
-  if (eventId === undefined || eventId.length === 0) {
-    return context.json({ error: "speaker_event_required" }, 400);
+  const speakerEvent = activeSpeakerEventFor(context.req.query("eventId"));
+  if ("error" in speakerEvent) {
+    return context.json({ error: speakerEvent.error }, 400);
   }
-  context.set("speakerEventId", eventId);
+  context.set("speakerEventId", speakerEvent.id);
   await next();
 });
 
@@ -533,6 +534,11 @@ portalRoutes.get("/portal/files/:fileId", async (context) => {
   if (!holdsAccess(roles, "speaker") && !holdsAccess(roles, "organizer")) {
     return context.json({ error: "forbidden" }, 403);
   }
+  const organizerAccess = holdsAccess(roles, "organizer");
+  const speakerEvent = organizerAccess ? null : activeSpeakerEventFor(context.req.query("eventId"));
+  if (speakerEvent !== null && "error" in speakerEvent) {
+    return context.json({ error: speakerEvent.error }, 400);
+  }
   const database = drizzle(context.env.DB);
   const [file] = await database
     .select()
@@ -543,12 +549,8 @@ portalRoutes.get("/portal/files/:fileId", async (context) => {
   }
   // An organizer reads any file; a speaker only their own, so a speaker who is also an
   // organizer keeps the wider reach rather than being narrowed by the second grant.
-  if (!holdsAccess(roles, "organizer")) {
-    const eventId = context.req.query("eventId");
-    if (eventId === undefined || eventId.length === 0) {
-      return context.json({ error: "speaker_event_required" }, 400);
-    }
-    const profile = await loadOwnSpeaker(database, user.id, eventId);
+  if (speakerEvent !== null) {
+    const profile = await loadOwnSpeaker(database, user.id, speakerEvent.id);
     if (profile === undefined || profile.speakerId !== file.speakerId) {
       return context.json({ error: "forbidden" }, 403);
     }

@@ -577,13 +577,23 @@ describe("content management", () => {
       headers: { cookie: priyaCookie, "content-type": "application/json" },
       body: JSON.stringify({ body: "This comment belongs to the previous event." }),
     });
-    expect(previousEventWrite.status).toBe(201);
+    expect(previousEventWrite.status).toBe(400);
+    await expect(previousEventWrite.json()).resolves.toEqual({ error: "invalid_speaker_event" });
     const previousEventRead = await request(`${commentsPath}?eventId=${previousEventId}`, {
       headers: { cookie: priyaCookie },
     });
-    expect(previousEventRead.status).toBe(200);
-    await expect(previousEventRead.json()).resolves.toMatchObject({
-      items: [{ body: "This comment belongs to the previous event." }],
-    });
+    expect(previousEventRead.status).toBe(400);
+    await expect(previousEventRead.json()).resolves.toEqual({ error: "invalid_speaker_event" });
+
+    const previousFileDownload = await request(
+      `/api/portal/files/${previousFileId}?eventId=${previousEventId}`,
+      { headers: { cookie: priyaCookie } },
+    );
+    expect(previousFileDownload.status).toBe(400);
+    await expect(previousFileDownload.json()).resolves.toEqual({ error: "invalid_speaker_event" });
+
+    const organizerThread = await request(commentsPath, { headers: { cookie: organizerCookie } });
+    expect(organizerThread.status).toBe(200);
+    await expect(organizerThread.json()).resolves.toEqual({ items: [] });
   });
 });

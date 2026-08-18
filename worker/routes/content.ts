@@ -25,6 +25,7 @@ import { streamContentArchive } from "../content-archive.ts";
 import { chunkIds } from "../d1-limits.ts";
 import { deriveDeliverableStatus } from "../deliverable-status.ts";
 import { resolveEffectiveRoles } from "../roles.ts";
+import { activeSpeakerEventFor, type ActiveSpeakerEventError } from "../speaker-event.ts";
 import { filenameForVersion } from "../storage/file-versions.ts";
 import { getFileObject } from "../storage/files.ts";
 
@@ -56,7 +57,15 @@ async function fileAccess(
   userId: string,
   roles: readonly Role[],
   eventId: string | undefined,
-): Promise<"allowed" | "event_required" | "forbidden" | "not_found"> {
+): Promise<"allowed" | ActiveSpeakerEventError | "forbidden" | "not_found"> {
+  const organizerAccess = holdsAccess(roles, "organizer");
+  if (!organizerAccess && !holdsAccess(roles, "speaker")) {
+    return "forbidden";
+  }
+  const speakerEvent = organizerAccess ? null : activeSpeakerEventFor(eventId);
+  if (speakerEvent !== null && "error" in speakerEvent) {
+    return speakerEvent.error;
+  }
   const [file] = await database
     .select({ id: files.id, eventId: files.eventId, speakerId: files.speakerId })
     .from(files)
@@ -64,16 +73,13 @@ async function fileAccess(
   if (file === undefined) {
     return "not_found";
   }
-  if (holdsAccess(roles, "organizer")) {
+  if (organizerAccess) {
     return "allowed";
   }
-  if (!holdsAccess(roles, "speaker") || file.speakerId === null) {
+  if (file.speakerId === null || speakerEvent === null) {
     return "forbidden";
   }
-  if (eventId === undefined || eventId.length === 0) {
-    return "event_required";
-  }
-  if (file.eventId !== eventId) {
+  if (file.eventId !== speakerEvent.id) {
     return "forbidden";
   }
   const [owned] = await database
@@ -82,7 +88,7 @@ async function fileAccess(
     .innerJoin(people, eq(speakers.personId, people.id))
     .where(and(
       eq(speakers.id, file.speakerId),
-      eq(speakers.eventId, eventId),
+      eq(speakers.eventId, speakerEvent.id),
       eq(people.userId, userId),
       isNull(speakers.deletedAt),
       isNull(people.deletedAt),
@@ -367,8 +373,8 @@ contentRoutes.get("/api/content/files/:fileId/comments", async (context) => {
   if (access === "not_found") {
     return context.json({ error: "not_found" }, 404);
   }
-  if (access === "event_required") {
-    return context.json({ error: "speaker_event_required" }, 400);
+  if (access === "speaker_event_required" || access === "invalid_speaker_event") {
+    return context.json({ error: access }, 400);
   }
   if (access === "forbidden") {
     return context.json({ error: "forbidden" }, 403);
@@ -416,8 +422,8 @@ contentRoutes.post("/api/content/files/:fileId/comments", async (context) => {
   if (access === "not_found") {
     return context.json({ error: "not_found" }, 404);
   }
-  if (access === "event_required") {
-    return context.json({ error: "speaker_event_required" }, 400);
+  if (access === "speaker_event_required" || access === "invalid_speaker_event") {
+    return context.json({ error: access }, 400);
   }
   if (access === "forbidden") {
     return context.json({ error: "forbidden" }, 403);

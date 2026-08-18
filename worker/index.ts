@@ -43,6 +43,7 @@ import reviewRoutes from "./routes/review.ts";
 import submitterRoutes from "./routes/submitter.ts";
 import { ensureSeeded, fixture, fixtureIds } from "./seed.ts";
 import { livingSessionSpeakers, livingSubmissionParticipants, sentDecisionLetter } from "./speaker-access.ts";
+import { activeSpeakerEventFor } from "./speaker-event.ts";
 import { filenameForVersion } from "./storage/file-versions.ts";
 import { limitsForTask } from "./storage/files.ts";
 import dispositionRoutes from "./routes/disposition.ts";
@@ -417,10 +418,11 @@ app.get("/api/speaker/content", requireAccess("speaker"), async (context) => {
   if (user === null) {
     return context.json({ error: "authentication_required" }, 401);
   }
-  const eventId = context.req.query("eventId");
-  if (eventId === undefined || eventId.length === 0) {
-    return context.json({ error: "speaker_event_required" }, 400);
+  const speakerEvent = activeSpeakerEventFor(context.req.query("eventId"));
+  if ("error" in speakerEvent) {
+    return context.json({ error: speakerEvent.error }, 400);
   }
+  const eventId = speakerEvent.id;
   const database = drizzle(context.env.DB);
   const [profile] = await database
     .select({
