@@ -55,9 +55,10 @@ async function fileAccess(
   fileId: string,
   userId: string,
   roles: readonly Role[],
-): Promise<"allowed" | "forbidden" | "not_found"> {
+  eventId: string | undefined,
+): Promise<"allowed" | "event_required" | "forbidden" | "not_found"> {
   const [file] = await database
-    .select({ id: files.id, speakerId: files.speakerId })
+    .select({ id: files.id, eventId: files.eventId, speakerId: files.speakerId })
     .from(files)
     .where(and(eq(files.id, fileId), isNull(files.deletedAt)));
   if (file === undefined) {
@@ -69,12 +70,19 @@ async function fileAccess(
   if (!holdsAccess(roles, "speaker") || file.speakerId === null) {
     return "forbidden";
   }
+  if (eventId === undefined || eventId.length === 0) {
+    return "event_required";
+  }
+  if (file.eventId !== eventId) {
+    return "forbidden";
+  }
   const [owned] = await database
     .select({ id: speakers.id })
     .from(speakers)
     .innerJoin(people, eq(speakers.personId, people.id))
     .where(and(
       eq(speakers.id, file.speakerId),
+      eq(speakers.eventId, eventId),
       eq(people.userId, userId),
       isNull(speakers.deletedAt),
       isNull(people.deletedAt),
@@ -349,9 +357,18 @@ contentRoutes.get("/api/content/files/:fileId/comments", async (context) => {
     return context.json({ error: "authentication_required" }, 401);
   }
   const database = drizzle(context.env.DB);
-  const access = await fileAccess(database, context.req.param("fileId"), user.id, roles);
+  const access = await fileAccess(
+    database,
+    context.req.param("fileId"),
+    user.id,
+    roles,
+    context.req.query("eventId"),
+  );
   if (access === "not_found") {
     return context.json({ error: "not_found" }, 404);
+  }
+  if (access === "event_required") {
+    return context.json({ error: "speaker_event_required" }, 400);
   }
   if (access === "forbidden") {
     return context.json({ error: "forbidden" }, 403);
@@ -389,9 +406,18 @@ contentRoutes.post("/api/content/files/:fileId/comments", async (context) => {
     return context.json({ error: "authentication_required" }, 401);
   }
   const database = drizzle(context.env.DB);
-  const access = await fileAccess(database, context.req.param("fileId"), user.id, roles);
+  const access = await fileAccess(
+    database,
+    context.req.param("fileId"),
+    user.id,
+    roles,
+    context.req.query("eventId"),
+  );
   if (access === "not_found") {
     return context.json({ error: "not_found" }, 404);
+  }
+  if (access === "event_required") {
+    return context.json({ error: "speaker_event_required" }, 400);
   }
   if (access === "forbidden") {
     return context.json({ error: "forbidden" }, 403);

@@ -390,7 +390,7 @@ export function PortalPage() {
                     <strong>{file.taskTitle}</strong>
                     <a href={file.downloadUrl}>{file.displayName}</a>
                     <FileVersionList versions={file.versions} />
-                    <FileComments fileId={file.fileId} />
+                    <FileComments eventId={eventId} fileId={file.fileId} />
                   </div>
                   <StatusChip tone={file.archived ? "neutral" : "good"}>
                     {file.archived ? "Archived task" : file.supersededByMerge ? "Superseded — merged" : `Version ${file.version}`}

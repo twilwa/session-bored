@@ -52,6 +52,7 @@ type PeopleEnvironment = {
 };
 
 const peopleRoutes = new Hono<PeopleEnvironment>();
+const activeSpeakerEventId = "evt_devflow_conf_2027";
 
 type OpenReviewerInvite = {
   id: string;
@@ -469,10 +470,13 @@ peopleRoutes.post("/api/people/:userId/grants", requireOrganizer, async (context
     if (typeof payload.speakerEventId !== "string" || payload.speakerEventId.length === 0) {
       return context.json({ error: "speaker_event_required" }, 400);
     }
+    if (payload.speakerEventId !== activeSpeakerEventId) {
+      return context.json({ error: "invalid_speaker_event" }, 400);
+    }
     const [event] = await database
       .select({ id: events.id })
       .from(events)
-      .where(eq(events.id, payload.speakerEventId));
+      .where(and(eq(events.id, payload.speakerEventId), isNull(events.deletedAt)));
     if (event === undefined) {
       return context.json({ error: "invalid_speaker_event" }, 400);
     }

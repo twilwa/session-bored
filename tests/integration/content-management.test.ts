@@ -1,8 +1,11 @@
 // ABOUTME: Verifies organizer deliverable tracking, bulk archives, and cross-role discussion through real HTTP routes.
 // ABOUTME: Proves uploads, deadlines, approval state, event scope, and speaker ownership stay connected.
 import { env } from "cloudflare:workers";
+import { eq } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/d1";
 import { unzipSync } from "fflate";
 import { beforeEach, describe, expect, it } from "vitest";
+import { events, files, people, speakers } from "../../db/schema.ts";
 import type { PortalFileVersion } from "../../shared/api.ts";
 import worker from "../../worker/index.ts";
 import { withActiveSpeakerEvent } from "./portal-request.ts";
@@ -489,14 +492,14 @@ describe("content management", () => {
       author: { name: "Jordan Alvarez", role: "organizer" },
     });
 
-    const speakerComment = await request(`/api/content/files/${fileId}/comments`, {
+    const speakerComment = await request(`/api/content/files/${fileId}/comments?eventId=${eventId}`, {
       method: "POST",
       headers: { cookie: priyaCookie, "content-type": "application/json" },
       body: JSON.stringify({ body: "Updated — the title is now on slide one." }),
     });
     expect(speakerComment.status).toBe(201);
 
-    const ownerThread = await request(`/api/content/files/${fileId}/comments`, {
+    const ownerThread = await request(`/api/content/files/${fileId}/comments?eventId=${eventId}`, {
       headers: { cookie: priyaCookie },
     });
     expect(ownerThread.status).toBe(200);
@@ -511,11 +514,76 @@ describe("content management", () => {
     expect(thread.items.every((comment) => comment.id.startsWith("cmt_") && !Number.isNaN(Date.parse(comment.createdAt)))).toBe(true);
 
     expect((await request(`/api/portal/files/${fileId}`, { headers: { cookie: marcusCookie } })).status).toBe(403);
-    expect((await request(`/api/content/files/${fileId}/comments`, { headers: { cookie: marcusCookie } })).status).toBe(403);
-    expect((await request(`/api/content/files/${fileId}/comments`, {
+    expect((await request(`/api/content/files/${fileId}/comments?eventId=${eventId}`, { headers: { cookie: marcusCookie } })).status).toBe(403);
+    expect((await request(`/api/content/files/${fileId}/comments?eventId=${eventId}`, {
       method: "POST",
       headers: { cookie: marcusCookie, "content-type": "application/json" },
       body: JSON.stringify({ body: "I should never reach this thread." }),
     })).status).toBe(403);
+  });
+
+  it("requires a matching event before a multi-event speaker can read or write file comments", async () => {
+    const database = drizzle(env.DB);
+    const [person] = await database
+      .select({ id: people.id })
+      .from(people)
+      .where(eq(people.email, priyaCredentials.email));
+    expect(person).toBeDefined();
+    const suffix = crypto.randomUUID().slice(0, 8);
+    const previousEventId = `evt_comment_history_${suffix}`;
+    const previousSpeakerId = `spk_comment_history_${suffix}`;
+    const previousFileId = `fil_comment_history_${suffix}`;
+    await database.insert(events).values({
+      id: previousEventId,
+      slug: `comment-history-${suffix}`,
+      name: "Previous Comment Conference",
+      startDate: "2026-03-01",
+      endDate: "2026-03-02",
+      venue: "Portland",
+      timezone: "America/Los_Angeles",
+    });
+    await database.insert(speakers).values({
+      id: previousSpeakerId,
+      personId: person!.id,
+      eventId: previousEventId,
+      status: "confirmed",
+    });
+    await database.insert(files).values({
+      id: previousFileId,
+      eventId: previousEventId,
+      speakerId: previousSpeakerId,
+      kind: "deliverable",
+      displayName: "previous-event-slides.pdf",
+    });
+
+    const commentsPath = `/api/content/files/${previousFileId}/comments`;
+    const missingEvent = await request(commentsPath, { headers: { cookie: priyaCookie } });
+    expect(missingEvent.status).toBe(400);
+    await expect(missingEvent.json()).resolves.toEqual({ error: "speaker_event_required" });
+
+    const activeEventRead = await request(`${commentsPath}?eventId=${eventId}`, {
+      headers: { cookie: priyaCookie },
+    });
+    expect(activeEventRead.status).toBe(403);
+    const activeEventWrite = await request(`${commentsPath}?eventId=${eventId}`, {
+      method: "POST",
+      headers: { cookie: priyaCookie, "content-type": "application/json" },
+      body: JSON.stringify({ body: "This event must not reach the previous thread." }),
+    });
+    expect(activeEventWrite.status).toBe(403);
+
+    const previousEventWrite = await request(`${commentsPath}?eventId=${previousEventId}`, {
+      method: "POST",
+      headers: { cookie: priyaCookie, "content-type": "application/json" },
+      body: JSON.stringify({ body: "This comment belongs to the previous event." }),
+    });
+    expect(previousEventWrite.status).toBe(201);
+    const previousEventRead = await request(`${commentsPath}?eventId=${previousEventId}`, {
+      headers: { cookie: priyaCookie },
+    });
+    expect(previousEventRead.status).toBe(200);
+    await expect(previousEventRead.json()).resolves.toMatchObject({
+      items: [{ body: "This comment belongs to the previous event." }],
+    });
   });
 });

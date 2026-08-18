@@ -292,6 +292,15 @@ describe("organizer People surface", () => {
       speakerId: otherSpeakerId,
     });
 
+    const refusedPreviousPromotion = await request(`/api/people/${userId}/grants`, {
+      method: "POST",
+      headers: { cookie: organizer, "content-type": "application/json" },
+      body: JSON.stringify({ role: "speaker", speakerEventId: otherEventId }),
+    });
+    expect(refusedPreviousPromotion.status).toBe(400);
+    await expect(refusedPreviousPromotion.json()).resolves.toEqual({ error: "invalid_speaker_event" });
+    expect((await loadPeople(organizer)).items.find((item) => item.id === userId)?.grants).toEqual([]);
+
     const promoted = await request(`/api/people/${userId}/grants`, {
       method: "POST",
       headers: { cookie: organizer, "content-type": "application/json" },
