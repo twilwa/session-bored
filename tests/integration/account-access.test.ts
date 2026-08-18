@@ -24,9 +24,10 @@ import { applyReviewerRemit, redeemReviewerInvites } from "../../worker/reviewer
 import { resolveEffectiveRole } from "../../worker/roles.ts";
 import reviewRoutes from "../../worker/routes/review.ts";
 import worker from "../../worker/index.ts";
+import { withActiveSpeakerEvent } from "./portal-request.ts";
 
 async function request(path: string, init?: RequestInit): Promise<Response> {
-  return worker.request(`http://example.test${path}`, init, env);
+  return worker.request(`http://example.test${withActiveSpeakerEvent(path)}`, init, env);
 }
 
 async function signUp(name: string, email: string, body: Record<string, unknown> = {}): Promise<string> {

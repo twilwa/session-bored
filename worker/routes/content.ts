@@ -156,6 +156,7 @@ contentRoutes.get("/api/events/:eventId/deliverables", requireOrganizer, async (
     ));
 
   const now = Date.now();
+  const eventId = context.req.param("eventId");
   const items = rows.map((row) => {
     const delivered = row.fileId !== null
       && row.version !== null
@@ -190,7 +191,7 @@ contentRoutes.get("/api/events/:eventId/deliverables", requireOrganizer, async (
           mimeType: row.mimeType,
           sizeBytes: row.sizeBytes,
           uploadedAt: row.uploadedAt,
-          downloadUrl: `/api/portal/files/${row.fileId}`,
+          downloadUrl: `/api/portal/files/${row.fileId}?eventId=${encodeURIComponent(eventId)}`,
           versions: storedVersions
             .filter((version) => version.fileId === row.fileId)
             .sort((first, second) => second.version - first.version)
@@ -201,7 +202,7 @@ contentRoutes.get("/api/events/:eventId/deliverables", requireOrganizer, async (
               uploadedAt: version.uploadedAt,
               current: version.latest,
               supersededByMerge: version.supersededByMergeId !== null,
-              downloadUrl: `/api/portal/files/${row.fileId}?version=${version.version}`,
+              downloadUrl: `/api/portal/files/${row.fileId}?version=${version.version}&eventId=${encodeURIComponent(eventId)}`,
             })),
         },
     } as const;

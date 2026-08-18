@@ -153,6 +153,38 @@ test("an organizer promotes an account into a speaker profile it can complete", 
   await expect(page.locator(".toast")).toContainText("Profile saved");
 });
 
+test("an organizer repairs a speaker grant created before promotion prepared profiles", async ({ page }) => {
+  const email = uniqueEmail("legacy-speaker-grant");
+  await signUp(page, "Legacy Speaker Grant", email);
+  await expect(page).toHaveURL(/\/schedule\/mine$/);
+  const session = await page.request.get("/api/session");
+  const userId = (await session.json() as { user: { id: string } }).user.id;
+  await page.request.post("/api/auth/sign-out", { data: {} });
+
+  await page.goto("/login");
+  await page.getByLabel("Email").fill("sbek-organizer@example.com");
+  await page.getByLabel("Password").fill("SbekTest!2027-org");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page).toHaveURL(/\/organizer$/);
+  await grantSpeakerAccessWithoutProfile(page, userId);
+
+  await page.goto("/organizer/people");
+  await page.getByLabel("Search people").fill(email);
+  const row = page.locator(".people-row").filter({ hasText: email });
+  await expect(row.getByRole("button", { name: "Prepare speaker profile" })).toBeVisible();
+  await row.getByRole("button", { name: "Prepare speaker profile" }).click();
+  await expect(page.locator(".toast")).toContainText("speaker profile is ready");
+  await page.request.post("/api/auth/sign-out", { data: {} });
+
+  await page.goto("/login");
+  await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Password").fill("Greenroom!2027");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page).toHaveURL(/\/speaker$/);
+  await expect(page.getByRole("heading", { name: "Legacy Speaker Grant", level: 1 })).toBeVisible();
+  await expect(page.getByText("No speaker profile is linked to this account yet.")).toHaveCount(0);
+});
+
 test("an invitation is recorded as pending, not as access", async ({ page }) => {
   await page.goto("/login");
   await page.getByLabel("Email").fill("sbek-organizer@example.com");

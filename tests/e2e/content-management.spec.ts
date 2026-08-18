@@ -23,7 +23,7 @@ test("speaker and organizer discuss a delivered file from the content board", as
   await slidesTask.locator("input[type='file']").setInputFiles("fixtures/slides.pdf");
   await expect(page.getByText("File uploaded. Task marked complete.")).toBeVisible();
   const refreshedContentPromise = page.waitForResponse((response) => (
-    response.url().endsWith("/api/speaker/content") && response.status() === 200
+    response.url().includes("/api/speaker/content?eventId=") && response.status() === 200
   ));
   await slidesTask.locator("input[type='file']").setInputFiles("fixtures/slides.pdf");
   const refreshedContent = await refreshedContentPromise;

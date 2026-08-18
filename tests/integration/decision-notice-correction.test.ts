@@ -4,6 +4,7 @@ import { env } from "cloudflare:workers";
 import { drizzle } from "drizzle-orm/d1";
 import { beforeEach, describe, expect, it } from "vitest";
 import worker from "../../worker/index.ts";
+import { withActiveSpeakerEvent } from "./portal-request.ts";
 import type { EmailDelivery } from "../../worker/email.ts";
 import { cancelDecisionNotice, retryDecisionNotice } from "../../worker/email/decision-notices.ts";
 
@@ -11,7 +12,7 @@ const eventId = "evt_devflow_conf_2027";
 const submissionId = "sub_ci_monorepo";
 
 async function request(path: string, init?: RequestInit): Promise<Response> {
-  return worker.request(`http://example.test${path}`, init, env);
+  return worker.request(`http://example.test${withActiveSpeakerEvent(path)}`, init, env);
 }
 
 async function signIn(email: string, password: string): Promise<string> {

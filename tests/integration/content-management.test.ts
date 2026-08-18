@@ -5,9 +5,10 @@ import { unzipSync } from "fflate";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { PortalFileVersion } from "../../shared/api.ts";
 import worker from "../../worker/index.ts";
+import { withActiveSpeakerEvent } from "./portal-request.ts";
 
 async function request(path: string, init?: RequestInit): Promise<Response> {
-  return worker.request(`http://example.test${path}`, init, env);
+  return worker.request(`http://example.test${withActiveSpeakerEvent(path)}`, init, env);
 }
 
 async function signIn(email: string, password: string): Promise<string> {
@@ -101,7 +102,7 @@ describe("content management", () => {
         displayName: "devflow-slides.pdf",
         version: uploaded.version,
         sizeBytes: 4,
-        downloadUrl: `/api/portal/files/${uploaded.fileId}`,
+        downloadUrl: `/api/portal/files/${uploaded.fileId}?eventId=${eventId}`,
       },
     });
   });
@@ -252,14 +253,14 @@ describe("content management", () => {
         displayName: "final-deck.pdf",
         sizeBytes: 4,
         current: true,
-        downloadUrl: `/api/portal/files/${first.fileId}?version=2`,
+        downloadUrl: `/api/portal/files/${first.fileId}?version=2&eventId=${eventId}`,
       }),
       expect.objectContaining({
         version: 1,
         displayName: "draft-deck.pdf",
         sizeBytes: 4,
         current: false,
-        downloadUrl: `/api/portal/files/${first.fileId}?version=1`,
+        downloadUrl: `/api/portal/files/${first.fileId}?version=1&eventId=${eventId}`,
       }),
     ]);
 

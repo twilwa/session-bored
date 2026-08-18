@@ -4,9 +4,10 @@ import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
 import { pictureRequestFileTypes } from "../../shared/api.ts";
 import worker from "../../worker/index.ts";
+import { withActiveSpeakerEvent } from "./portal-request.ts";
 
 async function request(path: string, init?: RequestInit): Promise<Response> {
-  return worker.request(`http://example.test${path}`, init, env);
+  return worker.request(`http://example.test${withActiveSpeakerEvent(path)}`, init, env);
 }
 
 async function signIn(email: string, password: string): Promise<string> {
@@ -652,13 +653,13 @@ describe("speaker portal content", () => {
       displayName: "qa-slides-v2.pdf",
       sizeBytes: 6,
       current: true,
-      downloadUrl: `/api/portal/files/${fileId}?version=${numbers[0] ?? 0}`,
+      downloadUrl: `/api/portal/files/${fileId}?version=${numbers[0] ?? 0}&eventId=evt_devflow_conf_2027`,
     });
     expect(versions[1]).toMatchObject({
       displayName: "qa-slides-v1.pdf",
       sizeBytes: 4,
       current: false,
-      downloadUrl: `/api/portal/files/${fileId}?version=${numbers[1] ?? 0}`,
+      downloadUrl: `/api/portal/files/${fileId}?version=${numbers[1] ?? 0}&eventId=evt_devflow_conf_2027`,
     });
     expect(versions.filter((version) => version.current)).toHaveLength(1);
     expect(Number.isNaN(Date.parse(versions[0]?.uploadedAt ?? ""))).toBe(false);

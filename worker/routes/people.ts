@@ -457,6 +457,7 @@ peopleRoutes.post("/api/people/:userId/grants", requireOrganizer, async (context
   }
   const database = drizzle(context.env.DB);
   const userId = context.req.param("userId");
+  let speakerProfileReady = false;
   const [account] = await database
     .select({ id: users.id, name: users.name, email: users.email })
     .from(users)
@@ -479,6 +480,7 @@ peopleRoutes.post("/api/people/:userId/grants", requireOrganizer, async (context
     if (preparation === "account_conflict") {
       return context.json({ error: "speaker_account_conflict" }, 409);
     }
+    speakerProfileReady = true;
   }
   const reviewerRemit = payload.role === "reviewer" ? readReviewerRemit(payload.reviewerRemit) : null;
   if (payload.role === "reviewer" && reviewerRemit === null) {
@@ -522,7 +524,12 @@ peopleRoutes.post("/api/people/:userId/grants", requireOrganizer, async (context
   const notified = payload.notify === true && granted
     ? (await sendRoleGrantEmail(context.env, { recipient: account, role: payload.role })).status === "sent"
     : false;
-  return context.json({ granted, role: payload.role, notified });
+  return context.json({
+    granted,
+    role: payload.role,
+    notified,
+    ...(payload.role === "speaker" ? { speakerProfileReady } : {}),
+  });
 });
 
 peopleRoutes.delete("/api/people/:userId/grants/:role", requireOrganizer, async (context) => {

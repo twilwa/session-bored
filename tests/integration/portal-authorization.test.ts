@@ -3,9 +3,10 @@
 import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
 import worker from "../../worker/index.ts";
+import { withActiveSpeakerEvent } from "./portal-request.ts";
 
 async function request(path: string, init?: RequestInit): Promise<Response> {
-  return worker.request(`http://example.test${path}`, init, env);
+  return worker.request(`http://example.test${withActiveSpeakerEvent(path)}`, init, env);
 }
 
 async function signIn(email: string, password: string): Promise<string> {
@@ -79,6 +80,28 @@ describe("speaker portal authorization", () => {
       const response = await request(operation.path, operation.init);
       expect(response.status, operation.path).toBe(401);
     }
+  });
+
+  it("requires an event before resolving a speaker profile or accepting its writes", async () => {
+    const content = await worker.request(
+      "http://example.test/api/speaker/content",
+      { headers: { cookie: priyaCookie } },
+      env,
+    );
+    expect(content.status).toBe(400);
+    await expect(content.json()).resolves.toEqual({ error: "speaker_event_required" });
+
+    const update = await worker.request(
+      "http://example.test/api/portal/profile",
+      {
+        method: "PATCH",
+        headers: { cookie: priyaCookie, "content-type": "application/json" },
+        body: JSON.stringify({ bio: "Missing event scope" }),
+      },
+      env,
+    );
+    expect(update.status).toBe(400);
+    await expect(update.json()).resolves.toEqual({ error: "speaker_event_required" });
   });
 
   it("blocks organizers and reviewers from every speaker-only portal mutation", async () => {

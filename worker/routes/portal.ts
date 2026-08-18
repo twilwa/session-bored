@@ -41,6 +41,7 @@ type PortalEnvironment = {
     authSession: AuthSession["session"] | null;
     authUser: AuthSession["user"] | null;
     roles: Role[] | null;
+    speakerEventId: string;
   };
 };
 
@@ -57,6 +58,15 @@ const requireSpeaker = createMiddleware<PortalEnvironment>(async (context, next)
   await next();
 });
 
+const requireSpeakerEvent = createMiddleware<PortalEnvironment>(async (context, next) => {
+  const eventId = context.req.query("eventId");
+  if (eventId === undefined || eventId.length === 0) {
+    return context.json({ error: "speaker_event_required" }, 400);
+  }
+  context.set("speakerEventId", eventId);
+  await next();
+});
+
 interface SpeakerProfile {
   speakerId: string;
   personId: string;
@@ -66,12 +76,13 @@ interface SpeakerProfile {
 async function loadOwnSpeaker(
   database: ReturnType<typeof drizzle>,
   userId: string,
+  eventId: string,
 ): Promise<SpeakerProfile | undefined> {
   const [profile] = await database
     .select({ speakerId: speakers.id, personId: people.id, eventId: speakers.eventId })
     .from(people)
     .innerJoin(speakers, eq(speakers.personId, people.id))
-    .where(eq(people.userId, userId));
+    .where(and(eq(people.userId, userId), eq(speakers.eventId, eventId)));
   return profile;
 }
 
@@ -187,13 +198,13 @@ function fileVersionFilter(requestedVersion: string | undefined) {
   return Number.isInteger(version) ? eq(fileVersions.version, version) : null;
 }
 
-portalRoutes.patch("/portal/profile", requireSpeaker, async (context) => {
+portalRoutes.patch("/portal/profile", requireSpeaker, requireSpeakerEvent, async (context) => {
   const user = context.get("authUser");
   if (user === null) {
     return context.json({ error: "authentication_required" }, 401);
   }
   const database = drizzle(context.env.DB);
-  const profile = await loadOwnSpeaker(database, user.id);
+  const profile = await loadOwnSpeaker(database, user.id, context.get("speakerEventId"));
   if (profile === undefined) {
     return context.json({ error: "forbidden" }, 403);
   }
@@ -310,13 +321,13 @@ async function storeSpeakerHeadshot(
   return { fileId, version, headshotUrl };
 }
 
-portalRoutes.post("/portal/profile/headshot", requireSpeaker, async (context) => {
+portalRoutes.post("/portal/profile/headshot", requireSpeaker, requireSpeakerEvent, async (context) => {
   const user = context.get("authUser");
   if (user === null) {
     return context.json({ error: "authentication_required" }, 401);
   }
   const database = drizzle(context.env.DB);
-  const profile = await loadOwnSpeaker(database, user.id);
+  const profile = await loadOwnSpeaker(database, user.id, context.get("speakerEventId"));
   if (profile === undefined) {
     return context.json({ error: "forbidden" }, 403);
   }
@@ -332,13 +343,13 @@ portalRoutes.post("/portal/profile/headshot", requireSpeaker, async (context) =>
   return context.json(await storeSpeakerHeadshot(context.env, database, profile, file, bytes, user.id), 201);
 });
 
-portalRoutes.patch("/portal/sessions/:sessionId", requireSpeaker, async (context) => {
+portalRoutes.patch("/portal/sessions/:sessionId", requireSpeaker, requireSpeakerEvent, async (context) => {
   const user = context.get("authUser");
   if (user === null) {
     return context.json({ error: "authentication_required" }, 401);
   }
   const database = drizzle(context.env.DB);
-  const profile = await loadOwnSpeaker(database, user.id);
+  const profile = await loadOwnSpeaker(database, user.id, context.get("speakerEventId"));
   if (profile === undefined) {
     return context.json({ error: "forbidden" }, 403);
   }
@@ -390,13 +401,13 @@ portalRoutes.patch("/portal/sessions/:sessionId", requireSpeaker, async (context
   return context.json(updated);
 });
 
-portalRoutes.patch("/portal/tasks/:taskId", requireSpeaker, async (context) => {
+portalRoutes.patch("/portal/tasks/:taskId", requireSpeaker, requireSpeakerEvent, async (context) => {
   const user = context.get("authUser");
   if (user === null) {
     return context.json({ error: "authentication_required" }, 401);
   }
   const database = drizzle(context.env.DB);
-  const profile = await loadOwnSpeaker(database, user.id);
+  const profile = await loadOwnSpeaker(database, user.id, context.get("speakerEventId"));
   if (profile === undefined) {
     return context.json({ error: "forbidden" }, 403);
   }
@@ -436,13 +447,13 @@ portalRoutes.patch("/portal/tasks/:taskId", requireSpeaker, async (context) => {
   return context.json(updated);
 });
 
-portalRoutes.post("/portal/tasks/:taskId/files", requireSpeaker, async (context) => {
+portalRoutes.post("/portal/tasks/:taskId/files", requireSpeaker, requireSpeakerEvent, async (context) => {
   const user = context.get("authUser");
   if (user === null) {
     return context.json({ error: "authentication_required" }, 401);
   }
   const database = drizzle(context.env.DB);
-  const profile = await loadOwnSpeaker(database, user.id);
+  const profile = await loadOwnSpeaker(database, user.id, context.get("speakerEventId"));
   if (profile === undefined) {
     return context.json({ error: "forbidden" }, 403);
   }
@@ -533,7 +544,11 @@ portalRoutes.get("/portal/files/:fileId", async (context) => {
   // An organizer reads any file; a speaker only their own, so a speaker who is also an
   // organizer keeps the wider reach rather than being narrowed by the second grant.
   if (!holdsAccess(roles, "organizer")) {
-    const profile = await loadOwnSpeaker(database, user.id);
+    const eventId = context.req.query("eventId");
+    if (eventId === undefined || eventId.length === 0) {
+      return context.json({ error: "speaker_event_required" }, 400);
+    }
+    const profile = await loadOwnSpeaker(database, user.id, eventId);
     if (profile === undefined || profile.speakerId !== file.speakerId) {
       return context.json({ error: "forbidden" }, 403);
     }

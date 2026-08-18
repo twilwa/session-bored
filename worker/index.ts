@@ -417,6 +417,10 @@ app.get("/api/speaker/content", requireAccess("speaker"), async (context) => {
   if (user === null) {
     return context.json({ error: "authentication_required" }, 401);
   }
+  const eventId = context.req.query("eventId");
+  if (eventId === undefined || eventId.length === 0) {
+    return context.json({ error: "speaker_event_required" }, 400);
+  }
   const database = drizzle(context.env.DB);
   const [profile] = await database
     .select({
@@ -435,7 +439,7 @@ app.get("/api/speaker/content", requireAccess("speaker"), async (context) => {
     })
     .from(people)
     .innerJoin(speakers, eq(speakers.personId, people.id))
-    .where(eq(people.userId, user.id));
+    .where(and(eq(people.userId, user.id), eq(speakers.eventId, eventId)));
   if (profile === undefined) {
     return context.json({ profile: null, submissions: [], sessions: [], tasks: [], files: [] });
   }
@@ -443,7 +447,7 @@ app.get("/api/speaker/content", requireAccess("speaker"), async (context) => {
     .select({ id: submissions.id, title: submissions.title, status: submissions.status })
     .from(submissions)
     .innerJoin(submissionSpeakers, livingSubmissionParticipants())
-    .where(eq(submissionSpeakers.personId, profile.personId));
+    .where(and(eq(submissionSpeakers.personId, profile.personId), eq(submissions.eventId, eventId)));
   const ownSessions = await database
     .select({
       id: sessions.id,
@@ -571,7 +575,7 @@ app.get("/api/speaker/content", requireAccess("speaker"), async (context) => {
       version: file.version,
       supersededByMerge: file.supersededByMergeId !== null,
       archived: file.taskDeletedAt !== null || file.assignmentDeletedAt !== null,
-      downloadUrl: `/api/portal/files/${file.fileId}`,
+      downloadUrl: `/api/portal/files/${file.fileId}?eventId=${encodeURIComponent(eventId)}`,
       versions: storedVersions
         .filter((version) => version.fileId === file.fileId)
         .sort((first, second) => second.version - first.version)
@@ -582,7 +586,7 @@ app.get("/api/speaker/content", requireAccess("speaker"), async (context) => {
           uploadedAt: version.uploadedAt.toISOString(),
           current: version.latest,
           supersededByMerge: version.supersededByMergeId !== null,
-          downloadUrl: `/api/portal/files/${file.fileId}?version=${version.version}`,
+          downloadUrl: `/api/portal/files/${file.fileId}?version=${version.version}&eventId=${encodeURIComponent(eventId)}`,
         })),
     })),
   });

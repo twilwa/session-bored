@@ -12,6 +12,8 @@ import {
   reviewerTracks,
   reviewRounds,
   roleGrants,
+  sessions,
+  sessionSpeakers,
   speakers,
   tracks,
   users,
@@ -157,8 +159,15 @@ describe("organizer People surface", () => {
     });
     expect(granted.status).toBe(200);
     // Silent by default: nothing is emailed unless the organizer ticks notify.
-    expect(await granted.json()).toEqual({ granted: true, role: "speaker", notified: false });
-    const speakerContent = await request("/api/speaker/content", { headers: { cookie: attendeeCookie } });
+    expect(await granted.json()).toEqual({
+      granted: true,
+      role: "speaker",
+      notified: false,
+      speakerProfileReady: true,
+    });
+    const speakerContent = await request("/api/speaker/content?eventId=evt_devflow_conf_2027", {
+      headers: { cookie: attendeeCookie },
+    });
     expect(speakerContent.status).toBe(200);
     expect((await speakerContent.json<{ profile: { name: string; email: string } | null }>()).profile).toMatchObject({
       name: "Rising Star",
@@ -172,7 +181,7 @@ describe("organizer People surface", () => {
       .where(and(eq(people.userId, userId), eq(speakers.eventId, "evt_devflow_conf_2027")));
     expect(speakerProfile).toEqual({ personUserId: userId, eventId: "evt_devflow_conf_2027" });
 
-    const completedProfile = await request("/api/portal/profile", {
+    const completedProfile = await request("/api/portal/profile?eventId=evt_devflow_conf_2027", {
       method: "PATCH",
       headers: { cookie: attendeeCookie, "content-type": "application/json" },
       body: JSON.stringify({ bio: "Ready to complete onboarding." }),
@@ -197,6 +206,138 @@ describe("organizer People surface", () => {
 
     const afterRevoke = await loadPeople(cookie);
     expect(afterRevoke.items.find((item) => item.id === userId)?.grants).toEqual([]);
+  });
+
+  it("repairs the profile chain for an account that already holds speaker access", async () => {
+    await request("/api/health");
+    const cookie = await organizerCookie();
+    const speakerCookie = await signUp("Earlier Promotion", "earlier-promotion@example.com");
+    const userId = await userIdFor("earlier-promotion@example.com");
+    const organizerId = await userIdFor("sbek-organizer@example.com");
+    const database = drizzle(env.DB);
+    await database.insert(roleGrants).values({
+      userId,
+      role: "speaker",
+      source: "organizer",
+      grantedByUserId: organizerId,
+      grantedAt: new Date(),
+    });
+
+    const before = await request("/api/speaker/content?eventId=evt_devflow_conf_2027", {
+      headers: { cookie: speakerCookie },
+    });
+    expect((await before.json<{ profile: unknown }>()).profile).toBeNull();
+
+    const repaired = await request(`/api/people/${userId}/grants`, {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ role: "speaker", speakerEventId: "evt_devflow_conf_2027" }),
+    });
+    expect(repaired.status).toBe(200);
+    expect(await repaired.json()).toMatchObject({ granted: false, role: "speaker" });
+
+    const after = await request("/api/speaker/content?eventId=evt_devflow_conf_2027", {
+      headers: { cookie: speakerCookie },
+    });
+    expect((await after.json<{ profile: { name: string } | null }>()).profile).toMatchObject({
+      name: "Earlier Promotion",
+    });
+  });
+
+  it("binds promoted speakers and their portal actions to the active event", async () => {
+    await request("/api/health");
+    const organizer = await organizerCookie();
+    const speakerCookie = await signUp("Returning Speaker", "returning-promotion@example.com");
+    const userId = await userIdFor("returning-promotion@example.com");
+    const database = drizzle(env.DB);
+    const suffix = crypto.randomUUID().slice(0, 8);
+    const otherEventId = `evt_previous_${suffix}`;
+    const personId = `psn_previous_${suffix}`;
+    const otherSpeakerId = `spk_previous_${suffix}`;
+    const otherSessionId = `ses_previous_${suffix}`;
+    await database.insert(events).values({
+      id: otherEventId,
+      slug: `previous-${suffix}`,
+      name: "Previous Conference",
+      startDate: "2026-05-12",
+      endDate: "2026-05-14",
+      venue: "Portland",
+      timezone: "America/Los_Angeles",
+    });
+    await database.insert(people).values({
+      id: personId,
+      userId,
+      name: "Returning Speaker",
+      email: "returning-promotion@example.com",
+    });
+    await database.insert(speakers).values({
+      id: otherSpeakerId,
+      personId,
+      eventId: otherEventId,
+      status: "confirmed",
+    });
+    await database.insert(sessions).values({
+      id: otherSessionId,
+      eventId: otherEventId,
+      title: "Previous conference session",
+      abstract: "This belongs only to the previous event.",
+      contentStatus: "draft",
+      scheduleStatus: "tbd",
+      directEntry: true,
+      icsUid: `${otherSessionId}@session-bored`,
+    });
+    await database.insert(sessionSpeakers).values({
+      id: `ssnr_previous_${suffix}`,
+      sessionId: otherSessionId,
+      speakerId: otherSpeakerId,
+    });
+
+    const promoted = await request(`/api/people/${userId}/grants`, {
+      method: "POST",
+      headers: { cookie: organizer, "content-type": "application/json" },
+      body: JSON.stringify({ role: "speaker", speakerEventId: "evt_devflow_conf_2027" }),
+    });
+    expect(promoted.status).toBe(200);
+    const [activeSpeaker] = await database
+      .select({ id: speakers.id })
+      .from(speakers)
+      .where(and(eq(speakers.personId, personId), eq(speakers.eventId, "evt_devflow_conf_2027")));
+    expect(activeSpeaker).toBeDefined();
+
+    const content = await request("/api/speaker/content?eventId=evt_devflow_conf_2027", {
+      headers: { cookie: speakerCookie },
+    });
+    expect(content.status).toBe(200);
+    expect(await content.json()).toMatchObject({
+      profile: { speakerId: activeSpeaker!.id },
+      sessions: [],
+    });
+
+    const previousContent = await request(`/api/speaker/content?eventId=${otherEventId}`, {
+      headers: { cookie: speakerCookie },
+    });
+    expect(previousContent.status).toBe(200);
+    expect(await previousContent.json()).toMatchObject({
+      profile: { speakerId: otherSpeakerId },
+      sessions: [{ id: otherSessionId }],
+    });
+
+    const crossEventWrite = await request(
+      `/api/portal/sessions/${otherSessionId}?eventId=evt_devflow_conf_2027`,
+      {
+        method: "PATCH",
+        headers: { cookie: speakerCookie, "content-type": "application/json" },
+        body: JSON.stringify({ title: "Wrong event write" }),
+      },
+    );
+    expect(crossEventWrite.status).toBe(403);
+
+    const previousEventWrite = await request(`/api/portal/sessions/${otherSessionId}?eventId=${otherEventId}`, {
+      method: "PATCH",
+      headers: { cookie: speakerCookie, "content-type": "application/json" },
+      body: JSON.stringify({ title: "Previous event revision" }),
+    });
+    expect(previousEventWrite.status).toBe(200);
   });
 
   it("refuses a role that is not grantable, including attendee", async () => {
