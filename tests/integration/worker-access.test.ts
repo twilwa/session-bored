@@ -26,13 +26,16 @@ describe("Worker foundation", () => {
 
     expect(demoResponse.status).toBe(302);
     expect(demoResponse.headers.get("location")).toBe("/reviewer");
-    const cookie = demoResponse.headers.get("set-cookie")?.split(";")[0] ?? "";
-    expect(cookie).not.toBe("");
+    const setCookie = demoResponse.headers.get("set-cookie") ?? "";
+    expect(setCookie).toMatch(/^greenroom_demo=/);
+    expect(setCookie).toContain("HttpOnly");
+    expect(setCookie).toMatch(/Max-Age=[1-9][0-9]*/);
+    const cookie = setCookie.split(";")[0] ?? "";
 
     const sessionResponse = await request("/api/session", { headers: { cookie } });
     expect(sessionResponse.status).toBe(200);
     const session = await sessionResponse.json<{ user: { name: string; role: string } }>();
-    expect(session.user).toMatchObject({ name: "Sam Whitfield", role: "reviewer" });
+    expect(session.user).toMatchObject({ name: "Greenroom Demo Reviewer", role: "reviewer" });
 
     const queueResponse = await request("/api/review/queue", { headers: { cookie } });
     expect(queueResponse.status).toBe(200);
@@ -69,6 +72,51 @@ describe("Worker foundation", () => {
 
       expect(response.status, `${mutation.method} ${mutation.path}`).toBe(403);
       await expect(response.json()).resolves.toEqual({ error: "demo_read_only" });
+    }
+  });
+
+  it("keeps demo access reviewer-only when its database account gains another grant", async () => {
+    const demoResponse = await request("/demo", { redirect: "manual" });
+    const cookie = demoResponse.headers.get("set-cookie")?.split(";")[0] ?? "";
+    const sessionResponse = await request("/api/session", { headers: { cookie } });
+    const session = await sessionResponse.json<{ user: { id: string } }>();
+    const grantId = "rgrant_demo_escalation_test";
+    const now = Date.now();
+    await env.DB.prepare(
+      "insert into role_grant (id, user_id, role, source, granted_at, created_at, updated_at) values (?, ?, 'organizer', 'organizer', ?, ?, ?)",
+    ).bind(grantId, session.user.id, now, now, now).run();
+
+    try {
+      const refreshedSession = await request("/api/session", { headers: { cookie } });
+      const payload = await refreshedSession.json<{ user: { roles: string[] } }>();
+      expect(payload.user.roles).toEqual(["reviewer"]);
+      expect((await request("/api/events", { headers: { cookie } })).status).toBe(403);
+    } finally {
+      await env.DB.prepare("delete from role_grant where id = ?").bind(grantId).run();
+    }
+  });
+
+  it("pins the demo reviewer to the seeded fixture remit", async () => {
+    const demoResponse = await request("/demo", { redirect: "manual" });
+    const cookie = demoResponse.headers.get("set-cookie")?.split(";")[0] ?? "";
+    const sessionResponse = await request("/api/session", { headers: { cookie } });
+    const session = await sessionResponse.json<{ user: { id: string } }>();
+    const now = Date.now();
+    await env.DB.prepare(
+      "insert into submission (id, event_id, form_id, form_version, submitter_person_id, status, is_draft, title, created_at, updated_at) values ('sub_demo_scope_escape', 'evt_devflow_conf_2027', 'frm_devflow_cfp_2027', 1, 'psn_priya_raman', 'under_review', 0, 'Outside the demo fixture remit', ?, ?)",
+    ).bind(now, now).run();
+    await env.DB.prepare(
+      "insert into review_assignment (id, round_id, submission_id, reviewer_user_id, status, assigned_at, created_at, updated_at) values ('asn_demo_scope_escape', 'rnd_initial_review', 'sub_demo_scope_escape', ?, 'assigned', ?, ?, ?)",
+    ).bind(session.user.id, now, now, now).run();
+
+    try {
+      const queueResponse = await request("/api/review/queue", { headers: { cookie } });
+      const queue = await queueResponse.json<{ items: Array<{ submissionId: string }> }>();
+      expect(queue.items.map((item) => item.submissionId)).not.toContain("sub_demo_scope_escape");
+      expect((await request("/api/review/submissions/sub_demo_scope_escape", { headers: { cookie } })).status).toBe(403);
+    } finally {
+      await env.DB.prepare("delete from review_assignment where id = 'asn_demo_scope_escape'").run();
+      await env.DB.prepare("delete from submission where id = 'sub_demo_scope_escape'").run();
     }
   });
 

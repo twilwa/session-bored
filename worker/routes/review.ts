@@ -33,6 +33,7 @@ import type {
 } from "../../shared/api.ts";
 import type { AuthSession } from "../auth.ts";
 import { createAuth } from "../auth.ts";
+import { fixtureIds } from "../seed.ts";
 import { reviewProposalAnswers } from "../review-answers.ts";
 import { draftOutstandingReviewReminders } from "../email/review-reminders.ts";
 import { distributeReviewAssignments } from "../review-distribution.ts";
@@ -45,11 +46,13 @@ type ReviewEnvironment = {
   Variables: {
     authSession: AuthSession["session"] | null;
     authUser: AuthSession["user"] | null;
+    demoAccount: boolean;
     roles: Role[] | null;
   };
 };
 
 const reviewRoutes = new Hono<ReviewEnvironment>();
+const demoSubmissionIds = new Set<string>(fixtureIds.submissions);
 
 function requireRole(requiredRole: "organizer" | "reviewer") {
   return createMiddleware<ReviewEnvironment>(async (context, next) => {
@@ -234,7 +237,11 @@ reviewRoutes.get("/review/queue", requireRole("reviewer"), async (context) => {
     return context.json({ error: "authentication_required" }, 401);
   }
   const items = await reviewerQueue(drizzle(context.env.DB), user.id);
-  return context.json({ items });
+  return context.json({
+    items: context.get("demoAccount")
+      ? items.filter((item) => demoSubmissionIds.has(item.submissionId))
+      : items,
+  });
 });
 
 export async function reviewerSubmission(
@@ -260,6 +267,9 @@ reviewRoutes.get("/review/submissions/:submissionId", async (context) => {
   }
   const database = drizzle(context.env.DB);
   const submissionId = context.req.param("submissionId");
+  if (context.get("demoAccount") && !demoSubmissionIds.has(submissionId)) {
+    return context.json({ error: "forbidden" }, 403);
+  }
   const requestedRoundId = context.req.query("roundId");
   // An organizer reads any proposal; a reviewer only their own remit. Somebody granted both
   // keeps the wider reach rather than being narrowed by the second grant.

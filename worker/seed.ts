@@ -37,6 +37,7 @@ import { grantRole } from "./roles.ts";
 export const fixtureIds = {
   event: "evt_devflow_conf_2027",
   form: "frm_devflow_cfp_2027",
+  demoReviewerAccount: "usr_greenroom_demo_reviewer",
   people: {
     organizer: "psn_jordan_alvarez",
     speaker: "psn_priya_raman",
@@ -101,6 +102,54 @@ async function ensureIdentity(
   return seeded.id;
 }
 
+async function ensureDemoReviewer(database: ReturnType<typeof drizzle>): Promise<void> {
+  const fixtureKey = "fixture.devflow-2027.demo-reviewer.v1";
+  const [marker] = await database
+    .select({ id: systemState.id })
+    .from(systemState)
+    .where(eq(systemState.key, fixtureKey));
+  if (marker !== undefined) {
+    return;
+  }
+
+  await database
+    .insert(users)
+    .values({
+      id: fixtureIds.demoReviewerAccount,
+      name: fixture.identities.demoReviewer.name,
+      email: fixture.identities.demoReviewer.email,
+      emailVerified: true,
+      role: "reviewer",
+    })
+    .onConflictDoNothing();
+  await database
+    .insert(reviewerRoundPools)
+    .values({
+      id: "rpool_demo_initial",
+      roundId: fixtureIds.round,
+      reviewerUserId: fixtureIds.demoReviewerAccount,
+    })
+    .onConflictDoNothing();
+  await database
+    .insert(reviewAssignments)
+    .values({
+      id: "asn_demo_ci_monorepo",
+      roundId: fixtureIds.round,
+      submissionId: fixtureIds.submissions[0],
+      reviewerUserId: fixtureIds.demoReviewerAccount,
+      status: "assigned",
+    })
+    .onConflictDoNothing();
+  await database
+    .insert(systemState)
+    .values({
+      id: "sys_fixture_devflow_2027_demo_reviewer_v1",
+      key: fixtureKey,
+      value: { seeded: "true" },
+    })
+    .onConflictDoNothing();
+}
+
 export async function ensureSeeded(env: CloudflareBindings): Promise<void> {
   const database = drizzle(env.DB);
   const headshotFixtureKey = "fixture.devflow-2027.headshots.v1";
@@ -153,6 +202,7 @@ export async function ensureSeeded(env: CloudflareBindings): Promise<void> {
         })
         .onConflictDoNothing();
     }
+    await ensureDemoReviewer(database);
     return;
   }
 
@@ -529,6 +579,7 @@ export async function ensureSeeded(env: CloudflareBindings): Promise<void> {
       status: "assigned",
     })
     .onConflictDoNothing();
+  await ensureDemoReviewer(database);
 
   const publicSessionPublishedAt = new Date("2027-04-01T12:00:00Z");
   await database

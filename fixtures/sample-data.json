@@ -57,6 +57,11 @@
       "email": "sbek-reviewer@example.com",
       "password": "SbekTest!2027-rev",
       "role": "Program Committee Reviewer"
+    },
+    "demoReviewer": {
+      "name": "Greenroom Demo Reviewer",
+      "email": "greenroom-demo-reviewer@example.com",
+      "role": "Read-only demo reviewer"
     }
   },
   "submissions": [

@@ -80,14 +80,14 @@ const prepareRequest = createMiddleware<AppEnvironment>(async (context, next) =>
     const [demoUser] = await drizzle(context.env.DB)
       .select()
       .from(users)
-      .where(eq(users.email, fixture.identities.reviewer.email));
+      .where(eq(users.email, fixture.identities.demoReviewer.email));
     if (demoUser === undefined) {
       throw new Error("Seeded demo reviewer is missing");
     }
     context.set("authSession", null);
     context.set("authUser", demoUser);
     context.set("demoAccount", true);
-    context.set("roles", await resolveGrantedRoles(drizzle(context.env.DB), demoUser.id));
+    context.set("roles", ["reviewer"]);
     await next();
     return;
   }
