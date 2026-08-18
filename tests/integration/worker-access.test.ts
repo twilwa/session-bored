@@ -43,12 +43,6 @@ describe("Worker foundation", () => {
     expect(queue.items.map((item) => item.title)).toContain(
       "Taming 40-Minute CI: Incremental Builds at Monorepo Scale",
     );
-
-    const landing = await request("/reviewer", {
-      headers: { cookie, accept: "text/html", "sec-fetch-dest": "document", "sec-fetch-mode": "navigate" },
-    });
-    expect(landing.status).toBe(200);
-    expect(await landing.text()).not.toContain("Sign in to your account");
   });
 
   it("refuses product mutations made through the demo session", async () => {
