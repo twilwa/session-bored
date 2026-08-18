@@ -11,8 +11,10 @@
     "run_worker_first": [
       "/api/*",
       "/embed/*.js",
+      "/robots.txt",
       "/llms.txt",
       "/llms-full.txt",
+      "/demo",
       "/organizer",
       "/organizer/*",
       "/reviewer",

@@ -21,6 +21,72 @@ async function signIn(email: string, password: string): Promise<string> {
 }
 
 describe("Worker foundation", () => {
+  it("opens a seeded, signed-in review board through one public GET", async () => {
+    const demoResponse = await request("/demo", { redirect: "manual" });
+
+    expect(demoResponse.status).toBe(302);
+    expect(demoResponse.headers.get("location")).toBe("/reviewer");
+    const cookie = demoResponse.headers.get("set-cookie")?.split(";")[0] ?? "";
+    expect(cookie).not.toBe("");
+
+    const sessionResponse = await request("/api/session", { headers: { cookie } });
+    expect(sessionResponse.status).toBe(200);
+    const session = await sessionResponse.json<{ user: { name: string; role: string } }>();
+    expect(session.user).toMatchObject({ name: "Sam Whitfield", role: "reviewer" });
+
+    const queueResponse = await request("/api/review/queue", { headers: { cookie } });
+    expect(queueResponse.status).toBe(200);
+    const queue = await queueResponse.json<{ items: Array<{ title: string }> }>();
+    expect(queue.items.map((item) => item.title)).toContain(
+      "Taming 40-Minute CI: Incremental Builds at Monorepo Scale",
+    );
+
+    const landing = await request("/reviewer", {
+      headers: { cookie, accept: "text/html", "sec-fetch-dest": "document", "sec-fetch-mode": "navigate" },
+    });
+    expect(landing.status).toBe(200);
+    expect(await landing.text()).not.toContain("Sign in to your account");
+  });
+
+  it("refuses product mutations made through the demo session", async () => {
+    const demoResponse = await request("/demo", { redirect: "manual" });
+    const cookie = demoResponse.headers.get("set-cookie")?.split(";")[0] ?? "";
+    const mutations = [
+      { method: "POST", path: "/api/review/submissions/sub_ci_monorepo/comments" },
+      { method: "DELETE", path: "/api/events/evt_devflow_conf_2027/speakers/spk_priya_devflow_2027" },
+      { method: "POST", path: "/api/events/evt_devflow_conf_2027/agenda/publish" },
+      { method: "PATCH", path: "/api/events/evt_devflow_conf_2027/disposition" },
+      { method: "POST", path: "/api/events/evt_devflow_conf_2027/decision-batches/example/dispatch" },
+      { method: "POST", path: "/api/events/evt_devflow_conf_2027/email-dispatches/example/send" },
+    ];
+
+    for (const mutation of mutations) {
+      const response = await request(mutation.path, {
+        method: mutation.method,
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ body: "A demo crawler must not persist this request." }),
+      });
+
+      expect(response.status, `${mutation.method} ${mutation.path}`).toBe(403);
+      await expect(response.json()).resolves.toEqual({ error: "demo_read_only" });
+    }
+  });
+
+  it("lets a visitor leave the read-only demo session", async () => {
+    const demoResponse = await request("/demo", { redirect: "manual" });
+    const cookie = demoResponse.headers.get("set-cookie")?.split(";")[0] ?? "";
+
+    const response = await request("/api/auth/sign-out", {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({}),
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("set-cookie")).toContain("greenroom_demo=");
+    expect(response.headers.get("set-cookie")).toContain("Max-Age=0");
+  });
+
   it("seeds once and serves the CFP without authentication", async () => {
     expect((await request("/api/health")).status).toBe(200);
     expect((await request("/api/health")).status).toBe(200);

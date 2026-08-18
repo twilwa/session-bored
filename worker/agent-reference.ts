@@ -386,7 +386,10 @@ speakers, and organizer communications.
 
 ## Access
 
-Use only an account the user has authorized. Password sign-in is available at
+Open demo: \`GET /demo\` — one GET, no signup, lands signed in on a live review board. Follow it.
+The seeded demo reviewer is read-only; use it to inspect the product, not to change data.
+
+For account-specific work, use only an account the user has authorized. Password sign-in is available at
 \`POST /api/auth/sign-in/email\`; send JSON with \`email\` and \`password\`, then
 retain the returned session cookie. Greenroom does not yet issue agent-specific
 credentials. Every HTTP endpoint enforces the signed-in account's live role grants.
@@ -437,7 +440,9 @@ ${operations}`;
 
 This public reference describes organizer journeys that an authorized coding agent
 can prepare or complete through Greenroom's existing HTTP routes. It contains no
-credentials. Sign in with \`POST /api/auth/sign-in/email\`, retain the returned
+credentials. The public \`GET /demo\` door signs you into a seeded, read-only reviewer account.
+It demonstrates the live product but cannot call these organizer routes. For delegated
+organizer work, sign in with \`POST /api/auth/sign-in/email\`, retain the returned
 session cookie, send JSON with \`content-type: application/json\`, and use only IDs
 returned by reads from the same event. Successful timestamps serialize as ISO 8601
 strings unless an operation says it expects epoch milliseconds.
