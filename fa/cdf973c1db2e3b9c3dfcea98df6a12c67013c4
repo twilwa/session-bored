@@ -1,0 +1,23 @@
+tests/e2e/worker.ts
+  s_94c4811a8f29ff::t_3a2352b2266843 1-43
+playwright.config.ts
+  s_94c4811a8f29ff::t_3a2352b2266843 18
+tests/e2e/account-access.spec.ts
+  s_94c4811a8f29ff::t_a155edbc49204f 26-31,361
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "facdf973c1db2e3b9c3dfcea98df6a12c67013c4",
+  "prompts": {},
+  "sessions": {
+    "s_94c4811a8f29ff": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a00c63-fe10-7321-b907-6fb010db1e79",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
