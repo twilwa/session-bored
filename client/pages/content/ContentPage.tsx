@@ -217,7 +217,7 @@ export function ContentPage() {
                         type="checkbox"
                       />
                     </td>
-                    <td><a href={file.downloadUrl}>{file.displayName}</a><small>Version {file.version} · {formatFileSize(file.sizeBytes)}</small></td>
+                    <td><a href={file.downloadUrl}>{file.displayName}</a><small>{file.supersededByMerge ? "Superseded — merged" : `Version ${file.version}`} · {formatFileSize(file.sizeBytes)}</small></td>
                     <td><strong>{item.speaker.name}</strong><small>{item.speaker.email}</small></td>
                     <td>{item.task.session?.title ?? "Event-wide"}</td>
                     <td>{item.task.title}</td>
@@ -266,7 +266,7 @@ export function ContentPage() {
                 ) : (
                   <div className="deliverable-card__file">
                     <a href={item.file.downloadUrl}>{item.file.displayName}</a>
-                    <span>Version {item.file.version}</span>
+                    <span>{item.file.supersededByMerge ? "Superseded — merged" : `Version ${item.file.version}`}</span>
                     <FileVersionList versions={item.file.versions} />
                     <FileComments fileId={item.file.id} />
                   </div>

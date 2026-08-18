@@ -322,6 +322,9 @@ describe("speaker directory", () => {
       env.DB.prepare(
         "insert into file (id, event_id, task_id, speaker_id, kind, display_name, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?)",
       ).bind(fileId, identityEventId, taskId, duplicateSpeakerId, "deliverable", "slides.pdf", now, now),
+      env.DB.prepare(
+        "insert into file_version (id, file_id, version, storage_key, mime_type, size_bytes, latest, uploaded_by_user_id, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      ).bind("fver_directory_duplicate", fileId, 1, "directory/slides.pdf", "application/pdf", 42, 1, kept!.userId, now, now),
       // A session the duplicate was removed from after finishing its onboarding work. Removal
       // archives both links precisely so the completion survives being restored later.
       env.DB.prepare(
@@ -451,6 +454,13 @@ describe("speaker directory", () => {
     });
     expect((await database.select().from(files).where(eq(files.id, fileId)))[0]?.speakerId)
       .toBe(duplicateSpeakerId);
+    const [mergedFileVersion] = await database.select().from(fileVersions)
+      .where(eq(fileVersions.id, "fver_directory_duplicate"));
+    const [directoryMerge] = await database.select().from(directoryMerges).where(and(
+      eq(directoryMerges.keptPersonId, "psn_priya_raman"),
+      eq(directoryMerges.mergedPersonId, duplicatePersonId),
+    ));
+    expect(mergedFileVersion?.supersededByMergeId).toBe(directoryMerge?.id);
     const [releasedSessionLink] = await database.select().from(sessionSpeakers)
       .where(eq(sessionSpeakers.id, "ssnr_directory_released"));
     expect(releasedSessionLink).toMatchObject({

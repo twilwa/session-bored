@@ -856,6 +856,7 @@ export interface PortalTaskFile {
   fileId: `fil_${string}`;
   displayName: string;
   version: number;
+  supersededByMerge: boolean;
 }
 
 export interface PortalFileVersion {
@@ -864,6 +865,7 @@ export interface PortalFileVersion {
   sizeBytes: number;
   uploadedAt: string;
   current: boolean;
+  supersededByMerge: boolean;
   downloadUrl: string;
 }
 
@@ -873,6 +875,7 @@ export interface PortalFile {
   taskTitle: string;
   displayName: string;
   version: number;
+  supersededByMerge: boolean;
   archived: boolean;
   downloadUrl: string;
   versions: PortalFileVersion[];
@@ -906,6 +909,7 @@ export interface DeliverableItem {
     id: `fil_${string}`;
     displayName: string;
     version: number;
+    supersededByMerge: boolean;
     mimeType: string;
     sizeBytes: number;
     uploadedAt: string;

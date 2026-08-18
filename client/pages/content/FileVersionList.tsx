@@ -36,6 +36,7 @@ export function FileVersionList({ versions }: { versions: PortalFileVersion[] })
             {superseded.map((version) => (
               <li key={version.version}>
                 <a href={version.downloadUrl}>Version {version.version} · {version.displayName}</a>
+                {version.supersededByMerge ? <span className="file-versions__merge-badge">Superseded — merged</span> : null}
                 <small>Uploaded {formatUploadedAt(version.uploadedAt)} · {formatFileSize(version.sizeBytes)}</small>
               </li>
             ))}

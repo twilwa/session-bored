@@ -7,3 +7,4 @@
 .file-versions li { display: grid; min-width: 0; gap: 2px; padding: 0; border: 0; }
 .file-versions a { min-width: 0; overflow-wrap: anywhere; font-size: 0.9rem; text-decoration: underline; text-underline-offset: 3px; }
 .file-versions small { color: var(--muted); font: 0.72rem "SFMono-Regular", Consolas, monospace; overflow-wrap: anywhere; }
+.file-versions__merge-badge { width: fit-content; color: var(--muted); background: color-mix(in srgb, var(--line) 65%, transparent); border-radius: 999px; padding: 2px 7px; font-size: 0.7rem; font-weight: 800; }
