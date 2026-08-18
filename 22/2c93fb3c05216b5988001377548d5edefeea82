@@ -1,0 +1,46 @@
+worker/routes/content.ts
+  s_464db5df75b179::t_150d8b69f70477 104,142,189,203
+shared/api.ts
+  s_464db5df75b179::t_150d8b69f70477 859,868,878,912
+migrations/meta/0027_snapshot.json
+  s_464db5df75b179::t_206d2835ba0cb3 1-5858
+db/schema.ts
+  s_464db5df75b179::t_150d8b69f70477 691-693
+tests/unit/file-version-list.test.ts
+  s_464db5df75b179::t_1f881bb1ef7f70 1-52
+migrations/0027_cooing_hulk.sql
+  s_464db5df75b179::t_206d2835ba0cb3 1
+migrations/meta/_journal.json
+  s_464db5df75b179::t_206d2835ba0cb3 193-199,202
+worker/index.ts
+  s_464db5df75b179::t_150d8b69f70477 430,446,470,519,531
+client/pages/content/FileVersionList.tsx
+  s_464db5df75b179::t_150d8b69f70477 39
+client/pages/content/file-versions.css
+  s_464db5df75b179::t_150d8b69f70477 10
+client/pages/content/ContentPage.tsx
+  s_464db5df75b179::t_150d8b69f70477 220,269
+worker/speaker-merge.ts
+  s_464db5df75b179::t_150d8b69f70477 389-397
+  s_464db5df75b179::t_970384ef834d28 398-406
+client/pages/portal/PortalPage.tsx
+  s_464db5df75b179::t_150d8b69f70477 103,385
+tests/integration/speaker-directory.test.ts
+  s_464db5df75b179::t_406b22f06530f0 325-327,457-463
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "222c93fb3c05216b5988001377548d5edefeea82",
+  "prompts": {},
+  "sessions": {
+    "s_464db5df75b179": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a01700-0a61-7bf1-a5c9-89d5d2b822be",
+        "model": "gpt-5.6-terra"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
