@@ -1,0 +1,45 @@
+tests/unit/agent-route-registration.test.ts
+  s_44cd3006146635::t_53a55e59b3440f 1-2,6-7,13,16
+wrangler.jsonc
+  s_44cd3006146635::t_a292f27fd98f83 17
+  s_44cd3006146635::t_0203b1a74d854f 14
+tests/integration/worker-access.test.ts
+  s_44cd3006146635::t_de182e9c117969 54-61,63-68,70-72
+  s_44cd3006146635::t_174107dbc93528 24-34,36-39,43-50
+  s_44cd3006146635::t_3d11c516512fc6 35
+  s_44cd3006146635::t_c49b12dfa9e7bd 40-42,73-87
+  s_44cd3006146635::t_d6bb082415fbcd 51-53,62,69,88-89
+index.html
+  s_44cd3006146635::t_37687685fabf7c 16-29
+tests/integration/agent-reference.test.ts
+  s_44cd3006146635::t_eb9011d040f06b 30-37
+  s_44cd3006146635::t_eb25fba0b14000 46-47,60
+worker/agent-reference.ts
+  s_44cd3006146635::t_7ee081c5ccce33 392
+  s_44cd3006146635::t_142e513683ec93 389-391,443-445
+worker/index.ts
+  s_44cd3006146635::t_78ce13d72d10b7 6,124-129,209-214
+  s_44cd3006146635::t_a292f27fd98f83 44,68,74,78-93,97,183-193
+  s_44cd3006146635::t_300b4c0e4fb6b5 28
+  s_44cd3006146635::t_bf5704755e7189 123,130-134,196
+  s_44cd3006146635::t_0203b1a74d854f 180
+  s_44cd3006146635::t_549e662e6eb08c 208
+tests/unit/crawlable-shell.test.ts
+  s_44cd3006146635::t_92ae7f262fbd71 1-15
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "3bfadc2422f8b609875e3246613831af85a549a3",
+  "prompts": {},
+  "sessions": {
+    "s_44cd3006146635": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a016ea-a2dc-7200-99c3-bd9864d48610",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
