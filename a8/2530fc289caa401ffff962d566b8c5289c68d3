@@ -1,0 +1,31 @@
+fixtures/sample-data.json
+  s_44cd3006146635::t_9cafa75fd9820b 60-64
+worker/routes/review.ts
+  s_44cd3006146635::t_49e5ae72c36271 36,49,55,240-244,270-272
+worker/index.ts
+  s_44cd3006146635::t_9cafa75fd9820b 83
+  s_44cd3006146635::t_21ee86896517b0 90
+tests/integration/worker-access.test.ts
+  s_44cd3006146635::t_5d600fdc809013 96-97,99-122
+  s_44cd3006146635::t_af1150cdbbc9ad 29-33,78-95
+  s_44cd3006146635::t_bcab11c010c918 38
+  s_44cd3006146635::t_0af9c55dcd2bc0 98
+worker/seed.ts
+  s_44cd3006146635::t_9cafa75fd9820b 40,105-152,205,582
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "a82530fc289caa401ffff962d566b8c5289c68d3",
+  "prompts": {},
+  "sessions": {
+    "s_44cd3006146635": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a016ea-a2dc-7200-99c3-bd9864d48610",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
