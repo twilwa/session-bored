@@ -1,0 +1,23 @@
+client/pages/content/file-versions.css
+  s_464db5df75b179::t_23e34d3fb33657 4
+tests/unit/file-version-list.test.ts
+  s_464db5df75b179::t_e0dd799fe81da8 52-67
+client/pages/content/FileVersionList.tsx
+  s_464db5df75b179::t_23e34d3fb33657 28-33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "0879c3185ab2cf807b23626f12899ad55284ef2d",
+  "prompts": {},
+  "sessions": {
+    "s_464db5df75b179": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a01700-0a61-7bf1-a5c9-89d5d2b822be",
+        "model": "gpt-5.6-terra"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
