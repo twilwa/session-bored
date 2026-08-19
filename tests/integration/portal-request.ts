@@ -3,7 +3,11 @@
 const activeEventId = "evt_devflow_conf_2027";
 
 export function withActiveSpeakerEvent(path: string): string {
-  if (path !== "/api/speaker/content" && !path.startsWith("/api/portal/")) {
+  if (
+    path !== "/api/speaker/content"
+    && !path.startsWith("/api/speaker/submissions/")
+    && !path.startsWith("/api/portal/")
+  ) {
     return path;
   }
   const url = new URL(path, "http://example.test");

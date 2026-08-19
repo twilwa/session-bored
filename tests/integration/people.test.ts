@@ -6,6 +6,7 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import {
   events,
+  forms,
   people,
   reviewerInvites,
   reviewerRoundPools,
@@ -15,6 +16,8 @@ import {
   sessions,
   sessionSpeakers,
   speakers,
+  submissions,
+  submissionSpeakers,
   tracks,
   users,
 } from "../../db/schema.ts";
@@ -255,6 +258,8 @@ describe("organizer People surface", () => {
     const personId = `psn_previous_${suffix}`;
     const otherSpeakerId = `spk_previous_${suffix}`;
     const otherSessionId = `ses_previous_${suffix}`;
+    const otherFormId = `frm_previous_${suffix}`;
+    const otherSubmissionId = `sub_previous_${suffix}`;
     await database.insert(events).values({
       id: otherEventId,
       slug: `previous-${suffix}`,
@@ -269,6 +274,30 @@ describe("organizer People surface", () => {
       userId,
       name: "Returning Speaker",
       email: "returning-promotion@example.com",
+    });
+    await database.insert(forms).values({
+      id: otherFormId,
+      eventId: otherEventId,
+      name: "Previous conference CFP",
+      publicSlug: `previous-cfp-${suffix}`,
+      version: 1,
+      status: "closed",
+    });
+    await database.insert(submissions).values({
+      id: otherSubmissionId,
+      eventId: otherEventId,
+      formId: otherFormId,
+      formVersion: 1,
+      submitterPersonId: personId,
+      status: "accepted",
+      isDraft: false,
+      title: "Previous conference proposal",
+      abstract: "This proposal belongs only to the previous event.",
+    });
+    await database.insert(submissionSpeakers).values({
+      id: `sspk_previous_${suffix}`,
+      submissionId: otherSubmissionId,
+      personId,
     });
     await database.insert(speakers).values({
       id: otherSpeakerId,
@@ -327,6 +356,25 @@ describe("organizer People surface", () => {
     });
     expect(previousContent.status).toBe(400);
     await expect(previousContent.json()).resolves.toEqual({ error: "invalid_speaker_event" });
+
+    const unscopedSubmission = await request(`/api/speaker/submissions/${otherSubmissionId}`, {
+      headers: { cookie: speakerCookie },
+    });
+    expect(unscopedSubmission.status).toBe(400);
+    await expect(unscopedSubmission.json()).resolves.toEqual({ error: "speaker_event_required" });
+
+    const previousSubmission = await request(
+      `/api/speaker/submissions/${otherSubmissionId}?eventId=${otherEventId}`,
+      { headers: { cookie: speakerCookie } },
+    );
+    expect(previousSubmission.status).toBe(400);
+    await expect(previousSubmission.json()).resolves.toEqual({ error: "invalid_speaker_event" });
+
+    const activeEventSubmission = await request(
+      `/api/speaker/submissions/${otherSubmissionId}?eventId=evt_devflow_conf_2027`,
+      { headers: { cookie: speakerCookie } },
+    );
+    expect(activeEventSubmission.status).toBe(403);
 
     const crossEventWrite = await request(
       `/api/portal/sessions/${otherSessionId}?eventId=evt_devflow_conf_2027`,

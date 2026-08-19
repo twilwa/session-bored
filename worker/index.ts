@@ -377,6 +377,10 @@ app.get("/api/speaker/submissions/:submissionId", requireAccess("speaker"), asyn
   if (user === null) {
     return context.json({ error: "authentication_required" }, 401);
   }
+  const speakerEvent = activeSpeakerEventFor(context.req.query("eventId"));
+  if ("error" in speakerEvent) {
+    return context.json({ error: speakerEvent.error }, 400);
+  }
   const database = drizzle(context.env.DB);
   const submissionId = context.req.param("submissionId");
   const [item] = await database
@@ -384,7 +388,11 @@ app.get("/api/speaker/submissions/:submissionId", requireAccess("speaker"), asyn
     .from(submissions)
     .innerJoin(submissionSpeakers, livingSubmissionParticipants())
     .innerJoin(people, eq(submissionSpeakers.personId, people.id))
-    .where(and(eq(people.userId, user.id), eq(submissions.id, submissionId)));
+    .where(and(
+      eq(people.userId, user.id),
+      eq(submissions.id, submissionId),
+      eq(submissions.eventId, speakerEvent.id),
+    ));
   if (item === undefined) {
     return context.json({ error: "forbidden" }, 403);
   }
@@ -401,7 +409,11 @@ app.get("/api/speaker/submissions/:submissionId", requireAccess("speaker"), asyn
     .innerJoin(sessionSpeakers, livingSessionSpeakers())
     .innerJoin(speakers, eq(sessionSpeakers.speakerId, speakers.id))
     .innerJoin(people, eq(speakers.personId, people.id))
-    .where(and(eq(sessions.submissionId, submissionId), eq(people.userId, user.id)));
+    .where(and(
+      eq(sessions.submissionId, submissionId),
+      eq(sessions.eventId, speakerEvent.id),
+      eq(people.userId, user.id),
+    ));
   const { status, ...proposal } = item;
   return context.json({
     ...proposal,
