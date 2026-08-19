@@ -27,10 +27,10 @@ export function fileVersionSummary(
     sizeBytes: number;
     latest: boolean;
     uploadedAt: Date | string;
+    supersededByMergeId: string | null;
   },
   fallbackDisplayName: string,
   eventId: string,
-  supersededByMerge: boolean,
 ): PortalFileVersion {
   return {
     version: version.version,
@@ -38,7 +38,7 @@ export function fileVersionSummary(
     sizeBytes: version.sizeBytes,
     uploadedAt: version.uploadedAt instanceof Date ? version.uploadedAt.toISOString() : version.uploadedAt,
     current: version.latest,
-    supersededByMerge,
+    supersededByMerge: version.supersededByMergeId !== null,
     downloadUrl: `/api/portal/files/${version.fileId}?version=${version.version}&eventId=${encodeURIComponent(eventId)}`,
   };
 }

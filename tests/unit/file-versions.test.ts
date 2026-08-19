@@ -13,9 +13,10 @@ describe("file version summaries", () => {
       sizeBytes: 42,
       latest: false,
       uploadedAt: new Date("2026-08-18T12:00:00.000Z"),
+      supersededByMergeId: null,
     };
 
-    expect(fileVersionSummary(version, "current-name.pdf", "evt_history_1", false)).toEqual({
+    expect(fileVersionSummary(version, "current-name.pdf", "evt_history_1")).toEqual({
       version: 1,
       displayName: "speaker-deck.pdf",
       sizeBytes: 42,
@@ -24,8 +25,10 @@ describe("file version summaries", () => {
       supersededByMerge: false,
       downloadUrl: "/api/portal/files/fil_history_1?version=1&eventId=evt_history_1",
     });
-    expect(fileVersionSummary(version, "current-name.pdf", "evt_history_1", true)).toMatchObject({
-      supersededByMerge: true,
-    });
+    expect(fileVersionSummary(
+      { ...version, supersededByMergeId: "pmg_history_1" },
+      "current-name.pdf",
+      "evt_history_1",
+    )).toMatchObject({ supersededByMerge: true });
   });
 });

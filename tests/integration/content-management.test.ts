@@ -493,6 +493,7 @@ describe("content management", () => {
       headers: { cookie: ownerCookie },
     });
     expect(supersededDownload.status).toBe(403);
+    await expect(supersededDownload.json()).resolves.toEqual({ error: "forbidden" });
   });
 
   it("downloads selected deliverables as a ZIP containing their latest versions", async () => {

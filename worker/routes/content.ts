@@ -213,7 +213,6 @@ contentRoutes.get("/api/events/:eventId/deliverables", requireOrganizer, async (
               version,
               version.displayName,
               eventId,
-              version.supersededByMergeId !== null,
             )),
         },
     } as const;

@@ -658,7 +658,6 @@ app.get("/api/speaker/content", requireAccess("speaker"), async (context) => {
           version,
           file.displayName,
           eventId,
-          version.supersededByMergeId !== null,
         )),
     })),
   });
