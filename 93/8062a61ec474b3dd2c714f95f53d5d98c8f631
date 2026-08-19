@@ -1,6 +1,7 @@
 tests/unit/file-versions.test.ts
   s_845b6cd15b4f72::t_67c9c0d60ad222 28-30,32
   s_845b6cd15b4f72::t_39a2eca890565f 16
+  s_845b6cd15b4f72::t_1c45fab3299a92 19,31
 tests/integration/content-management.test.ts
   s_845b6cd15b4f72::t_910cafeded49cc 496
 worker/storage/file-versions.ts
