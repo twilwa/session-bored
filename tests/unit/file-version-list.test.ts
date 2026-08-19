@@ -49,4 +49,20 @@ describe("FileVersionList", () => {
 
     expect(markup).not.toContain("Superseded — merged");
   });
+
+  it("labels a merge-superseded current version for an archived file history", () => {
+    const markup = renderToStaticMarkup(createElement(FileVersionList, {
+      versions: [{
+        version: 1,
+        displayName: "merged-archive.pdf",
+        sizeBytes: 1024,
+        uploadedAt: "2026-08-17T12:00:00.000Z",
+        current: true,
+        supersededByMerge: true,
+        downloadUrl: "/api/portal/files/fil_archived?version=1",
+      }],
+    }));
+
+    expect(markup).toContain("Superseded — merged");
+  });
 });

@@ -25,9 +25,12 @@ export function FileVersionList({ versions }: { versions: PortalFileVersion[] })
   return (
     <>
       {current === null ? null : (
-        <small className="file-history__meta">
-          Uploaded {formatUploadedAt(current.uploadedAt)} · {formatFileSize(current.sizeBytes)}
-        </small>
+        <div className="file-history__current">
+          <small className="file-history__meta">
+            Uploaded {formatUploadedAt(current.uploadedAt)} · {formatFileSize(current.sizeBytes)}
+          </small>
+          {current.supersededByMerge ? <span className="file-versions__merge-badge">Superseded — merged</span> : null}
+        </div>
       )}
       {superseded.length === 0 ? null : (
         <details className="file-versions" open>
