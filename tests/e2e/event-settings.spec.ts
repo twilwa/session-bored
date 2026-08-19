@@ -18,6 +18,116 @@ async function expandSettingsItem(dialog: Locator, itemName: string): Promise<vo
   await expect(hideDetails).toBeVisible();
 }
 
+test("organizer issues and revokes an agent credential through Event setup", async ({ page }, testInfo) => {
+  const credentialName = `Agenda helper ${testInfo.project.name} ${Date.now().toString(36)}`;
+  await signInAsOrganizer(page);
+  await page.goto("/organizer/event");
+
+  await expect(page.getByRole("heading", { name: "Agent access" })).toBeVisible();
+  await page.getByLabel("Credential name").fill(credentialName);
+  await page.getByLabel("Issued role").selectOption("organizer");
+  await page.getByRole("button", { name: "Issue credential" }).click();
+
+  const tokenField = page.getByLabel("Issued agent token");
+  await expect(tokenField).toHaveValue(/^greenroom_/);
+  const token = await tokenField.inputValue();
+  const agentStatus = await page.evaluate(async (issuedToken) => (
+    await fetch("/api/events", { headers: { authorization: `Bearer ${issuedToken}` } })
+  ).status, token);
+  expect(agentStatus).toBe(200);
+
+  const credential = page.getByRole("listitem").filter({ hasText: credentialName }).first();
+  await expect(credential).toContainText("Organizer");
+  await credential.getByRole("button", { name: `Revoke ${credentialName}` }).click();
+  await expect(credential).toContainText("Revoked");
+
+  const revokedStatus = await page.evaluate(async (issuedToken) => (
+    await fetch("/api/events", { headers: { authorization: `Bearer ${issuedToken}` } })
+  ).status, token);
+  expect(revokedStatus).toBe(401);
+});
+
+test("Event setup marks a credential inactive when its issued role access is revoked", async ({ page }, testInfo) => {
+  const credentialName = `Review helper ${testInfo.project.name} ${Date.now().toString(36)}`;
+  await signInAsOrganizer(page);
+  const setup = await page.evaluate(async () => {
+    const sessionResponse = await fetch("/api/session");
+    const configResponse = await fetch("/api/review/events/evt_devflow_conf_2027/config");
+    const session = await sessionResponse.json() as { user: { id: string } };
+    const config = await configResponse.json() as {
+      tracks: Array<{ id: string }>;
+      rounds: Array<{ id: string; status: string }>;
+    };
+    const trackId = config.tracks[0]?.id;
+    const roundId = config.rounds.find(({ status }) => status === "open")?.id;
+    if (trackId === undefined || roundId === undefined) {
+      return { userId: session.user.id, grantStatus: 404, clearRemitStatus: 404 };
+    }
+    const grantResponse = await fetch(`/api/people/${session.user.id}/grants`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        role: "reviewer",
+        reviewerRemit: {
+          eventId: "evt_devflow_conf_2027",
+          trackIds: [trackId],
+          roundIds: [roundId],
+        },
+      }),
+    });
+    const clearRemitResponse = await fetch(
+      `/api/review/events/evt_devflow_conf_2027/reviewers/${session.user.id}`,
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ trackIds: [], roundIds: [] }),
+      },
+    );
+    return {
+      userId: session.user.id,
+      grantStatus: grantResponse.status,
+      clearRemitStatus: clearRemitResponse.status,
+    };
+  });
+  expect(setup.grantStatus).toBe(200);
+  expect(setup.clearRemitStatus).toBe(200);
+
+  try {
+    await page.goto("/organizer/event");
+    await expect(page.getByText(
+      "Issue a revocable credential instead of sharing your password. Each credential acts as your account through one live role; programme publishing, sends, decisions, and deletes still require you here.",
+      { exact: true },
+    )).toBeVisible();
+    await page.getByLabel("Credential name").fill(credentialName);
+    await page.getByLabel("Issued role").selectOption("reviewer");
+    await page.getByRole("button", { name: "Issue credential" }).click();
+    const tokenField = page.getByLabel("Issued agent token");
+    await expect(tokenField).toHaveValue(/^greenroom_/);
+    const token = await tokenField.inputValue();
+    expect(await page.evaluate(async (issuedToken) => (
+      await fetch("/api/review/queue", { headers: { authorization: `Bearer ${issuedToken}` } })
+    ).status, token)).toBe(200);
+
+    const revokeGrantStatus = await page.evaluate(async (userId) => (
+      await fetch(`/api/people/${userId}/grants/reviewer`, { method: "DELETE" })
+    ).status, setup.userId);
+    expect(revokeGrantStatus).toBe(200);
+    expect(await page.evaluate(async (issuedToken) => (
+      await fetch("/api/review/queue", { headers: { authorization: `Bearer ${issuedToken}` } })
+    ).status, token)).toBe(401);
+
+    await page.reload();
+    const credential = page.getByRole("listitem").filter({ hasText: credentialName }).first();
+    await expect(credential.getByText("Inactive · role access revoked", { exact: true })).toBeVisible();
+    await credential.getByRole("button", { name: `Revoke ${credentialName}` }).click();
+    await expect(credential.getByText("Revoked", { exact: true })).toBeVisible();
+  } finally {
+    await page.evaluate(async (userId) => {
+      await fetch(`/api/people/${userId}/grants/reviewer`, { method: "DELETE" });
+    }, setup.userId);
+  }
+});
+
 test("organizer edits event identity, dates, venue, timezone, and branding", async ({ page }) => {
   await signInAsOrganizer(page);
   const original = await page.evaluate(async () => {

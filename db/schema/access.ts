@@ -53,6 +53,30 @@ export const roleGrants = sqliteTable(
   ],
 );
 
+/** A revocable bearer credential that acts as its account through exactly one live grant. */
+export const agentCredentials = sqliteTable(
+  "agent_credential",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => `acred_${crypto.randomUUID().replaceAll("-", "")}`),
+    userId: text("user_id").notNull(),
+    name: text("name").notNull(),
+    role: text("role", { enum: grantableRoles }).$type<GrantableRole>().notNull(),
+    roleGrantId: text("role_grant_id").references(() => roleGrants.id),
+    secretDigest: text("secret_digest").notNull(),
+    lastUsedAt: integer("last_used_at", { mode: "timestamp_ms" }),
+    revokedAt: integer("revoked_at", { mode: "timestamp_ms" }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    uniqueIndex("agent_credential_secret_unique").on(table.secretDigest),
+    index("agent_credential_user_idx").on(table.userId, table.revokedAt),
+    check("agent_credential_role_check", sql`${table.role} in ('organizer','reviewer','speaker')`),
+  ],
+);
+
 /**
  * An organizer's offer of reviewer access to an email address. The invitation is the
  * organizer's grant; signing up does not redeem it. Redemption requires proving the address,

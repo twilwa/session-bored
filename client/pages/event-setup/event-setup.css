@@ -24,6 +24,23 @@
 .event-brand-preview p { margin: 0 0 8px; color: var(--event-accent); font: 0.68rem monospace; font-weight: 800; letter-spacing: 0.14em; }
 .event-brand-preview h2 { margin: 0; font: clamp(2rem, 4vw, 3.5rem)/0.95 Georgia, serif; }
 .event-brand-preview span:last-child { margin-top: 14px; }
+.agent-access { margin-top: 28px; }
+.agent-access > p { max-width: 72ch; color: var(--muted); }
+.agent-access__issue { display: grid; grid-template-columns: minmax(0, 1fr) minmax(180px, 0.35fr) auto; gap: 16px; align-items: end; }
+.agent-access__issue .field { min-width: 0; }
+.agent-access__issue .button { margin-bottom: 18px; }
+.agent-access__token { display: grid; grid-template-columns: minmax(180px, 0.45fr) minmax(0, 1fr) auto; gap: 16px; align-items: end; margin: 4px 0 22px; padding: 18px; border: 2px solid var(--ink); background: var(--signal); box-shadow: 5px 5px 0 var(--ink); }
+.agent-access__token p { margin: 4px 0 0; font-size: 0.8rem; }
+.agent-access__token .field { min-width: 0; }
+.agent-access__token input { font-family: monospace; }
+.agent-access__token .button { margin-bottom: 18px; }
+.agent-access__error { color: var(--danger); font-weight: 700; }
+.agent-access__list { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.agent-access__list li { display: flex; justify-content: space-between; align-items: center; gap: 16px; min-width: 0; padding: 14px; border: 1px solid var(--ink); background: var(--paper); }
+.agent-access__list li > div { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 12px; min-width: 0; }
+.agent-access__list strong { overflow-wrap: anywhere; }
+.agent-access__list span { padding: 3px 7px; background: var(--ink); color: var(--white); font: 0.68rem monospace; text-transform: uppercase; }
+.agent-access__list small { color: var(--muted); }
 
 @media (max-width: 980px) {
   .event-setup { grid-template-columns: minmax(0, 1fr); }
@@ -35,4 +52,8 @@
 @media (max-width: 620px) {
   .event-setup__grid, .event-setup__grid--three { grid-template-columns: minmax(0, 1fr); }
   .event-setup__wide { grid-column: auto; }
+  .agent-access__issue, .agent-access__token { grid-template-columns: minmax(0, 1fr); }
+  .agent-access__issue .button, .agent-access__token .button { width: 100%; margin-bottom: 18px; }
+  .agent-access__list li { align-items: stretch; flex-direction: column; }
+  .agent-access__list .button { width: 100%; }
 }
