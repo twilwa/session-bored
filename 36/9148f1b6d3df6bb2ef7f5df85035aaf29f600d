@@ -1,0 +1,30 @@
+tests/integration/speaker-directory.test.ts
+  s_128b20c59ad2ab::t_ffc0504e00ecd9 1456-1458,1465-1466,1470,1473-1474,1483,1485
+  s_128b20c59ad2ab::t_e3ee0b5a81c924 48-51,1490
+  s_128b20c59ad2ab::t_d4acf544dd9600 1454-1455,1459-1464,1476-1481,1487-1489
+  s_128b20c59ad2ab::t_079f23340e3852 1467,1469,1471,1484,1486
+AGENTS.md
+  s_128b20c59ad2ab::t_fc42a27f6a4d44 479-482
+vitest.integration.config.ts
+  s_128b20c59ad2ab::t_33f07718c7fb75 32-35
+tests/integration/agenda.test.ts
+  s_128b20c59ad2ab::t_34642be79c625f 801
+  s_128b20c59ad2ab::t_1e16b9f7695233 4,69
+  s_128b20c59ad2ab::t_d4acf544dd9600 70-83
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "369148f1b6d3df6bb2ef7f5df85035aaf29f600d",
+  "prompts": {},
+  "sessions": {
+    "s_128b20c59ad2ab": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a017d0-ee32-70e3-8299-62e61a0d7fea",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
