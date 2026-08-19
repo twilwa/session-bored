@@ -476,6 +476,10 @@ run in the parallel `CI / Browser tests` job, which uploads Playwright reports
 and traces on failure. Open the failed named step to see which command failed.
 The integration test configuration applies checked-in D1 migrations to its
 isolated test database, so CI does not need a separate migration step.
+Workers Vitest storage isolation is per test file, not per test case. A case
+that creates scale fixtures must remove or reset them before later cases in the
+same file run; generic harness timeouts do not replace explicit product latency
+budgets asserted by individual tests.
 
 For same-repository pull requests, the `Preview` workflow updates one PR comment
 with the branch's stable Workers preview URL. Each PR reuses its own
