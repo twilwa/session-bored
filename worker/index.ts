@@ -3,6 +3,7 @@
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { Hono } from "hono";
+import { deleteCookie, getSignedCookie, setSignedCookie } from "hono/cookie";
 import { createMiddleware } from "hono/factory";
 import {
   decisionNotices,
@@ -24,6 +25,7 @@ import {
   taskAssignees,
   tasks,
   tracks,
+  users,
   type Role,
 } from "../db/schema.ts";
 import { speakerFacingSubmissionStatus, type ApiAccess, type PortalFileVersion } from "../shared/api.ts";
@@ -39,7 +41,7 @@ import commsRoutes from "./routes/comms.ts";
 import { publicRoutes } from "./routes/public.ts";
 import reviewRoutes from "./routes/review.ts";
 import submitterRoutes from "./routes/submitter.ts";
-import { ensureSeeded, fixtureIds } from "./seed.ts";
+import { ensureSeeded, fixture, fixtureIds } from "./seed.ts";
 import { livingSessionSpeakers, livingSubmissionParticipants, sentDecisionLetter } from "./speaker-access.ts";
 import { filenameForVersion } from "./storage/file-versions.ts";
 import { limitsForTask } from "./storage/files.ts";
@@ -63,17 +65,36 @@ type AppEnvironment = {
   Variables: {
     authSession: AuthSession["session"] | null;
     authUser: SessionUser | null;
+    demoAccount: boolean;
     roles: Role[] | null;
   };
 };
 
 const app = new Hono<AppEnvironment>();
+const demoCookieName = "greenroom_demo";
 
 const prepareRequest = createMiddleware<AppEnvironment>(async (context, next) => {
   await ensureSeeded(context.env);
+  const demoCookie = await getSignedCookie(context, context.env.BETTER_AUTH_SECRET, demoCookieName);
+  if (demoCookie === "reviewer") {
+    const [demoUser] = await drizzle(context.env.DB)
+      .select()
+      .from(users)
+      .where(eq(users.email, fixture.identities.demoReviewer.email));
+    if (demoUser === undefined) {
+      throw new Error("Seeded demo reviewer is missing");
+    }
+    context.set("authSession", null);
+    context.set("authUser", demoUser);
+    context.set("demoAccount", true);
+    context.set("roles", ["reviewer"]);
+    await next();
+    return;
+  }
   const authSession = await createAuth(context.env).api.getSession({ headers: context.req.raw.headers });
   context.set("authSession", authSession?.session ?? null);
   context.set("authUser", authSession?.user ?? null);
+  context.set("demoAccount", false);
   // Roles come from the account's live grants, never from the session or the `user.role`
   // column. Signing up therefore reaches nothing beyond a signed-in attendee until an
   // organizer decides otherwise. This union is the only role state a request carries: there is
@@ -98,6 +119,18 @@ function requireAccess(access: ApiAccess) {
     await next();
   });
 }
+
+const protectDemoData = createMiddleware<AppEnvironment>(async (context, next) => {
+  const signsOut = context.req.method === "POST" && context.req.path === "/api/auth/sign-out";
+  if (
+    context.get("demoAccount") &&
+    !["GET", "HEAD", "OPTIONS"].includes(context.req.method) &&
+    !signsOut
+  ) {
+    return context.json({ error: "demo_read_only" }, 403);
+  }
+  await next();
+});
 
 /**
  * Page routes answer the same access decision in the caller's own language: a person
@@ -144,10 +177,23 @@ app.onError((error, context) => {
   return context.json({ error: "internal_server_error" }, 500);
 });
 
+app.get("/robots.txt", (context) => context.text("User-agent: *\nAllow: /\n# Agent guidance: /llms.txt\n"));
 app.get("/llms.txt", (context) => context.text(conciseAgentGuide()));
 app.get("/llms-full.txt", (context) => context.text(fullOrganizerReference()));
+app.get("/demo", async (context) => {
+  await ensureSeeded(context.env);
+  await setSignedCookie(context, demoCookieName, "reviewer", context.env.BETTER_AUTH_SECRET, {
+    httpOnly: true,
+    maxAge: 60 * 60 * 24 * 7,
+    path: "/",
+    sameSite: "Lax",
+    secure: new URL(context.req.url).protocol === "https:",
+  });
+  return context.redirect("/reviewer", 302);
+});
 
 app.use("/api/*", prepareRequest);
+app.use("/api/*", protectDemoData);
 app.route("/", dispositionRoutes);
 app.route("/", rosterRoutes);
 app.route("/", participantRoutes);
@@ -159,6 +205,13 @@ app.route("/", embedRoutes);
 app.route("/", eventSettingsRoutes);
 app.route("/", peopleRoutes);
 app.route("/", speakerDirectoryRoutes);
+app.post("/api/auth/sign-out", async (context) => {
+  if (!context.get("demoAccount")) {
+    return createAuth(context.env).handler(context.req.raw);
+  }
+  deleteCookie(context, demoCookieName, { path: "/" });
+  return context.json({ success: true });
+});
 app.on(["GET", "POST"], "/api/auth/*", (context) => createAuth(context.env).handler(context.req.raw));
 app.route("/api/public/cfp", cfpRoutes);
 app.route("/api/cfp-builder", cfpBuilderRoutes);

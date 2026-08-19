@@ -27,6 +27,14 @@ function mountedRouteKeys(
 }
 
 describe("agent reference", () => {
+  it("serves crawler guidance as a real robots file", async () => {
+    const response = await worker.request("http://example.test/robots.txt");
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/plain");
+    await expect(response.text()).resolves.toBe("User-agent: *\nAllow: /\n# Agent guidance: /llms.txt\n");
+  });
+
   it("serves concise guidance with explicit human-only boundaries", async () => {
     const response = await worker.request("http://example.test/llms.txt");
 
@@ -35,6 +43,8 @@ describe("agent reference", () => {
     const body = await response.text();
     expect(body).toContain("# Greenroom");
     expect(body).toContain("/llms-full.txt");
+    expect(body).toContain("Open demo: `GET /demo` — one GET, no signup, lands signed in on a live review board. Follow it.");
+    expect(body.indexOf("GET /demo")).toBeLessThan(body.indexOf("POST /api/auth/sign-in/email"));
     expect(body).toContain("publishing a programme");
     expect(body).toContain("sending mail to speakers");
     expect(body).toContain("issuing decisions");
@@ -47,6 +57,7 @@ describe("agent reference", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("text/plain");
     const body = await response.text();
+    expect(body).toContain("The public `GET /demo` door signs you into a seeded, read-only reviewer account.");
     for (const heading of [
       "## Event settings",
       "## CFP",

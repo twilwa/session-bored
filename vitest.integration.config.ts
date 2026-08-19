@@ -13,6 +13,7 @@ export default defineConfig({
         r2Buckets: ["FILES"],
         bindings: {
           APP_ORIGIN: "http://example.test",
+          BETTER_AUTH_SECRET: "greenroom-integration-secret-for-ci-only",
           BETTER_AUTH_URL: "http://example.test",
           TEST_MIGRATIONS: await readD1Migrations(new URL("./migrations", import.meta.url).pathname),
           // Force email delivery into its unconfigured state regardless of what a
