@@ -427,6 +427,7 @@ app.get("/api/speaker/content", requireAccess("speaker"), async (context) => {
       fileId: files.id,
       displayName: files.displayName,
       version: fileVersions.version,
+      supersededByMergeId: fileVersions.supersededByMergeId,
     })
     .from(files)
     .innerJoin(fileVersions, and(eq(fileVersions.fileId, files.id), eq(fileVersions.latest, true)))
@@ -442,6 +443,7 @@ app.get("/api/speaker/content", requireAccess("speaker"), async (context) => {
       taskTitle: tasks.title,
       displayName: files.displayName,
       version: fileVersions.version,
+      supersededByMergeId: fileVersions.supersededByMergeId,
       taskDeletedAt: tasks.deletedAt,
       assignmentDeletedAt: taskAssignees.deletedAt,
     })
@@ -465,6 +467,7 @@ app.get("/api/speaker/content", requireAccess("speaker"), async (context) => {
       storageKey: fileVersions.storageKey,
       sizeBytes: fileVersions.sizeBytes,
       latest: fileVersions.latest,
+      supersededByMergeId: fileVersions.supersededByMergeId,
       uploadedAt: fileVersions.createdAt,
     })
     .from(fileVersions)
@@ -513,6 +516,7 @@ app.get("/api/speaker/content", requireAccess("speaker"), async (context) => {
       taskTitle: file.taskTitle,
       displayName: file.displayName,
       version: file.version,
+      supersededByMerge: file.supersededByMergeId !== null,
       archived: file.taskDeletedAt !== null || file.assignmentDeletedAt !== null,
       downloadUrl: `/api/portal/files/${file.fileId}`,
       versions: storedVersions
@@ -524,6 +528,7 @@ app.get("/api/speaker/content", requireAccess("speaker"), async (context) => {
           sizeBytes: version.sizeBytes,
           uploadedAt: version.uploadedAt.toISOString(),
           current: version.latest,
+          supersededByMerge: version.supersededByMergeId !== null,
           downloadUrl: `/api/portal/files/${file.fileId}?version=${version.version}`,
         })),
     })),

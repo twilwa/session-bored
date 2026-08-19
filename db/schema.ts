@@ -688,6 +688,9 @@ export const fileVersions = sqliteTable(
     checksum: text("checksum"),
     latest: integer("latest", { mode: "boolean" }).notNull().default(true),
     uploadedByUserId: text("uploaded_by_user_id").notNull().references(() => users.id),
+    // A moved file keeps the merge that made it historical without inferring anything about
+    // uploads that existed before this provenance was recorded.
+    supersededByMergeId: text("superseded_by_merge_id"),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
     deletedAt: deletedAt(),

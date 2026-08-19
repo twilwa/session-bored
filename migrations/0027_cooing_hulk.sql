@@ -1,0 +1,1 @@
+ALTER TABLE `file_version` ADD `superseded_by_merge_id` text;

@@ -386,6 +386,24 @@ export async function applySpeakerMerge(input: ApplySpeakerMergeInput): Promise<
       ).bind(first.toId, first.fromId, ...rows.map((row) => row.rowId)));
     }
   }
+  const movedFileIds = input.plan.moves
+    .filter((referenceMove) => referenceMove.reference === "file")
+    .map((referenceMove) => referenceMove.rowId);
+  for (const fileIds of chunkIds(movedFileIds)) {
+    const placeholders = fileIds.map(() => "?").join(", ");
+    statements.push(input.database.prepare(
+      `update file_version set superseded_by_merge_id = ? where file_id in (${placeholders})`,
+    ).bind(mergeId, ...fileIds));
+  }
+  const movedSpeakerIds = input.plan.moves
+    .filter((referenceMove) => referenceMove.reference === "speaker")
+    .map((referenceMove) => referenceMove.rowId);
+  for (const speakerIds of chunkIds(movedSpeakerIds)) {
+    const placeholders = speakerIds.map(() => "?").join(", ");
+    statements.push(input.database.prepare(
+      `update file_version set superseded_by_merge_id = ? where file_id in (select id from file where speaker_id in (${placeholders}))`,
+    ).bind(mergeId, ...speakerIds));
+  }
 
   statements.push(
     input.database.prepare(

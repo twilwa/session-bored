@@ -100,7 +100,7 @@ function TaskRow({ task, onComplete, onUpload, busy }: {
       {task.file === null ? null : (
         <p className="task-row__file">
           <a href={`/api/portal/files/${task.file.fileId}`}>{task.file.displayName}</a>
-          <span>v{task.file.version}</span>
+          <span>{task.file.supersededByMerge ? "Superseded — merged" : `v${task.file.version}`}</span>
         </p>
       )}
     </li>
@@ -382,7 +382,7 @@ export function PortalPage() {
                     <FileComments fileId={file.fileId} />
                   </div>
                   <StatusChip tone={file.archived ? "neutral" : "good"}>
-                    {file.archived ? "Archived task" : `Version ${file.version}`}
+                    {file.archived ? "Archived task" : file.supersededByMerge ? "Superseded — merged" : `Version ${file.version}`}
                   </StatusChip>
                 </li>
               ))}

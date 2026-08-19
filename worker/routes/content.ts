@@ -101,6 +101,7 @@ contentRoutes.get("/api/events/:eventId/deliverables", requireOrganizer, async (
       fileId: files.id,
       displayName: files.displayName,
       version: fileVersions.version,
+      supersededByMergeId: fileVersions.supersededByMergeId,
       mimeType: fileVersions.mimeType,
       sizeBytes: fileVersions.sizeBytes,
       uploadedAt: fileVersions.createdAt,
@@ -138,6 +139,7 @@ contentRoutes.get("/api/events/:eventId/deliverables", requireOrganizer, async (
       storageKey: fileVersions.storageKey,
       sizeBytes: fileVersions.sizeBytes,
       latest: fileVersions.latest,
+      supersededByMergeId: fileVersions.supersededByMergeId,
       uploadedAt: fileVersions.createdAt,
     })
     .from(fileVersions)
@@ -184,6 +186,7 @@ contentRoutes.get("/api/events/:eventId/deliverables", requireOrganizer, async (
           id: row.fileId,
           displayName: row.displayName,
           version: row.version,
+          supersededByMerge: row.supersededByMergeId !== null,
           mimeType: row.mimeType,
           sizeBytes: row.sizeBytes,
           uploadedAt: row.uploadedAt,
@@ -197,6 +200,7 @@ contentRoutes.get("/api/events/:eventId/deliverables", requireOrganizer, async (
               sizeBytes: version.sizeBytes,
               uploadedAt: version.uploadedAt,
               current: version.latest,
+              supersededByMerge: version.supersededByMergeId !== null,
               downloadUrl: `/api/portal/files/${row.fileId}?version=${version.version}`,
             })),
         },
