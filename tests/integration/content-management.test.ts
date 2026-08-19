@@ -427,6 +427,19 @@ describe("content management", () => {
     expect(ownContent.tasks.find((task) => task.id === taskId)?.file).toBeNull();
     expect(ownContent.files.map((file) => file.fileId)).not.toContain(fileId);
 
+    const supersededComments = await request(`/api/content/files/${fileId}/comments`, {
+      headers: { cookie: ownerCookie },
+    });
+    expect(supersededComments.status).toBe(403);
+    await expect(supersededComments.json()).resolves.toEqual({ error: "forbidden" });
+    const supersededComment = await request(`/api/content/files/${fileId}/comments`, {
+      method: "POST",
+      headers: { cookie: ownerCookie, "content-type": "application/json" },
+      body: JSON.stringify({ body: "This superseded file should stay private." }),
+    });
+    expect(supersededComment.status).toBe(403);
+    await expect(supersededComment.json()).resolves.toEqual({ error: "forbidden" });
+
     for (const cookie of [ownerCookie, marcusCookie]) {
       const refused = await request(`/api/portal/files/${fileId}`, { headers: { cookie } });
       expect(refused.status).toBe(403);
@@ -489,6 +502,10 @@ describe("content management", () => {
     const currentDownload = await request(`/api/portal/files/${fileId}`, { headers: { cookie: ownerCookie } });
     expect(currentDownload.status).toBe(200);
     expect([...new Uint8Array(await currentDownload.arrayBuffer())]).toEqual([55, 66, 77, 88]);
+    const currentComments = await request(`/api/content/files/${fileId}/comments`, {
+      headers: { cookie: ownerCookie },
+    });
+    expect(currentComments.status).toBe(200);
     const supersededDownload = await request(`/api/portal/files/${fileId}?version=1`, {
       headers: { cookie: ownerCookie },
     });

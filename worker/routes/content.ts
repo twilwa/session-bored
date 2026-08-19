@@ -82,6 +82,18 @@ async function fileAccess(
   if (file.eventId !== speakerEvent.id) {
     return "forbidden";
   }
+  const [speakerVisibleVersion] = await database
+    .select({ id: fileVersions.id })
+    .from(fileVersions)
+    .where(and(
+      eq(fileVersions.fileId, file.id),
+      isNull(fileVersions.deletedAt),
+      isNull(fileVersions.supersededByMergeId),
+    ))
+    .limit(1);
+  if (speakerVisibleVersion === undefined) {
+    return "forbidden";
+  }
   const [owned] = await database
     .select({ id: speakers.id })
     .from(speakers)
