@@ -1,0 +1,22 @@
+worker/index.ts
+  s_7bbef27c10577f::t_927909cdf89601 87-101,108
+tests/integration/traffic-observability.test.ts
+  s_7bbef27c10577f::t_95801a21899c43 76,83,88
+  s_7bbef27c10577f::t_3981934f14f978 142-159
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "6eb367ab1a3ddecd73a94add87f4d570cc95f6b2",
+  "prompts": {},
+  "sessions": {
+    "s_7bbef27c10577f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a016ff-e63c-7093-9740-ae5d11087ddf",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    }
+  }
+}

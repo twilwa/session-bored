@@ -1,0 +1,21 @@
+worker/index.ts
+  s_7bbef27c10577f::t_927909cdf89601 87-101,108
+tests/integration/traffic-observability.test.ts
+  s_7bbef27c10577f::t_3981934f14f978 147-164
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "df167bba5cc7b757d8fb1675b5751508e6d96073",
+  "prompts": {},
+  "sessions": {
+    "s_7bbef27c10577f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a016ff-e63c-7093-9740-ae5d11087ddf",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}

@@ -1,0 +1,24 @@
+worker/index.ts
+  s_7bbef27c10577f::t_864b4cc4dbe7e0 90,99
+.github/workflows/ci.yml
+  s_7bbef27c10577f::t_d6b4bc3be7e99c 46-47
+  s_7bbef27c10577f::t_4c27f6d4f188bb 48
+tests/integration/traffic-observability.test.ts
+  s_7bbef27c10577f::t_864b4cc4dbe7e0 11-18,36,45,64,70-73,89,95-98,111,120,133-136,139-145
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "770aa559df21737fbd9fe73ae455355f96425686",
+  "prompts": {},
+  "sessions": {
+    "s_7bbef27c10577f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a016ff-e63c-7093-9740-ae5d11087ddf",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
