@@ -1,0 +1,35 @@
+scripts/preview-cleanup.d.ts
+  s_133386ce70e5d6::t_807427eeca0203 1-9
+scripts/preview-database.d.ts
+  s_133386ce70e5d6::t_807427eeca0203 8,14
+tests/unit/preview-config.test.ts
+  s_133386ce70e5d6::t_b19b35c9c9efa4 1-2
+  s_133386ce70e5d6::t_1e06b49d49b59c 10,15,24-28,45-46
+scripts/preview-cleanup.js
+  s_133386ce70e5d6::t_c59d9270d694b1 1-79
+scripts/preview-database.js
+  s_133386ce70e5d6::t_b19b35c9c9efa4 2,7-8,19,28
+tests/unit/preview-workflow.test.ts
+  s_133386ce70e5d6::t_6fa1c112a6190c 1-19
+.github/workflows/preview.yml
+  s_133386ce70e5d6::t_fe8489d1ba5fc0 2,53,109-117,161,189,198,214,232-240,243
+tests/unit/preview-cleanup.test.ts
+  s_133386ce70e5d6::t_6fa1c112a6190c 39-58
+  s_133386ce70e5d6::t_85e86e48c48ebb 1-38,59
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "2aa3e0d1fd72afb28c5cd99637a5b79a9270ef61",
+  "prompts": {},
+  "sessions": {
+    "s_133386ce70e5d6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a017d0-a3f9-7910-81a2-17d7e81b3d48",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
