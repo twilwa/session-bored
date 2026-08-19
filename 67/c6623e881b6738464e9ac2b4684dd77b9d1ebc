@@ -1,0 +1,32 @@
+client/pages/content/FileComments.tsx
+  s_3a871ba3f9d7f6::t_ed6eb026492a2a 27,34-36,44,52
+worker/routes/people.ts
+  s_3a871ba3f9d7f6::t_ed6eb026492a2a 55,473-475,479
+client/pages/portal/PortalPage.tsx
+  s_3a871ba3f9d7f6::t_ed6eb026492a2a 393
+client/pages/content/ContentPage.tsx
+  s_3a871ba3f9d7f6::t_ed6eb026492a2a 271
+tests/integration/people.test.ts
+  s_3a871ba3f9d7f6::t_ed6eb026492a2a 295-303
+worker/routes/content.ts
+  s_3a871ba3f9d7f6::t_ed6eb026492a2a 58-59,61,73-78,85,360-366,370-372,409-415,419-421
+tests/integration/content-management.test.ts
+  s_3a871ba3f9d7f6::t_ed6eb026492a2a 4-5,8,495,502,517-518,524-587
+  s_3a871ba3f9d7f6::t_b19206184ee1ae 588
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "67c6623e881b6738464e9ac2b4684dd77b9d1ebc",
+  "prompts": {},
+  "sessions": {
+    "s_3a871ba3f9d7f6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0172e-0f74-7143-babe-b84c7ba5a522",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}

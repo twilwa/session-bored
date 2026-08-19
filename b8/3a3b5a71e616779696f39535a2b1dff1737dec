@@ -1,0 +1,19 @@
+tests/integration/worker-access.test.ts
+  s_3a871ba3f9d7f6::t_bdff6792c16ee7 6,9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "b83a3b5a71e616779696f39535a2b1dff1737dec",
+  "prompts": {},
+  "sessions": {
+    "s_3a871ba3f9d7f6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0172e-0f74-7143-babe-b84c7ba5a522",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}

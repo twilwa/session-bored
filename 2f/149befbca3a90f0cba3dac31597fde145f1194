@@ -1,0 +1,32 @@
+tests/integration/people.test.ts
+  s_3a871ba3f9d7f6::t_91f91edfc3953b 328-329,346-347
+worker/routes/content.ts
+  s_3a871ba3f9d7f6::t_91f91edfc3953b 28,60-68,76,79,82,91,376-377,425-426
+tests/integration/content-management.test.ts
+  s_3a871ba3f9d7f6::t_91f91edfc3953b 580-581,585-597
+worker/speaker-event.ts
+  s_3a871ba3f9d7f6::t_91f91edfc3953b 1-16
+worker/index.ts
+  s_3a871ba3f9d7f6::t_91f91edfc3953b 46,421-423,425
+worker/routes/portal.ts
+  s_3a871ba3f9d7f6::t_91f91edfc3953b 23,63-65,67,537-541
+  s_3a871ba3f9d7f6::t_df9a1c8923e797 552-553
+worker/routes/people.ts
+  s_3a871ba3f9d7f6::t_91f91edfc3953b 45,470-472,477
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "2f149befbca3a90f0cba3dac31597fde145f1194",
+  "prompts": {},
+  "sessions": {
+    "s_3a871ba3f9d7f6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0172e-0f74-7143-babe-b84c7ba5a522",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
