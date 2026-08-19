@@ -4,15 +4,11 @@ import { describe, expect, it } from "vitest";
 import wranglerConfigText from "../../wrangler.jsonc?raw";
 
 describe("agent entry route registration", () => {
-  it("runs the Worker first for crawler guidance, references, and demo access", () => {
+  it("runs the Worker first globally for crawler guidance, references, and demo access", () => {
     const config = JSON.parse(wranglerConfigText) as {
-      assets: { run_worker_first: string[] };
+      assets: { run_worker_first: boolean | string[] };
     };
-    const registeredRoutes = new Set(config.assets.run_worker_first);
 
-    expect(registeredRoutes).toContain("/robots.txt");
-    expect(registeredRoutes).toContain("/llms.txt");
-    expect(registeredRoutes).toContain("/llms-full.txt");
-    expect(registeredRoutes).toContain("/demo");
+    expect(config.assets.run_worker_first).toBe(true);
   });
 });

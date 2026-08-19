@@ -201,6 +201,31 @@ Once a sender is connected, an organizer sends the letters that were waiting
 from **Communications → decision letters that have not gone out**. A letter
 already delivered is never re-sent.
 
+## Traffic observability
+
+Every production request passes through the Worker and emits one structured
+`http_request` event to Workers Logs. The event records `method`, `path`,
+`status`, `userAgent`, `referer`, `country`, and `asn`. Dynamic API paths use
+their route templates, referrers are reduced to their origin, and query strings
+aren't recorded. The event never includes cookies, authorization headers,
+request bodies, or IP addresses.
+
+To query traffic in the dashboard, open **Cloudflare dashboard → Workers &
+Pages → session-bored → Observability**. Filter `event` to `http_request`,
+then filter or group by `userAgent`, `path`, `status`, `country`, or `asn`. For
+an immediate stream during a verification run, use
+`npx wrangler tail session-bored`.
+
+For programmatic queries, send a `POST` request to the
+[Workers Observability telemetry query API](https://developers.cloudflare.com/api/resources/workers/subresources/observability/subresources/telemetry/methods/query/)
+at
+`/accounts/{account_id}/workers/observability/telemetry/query`. Use the
+`events` view, filter `$metadata.service` to `session-bored`, and filter `event`
+to `http_request`; add a `userAgent` filter to isolate crawlers such as GPTBot,
+ChatGPT-User, or Python-urllib. This endpoint requires a scoped Cloudflare API
+token with access to the account's Workers observability data. A Wrangler OAuth
+token isn't accepted for this API.
+
 ## Architecture and contracts
 
 The React SPA, Hono API, Better Auth endpoints, and public widgets share one

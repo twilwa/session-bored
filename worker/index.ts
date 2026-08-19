@@ -73,6 +73,47 @@ type AppEnvironment = {
 const app = new Hono<AppEnvironment>();
 const demoCookieName = "greenroom_demo";
 
+function refererOrigin(referer: string | undefined): string | null {
+  if (referer === undefined) {
+    return null;
+  }
+  try {
+    return new URL(referer).origin;
+  } catch {
+    return null;
+  }
+}
+
+function requestPathForLog(routePath: string, requestUrl: string): string {
+  if (routePath !== "*" && routePath !== "/*") {
+    return routePath;
+  }
+  const pathname = new URL(requestUrl).pathname;
+  const segments = pathname.split("/").filter(Boolean);
+  if (segments.length === 2 && segments[0] === "invitations") {
+    return "/invitations/:inviteId";
+  }
+  if (segments.length === 4 && segments[0] === "cfp" && segments[2] === "submissions") {
+    return "/cfp/:slug/submissions/:accessKey";
+  }
+  return pathname;
+}
+
+app.use("*", async (context, next) => {
+  await next();
+  const routePath = context.req.routePath;
+  console.log(JSON.stringify({
+    event: "http_request",
+    method: context.req.method,
+    path: requestPathForLog(routePath, context.req.url),
+    status: context.res.status,
+    userAgent: context.req.header("user-agent") ?? null,
+    referer: refererOrigin(context.req.header("referer")),
+    country: context.req.raw.cf?.country ?? null,
+    asn: context.req.raw.cf?.asn ?? null,
+  }));
+});
+
 const prepareRequest = createMiddleware<AppEnvironment>(async (context, next) => {
   await ensureSeeded(context.env);
   const demoCookie = await getSignedCookie(context, context.env.BETTER_AUTH_SECRET, demoCookieName);
@@ -630,6 +671,12 @@ for (const { path, access } of protectedPageRoutes) {
   app.get(path, prepareRequest, requirePageAccess(access), (context) => context.env.ASSETS.fetch(context.req.raw));
   app.get(`${path}/*`, prepareRequest, requirePageAccess(access), (context) => context.env.ASSETS.fetch(context.req.raw));
 }
+
+app.notFound((context) =>
+  context.req.path.startsWith("/api/")
+    ? context.text("404 Not Found", 404)
+    : context.env.ASSETS.fetch(context.req.raw)
+);
 
 export type AppType = typeof app;
 export default app;
