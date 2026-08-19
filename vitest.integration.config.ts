@@ -29,7 +29,9 @@ export default defineConfig({
   test: {
     include: ["tests/integration/**/*.test.ts"],
     setupFiles: ["./tests/integration/setup.ts"],
-    // Isolated Worker/D1 setup and real password hashing can exceed Vitest's unit-test default on shared CI runners.
-    testTimeout: 10_000,
+    // Shared CI contention has slowed real Worker, D1, and password-hashing paths by 5-8x.
+    // These harness ceilings do not replace the product latency budgets asserted in individual tests.
+    testTimeout: 30_000,
+    hookTimeout: 30_000,
   },
 });

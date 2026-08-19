@@ -1,6 +1,7 @@
 // ABOUTME: Verifies agenda scheduling through authenticated Worker requests and real D1 state.
 // ABOUTME: Covers accepted-session reads, persistent placement, conflicts, TBD, and publishing.
 import { env } from "cloudflare:workers";
+import { and, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { beforeEach, describe, expect, it } from "vitest";
 import { sessions } from "../../db/schema.ts";
@@ -65,10 +66,21 @@ describe("agenda builder", () => {
   beforeEach(async () => {
     await request("/api/health");
     organizerCookie = await signIn("sbek-organizer@example.com", "SbekTest!2027-org");
-    const agenda = await readAgenda(organizerCookie);
-    for (const session of agenda.sessions) {
-      await place(session.id, organizerCookie, { scheduleStatus: "unplaced" });
-    }
+    const database = drizzle(env.DB);
+    await database
+      .delete(sessions)
+      .where(and(eq(sessions.eventId, eventId), eq(sessions.directEntry, true)));
+    await database
+      .update(sessions)
+      .set({
+        scheduleStatus: "unplaced",
+        scheduledDate: null,
+        roomId: null,
+        startsAt: null,
+        endsAt: null,
+        publishedAt: null,
+      })
+      .where(eq(sessions.eventId, eventId));
   });
 
   it("allows only organizers to read, place, or publish agenda sessions", async () => {
@@ -786,6 +798,7 @@ describe("agenda builder", () => {
 
   it("refuses invalid direct-session content and event resources without creating a session", async () => {
     const before = await readAgenda(organizerCookie);
+    expect(before.sessions).not.toContainEqual(expect.objectContaining({ id: "ses_scale_000" }));
     const cases = [
       { input: { title: "  " }, error: "invalid_session" },
       { input: { title: "Wrong track", trackId: "trk_not_in_event" }, error: "invalid_track" },
