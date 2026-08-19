@@ -1,0 +1,21 @@
+tests/unit/ci-workflow.test.ts
+  s_845b6cd15b4f72::t_21ddd3d8542fb3 1-21
+.github/workflows/ci.yml
+  s_845b6cd15b4f72::t_507cf3eedc1bd7 52-53
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "a2c92309d519be462d6c049fece8920df7d5c77f",
+  "prompts": {},
+  "sessions": {
+    "s_845b6cd15b4f72": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a01700-2e65-7d40-b5e3-7056792bee3d",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
