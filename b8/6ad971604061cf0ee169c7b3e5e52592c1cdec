@@ -1,0 +1,26 @@
+tests/integration/agent-credentials.test.ts
+  s_dde07df36a49fd::t_87b8d4dc571d86 183-194,216-234
+worker/agent-credentials.ts
+  s_dde07df36a49fd::t_bd4f2caf1766c5 48,50,53-57
+  s_dde07df36a49fd::t_bc47d64bfc29ab 40,42-43,46-47,49,51-52,58-65,75
+tests/e2e/event-settings.spec.ts
+  s_dde07df36a49fd::t_87b8d4dc571d86 97-100
+client/pages/event-setup/EventSetupPage.tsx
+  s_dde07df36a49fd::t_bc47d64bfc29ab 364
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "b86ad971604061cf0ee169c7b3e5e52592c1cdec",
+  "prompts": {},
+  "sessions": {
+    "s_dde07df36a49fd": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a017d0-5b44-7590-8b35-754e4a1e3b5b",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
