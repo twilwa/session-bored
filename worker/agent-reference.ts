@@ -395,9 +395,10 @@ with JSON \`{ "name": string, "role":
 "organizer" | "reviewer" | "speaker" }\`. The token is shown only once. Send it on every request as
 \`Authorization: Bearer greenroom_...\`. Verify the identity and role with \`GET /api/session\`.
 
-A credential is pinned to its issued role even when the account holds broader grants. It stops
-working when the user revokes it or loses that live role. Credential listing, issuance, and
-revocation require the user's browser session; never ask for or retain the user's password.
+A credential is pinned to its issued role and the specific grant that authorized it, even when
+the account holds broader grants. It stops working when the user revokes it or that originating
+grant; granting the role again does not revive it. Credential listing, issuance, and revocation
+require the user's browser session; never ask for or retain the user's password.
 
 Main surfaces:
 
@@ -459,9 +460,9 @@ Those browser-only operations are:
 
 For delegated organizer work, send \`Authorization: Bearer greenroom_...\` on every request.
 Do not use password sign-in. Start with \`GET /api/session\` and verify that \`user.roles\` contains
-exactly the role the user intended. A credential is pinned to its issued role, remains bounded by
-the account's corresponding live grant, and becomes invalid immediately when either the credential
-or that grant is revoked.
+exactly the role the user intended. A credential is pinned to its issued role and the specific live
+grant that authorized it. It becomes invalid immediately when either the credential or that
+originating grant is revoked, and granting the same role again does not revive it.
 
 Send JSON with \`content-type: application/json\`, and use only IDs returned by reads from the same
 event. Successful timestamps serialize as ISO 8601 strings unless an operation says it expects

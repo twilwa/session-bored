@@ -1,9 +1,9 @@
-// ABOUTME: Issues and authenticates revocable agent credentials against the account's live grants.
+// ABOUTME: Issues and authenticates revocable agent credentials against their originating role grants.
 // ABOUTME: Stores only credential digests and returns one issued role instead of the account's grant union.
 import { and, desc, eq, isNull } from "drizzle-orm";
 import type { drizzle } from "drizzle-orm/d1";
-import { agentCredentials, users, type GrantableRole } from "../db/schema.ts";
-import { hasLiveGrant } from "./roles.ts";
+import { agentCredentials, roleGrants, users, type GrantableRole } from "../db/schema.ts";
+import { listLiveGrants } from "./roles.ts";
 
 type Database = ReturnType<typeof drizzle>;
 
@@ -38,7 +38,9 @@ export async function issueAgentCredential(
   database: Database,
   input: { userId: string; name: string; role: GrantableRole },
 ) {
-  if (!(await hasLiveGrant(database, input.userId, input.role))) {
+  const roleGrant = (await listLiveGrants(database, [input.userId]))
+    .find((grant) => grant.role === input.role);
+  if (roleGrant === undefined) {
     return null;
   }
   const token = `greenroom_${credentialSecret()}`;
@@ -48,6 +50,7 @@ export async function issueAgentCredential(
       userId: input.userId,
       name: input.name,
       role: input.role,
+      roleGrantId: roleGrant.id,
       secretDigest: await credentialDigest(token),
     })
     .returning({
@@ -119,11 +122,17 @@ export async function authenticateAgentCredential(
     })
     .from(agentCredentials)
     .innerJoin(users, eq(agentCredentials.userId, users.id))
+    .innerJoin(roleGrants, and(
+      eq(agentCredentials.roleGrantId, roleGrants.id),
+      eq(agentCredentials.userId, roleGrants.userId),
+      eq(agentCredentials.role, roleGrants.role),
+      isNull(roleGrants.revokedAt),
+    ))
     .where(and(
       eq(agentCredentials.secretDigest, await credentialDigest(token)),
       isNull(agentCredentials.revokedAt),
     ));
-  if (identity === undefined || !(await hasLiveGrant(database, identity.user.id, identity.credentialRole))) {
+  if (identity === undefined) {
     return null;
   }
   const [used] = await database

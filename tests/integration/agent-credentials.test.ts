@@ -97,19 +97,20 @@ describe("agent credentials", () => {
     );
   });
 
-  it("pins a reviewer credential below the account's broader live grant union", async () => {
+  it("pins a reviewer credential to its originating grant below the account's broader live grant union", async () => {
     await request("/api/health");
     const cookie = await signIn("sbek-organizer@example.com", "SbekTest!2027-org");
     const session = await request("/api/session", { headers: { cookie } });
     const { user } = await session.json<{ user: { id: string } }>();
     const database = drizzle(env.DB);
-    let reviewerGrantRevoked = false;
+    let reviewerGrantLive = false;
     await grantRole(database, {
       userId: user.id,
       role: "reviewer",
       source: "organizer",
       grantedByUserId: user.id,
     });
+    reviewerGrantLive = true;
 
     try {
       const issuedResponse = await request("/api/agent-credentials", {
@@ -129,11 +130,19 @@ describe("agent credentials", () => {
       expect((await request("/api/events", { headers })).status).toBe(403);
       expect((await request("/api/events", { headers: { cookie } })).status).toBe(200);
       await revokeRole(database, { userId: user.id, role: "reviewer", revokedByUserId: user.id });
-      reviewerGrantRevoked = true;
+      reviewerGrantLive = false;
+      expect((await request("/api/session", { headers })).status).toBe(401);
+      await grantRole(database, {
+        userId: user.id,
+        role: "reviewer",
+        source: "organizer",
+        grantedByUserId: user.id,
+      });
+      reviewerGrantLive = true;
       expect((await request("/api/session", { headers })).status).toBe(401);
       expect((await request("/api/events", { headers: { cookie } })).status).toBe(200);
     } finally {
-      if (!reviewerGrantRevoked) {
+      if (reviewerGrantLive) {
         await revokeRole(database, { userId: user.id, role: "reviewer", revokedByUserId: user.id });
       }
     }

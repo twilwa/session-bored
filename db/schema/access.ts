@@ -63,6 +63,7 @@ export const agentCredentials = sqliteTable(
     userId: text("user_id").notNull(),
     name: text("name").notNull(),
     role: text("role", { enum: grantableRoles }).$type<GrantableRole>().notNull(),
+    roleGrantId: text("role_grant_id").references(() => roleGrants.id),
     secretDigest: text("secret_digest").notNull(),
     lastUsedAt: integer("last_used_at", { mode: "timestamp_ms" }),
     revokedAt: integer("revoked_at", { mode: "timestamp_ms" }),

@@ -48,6 +48,7 @@ describe("agent reference", () => {
     expect(body).toContain("Authorization: Bearer greenroom_");
     expect(body).toContain("shown only once");
     expect(body).toContain("pinned to its issued role");
+    expect(body).toContain("granting the role again does not revive it");
     expect(body).toContain("publishing a programme");
     expect(body).toContain("sending mail to speakers");
     expect(body).toContain("issuing decisions");
@@ -65,6 +66,7 @@ describe("agent reference", () => {
     expect(body).toContain("POST `/api/agent-credentials`");
     expect(body).toContain("POST `/api/agent-credentials/:credentialId/revoke`");
     expect(body).toContain("Authorization: Bearer greenroom_");
+    expect(body).toContain("granting the same role again does not revive it");
     expect(body).toContain("human_confirmation_required");
     for (const heading of [
       "## Event settings",
