@@ -566,6 +566,9 @@ portalRoutes.get("/portal/files/:fileId", async (context) => {
   if (version === undefined) {
     return context.json({ error: "not_found" }, 404);
   }
+  if (!holdsAccess(roles, "organizer") && version.supersededByMergeId !== null) {
+    return context.json({ error: "forbidden" }, 403);
+  }
   const object = await getFileObject(context.env.FILES, version.storageKey);
   if (object === null) {
     return context.json({ error: "file_object_missing" }, 404);

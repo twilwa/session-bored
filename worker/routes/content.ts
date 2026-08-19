@@ -26,7 +26,7 @@ import { chunkIds } from "../d1-limits.ts";
 import { deriveDeliverableStatus } from "../deliverable-status.ts";
 import { resolveEffectiveRoles } from "../roles.ts";
 import { activeSpeakerEventFor, type ActiveSpeakerEventError } from "../speaker-event.ts";
-import { filenameForVersion } from "../storage/file-versions.ts";
+import { filenameForVersion, fileVersionSummary } from "../storage/file-versions.ts";
 import { getFileObject } from "../storage/files.ts";
 
 type ContentEnvironment = {
@@ -80,6 +80,18 @@ async function fileAccess(
     return "forbidden";
   }
   if (file.eventId !== speakerEvent.id) {
+    return "forbidden";
+  }
+  const [speakerVisibleVersion] = await database
+    .select({ id: fileVersions.id })
+    .from(fileVersions)
+    .where(and(
+      eq(fileVersions.fileId, file.id),
+      isNull(fileVersions.deletedAt),
+      isNull(fileVersions.supersededByMergeId),
+    ))
+    .limit(1);
+  if (speakerVisibleVersion === undefined) {
     return "forbidden";
   }
   const [owned] = await database
@@ -209,15 +221,11 @@ contentRoutes.get("/api/events/:eventId/deliverables", requireOrganizer, async (
           versions: storedVersions
             .filter((version) => version.fileId === row.fileId)
             .sort((first, second) => second.version - first.version)
-            .map((version) => ({
-              version: version.version,
-              displayName: filenameForVersion(version, version.displayName),
-              sizeBytes: version.sizeBytes,
-              uploadedAt: version.uploadedAt,
-              current: version.latest,
-              supersededByMerge: version.supersededByMergeId !== null,
-              downloadUrl: `/api/portal/files/${row.fileId}?version=${version.version}&eventId=${encodeURIComponent(eventId)}`,
-            })),
+            .map((version) => fileVersionSummary(
+              version,
+              version.displayName,
+              eventId,
+            )),
         },
     } as const;
   });
