@@ -1,6 +1,6 @@
 // ABOUTME: Issues and authenticates revocable agent credentials against their originating role grants.
 // ABOUTME: Stores only credential digests and returns one issued role instead of the account's grant union.
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import type { drizzle } from "drizzle-orm/d1";
 import { agentCredentials, roleGrants, users, type GrantableRole } from "../db/schema.ts";
 import { listLiveGrants } from "./roles.ts";
@@ -105,6 +105,28 @@ export async function revokeAgentCredential(
   return credential ?? null;
 }
 
+export async function markAgentCredentialUsed(
+  database: Database,
+  credentialId: string,
+): Promise<boolean> {
+  const [used] = await database
+    .update(agentCredentials)
+    .set({ lastUsedAt: new Date() })
+    .where(and(
+      eq(agentCredentials.id, credentialId),
+      isNull(agentCredentials.revokedAt),
+      sql`EXISTS (
+        SELECT 1 FROM ${roleGrants}
+        WHERE ${roleGrants.id} = ${agentCredentials.roleGrantId}
+          AND ${roleGrants.userId} = ${agentCredentials.userId}
+          AND ${roleGrants.role} = ${agentCredentials.role}
+          AND ${roleGrants.revokedAt} IS NULL
+      )`,
+    ))
+    .returning({ id: agentCredentials.id });
+  return used !== undefined;
+}
+
 export async function authenticateAgentCredential(
   database: Database,
   authorization: string,
@@ -135,15 +157,7 @@ export async function authenticateAgentCredential(
   if (identity === undefined) {
     return null;
   }
-  const [used] = await database
-    .update(agentCredentials)
-    .set({ lastUsedAt: new Date() })
-    .where(and(
-      eq(agentCredentials.id, identity.credentialId),
-      isNull(agentCredentials.revokedAt),
-    ))
-    .returning({ id: agentCredentials.id });
-  if (used === undefined) {
+  if (!await markAgentCredentialUsed(database, identity.credentialId)) {
     return null;
   }
   return {

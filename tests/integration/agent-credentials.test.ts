@@ -6,6 +6,7 @@ import { drizzle } from "drizzle-orm/d1";
 import { describe, expect, it } from "vitest";
 import { agentCredentials } from "../../db/schema.ts";
 import worker from "../../worker/index.ts";
+import { markAgentCredentialUsed } from "../../worker/agent-credentials.ts";
 import { grantRole, listLiveGrants, revokeRole } from "../../worker/roles.ts";
 
 async function request(path: string, init?: RequestInit): Promise<Response> {
@@ -197,6 +198,48 @@ describe("agent credentials", () => {
         await revokeRole(database, { userId: user.id, role: "reviewer", revokedByUserId: user.id });
       }
     }
+  });
+
+  it("refuses the final use claim when the originating grant is revoked after identity lookup", async () => {
+    await request("/api/health");
+    const cookie = await signIn("sbek-organizer@example.com", "SbekTest!2027-org");
+    const session = await request("/api/session", { headers: { cookie } });
+    const { user } = await session.json<{ user: { id: string } }>();
+    const database = drizzle(env.DB);
+    const granted = await grantRole(database, {
+      userId: user.id,
+      role: "reviewer",
+      source: "organizer",
+      grantedByUserId: user.id,
+    });
+    expect(granted).toEqual({ granted: true });
+
+    const issuedResponse = await request("/api/agent-credentials", {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ name: "Revocation race helper", role: "reviewer" }),
+    });
+    expect(issuedResponse.status).toBe(201);
+    const { credential } = await issuedResponse.json<{ credential: { id: string } }>();
+    const [lookedUp] = await database
+      .select({ id: agentCredentials.id })
+      .from(agentCredentials)
+      .where(eq(agentCredentials.id, credential.id));
+    expect(lookedUp).toEqual({ id: credential.id });
+
+    const revoked = await revokeRole(database, {
+      userId: user.id,
+      role: "reviewer",
+      revokedByUserId: user.id,
+    });
+    expect(revoked).toEqual({ revoked: true });
+
+    await expect(markAgentCredentialUsed(database, lookedUp!.id)).resolves.toBe(false);
+    const [stored] = await database
+      .select({ lastUsedAt: agentCredentials.lastUsedAt })
+      .from(agentCredentials)
+      .where(eq(agentCredentials.id, credential.id));
+    expect(stored?.lastUsedAt).toBeNull();
   });
 
   it("revokes an issued credential without deleting its record", async () => {
