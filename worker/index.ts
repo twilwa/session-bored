@@ -84,13 +84,28 @@ function refererOrigin(referer: string | undefined): string | null {
   }
 }
 
+function requestPathForLog(routePath: string, requestUrl: string): string {
+  if (routePath !== "*" && routePath !== "/*") {
+    return routePath;
+  }
+  const pathname = new URL(requestUrl).pathname;
+  const segments = pathname.split("/").filter(Boolean);
+  if (segments.length === 2 && segments[0] === "invitations") {
+    return "/invitations/:inviteId";
+  }
+  if (segments.length === 4 && segments[0] === "cfp" && segments[2] === "submissions") {
+    return "/cfp/:slug/submissions/:accessKey";
+  }
+  return pathname;
+}
+
 app.use("*", async (context, next) => {
   await next();
   const routePath = context.req.routePath;
   console.log(JSON.stringify({
     event: "http_request",
     method: context.req.method,
-    path: routePath === "*" || routePath === "/*" ? new URL(context.req.url).pathname : routePath,
+    path: requestPathForLog(routePath, context.req.url),
     status: context.res.status,
     userAgent: context.req.header("user-agent") ?? null,
     referer: refererOrigin(context.req.header("referer")),

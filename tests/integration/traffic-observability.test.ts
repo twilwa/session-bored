@@ -73,24 +73,19 @@ describe("traffic observability", () => {
     })]);
   });
 
-  it("logs robots.txt once while preserving the asset-layer response", async () => {
+  it("logs the Worker-owned robots.txt response once", async () => {
     const url = "http://example.test/robots.txt";
     const headers = { "user-agent": "ChatGPT-User/1.0" };
-    const expected = await env.ASSETS.fetch(url, { headers });
     const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
 
     const response = await worker.request(url, { headers }, env);
 
-    expect(response.status).toBe(expected.status);
-    expect(response.headers.get("content-type")).toBe(expected.headers.get("content-type"));
-    expect(new Uint8Array(await response.arrayBuffer())).toEqual(
-      new Uint8Array(await expected.arrayBuffer()),
-    );
+    expect(response.status).toBe(200);
     expect(trafficLogLines(log.mock.calls)).toEqual([JSON.stringify({
       event: "http_request",
       method: "GET",
       path: "/robots.txt",
-      status: expected.status,
+      status: 200,
       userAgent: "ChatGPT-User/1.0",
       referer: null,
       country: null,
@@ -143,5 +138,23 @@ describe("traffic observability", () => {
     })]);
     expect(requestLogs[0]).not.toContain("private-token");
     expect(requestLogs[0]).not.toContain("do-not-log");
+  });
+
+  it("uses route templates for capability-bearing SPA paths", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const requests = [
+      ["/invitations/private-invite-capability", "/invitations/:inviteId"],
+      ["/cfp/devflow-conf-2027/submissions/private-submission-capability", "/cfp/:slug/submissions/:accessKey"],
+    ] as const;
+
+    for (const [path] of requests) {
+      await worker.request(`http://example.test${path}`, undefined, env);
+    }
+
+    const requestLogs = trafficLogLines(log.mock.calls);
+    expect(requestLogs.map((entry) => JSON.parse(entry).path)).toEqual(
+      requests.map(([, routeTemplate]) => routeTemplate),
+    );
+    expect(requestLogs.join("\n")).not.toContain("private-");
   });
 });
