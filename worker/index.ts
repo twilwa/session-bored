@@ -542,7 +542,11 @@ app.get("/api/speaker/content", requireAccess("speaker"), async (context) => {
       supersededByMergeId: fileVersions.supersededByMergeId,
     })
     .from(files)
-    .innerJoin(fileVersions, and(eq(fileVersions.fileId, files.id), eq(fileVersions.latest, true)))
+    .innerJoin(fileVersions, and(
+      eq(fileVersions.fileId, files.id),
+      eq(fileVersions.latest, true),
+      isNull(fileVersions.supersededByMergeId),
+    ))
     .where(and(
       eq(files.speakerId, profile.speakerId),
       inArray(files.taskId, taskIds),
@@ -561,7 +565,11 @@ app.get("/api/speaker/content", requireAccess("speaker"), async (context) => {
     })
     .from(files)
     .innerJoin(tasks, eq(tasks.id, files.taskId))
-    .innerJoin(fileVersions, and(eq(fileVersions.fileId, files.id), eq(fileVersions.latest, true)))
+    .innerJoin(fileVersions, and(
+      eq(fileVersions.fileId, files.id),
+      eq(fileVersions.latest, true),
+      isNull(fileVersions.supersededByMergeId),
+    ))
     .leftJoin(taskAssignees, and(
       eq(taskAssignees.taskId, tasks.id),
       eq(taskAssignees.speakerId, profile.speakerId),
@@ -583,7 +591,10 @@ app.get("/api/speaker/content", requireAccess("speaker"), async (context) => {
       uploadedAt: fileVersions.createdAt,
     })
     .from(fileVersions)
-    .where(inArray(fileVersions.fileId, ownFileIds));
+    .where(and(
+      inArray(fileVersions.fileId, ownFileIds),
+      isNull(fileVersions.supersededByMergeId),
+    ));
   // Decisions stay silent until they are communicated, so the speaker's own list reads
   // from the sent letters and their own sessions, never from the live committee status.
   const notifiedSubmissionIds = ownSubmissions.length === 0 ? [] : await database
@@ -615,11 +626,20 @@ app.get("/api/speaker/content", requireAccess("speaker"), async (context) => {
     // speaker reads one resolved list rather than a copy kept anywhere else.
     tasks: ownTasks.map((task) => {
       const limits = task.taskType === "file_request" ? limitsForTask(task) : null;
+      const taskFile = taskFiles.find((file) => file.taskId === task.id);
       return {
         ...task,
         acceptedFileTypes: limits === null ? null : Object.keys(limits.mimeTypeByExtension),
         maximumFileBytes: limits === null ? null : limits.maxBytes,
-        file: taskFiles.find((file) => file.taskId === task.id) ?? null,
+        file: taskFile === undefined
+          ? null
+          : {
+            taskId: taskFile.taskId,
+            fileId: taskFile.fileId,
+            displayName: taskFile.displayName,
+            version: taskFile.version,
+            supersededByMerge: taskFile.supersededByMergeId !== null,
+          },
       };
     }),
     files: ownFiles.map((file) => ({
