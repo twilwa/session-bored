@@ -1,0 +1,27 @@
+tests/unit/preview-workflow.test.ts
+  s_133386ce70e5d6::t_f2f07eaf83d255 19-36
+scripts/preview-bucket.d.ts
+  s_133386ce70e5d6::t_151ec5d2218310 1-8
+scripts/preview-bucket.js
+  s_133386ce70e5d6::t_151ec5d2218310 1-39
+tests/unit/preview-bucket.test.ts
+  s_133386ce70e5d6::t_f2f07eaf83d255 1-22
+.github/workflows/preview.yml
+  s_133386ce70e5d6::t_151ec5d2218310 112,134-136,138,240
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "a9eb72aa3664dbb5e9d46011cd5fbf3248d5af93",
+  "prompts": {},
+  "sessions": {
+    "s_133386ce70e5d6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a017d0-a3f9-7910-81a2-17d7e81b3d48",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
