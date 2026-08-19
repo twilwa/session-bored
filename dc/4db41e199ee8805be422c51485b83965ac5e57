@@ -1,0 +1,19 @@
+.github/workflows/ci.yml
+  s_dde07df36a49fd::t_9b3c51d7bd464d 52
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "dc4db41e199ee8805be422c51485b83965ac5e57",
+  "prompts": {},
+  "sessions": {
+    "s_dde07df36a49fd": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a017d0-5b44-7590-8b35-754e4a1e3b5b",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
