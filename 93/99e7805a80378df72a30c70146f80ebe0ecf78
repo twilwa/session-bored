@@ -1,0 +1,36 @@
+worker/agent-reference.ts
+  s_dde07df36a49fd::t_f056ad6aadc4fd 398-401,463-465
+tests/integration/agent-reference.test.ts
+  s_dde07df36a49fd::t_f056ad6aadc4fd 51,69
+migrations/meta/0029_snapshot.json
+  s_dde07df36a49fd::t_7ef8358b483e79 1-5973
+AGENTS.md
+  s_dde07df36a49fd::t_f056ad6aadc4fd 378-380,386
+tests/integration/agent-credentials.test.ts
+  s_dde07df36a49fd::t_37deac29031154 100,106,113,133-141,145
+migrations/0029_smooth_iron_patriot.sql
+  s_dde07df36a49fd::t_f056ad6aadc4fd 1-5
+worker/agent-credentials.ts
+  s_dde07df36a49fd::t_2b9447dba221f9 1
+  s_dde07df36a49fd::t_efc05b6b7bad92 5-6,41-43,53,125-130,135
+db/schema/access.ts
+  s_dde07df36a49fd::t_efc05b6b7bad92 66
+migrations/meta/_journal.json
+  s_dde07df36a49fd::t_7ef8358b483e79 207-213
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "9399e7805a80378df72a30c70146f80ebe0ecf78",
+  "prompts": {},
+  "sessions": {
+    "s_dde07df36a49fd": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a017d0-5b44-7590-8b35-754e4a1e3b5b",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
