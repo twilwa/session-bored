@@ -66,6 +66,10 @@ Anyone can create an account at `/signup`. New accounts are **attendees**: they
 keep their own schedule and their own proposals, and reach no speaker, reviewer,
 or organizer area. Only an organizer opens those, from **People** in the
 organizer workspace, where each grant records who made it and can be taken back.
+Granting **Speaker** also creates or links the account's person and invited
+speaker profile for the active event, so the speaker area opens with a usable
+profile. For speaker access granted before this setup existed, **Prepare speaker
+profile** applies it without replacing the access grant.
 
 An account can hold more than one of these. When it does, the signed-in header
 carries an **Area** switcher naming every area those grants open, on public pages

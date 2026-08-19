@@ -413,7 +413,17 @@ longer projects it into the session at all.
   `session_speaker` row: un-accepting keeps the session on purpose, so
   *Programmed* counts a submission-backed session only while its submission is
   still accepted, and a directly entered session (no `submission_id`) always.
-  Granting is attributed and silent; the notify checkbox defaults to off.
+  Granting is attributed and silent; the notify checkbox defaults to off. A
+  speaker grant also prepares the profile chain for the active event before it
+  writes the platform-wide grant: `preparePromotedSpeaker` resolves or creates
+  the account-linked `person` and creates the event's `speaker` row as
+  `invited`.
+  The request must name the event, and `activeSpeakerEventFor` accepts only the
+  active one. Repeating the action is the explicit repair for an existing live
+  grant with no profile chain; it may answer `granted: false` with
+  `speakerProfileReady: true`. Do not auto-repair untouched grant-only accounts:
+  their no-profile portal state remains valid until the organizer chooses that
+  repair.
 - **A reviewer invitation is redeemed only by a proved address, never by signing
   up as one.** Signing up as an invited address grants nothing. Redemption has
   three doors and one proof. `worker/reviewer-invites.ts#redeemInviteForAccount`
@@ -564,13 +574,22 @@ lifecycle and relationships are fixed as follows:
 
 ## Speaker portal contract
 
-`worker/routes/portal.ts` (mounted under `/api`) and `client/pages/portal/PortalPage.tsx`
-own F-7.x self-service. It reads and extends the M0 `GET /api/speaker/content`
-endpoint rather than duplicating it; that endpoint's `profile` now also carries
-`headshotUrl`, `twitter`, `linkedin`, and `socialLinks`, and it returns a new
-`sessions` array (`editable` is false once `contentStatus` is `approved`) plus
-enriched `tasks` (`taskType`, `instructions`, `acceptedFileTypes`,
-`maximumFileBytes`, and a `file` summary when one has been uploaded).
+`worker/routes/portal.ts` (mounted under `/api`) and
+`client/pages/portal/PortalPage.tsx` own F-7.x self-service. It reads and
+extends the M0 `GET /api/speaker/content?eventId=...` endpoint rather than
+duplicating it; that endpoint's `profile` also carries `headshotUrl`, `twitter`,
+`linkedin`, and `socialLinks`, and it returns a `sessions` array (`editable` is
+false once `contentStatus` is `approved`) plus enriched `tasks` (`taskType`,
+`instructions`, `acceptedFileTypes`, `maximumFileBytes`, and a `file` summary
+when one has been uploaded).
+
+Every speaker portal read and mutation names the active event. The shared
+`activeSpeakerEventFor` gate rejects a missing or different `eventId` before any
+person or speaker row is resolved. Profile, proposal, session, task,
+private-file, and file-comment access then stays on that event's speaker row;
+the global header's portal-work lookup carries the same scope. Organizer file
+and comment access retains its wider reach and does not require the speaker
+event query.
 
 - Uploads write through the existing `file`/`file_version` tables (R2 binding
   `FILES`) rather than a parallel model. `file.kind` (`headshot` | `deliverable`)
@@ -582,15 +601,17 @@ enriched `tasks` (`taskType`, `instructions`, `acceptedFileTypes`,
   response immutably. `storeSpeakerHeadshot` mirrors the versioned URL onto
   `people.headshotUrl`, so a replacement names new bytes and shows immediately
   on every surface (issue #152). Re-uploading either kind adds a new
-  `file_version` or flips `latest`; prior versions stay downloadable via
-  `GET /api/portal/files/:fileId?version=N`, and each `files[].versions` entry in
-  `GET /api/speaker/content` carries that link. `file.display_name` only tracks the
-  newest upload, so a version's own filename comes from its storage key
+  `file_version` or flips `latest`; prior versions stay downloadable to a
+  speaker via `GET /api/portal/files/:fileId?version=N&eventId=...`, and each
+  `files[].versions` entry in `GET /api/speaker/content?eventId=...` carries
+  that link. `file.display_name` only tracks the newest upload, so a version's
+  own filename comes from its storage key
   (`worker/storage/file-versions.ts`) for the history list, the download's
   `Content-Disposition`, and the public headshot's per-version content type.
 - A speaker never sees `submission.status`. Both speaker doors -
-  `GET /api/speaker/content` and `GET /api/speaker/submissions/:submissionId` -
-  answer with `speakerStatus` from `speakerFacingSubmissionStatus` in
+  `GET /api/speaker/content?eventId=...` and
+  `GET /api/speaker/submissions/:submissionId?eventId=...` - answer with
+  `speakerStatus` from `speakerFacingSubmissionStatus` in
   `shared/api.ts`, and read `in_review` otherwise. **A decision is communicated by
   the letter arriving, not by an organizer queueing one**: join the notice log
   through `worker/speaker-access.ts#sentDecisionLetter`, which is `sent` and not
@@ -628,9 +649,9 @@ enriched `tasks` (`taskType`, `instructions`, `acceptedFileTypes`,
   stays a document request, which is what every request predating the choice
   meant. `limitsForTask` resolves the list against the extensions the app knows,
   dropping any it does not, and takes the image ceiling for a picture-only
-  request. `GET /api/speaker/content` answers with those resolved limits, so the
-  speaker's hint and every rejection name that request's own types; never
-  restate a type list in client copy.
+  request. `GET /api/speaker/content?eventId=...` answers with those resolved
+  limits, so the speaker's hint and every rejection name that request's own
+  types; never restate a type list in client copy.
 - A picture request is the organizer asking for the speaker's headshot, so
   `worker/routes/portal.ts#storeSpeakerHeadshot` runs for both doors: the
   dedicated picker and a picture-request upload. The deliverable itself stays a
