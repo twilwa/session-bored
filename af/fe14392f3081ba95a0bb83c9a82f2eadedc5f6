@@ -1,0 +1,22 @@
+tests/unit/agent-access.test.ts
+  s_dde07df36a49fd::t_6e3ca6ea1acbe4 26-27,32-38
+  s_dde07df36a49fd::t_7cefa12bc2dce3 39
+tests/integration/agent-credentials.test.ts
+  s_dde07df36a49fd::t_6e3ca6ea1acbe4 9,100,106,112,131,133-179,182-183,189,191-193
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "affe14392f3081ba95a0bb83c9a82f2eadedc5f6",
+  "prompts": {},
+  "sessions": {
+    "s_dde07df36a49fd": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a017d0-5b44-7590-8b35-754e4a1e3b5b",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
