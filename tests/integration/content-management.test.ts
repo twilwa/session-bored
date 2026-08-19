@@ -334,7 +334,7 @@ describe("content management", () => {
     expect(organizer).toBeDefined();
 
     const now = Date.now();
-    const mergedEventId = "evt_merge_archive_access";
+    const mergedEventId = eventId;
     const keptPersonId = "psn_merge_archive_kept";
     const mergedPersonId = "psn_merge_archive_duplicate";
     const mergedSpeakerId = "spk_merge_archive_duplicate";
@@ -343,9 +343,6 @@ describe("content management", () => {
     const storageKey = "merge-archive/fver_merge_archive_access-speaker-deck.pdf";
     await env.FILES.put(storageKey, new Uint8Array([11, 22, 33, 44]));
     await env.DB.batch([
-      env.DB.prepare(
-        "insert into event (id, name, slug, timezone, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
-      ).bind(mergedEventId, "Merge Archive Summit", "merge-archive-summit", "America/Los_Angeles", now, now),
       env.DB.prepare(
         "insert into person (id, user_id, name, email, organization, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?)",
       ).bind(keptPersonId, owner!.id, "Jordan Archive", ownerEmail, "Archive Works", now, now),
@@ -410,15 +407,17 @@ describe("content management", () => {
         id: fileId,
         displayName: "speaker-deck.pdf",
         supersededByMerge: true,
-        downloadUrl: `/api/portal/files/${fileId}`,
+        downloadUrl: `/api/portal/files/${fileId}?eventId=${mergedEventId}`,
         versions: [expect.objectContaining({
           supersededByMerge: true,
-          downloadUrl: `/api/portal/files/${fileId}?version=1`,
+          downloadUrl: `/api/portal/files/${fileId}?version=1&eventId=${mergedEventId}`,
         })],
       }),
     }));
 
-    const speakerContent = await request("/api/speaker/content", { headers: { cookie: ownerCookie } });
+    const speakerContent = await request(`/api/speaker/content?eventId=${mergedEventId}`, {
+      headers: { cookie: ownerCookie },
+    });
     expect(speakerContent.status).toBe(200);
     const ownContent = await speakerContent.json<{
       tasks: Array<{ id: string; file: { fileId: string } | null }>;
@@ -427,12 +426,12 @@ describe("content management", () => {
     expect(ownContent.tasks.find((task) => task.id === taskId)?.file).toBeNull();
     expect(ownContent.files.map((file) => file.fileId)).not.toContain(fileId);
 
-    const supersededComments = await request(`/api/content/files/${fileId}/comments`, {
+    const supersededComments = await request(`/api/content/files/${fileId}/comments?eventId=${mergedEventId}`, {
       headers: { cookie: ownerCookie },
     });
     expect(supersededComments.status).toBe(403);
     await expect(supersededComments.json()).resolves.toEqual({ error: "forbidden" });
-    const supersededComment = await request(`/api/content/files/${fileId}/comments`, {
+    const supersededComment = await request(`/api/content/files/${fileId}/comments?eventId=${mergedEventId}`, {
       method: "POST",
       headers: { cookie: ownerCookie, "content-type": "application/json" },
       body: JSON.stringify({ body: "This superseded file should stay private." }),
@@ -441,7 +440,9 @@ describe("content management", () => {
     await expect(supersededComment.json()).resolves.toEqual({ error: "forbidden" });
 
     for (const cookie of [ownerCookie, marcusCookie]) {
-      const refused = await request(`/api/portal/files/${fileId}`, { headers: { cookie } });
+      const refused = await request(`/api/portal/files/${fileId}?eventId=${mergedEventId}`, {
+        headers: { cookie },
+      });
       expect(refused.status).toBe(403);
       await expect(refused.json()).resolves.toEqual({ error: "forbidden" });
     }
@@ -451,7 +452,7 @@ describe("content management", () => {
     expect(download.headers.get("content-disposition")).toBe('attachment; filename="speaker-deck.pdf"');
     expect([...new Uint8Array(await download.arrayBuffer())]).toEqual([11, 22, 33, 44]);
 
-    const replacement = await request(`/api/portal/tasks/${taskId}/files`, {
+    const replacement = await request(`/api/portal/tasks/${taskId}/files?eventId=${mergedEventId}`, {
       method: "POST",
       headers: { cookie: ownerCookie },
       body: pdfUpload("current-speaker-deck.pdf", [55, 66, 77, 88]),
@@ -481,12 +482,14 @@ describe("content management", () => {
           version: 1,
           current: false,
           supersededByMerge: true,
-          downloadUrl: `/api/portal/files/${fileId}?version=1`,
+          downloadUrl: `/api/portal/files/${fileId}?version=1&eventId=${mergedEventId}`,
         }),
       ],
     });
 
-    const updatedSpeakerContent = await request("/api/speaker/content", { headers: { cookie: ownerCookie } });
+    const updatedSpeakerContent = await request(`/api/speaker/content?eventId=${mergedEventId}`, {
+      headers: { cookie: ownerCookie },
+    });
     const updatedOwnContent = await updatedSpeakerContent.json<{
       tasks: Array<{ id: string; file: null | { fileId: string; supersededByMerge: boolean } }>;
       files: Array<{ fileId: string; versions: PortalFileVersion[] }>;
@@ -499,16 +502,21 @@ describe("content management", () => {
       expect.objectContaining({ version: 2, current: true, supersededByMerge: false }),
     ]);
 
-    const currentDownload = await request(`/api/portal/files/${fileId}`, { headers: { cookie: ownerCookie } });
+    const currentDownload = await request(`/api/portal/files/${fileId}?eventId=${mergedEventId}`, {
+      headers: { cookie: ownerCookie },
+    });
     expect(currentDownload.status).toBe(200);
     expect([...new Uint8Array(await currentDownload.arrayBuffer())]).toEqual([55, 66, 77, 88]);
-    const currentComments = await request(`/api/content/files/${fileId}/comments`, {
+    const currentComments = await request(`/api/content/files/${fileId}/comments?eventId=${mergedEventId}`, {
       headers: { cookie: ownerCookie },
     });
     expect(currentComments.status).toBe(200);
-    const supersededDownload = await request(`/api/portal/files/${fileId}?version=1`, {
-      headers: { cookie: ownerCookie },
-    });
+    const supersededDownload = await request(
+      `/api/portal/files/${fileId}?version=1&eventId=${mergedEventId}`,
+      {
+        headers: { cookie: ownerCookie },
+      },
+    );
     expect(supersededDownload.status).toBe(403);
     await expect(supersededDownload.json()).resolves.toEqual({ error: "forbidden" });
   });
