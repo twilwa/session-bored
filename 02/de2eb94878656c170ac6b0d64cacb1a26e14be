@@ -1,0 +1,42 @@
+tests/integration/content-management.test.ts
+  s_845b6cd15b4f72::t_ad9b6f1364ed84 40,280-311
+  s_845b6cd15b4f72::t_8b78c0ac8a3562 312-313
+  s_845b6cd15b4f72::t_d44665f8ebaf7f 260,268
+worker/routes/content.ts
+  s_845b6cd15b4f72::t_371024a8ba7186 29
+  s_845b6cd15b4f72::t_d44665f8ebaf7f 212-214,216-217
+tests/unit/file-versions.test.ts
+  s_845b6cd15b4f72::t_91d2a4648e133c 1-17,19-23,26,29-31
+  s_845b6cd15b4f72::t_d44665f8ebaf7f 24,28
+worker/storage/file-versions.ts
+  s_845b6cd15b4f72::t_371024a8ba7186 1-4,20-31,34-40,43
+  s_44cd3006146635::t_3c72bd6e904b8c 44
+  s_845b6cd15b4f72::t_d44665f8ebaf7f 33,41
+worker/index.ts
+  s_845b6cd15b4f72::t_371024a8ba7186 47
+  s_845b6cd15b4f72::t_d44665f8ebaf7f 637-639,641-642
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "02de2eb94878656c170ac6b0d64cacb1a26e14be",
+  "prompts": {},
+  "sessions": {
+    "s_44cd3006146635": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a016ea-a2dc-7200-99c3-bd9864d48610",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    },
+    "s_845b6cd15b4f72": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a01700-2e65-7d40-b5e3-7056792bee3d",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
