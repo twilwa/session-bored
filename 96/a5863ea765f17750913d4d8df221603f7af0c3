@@ -1,0 +1,72 @@
+client/pages/people/PeoplePage.tsx
+  s_94c4811a8f29ff::t_ba55c6e27d96a9 98-102,116-118,374-378
+tests/integration/portal-authorization.test.ts
+  s_94c4811a8f29ff::t_d459d4d127af1f 6,9
+  s_94c4811a8f29ff::t_a525aae58b2143 85-106
+tests/integration/content-management.test.ts
+  s_94c4811a8f29ff::t_02e3d637c2bb3a 105
+  s_94c4811a8f29ff::t_b3ea6c5d9c8d65 256,263
+  s_94c4811a8f29ff::t_d459d4d127af1f 8,11
+tests/integration/portal-content.test.ts
+  s_94c4811a8f29ff::t_b3ea6c5d9c8d65 656,662
+  s_94c4811a8f29ff::t_d459d4d127af1f 7,10
+tests/integration/participant-revocation.test.ts
+  s_94c4811a8f29ff::t_d459d4d127af1f 11,14
+tests/e2e/content-management.spec.ts
+  s_94c4811a8f29ff::t_d1aaf0a3bed3bb 26
+tests/integration/people.test.ts
+  s_94c4811a8f29ff::t_e8f5421886ceac 162-170,184
+  s_94c4811a8f29ff::t_9e923bec58b263 15-16,211-315,325-333,341
+  s_94c4811a8f29ff::t_9ba9a111697137 316-324,334-340
+  s_87836932da9643::t_6ee281b4b554d5 342
+tests/integration/account-access.test.ts
+  s_94c4811a8f29ff::t_d459d4d127af1f 27,30
+client/lib.tsx
+  s_94c4811a8f29ff::t_9fb58a726f8cf1 31,128
+client/pages/portal/PortalPage.tsx
+  s_94c4811a8f29ff::t_125c04a429293d 265
+  s_94c4811a8f29ff::t_ba55c6e27d96a9 17-23,109,172,192,209,222,240,261-264,266-267
+worker/routes/portal.ts
+  s_94c4811a8f29ff::t_ba55c6e27d96a9 44,61-69,79,85,201,207,324,330,346,352,404,410,450,456,547-551
+worker/index.ts
+  s_94c4811a8f29ff::t_125c04a429293d 397
+  s_94c4811a8f29ff::t_ba55c6e27d96a9 367-370,389,525,536
+tests/integration/decision-notice-correction.test.ts
+  s_94c4811a8f29ff::t_d459d4d127af1f 7,15
+tests/integration/portal-request.ts
+  s_94c4811a8f29ff::t_d459d4d127af1f 1-14
+tests/integration/roster.test.ts
+  s_94c4811a8f29ff::t_b3ea6c5d9c8d65 1111
+  s_94c4811a8f29ff::t_d459d4d127af1f 6,9
+worker/routes/content.ts
+  s_94c4811a8f29ff::t_b3ea6c5d9c8d65 159,194,205
+tests/e2e/account-access.spec.ts
+  s_94c4811a8f29ff::t_9e923bec58b263 156-158,160-187
+  s_94c4811a8f29ff::t_da960118727630 159
+worker/routes/people.ts
+  s_94c4811a8f29ff::t_ba55c6e27d96a9 460,483,527-532
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "96a5863ea765f17750913d4d8df221603f7af0c3",
+  "prompts": {},
+  "sessions": {
+    "s_87836932da9643": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a01700-6162-7841-8efa-166a631c6d94",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    },
+    "s_94c4811a8f29ff": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a00c63-fe10-7321-b907-6fb010db1e79",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
