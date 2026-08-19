@@ -6,6 +6,7 @@ import { Hono } from "hono";
 import { createMiddleware } from "hono/factory";
 import {
   authAccounts,
+  createPublicId,
   emailDispatches,
   events,
   type GrantableRole,
@@ -40,6 +41,8 @@ import {
   redeemReviewerInvites,
 } from "../reviewer-invites.ts";
 import { grantRole, hasLiveGrant, listLiveGrants, revokeRole } from "../roles.ts";
+import { resolvePersonByEmail } from "../speaker-directory.ts";
+import { activeSpeakerEventFor } from "../speaker-event.ts";
 
 type PeopleEnvironment = {
   Bindings: CloudflareBindings;
@@ -151,6 +154,48 @@ const requireOrganizer = createMiddleware<PeopleEnvironment>(async (context, nex
 
 function isGrantableRole(value: unknown): value is GrantableRole {
   return typeof value === "string" && (grantableRoles as readonly string[]).includes(value);
+}
+
+async function preparePromotedSpeaker(
+  database: ReturnType<typeof drizzle>,
+  account: { id: string; name: string; email: string },
+  eventId: string,
+): Promise<"ready" | "account_conflict"> {
+  let [person] = await database.select().from(people).where(eq(people.userId, account.id));
+  if (person === undefined) {
+    person = await resolvePersonByEmail(database, account.email);
+  }
+  if (person === undefined) {
+    const personId = createPublicId("psn");
+    await database.insert(people).values({
+      id: personId,
+      userId: account.id,
+      name: account.name,
+      email: account.email.trim().toLowerCase(),
+    });
+    [person] = await database.select().from(people).where(eq(people.id, personId));
+  } else if (person.userId === null) {
+    await database.update(people).set({ userId: account.id }).where(eq(people.id, person.id));
+  } else if (person.userId !== account.id) {
+    return "account_conflict";
+  }
+  if (person === undefined) {
+    throw new Error(`Person was not created for promoted account ${account.id}`);
+  }
+
+  const [speaker] = await database
+    .select({ id: speakers.id })
+    .from(speakers)
+    .where(and(eq(speakers.personId, person.id), eq(speakers.eventId, eventId)));
+  if (speaker === undefined) {
+    await database.insert(speakers).values({
+      id: createPublicId("spk"),
+      personId: person.id,
+      eventId,
+      status: "invited",
+    });
+  }
+  return "ready";
 }
 
 interface ReviewerRemitInput {
@@ -402,6 +447,7 @@ peopleRoutes.post("/api/people/:userId/grants", requireOrganizer, async (context
     note?: unknown;
     notify?: unknown;
     reviewerRemit?: unknown;
+    speakerEventId?: unknown;
   }>();
   if (!isGrantableRole(payload.role)) {
     return context.json({ error: "invalid_role" }, 400);
@@ -412,12 +458,31 @@ peopleRoutes.post("/api/people/:userId/grants", requireOrganizer, async (context
   }
   const database = drizzle(context.env.DB);
   const userId = context.req.param("userId");
+  let speakerProfileReady = false;
   const [account] = await database
     .select({ id: users.id, name: users.name, email: users.email })
     .from(users)
     .where(eq(users.id, userId));
   if (account === undefined) {
     return context.json({ error: "not_found" }, 404);
+  }
+  if (payload.role === "speaker") {
+    const speakerEvent = activeSpeakerEventFor(payload.speakerEventId);
+    if ("error" in speakerEvent) {
+      return context.json({ error: speakerEvent.error }, 400);
+    }
+    const [event] = await database
+      .select({ id: events.id })
+      .from(events)
+      .where(and(eq(events.id, speakerEvent.id), isNull(events.deletedAt)));
+    if (event === undefined) {
+      return context.json({ error: "invalid_speaker_event" }, 400);
+    }
+    const preparation = await preparePromotedSpeaker(database, account, event.id);
+    if (preparation === "account_conflict") {
+      return context.json({ error: "speaker_account_conflict" }, 409);
+    }
+    speakerProfileReady = true;
   }
   const reviewerRemit = payload.role === "reviewer" ? readReviewerRemit(payload.reviewerRemit) : null;
   if (payload.role === "reviewer" && reviewerRemit === null) {
@@ -461,7 +526,12 @@ peopleRoutes.post("/api/people/:userId/grants", requireOrganizer, async (context
   const notified = payload.notify === true && granted
     ? (await sendRoleGrantEmail(context.env, { recipient: account, role: payload.role })).status === "sent"
     : false;
-  return context.json({ granted, role: payload.role, notified });
+  return context.json({
+    granted,
+    role: payload.role,
+    notified,
+    ...(payload.role === "speaker" ? { speakerProfileReady } : {}),
+  });
 });
 
 peopleRoutes.delete("/api/people/:userId/grants/:role", requireOrganizer, async (context) => {

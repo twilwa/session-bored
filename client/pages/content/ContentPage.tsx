@@ -268,7 +268,7 @@ export function ContentPage() {
                     <a href={item.file.downloadUrl}>{item.file.displayName}</a>
                     <span>{item.file.supersededByMerge ? "Superseded — merged" : `Version ${item.file.version}`}</span>
                     <FileVersionList versions={item.file.versions} />
-                    <FileComments fileId={item.file.id} />
+                    <FileComments eventId={eventId} fileId={item.file.id} />
                   </div>
                 )}
               </li>

@@ -8,9 +8,10 @@ import { sessions, taskAssignees, tasks } from "../../db/schema.ts";
 import type { EmailDelivery, EmailDeliveryResult } from "../../worker/email.ts";
 import { sendSessionCalendarInvite } from "../../worker/email/calendar-invite.ts";
 import worker from "../../worker/index.ts";
+import { withActiveSpeakerEvent } from "./portal-request.ts";
 
 async function request(path: string, init?: RequestInit): Promise<Response> {
-  return worker.request(`http://example.test${path}`, init, env);
+  return worker.request(`http://example.test${withActiveSpeakerEvent(path)}`, init, env);
 }
 
 async function signIn(email: string, password: string): Promise<string> {

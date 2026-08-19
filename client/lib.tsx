@@ -28,6 +28,7 @@ const roleAreas: Record<Role, AccountArea> = {
   // An attendee has no workspace. Their own schedule is the thing an account gets them.
   attendee: { href: "/schedule/mine", label: "My schedule" },
 };
+const activeEventId = "evt_devflow_conf_2027";
 
 const publicSessionEvent = "greenroom:public-session";
 
@@ -124,7 +125,7 @@ async function loadAccountAreas(session: SessionPayload): Promise<AccountArea[]>
   }
 
   const [speakerResponse, submissionResponse] = await Promise.all([
-    fetch("/api/speaker/content", { credentials: "same-origin" }),
+    fetch(`/api/speaker/content?eventId=${encodeURIComponent(activeEventId)}`, { credentials: "same-origin" }),
     fetch("/api/submitter/submissions", { credentials: "same-origin" }),
   ]);
   const speaker = speakerResponse.ok

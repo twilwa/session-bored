@@ -24,14 +24,16 @@ function formatCommentTime(value: string): string {
   });
 }
 
-export function FileComments({ fileId }: { fileId: string }) {
+export function FileComments({ eventId, fileId }: { eventId: string; fileId: string }) {
   const [items, setItems] = useState<ContentComment[]>([]);
   const [body, setBody] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function load(): Promise<void> {
-    const payload = await readJson<{ items: ContentComment[] }>(`/api/content/files/${fileId}/comments`);
+    const payload = await readJson<{ items: ContentComment[] }>(
+      `/api/content/files/${fileId}/comments?eventId=${encodeURIComponent(eventId)}`,
+    );
     setItems(payload.items);
   }
 
@@ -39,7 +41,7 @@ export function FileComments({ fileId }: { fileId: string }) {
     void load().catch((caught: unknown) => {
       setError(caught instanceof Error ? caught.message : "Comments could not be loaded.");
     });
-  }, [fileId]);
+  }, [eventId, fileId]);
 
   async function submit(event: FormEvent): Promise<void> {
     event.preventDefault();
@@ -47,7 +49,7 @@ export function FileComments({ fileId }: { fileId: string }) {
     setBusy(true);
     setError(null);
     try {
-      await readJson(`/api/content/files/${fileId}/comments`, {
+      await readJson(`/api/content/files/${fileId}/comments?eventId=${encodeURIComponent(eventId)}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ body }),

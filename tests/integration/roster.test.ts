@@ -3,9 +3,10 @@
 import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
 import worker from "../../worker/index.ts";
+import { withActiveSpeakerEvent } from "./portal-request.ts";
 
 async function request(path: string, init?: RequestInit): Promise<Response> {
-  return worker.request(`http://example.test${path}`, init, env);
+  return worker.request(`http://example.test${withActiveSpeakerEvent(path)}`, init, env);
 }
 
 async function signIn(email: string, password: string): Promise<string> {
@@ -1107,7 +1108,7 @@ describe("organizer speaker roster", () => {
       taskId: created.id,
       displayName: "removal-safe.pdf",
       archived: true,
-      downloadUrl: `/api/portal/files/${uploaded.fileId}`,
+      downloadUrl: `/api/portal/files/${uploaded.fileId}?eventId=evt_devflow_conf_2027`,
     }));
 
     const uploadAfterRemoval = await request(`/api/portal/tasks/${created.id}/files`, {

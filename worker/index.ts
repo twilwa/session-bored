@@ -43,6 +43,7 @@ import reviewRoutes from "./routes/review.ts";
 import submitterRoutes from "./routes/submitter.ts";
 import { ensureSeeded, fixture, fixtureIds } from "./seed.ts";
 import { livingSessionSpeakers, livingSubmissionParticipants, sentDecisionLetter } from "./speaker-access.ts";
+import { activeSpeakerEventFor } from "./speaker-event.ts";
 import { filenameForVersion } from "./storage/file-versions.ts";
 import { limitsForTask } from "./storage/files.ts";
 import dispositionRoutes from "./routes/disposition.ts";
@@ -417,6 +418,10 @@ app.get("/api/speaker/submissions/:submissionId", requireAccess("speaker"), asyn
   if (user === null) {
     return context.json({ error: "authentication_required" }, 401);
   }
+  const speakerEvent = activeSpeakerEventFor(context.req.query("eventId"));
+  if ("error" in speakerEvent) {
+    return context.json({ error: speakerEvent.error }, 400);
+  }
   const database = drizzle(context.env.DB);
   const submissionId = context.req.param("submissionId");
   const [item] = await database
@@ -424,7 +429,11 @@ app.get("/api/speaker/submissions/:submissionId", requireAccess("speaker"), asyn
     .from(submissions)
     .innerJoin(submissionSpeakers, livingSubmissionParticipants())
     .innerJoin(people, eq(submissionSpeakers.personId, people.id))
-    .where(and(eq(people.userId, user.id), eq(submissions.id, submissionId)));
+    .where(and(
+      eq(people.userId, user.id),
+      eq(submissions.id, submissionId),
+      eq(submissions.eventId, speakerEvent.id),
+    ));
   if (item === undefined) {
     return context.json({ error: "forbidden" }, 403);
   }
@@ -441,7 +450,11 @@ app.get("/api/speaker/submissions/:submissionId", requireAccess("speaker"), asyn
     .innerJoin(sessionSpeakers, livingSessionSpeakers())
     .innerJoin(speakers, eq(sessionSpeakers.speakerId, speakers.id))
     .innerJoin(people, eq(speakers.personId, people.id))
-    .where(and(eq(sessions.submissionId, submissionId), eq(people.userId, user.id)));
+    .where(and(
+      eq(sessions.submissionId, submissionId),
+      eq(sessions.eventId, speakerEvent.id),
+      eq(people.userId, user.id),
+    ));
   const { status, ...proposal } = item;
   return context.json({
     ...proposal,
@@ -458,6 +471,11 @@ app.get("/api/speaker/content", requireAccess("speaker"), async (context) => {
   if (user === null) {
     return context.json({ error: "authentication_required" }, 401);
   }
+  const speakerEvent = activeSpeakerEventFor(context.req.query("eventId"));
+  if ("error" in speakerEvent) {
+    return context.json({ error: speakerEvent.error }, 400);
+  }
+  const eventId = speakerEvent.id;
   const database = drizzle(context.env.DB);
   const [profile] = await database
     .select({
@@ -476,7 +494,7 @@ app.get("/api/speaker/content", requireAccess("speaker"), async (context) => {
     })
     .from(people)
     .innerJoin(speakers, eq(speakers.personId, people.id))
-    .where(eq(people.userId, user.id));
+    .where(and(eq(people.userId, user.id), eq(speakers.eventId, eventId)));
   if (profile === undefined) {
     return context.json({ profile: null, submissions: [], sessions: [], tasks: [], files: [] });
   }
@@ -484,7 +502,7 @@ app.get("/api/speaker/content", requireAccess("speaker"), async (context) => {
     .select({ id: submissions.id, title: submissions.title, status: submissions.status })
     .from(submissions)
     .innerJoin(submissionSpeakers, livingSubmissionParticipants())
-    .where(eq(submissionSpeakers.personId, profile.personId));
+    .where(and(eq(submissionSpeakers.personId, profile.personId), eq(submissions.eventId, eventId)));
   const ownSessions = await database
     .select({
       id: sessions.id,
@@ -612,7 +630,7 @@ app.get("/api/speaker/content", requireAccess("speaker"), async (context) => {
       version: file.version,
       supersededByMerge: file.supersededByMergeId !== null,
       archived: file.taskDeletedAt !== null || file.assignmentDeletedAt !== null,
-      downloadUrl: `/api/portal/files/${file.fileId}`,
+      downloadUrl: `/api/portal/files/${file.fileId}?eventId=${encodeURIComponent(eventId)}`,
       versions: storedVersions
         .filter((version) => version.fileId === file.fileId)
         .sort((first, second) => second.version - first.version)
@@ -623,7 +641,7 @@ app.get("/api/speaker/content", requireAccess("speaker"), async (context) => {
           uploadedAt: version.uploadedAt.toISOString(),
           current: version.latest,
           supersededByMerge: version.supersededByMergeId !== null,
-          downloadUrl: `/api/portal/files/${file.fileId}?version=${version.version}`,
+          downloadUrl: `/api/portal/files/${file.fileId}?version=${version.version}&eventId=${encodeURIComponent(eventId)}`,
         })),
     })),
   });

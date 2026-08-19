@@ -15,7 +15,7 @@ export default defineConfig({
     trace: "retain-on-failure",
   },
   webServer: {
-    command: `npm run dev -- --port ${PORT} --var APP_ORIGIN:${BASE_URL} --var BETTER_AUTH_URL:${BASE_URL} --var BETTER_AUTH_SECRET:greenroom-browser-secret-for-ci-only`,
+    command: `npm run dev -- tests/e2e/worker.ts --port ${PORT} --var APP_ORIGIN:${BASE_URL} --var BETTER_AUTH_URL:${BASE_URL} --var BETTER_AUTH_SECRET:greenroom-browser-secret-for-ci-only`,
     url: `${BASE_URL}/api/health`,
     reuseExistingServer: !process.env.CI,
     timeout: 180_000,

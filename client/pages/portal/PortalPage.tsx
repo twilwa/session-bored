@@ -14,6 +14,13 @@ import "./portal.css";
 import { FileComments } from "../content/FileComments.tsx";
 import { FileVersionList, formatFileSize } from "../content/FileVersionList.tsx";
 
+const eventId = "evt_devflow_conf_2027";
+
+function eventScopedPath(path: string): string {
+  const separator = path.includes("?") ? "&" : "?";
+  return `${path}${separator}eventId=${encodeURIComponent(eventId)}`;
+}
+
 async function readJson<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, { credentials: "same-origin", ...init });
   if (!response.ok) {
@@ -99,7 +106,7 @@ function TaskRow({ task, onComplete, onUpload, busy }: {
       </div>
       {task.file === null ? null : (
         <p className="task-row__file">
-          <a href={`/api/portal/files/${task.file.fileId}`}>{task.file.displayName}</a>
+          <a href={eventScopedPath(`/api/portal/files/${task.file.fileId}`)}>{task.file.displayName}</a>
           <span>{task.file.supersededByMerge ? "Superseded — merged" : `v${task.file.version}`}</span>
         </p>
       )}
@@ -162,7 +169,7 @@ export function PortalPage() {
   const initialized = useRef(false);
 
   async function load(): Promise<void> {
-    const payload = await readJson<SpeakerContentPayload>("/api/speaker/content");
+    const payload = await readJson<SpeakerContentPayload>(eventScopedPath("/api/speaker/content"));
     setContent(payload);
     if (!initialized.current && payload.profile !== null) {
       initialized.current = true;
@@ -182,7 +189,7 @@ export function PortalPage() {
     event.preventDefault();
     setBusy(true);
     try {
-      await readJson("/api/portal/profile", {
+      await readJson(eventScopedPath("/api/portal/profile"), {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ bio, twitter, linkedin }),
@@ -199,7 +206,7 @@ export function PortalPage() {
   async function saveHeadshot(file: File): Promise<void> {
     setBusy(true);
     try {
-      await uploadFile("/api/portal/profile/headshot", file);
+      await uploadFile(eventScopedPath("/api/portal/profile/headshot"), file);
       await load();
       setMessage("Headshot uploaded.");
     } catch (error) {
@@ -212,7 +219,7 @@ export function PortalPage() {
   async function saveSession(sessionId: string, title: string, abstract: string): Promise<void> {
     setBusy(true);
     try {
-      await readJson(`/api/portal/sessions/${sessionId}`, {
+      await readJson(eventScopedPath(`/api/portal/sessions/${sessionId}`), {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ title, abstract }),
@@ -230,7 +237,7 @@ export function PortalPage() {
   async function completeTask(taskId: string): Promise<void> {
     setBusy(true);
     try {
-      await readJson(`/api/portal/tasks/${taskId}`, {
+      await readJson(eventScopedPath(`/api/portal/tasks/${taskId}`), {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ status: "completed" }),
@@ -251,9 +258,13 @@ export function PortalPage() {
   ): Promise<void> {
     setBusy(true);
     try {
-      const result = await uploadFile<{ headshotUrl: string | null }>(`/api/portal/tasks/${taskId}/files`, file, {
-        displayedRequestKind,
-      });
+      const result = await uploadFile<{ headshotUrl: string | null }>(
+        eventScopedPath(`/api/portal/tasks/${taskId}/files`),
+        file,
+        {
+          displayedRequestKind,
+        },
+      );
       await load();
       setMessage(result.headshotUrl === null
         ? "File uploaded. Task marked complete."
@@ -379,7 +390,7 @@ export function PortalPage() {
                     <strong>{file.taskTitle}</strong>
                     <a href={file.downloadUrl}>{file.displayName}</a>
                     <FileVersionList versions={file.versions} />
-                    <FileComments fileId={file.fileId} />
+                    <FileComments eventId={eventId} fileId={file.fileId} />
                   </div>
                   <StatusChip tone={file.archived ? "neutral" : "good"}>
                     {file.archived ? "Archived task" : file.supersededByMerge ? "Superseded — merged" : `Version ${file.version}`}

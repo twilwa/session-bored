@@ -95,7 +95,11 @@ export function PeoplePage() {
     remit?: Omit<ReviewerGrantSelection, "personId">,
   ): Promise<void> {
     try {
-      const result = await requestJson<{ granted: boolean; notified: boolean }>(
+      const result = await requestJson<{
+        granted: boolean;
+        notified: boolean;
+        speakerProfileReady?: boolean;
+      }>(
         `/api/people/${person.id}/grants`,
         {
           method: "POST",
@@ -103,12 +107,15 @@ export function PeoplePage() {
           body: JSON.stringify({
             role,
             notify,
+            ...(role === "speaker" ? { speakerEventId: eventId } : {}),
             ...(remit === undefined ? {} : { reviewerRemit: { eventId, ...remit } }),
           }),
         },
       );
       setMessage(
-        result.granted
+        role === "speaker" && result.speakerProfileReady === true && !result.granted
+          ? `${person.name}'s speaker profile is ready.`
+          : result.granted
           ? `${person.name} is now a ${role}.${result.notified ? " They were emailed." : ""}`
           : `${person.name} already had ${role} access.`,
       );
@@ -364,6 +371,11 @@ export function PeoplePage() {
                           Grant {role}
                         </Button>
                       ))}
+                    {person.grants.some((grant) => grant.role === "speaker") ? (
+                      <Button onClick={() => void grant(person, "speaker")} tone="quiet">
+                        Prepare speaker profile
+                      </Button>
+                    ) : null}
                     {person.grants.map((grant) => (
                       <Button key={grant.role} onClick={() => void revoke(person, grant.role)} tone="quiet">
                         Remove {grant.role}

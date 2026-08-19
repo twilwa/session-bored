@@ -25,6 +25,7 @@ import { streamContentArchive } from "../content-archive.ts";
 import { chunkIds } from "../d1-limits.ts";
 import { deriveDeliverableStatus } from "../deliverable-status.ts";
 import { resolveEffectiveRoles } from "../roles.ts";
+import { activeSpeakerEventFor, type ActiveSpeakerEventError } from "../speaker-event.ts";
 import { filenameForVersion } from "../storage/file-versions.ts";
 import { getFileObject } from "../storage/files.ts";
 
@@ -55,18 +56,30 @@ async function fileAccess(
   fileId: string,
   userId: string,
   roles: readonly Role[],
-): Promise<"allowed" | "forbidden" | "not_found"> {
+  eventId: string | undefined,
+): Promise<"allowed" | ActiveSpeakerEventError | "forbidden" | "not_found"> {
+  const organizerAccess = holdsAccess(roles, "organizer");
+  if (!organizerAccess && !holdsAccess(roles, "speaker")) {
+    return "forbidden";
+  }
+  const speakerEvent = organizerAccess ? null : activeSpeakerEventFor(eventId);
+  if (speakerEvent !== null && "error" in speakerEvent) {
+    return speakerEvent.error;
+  }
   const [file] = await database
-    .select({ id: files.id, speakerId: files.speakerId })
+    .select({ id: files.id, eventId: files.eventId, speakerId: files.speakerId })
     .from(files)
     .where(and(eq(files.id, fileId), isNull(files.deletedAt)));
   if (file === undefined) {
     return "not_found";
   }
-  if (holdsAccess(roles, "organizer")) {
+  if (organizerAccess) {
     return "allowed";
   }
-  if (!holdsAccess(roles, "speaker") || file.speakerId === null) {
+  if (file.speakerId === null || speakerEvent === null) {
+    return "forbidden";
+  }
+  if (file.eventId !== speakerEvent.id) {
     return "forbidden";
   }
   const [owned] = await database
@@ -75,6 +88,7 @@ async function fileAccess(
     .innerJoin(people, eq(speakers.personId, people.id))
     .where(and(
       eq(speakers.id, file.speakerId),
+      eq(speakers.eventId, speakerEvent.id),
       eq(people.userId, userId),
       isNull(speakers.deletedAt),
       isNull(people.deletedAt),
@@ -156,6 +170,7 @@ contentRoutes.get("/api/events/:eventId/deliverables", requireOrganizer, async (
     ));
 
   const now = Date.now();
+  const eventId = context.req.param("eventId");
   const items = rows.map((row) => {
     const delivered = row.fileId !== null
       && row.version !== null
@@ -190,7 +205,7 @@ contentRoutes.get("/api/events/:eventId/deliverables", requireOrganizer, async (
           mimeType: row.mimeType,
           sizeBytes: row.sizeBytes,
           uploadedAt: row.uploadedAt,
-          downloadUrl: `/api/portal/files/${row.fileId}`,
+          downloadUrl: `/api/portal/files/${row.fileId}?eventId=${encodeURIComponent(eventId)}`,
           versions: storedVersions
             .filter((version) => version.fileId === row.fileId)
             .sort((first, second) => second.version - first.version)
@@ -201,7 +216,7 @@ contentRoutes.get("/api/events/:eventId/deliverables", requireOrganizer, async (
               uploadedAt: version.uploadedAt,
               current: version.latest,
               supersededByMerge: version.supersededByMergeId !== null,
-              downloadUrl: `/api/portal/files/${row.fileId}?version=${version.version}`,
+              downloadUrl: `/api/portal/files/${row.fileId}?version=${version.version}&eventId=${encodeURIComponent(eventId)}`,
             })),
         },
     } as const;
@@ -348,9 +363,18 @@ contentRoutes.get("/api/content/files/:fileId/comments", async (context) => {
     return context.json({ error: "authentication_required" }, 401);
   }
   const database = drizzle(context.env.DB);
-  const access = await fileAccess(database, context.req.param("fileId"), user.id, roles);
+  const access = await fileAccess(
+    database,
+    context.req.param("fileId"),
+    user.id,
+    roles,
+    context.req.query("eventId"),
+  );
   if (access === "not_found") {
     return context.json({ error: "not_found" }, 404);
+  }
+  if (access === "speaker_event_required" || access === "invalid_speaker_event") {
+    return context.json({ error: access }, 400);
   }
   if (access === "forbidden") {
     return context.json({ error: "forbidden" }, 403);
@@ -388,9 +412,18 @@ contentRoutes.post("/api/content/files/:fileId/comments", async (context) => {
     return context.json({ error: "authentication_required" }, 401);
   }
   const database = drizzle(context.env.DB);
-  const access = await fileAccess(database, context.req.param("fileId"), user.id, roles);
+  const access = await fileAccess(
+    database,
+    context.req.param("fileId"),
+    user.id,
+    roles,
+    context.req.query("eventId"),
+  );
   if (access === "not_found") {
     return context.json({ error: "not_found" }, 404);
+  }
+  if (access === "speaker_event_required" || access === "invalid_speaker_event") {
+    return context.json({ error: access }, 400);
   }
   if (access === "forbidden") {
     return context.json({ error: "forbidden" }, 403);
