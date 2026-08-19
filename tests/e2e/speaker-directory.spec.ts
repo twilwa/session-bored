@@ -177,7 +177,11 @@ test("organizer reviews and merges a likely duplicate while choosing the kept re
   await page.getByRole("button", { name: "Apply filters" }).click();
   const duplicate = page.locator(".directory-row").filter({ hasText: duplicateEmail });
   await expect(duplicate).toContainText("Possible duplicate");
-  await duplicate.getByRole("link", { name: `View ${priya!.name}` }).click();
+  const recordLink = duplicate.getByRole("link", { name: `View ${priya!.name}` });
+  await expect(recordLink).toHaveAttribute("href", /\/organizer\/directory\/psn_/);
+  const recordPath = await recordLink.getAttribute("href");
+  if (recordPath === null) throw new Error("The duplicate record link has no destination.");
+  await page.goto(recordPath);
 
   const candidate = page.locator(".directory-duplicate").filter({ hasText: priya!.email });
   await candidate.getByRole("button", { name: `Keep ${priya!.email}` }).click();
