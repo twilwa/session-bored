@@ -109,7 +109,7 @@ jobs:
       - name: Provision preview bucket
         shell: bash
         run: |
-          if npx wrangler r2 bucket info "$BUCKET_NAME" >/dev/null 2>&1; then
+          if [[ "$(node scripts/preview-bucket.js)" == "true" ]]; then
             echo "Using existing preview bucket ${BUCKET_NAME}."
           else
             npx wrangler r2 bucket create "$BUCKET_NAME"
@@ -131,8 +131,11 @@ jobs:
           fi
 
           echo "::warning title=Preview database rebuilt::${DATABASE_NAME} could not take this branch's migrations, so it was rebuilt from empty and this pull request's preview data was discarded. A branch that renames, renumbers, or rewrites a migration this preview already applied leaves the database holding schema no migration name accounts for."
-          npx wrangler d1 delete "$DATABASE_NAME" --skip-confirmation
+          export DATABASE_EXISTS=true
+          export BUCKET_EXISTS=true
+          node scripts/preview-cleanup.js
           npx wrangler d1 create "$DATABASE_NAME"
+          npx wrangler r2 bucket create "$BUCKET_NAME"
           database_id="$(npx wrangler d1 list --json | jq -r --arg name "$DATABASE_NAME" '.[] | select(.name == $name) | .uuid')"
           if [[ -z "$database_id" ]]; then
             echo "::error title=Preview database provisioning failed::Wrangler did not return an ID for ${DATABASE_NAME} after rebuilding it."
@@ -234,10 +237,6 @@ jobs:
           else
             export DATABASE_EXISTS=false
           fi
-          if npx wrangler r2 bucket info "$BUCKET_NAME" >/dev/null 2>&1; then
-            export BUCKET_EXISTS=true
-          else
-            export BUCKET_EXISTS=false
-          fi
+          export BUCKET_EXISTS="$(node scripts/preview-bucket.js)"
 
           node scripts/preview-cleanup.js

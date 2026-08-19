@@ -16,4 +16,22 @@ describe("preview deployment workflow", () => {
     expect(previewWorkflow).toContain("DATABASE_EXISTS=");
     expect(previewWorkflow).toContain("node scripts/preview-cleanup.js");
   });
+
+  it("reclaims uploaded objects before rebuilding a preview database", () => {
+    const migrationStep = previewWorkflow.slice(
+      previewWorkflow.indexOf("- name: Migrate preview database"),
+      previewWorkflow.indexOf("- name: Upload preview version"),
+    );
+
+    expect(migrationStep.indexOf("node scripts/preview-cleanup.js"))
+      .toBeLessThan(migrationStep.indexOf("npx wrangler d1 create"));
+    expect(migrationStep).toContain("npx wrangler r2 bucket create \"$BUCKET_NAME\"");
+  });
+
+  it("uses a fail-closed bucket lookup for cleanup", () => {
+    const cleanupStep = previewWorkflow.slice(previewWorkflow.indexOf("- name: Delete preview resources"));
+
+    expect(cleanupStep).toContain("node scripts/preview-bucket.js");
+    expect(cleanupStep).not.toContain("wrangler r2 bucket info");
+  });
 });
