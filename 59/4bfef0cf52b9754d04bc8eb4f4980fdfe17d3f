@@ -1,0 +1,19 @@
+tests/e2e/speaker-directory.spec.ts
+  s_2f09d802577200::t_a6349a2d4bcb2b 180-184
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "594bfef0cf52b9754d04bc8eb4f4980fdfe17d3f",
+  "prompts": {},
+  "sessions": {
+    "s_2f09d802577200": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a017a0-028e-74f0-b624-d210bcc1df05",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
