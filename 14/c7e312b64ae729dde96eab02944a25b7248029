@@ -4,6 +4,7 @@ wrangler.jsonc
   s_7bbef27c10577f::t_f55218d99f39bc 11
 tests/unit/agent-route-registration.test.ts
   s_7bbef27c10577f::t_4c2a799e890ba8 9,12
+  s_7bbef27c10577f::t_125b44554e09de 7
 tests/integration/traffic-observability.test.ts
   s_7bbef27c10577f::t_75441d00dc1743 89-99,104-111,113
   s_7bbef27c10577f::t_40a6ad3b4ae4fe 66-67,71-72,74-88
