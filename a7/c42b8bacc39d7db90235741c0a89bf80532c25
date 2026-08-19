@@ -1,0 +1,22 @@
+tests/integration/content-management.test.ts
+  s_845b6cd15b4f72::t_25eda932dc7095 517
+  s_845b6cd15b4f72::t_529f007b37c9f7 410
+  s_845b6cd15b4f72::t_7ea76349f288ee 413,418-420,429,434,443-445,455,485,490-492,505-507,510,514-516,518-519
+  s_845b6cd15b4f72::t_d5f46cf6ad55ca 337
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "a7c42b8bacc39d7db90235741c0a89bf80532c25",
+  "prompts": {},
+  "sessions": {
+    "s_845b6cd15b4f72": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a01700-2e65-7d40-b5e3-7056792bee3d",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
