@@ -47,9 +47,24 @@ async function organizerCookie(): Promise<string> {
 
 const directoryLatencyBudgetMs = 200;
 const contendedRunnerRelativeCostLimit = 2;
+const directoryLatencyContentionCapMs = directoryLatencyBudgetMs * contendedRunnerRelativeCostLimit;
 const latencyMeasurementTimeoutMs = 30_000;
 
+function directoryLatencyAllowanceMs(controlP95: number): number {
+  return Math.min(
+    directoryLatencyContentionCapMs,
+    Math.max(directoryLatencyBudgetMs, controlP95 * contendedRunnerRelativeCostLimit),
+  );
+}
+
 describe("speaker directory", () => {
+  it("caps contention tolerance at twice the product latency budget", () => {
+    const overloadedControlP95 = 1_000;
+    const allowance = directoryLatencyAllowanceMs(overloadedControlP95);
+
+    expect(allowance).toBe(directoryLatencyContentionCapMs);
+  });
+
   it("is private to organizers and excludes accounts with no speaker history", async () => {
     await request("/api/health");
     expect((await request("/api/speaker-directory")).status).toBe(401);
@@ -1484,8 +1499,6 @@ describe("speaker directory", () => {
     controlDurations.sort((first, second) => first - second);
     const p95 = filteredDurations[Math.ceil(filteredDurations.length * 0.95) - 1]!;
     const controlP95 = controlDurations[Math.ceil(controlDurations.length * 0.95) - 1]!;
-    expect(p95).toBeLessThan(
-      Math.max(directoryLatencyBudgetMs, controlP95 * contendedRunnerRelativeCostLimit),
-    );
+    expect(p95).toBeLessThan(directoryLatencyAllowanceMs(controlP95));
   }, latencyMeasurementTimeoutMs);
 });
