@@ -5,16 +5,20 @@ tests/integration/content-management.test.ts
 worker/routes/content.ts
   s_845b6cd15b4f72::t_371024a8ba7186 29
   s_845b6cd15b4f72::t_d44665f8ebaf7f 212-214,216-217
+  s_845b6cd15b4f72::t_d8d37e078f4a8d 215
 tests/unit/file-versions.test.ts
   s_845b6cd15b4f72::t_91d2a4648e133c 1-17,19-23,26,29-31
   s_845b6cd15b4f72::t_d44665f8ebaf7f 24,28
+  s_845b6cd15b4f72::t_d8d37e078f4a8d 18,25,27
 worker/storage/file-versions.ts
   s_845b6cd15b4f72::t_371024a8ba7186 1-4,20-31,34-40,43
   s_44cd3006146635::t_3c72bd6e904b8c 44
   s_845b6cd15b4f72::t_d44665f8ebaf7f 33,41
+  s_845b6cd15b4f72::t_d8d37e078f4a8d 32,42
 worker/index.ts
   s_845b6cd15b4f72::t_371024a8ba7186 47
   s_845b6cd15b4f72::t_d44665f8ebaf7f 637-639,641-642
+  s_845b6cd15b4f72::t_d8d37e078f4a8d 640
 ---
 {
   "schema_version": "authorship/3.0.0",
