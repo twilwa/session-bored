@@ -398,6 +398,7 @@ export interface AgentCredentialSummary {
   id: string;
   name: string;
   role: AgentCredentialRole;
+  active: boolean;
   createdAt: string;
   lastUsedAt: string | null;
   revokedAt: string | null;

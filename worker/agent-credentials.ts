@@ -64,11 +64,11 @@ export async function issueAgentCredential(
   if (credential === undefined) {
     throw new Error("Agent credential insert returned no row");
   }
-  return { credential, token };
+  return { credential: { ...credential, active: true }, token };
 }
 
 export async function listAgentCredentials(database: Database, userId: string) {
-  return database
+  const credentials = await database
     .select({
       id: agentCredentials.id,
       name: agentCredentials.name,
@@ -76,10 +76,21 @@ export async function listAgentCredentials(database: Database, userId: string) {
       createdAt: agentCredentials.createdAt,
       lastUsedAt: agentCredentials.lastUsedAt,
       revokedAt: agentCredentials.revokedAt,
+      liveRoleGrantId: roleGrants.id,
     })
     .from(agentCredentials)
+    .leftJoin(roleGrants, and(
+      eq(agentCredentials.roleGrantId, roleGrants.id),
+      eq(agentCredentials.userId, roleGrants.userId),
+      eq(agentCredentials.role, roleGrants.role),
+      isNull(roleGrants.revokedAt),
+    ))
     .where(eq(agentCredentials.userId, userId))
     .orderBy(desc(agentCredentials.createdAt));
+  return credentials.map(({ liveRoleGrantId, ...credential }) => ({
+    ...credential,
+    active: credential.revokedAt === null && liveRoleGrantId !== null,
+  }));
 }
 
 export async function revokeAgentCredential(
@@ -102,7 +113,7 @@ export async function revokeAgentCredential(
       lastUsedAt: agentCredentials.lastUsedAt,
       revokedAt: agentCredentials.revokedAt,
     });
-  return credential ?? null;
+  return credential === undefined ? null : { ...credential, active: false };
 }
 
 export async function markAgentCredentialUsed(

@@ -427,9 +427,11 @@ export function EventSetupPage() {
                   <strong>{credential.name}</strong>
                   <span>{credential.role[0]!.toUpperCase() + credential.role.slice(1)}</span>
                   <small>
-                    {credential.revokedAt === null
-                      ? credential.lastUsedAt === null ? "Active · never used" : "Active · used"
-                      : "Revoked"}
+                    {credential.revokedAt !== null
+                      ? "Revoked"
+                      : !credential.active
+                        ? "Inactive · role access revoked"
+                        : credential.lastUsedAt === null ? "Active · never used" : "Active · used"}
                   </small>
                 </div>
                 {credential.revokedAt === null ? (

@@ -193,6 +193,14 @@ describe("agent credentials", () => {
         .find((grant) => grant.role === "reviewer");
       expect(replacementGrant?.id).not.toBe(originatingGrant?.id);
       expect((await request("/api/session", { headers })).status).toBe(401);
+      const historyResponse = await request("/api/agent-credentials", { headers: { cookie } });
+      const history = await historyResponse.json<{
+        items: Array<{ id: string; active: boolean; revokedAt: string | null }>;
+      }>();
+      expect(history.items.find(({ id }) => id === credential.id)).toMatchObject({
+        active: false,
+        revokedAt: null,
+      });
     } finally {
       if (reviewerGrantLive) {
         await revokeRole(database, { userId: user.id, role: "reviewer", revokedByUserId: user.id });
