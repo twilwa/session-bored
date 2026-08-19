@@ -1,0 +1,90 @@
+tests/e2e/event-settings.spec.ts
+  s_dde07df36a49fd::t_02bf8b5613661a 21-49
+tests/integration/agent-reference.test.ts
+  s_dde07df36a49fd::t_3a72a65d4b536b 47-50,64-68
+worker/agent-reference.ts
+  s_dde07df36a49fd::t_2332255eb02b34 392,395-400,449-455,459-468,473-474
+  s_dde07df36a49fd::t_348b3e67257c81 393-394,456-458
+client/pages/event-setup/event-setup.css
+  s_dde07df36a49fd::t_b25ee393666016 27-43,55-58
+tests/integration/agent-credentials.test.ts
+  s_dde07df36a49fd::t_22d965ec4302e8 244-258,273
+  s_dde07df36a49fd::t_9a57dd5446b964 141-169,178
+  s_dde07df36a49fd::t_66ac28129b275d 106,132-138
+  s_dde07df36a49fd::t_2d99f749375575 179-209
+  s_dde07df36a49fd::t_652037341f2586 4,7,37,49-54
+  s_dde07df36a49fd::t_06d1a745f07d09 91-97,170-177,259-272
+  s_dde07df36a49fd::t_6e92e725a38012 62-90
+  s_dde07df36a49fd::t_8ddde32f5c6631 5,9,98-105,107-131,139
+  s_dde07df36a49fd::t_6132e9cbb9d88c 42-47
+  s_dde07df36a49fd::t_a816942b8e15a3 210-223,225-243
+  s_dde07df36a49fd::t_a3f831af06d365 1-3,6,8,10-36,38-41,48,55-61,140,274
+  s_dde07df36a49fd::t_e1f8f9b227f8d5 224
+worker/agent-access.ts
+  s_dde07df36a49fd::t_98febd2885de6d 1-19,21-23
+  s_dde07df36a49fd::t_79ab76ccd22905 20
+migrations/meta/_journal.json
+  s_dde07df36a49fd::t_5dcf6f97897a12 200-206
+shared/api.ts
+  s_dde07df36a49fd::t_790d3973897057 45-50
+  s_dde07df36a49fd::t_b25ee393666016 395-415
+  s_dde07df36a49fd::t_ea76ce20770ca4 33-38
+  s_dde07df36a49fd::t_6bd32fea5a8f01 39-44
+tests/unit/agent-access.test.ts
+  s_dde07df36a49fd::t_6e92e725a38012 1-30
+tests/integration/traffic-observability.test.ts
+  s_dde07df36a49fd::t_de8eae4b0c3aea 41-42,71-72,93-94,117-118,142-143,170-209
+  s_128b20c59ad2ab::t_2129a4007d039e 210
+worker/index.ts
+  s_dde07df36a49fd::t_6bd32fea5a8f01 34-38,68,76,130-140,152,161,284
+  s_dde07df36a49fd::t_348b3e67257c81 119-120
+  s_dde07df36a49fd::t_98febd2885de6d 33,200-209,272
+migrations/0028_known_thunderbolt.sql
+  s_dde07df36a49fd::t_5dcf6f97897a12 1-15
+migrations/meta/0028_snapshot.json
+  s_dde07df36a49fd::t_5dcf6f97897a12 1-5952
+AGENTS.md
+  s_dde07df36a49fd::t_5599c3641c9a8e 377-385
+worker/agent-credentials.ts
+  s_dde07df36a49fd::t_ea76ce20770ca4 3,65-79
+  s_dde07df36a49fd::t_790d3973897057 82-104
+  s_dde07df36a49fd::t_6bd32fea5a8f01 1-2,4-14,16-19,21-40,45-50,52-57,60-64,80-81,105-121,126-128,130-131,140-148
+  s_dde07df36a49fd::t_6132e9cbb9d88c 58-59
+  s_dde07df36a49fd::t_79ab76ccd22905 15,20,41-44,51,122-125
+  s_dde07df36a49fd::t_348b3e67257c81 129,132-139
+worker/routes/agent-credentials.ts
+  s_dde07df36a49fd::t_2e1f64bae41b1d 45-51
+  s_dde07df36a49fd::t_790d3973897057 86-99
+  s_dde07df36a49fd::t_ea76ce20770ca4 9-13,41-44,52
+  s_dde07df36a49fd::t_79ab76ccd22905 76,80-85
+  s_dde07df36a49fd::t_6bd32fea5a8f01 1-8,14-40,53-75,77-79,100-103
+db/schema/access.ts
+  s_dde07df36a49fd::t_6bd32fea5a8f01 56-78
+client/pages/event-setup/EventSetupPage.tsx
+  s_dde07df36a49fd::t_348b3e67257c81 55,174,191,216-218,391,403,407
+  s_dde07df36a49fd::t_b25ee393666016 6-10,51-54,56-57,77-91,170-173,175-190,192-215,219-226,353-390,392-402,404-406,408-450
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "baeea0c8f5105078c6f32bc970745b05b64322e7",
+  "prompts": {},
+  "sessions": {
+    "s_128b20c59ad2ab": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a017d0-ee32-70e3-8299-62e61a0d7fea",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    },
+    "s_dde07df36a49fd": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a017d0-5b44-7590-8b35-754e4a1e3b5b",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
