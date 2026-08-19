@@ -180,6 +180,18 @@ describe("agent credentials", () => {
       expect(revoked).toEqual({ revoked: true });
       reviewerGrantLive = false;
       expect((await request("/api/session", { headers })).status).toBe(401);
+      const refusedIssueResponse = await request("/api/agent-credentials", {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ name: "Revoked grant helper", role: "reviewer" }),
+      });
+      expect(refusedIssueResponse.status).toBe(403);
+      await expect(refusedIssueResponse.json()).resolves.toEqual({ error: "issued_role_not_granted" });
+      const refusedCredentials = await database
+        .select({ id: agentCredentials.id })
+        .from(agentCredentials)
+        .where(eq(agentCredentials.name, "Revoked grant helper"));
+      expect(refusedCredentials).toEqual([]);
 
       const grantedAgain = await grantRole(database, {
         userId: user.id,
@@ -201,6 +213,25 @@ describe("agent credentials", () => {
         active: false,
         revokedAt: null,
       });
+      const replacementIssueResponse = await request("/api/agent-credentials", {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ name: "Replacement grant helper", role: "reviewer" }),
+      });
+      expect(replacementIssueResponse.status).toBe(201);
+      const replacementIssue = await replacementIssueResponse.json<{
+        credential: { id: string; active: boolean };
+        token: string;
+      }>();
+      expect(replacementIssue.credential.active).toBe(true);
+      const [replacementStored] = await database
+        .select({ roleGrantId: agentCredentials.roleGrantId })
+        .from(agentCredentials)
+        .where(eq(agentCredentials.id, replacementIssue.credential.id));
+      expect(replacementStored?.roleGrantId).toBe(replacementGrant?.id);
+      expect((await request("/api/session", {
+        headers: { authorization: `Bearer ${replacementIssue.token}` },
+      })).status).toBe(200);
     } finally {
       if (reviewerGrantLive) {
         await revokeRole(database, { userId: user.id, role: "reviewer", revokedByUserId: user.id });

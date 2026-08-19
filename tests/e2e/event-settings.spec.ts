@@ -94,6 +94,10 @@ test("Event setup marks a credential inactive when its issued role access is rev
 
   try {
     await page.goto("/organizer/event");
+    await expect(page.getByText(
+      "Issue a revocable credential instead of sharing your password. Each credential acts as your account through one live role; programme publishing, sends, decisions, and deletes still require you here.",
+      { exact: true },
+    )).toBeVisible();
     await page.getByLabel("Credential name").fill(credentialName);
     await page.getByLabel("Issued role").selectOption("reviewer");
     await page.getByRole("button", { name: "Issue credential" }).click();

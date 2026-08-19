@@ -361,7 +361,7 @@ export function EventSetupPage() {
         </div>
         <p>
           Issue a revocable credential instead of sharing your password. Each credential acts as
-          your account through one live role; publishing, sends, decisions, and deletes still require you here.
+          your account through one live role; programme publishing, sends, decisions, and deletes still require you here.
         </p>
 
         <form className="agent-access__issue" onSubmit={(formEvent) => void issueCredential(formEvent)}>

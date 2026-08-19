@@ -3,7 +3,6 @@
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import type { drizzle } from "drizzle-orm/d1";
 import { agentCredentials, roleGrants, users, type GrantableRole } from "../db/schema.ts";
-import { listLiveGrants } from "./roles.ts";
 
 type Database = ReturnType<typeof drizzle>;
 
@@ -38,21 +37,32 @@ export async function issueAgentCredential(
   database: Database,
   input: { userId: string; name: string; role: GrantableRole },
 ) {
-  const roleGrant = (await listLiveGrants(database, [input.userId]))
-    .find((grant) => grant.role === input.role);
-  if (roleGrant === undefined) {
-    return null;
-  }
+  const credentialId = `acred_${crypto.randomUUID().replaceAll("-", "")}`;
   const token = `greenroom_${credentialSecret()}`;
+  const secretDigest = await credentialDigest(token);
+  const createdAt = Date.now();
   const [credential] = await database
     .insert(agentCredentials)
-    .values({
-      userId: input.userId,
-      name: input.name,
-      role: input.role,
-      roleGrantId: roleGrant.id,
-      secretDigest: await credentialDigest(token),
-    })
+    .select(database
+      .select({
+        id: sql`${credentialId}`.as("id"),
+        userId: roleGrants.userId,
+        name: sql`${input.name}`.as("name"),
+        role: roleGrants.role,
+        roleGrantId: roleGrants.id,
+        secretDigest: sql`${secretDigest}`.as("secret_digest"),
+        lastUsedAt: sql`NULL`.as("last_used_at"),
+        revokedAt: sql`NULL`.as("revoked_at"),
+        createdAt: sql`${createdAt}`.as("created_at"),
+        updatedAt: sql`${createdAt}`.as("updated_at"),
+      })
+      .from(roleGrants)
+      .where(and(
+        eq(roleGrants.userId, input.userId),
+        eq(roleGrants.role, input.role),
+        isNull(roleGrants.revokedAt),
+      ))
+      .limit(1))
     .returning({
       id: agentCredentials.id,
       name: agentCredentials.name,
@@ -62,7 +72,7 @@ export async function issueAgentCredential(
       revokedAt: agentCredentials.revokedAt,
     });
   if (credential === undefined) {
-    throw new Error("Agent credential insert returned no row");
+    return null;
   }
   return { credential: { ...credential, active: true }, token };
 }
