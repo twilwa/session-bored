@@ -389,10 +389,15 @@ speakers, and organizer communications.
 Open demo: \`GET /demo\` — one GET, no signup, lands signed in on a live review board. Follow it.
 The seeded demo reviewer is read-only; use it to inspect the product, not to change data.
 
-For account-specific work, use only an account the user has authorized. Password sign-in is available at
-\`POST /api/auth/sign-in/email\`; send JSON with \`email\` and \`password\`, then
-retain the returned session cookie. Greenroom does not yet issue agent-specific
-credentials. Every HTTP endpoint enforces the signed-in account's live role grants.
+For account-specific work, ask the user to sign in in a browser and open Event setup → Agent access.
+The browser uses \`${routeMap.issueAgentCredential.method} ${routeMap.issueAgentCredential.path}\`
+with JSON \`{ "name": string, "role":
+"organizer" | "reviewer" | "speaker" }\`. The token is shown only once. Send it on every request as
+\`Authorization: Bearer greenroom_...\`. Verify the identity and role with \`GET /api/session\`.
+
+A credential is pinned to its issued role even when the account holds broader grants. It stops
+working when the user revokes it or loses that live role. Credential listing, issuance, and
+revocation require the user's browser session; never ask for or retain the user's password.
 
 Main surfaces:
 
@@ -441,16 +446,32 @@ ${operations}`;
 This public reference describes organizer journeys that an authorized coding agent
 can prepare or complete through Greenroom's existing HTTP routes. It contains no
 credentials. The public \`GET /demo\` door signs you into a seeded, read-only reviewer account.
-It demonstrates the live product but cannot call these organizer routes. For delegated
-organizer work, sign in with \`POST /api/auth/sign-in/email\`, retain the returned
-session cookie, send JSON with \`content-type: application/json\`, and use only IDs
-returned by reads from the same event. Successful timestamps serialize as ISO 8601
-strings unless an operation says it expects epoch milliseconds.
+It demonstrates the live product but cannot call these organizer routes.
+
+## Authentication
+
+A human organizer signs in in a browser and manages credentials in Event setup → Agent access.
+Those browser-only operations are:
+
+- ${routeMap.agentCredentials.method} \`${routeMap.agentCredentials.path}\` — list the account's active and revoked credentials; secrets are never returned.
+- ${routeMap.issueAgentCredential.method} \`${routeMap.issueAgentCredential.path}\` — send \`{ "name": string, "role": "organizer" | "reviewer" | "speaker" }\`; the response contains a \`token\` shown only once.
+- ${routeMap.revokeAgentCredential.method} \`${routeMap.revokeAgentCredential.path}\` — revoke one credential without deleting its history.
+
+For delegated organizer work, send \`Authorization: Bearer greenroom_...\` on every request.
+Do not use password sign-in. Start with \`GET /api/session\` and verify that \`user.roles\` contains
+exactly the role the user intended. A credential is pinned to its issued role, remains bounded by
+the account's corresponding live grant, and becomes invalid immediately when either the credential
+or that grant is revoked.
+
+Send JSON with \`content-type: application/json\`, and use only IDs returned by reads from the same
+event. Successful timestamps serialize as ISO 8601 strings unless an operation says it expects
+epoch milliseconds.
 
 Errors are JSON with an \`error\` key and an appropriate \`4xx\` status. All routes
 below require the \`organizer\` role. Routes that publish the programme, send mail to
 speakers, issue decisions, or delete records are intentionally omitted because a
-human must complete those actions.
+human must complete those actions. An agent attempt to make any undescribed mutation returns
+\`403 { "error": "human_confirmation_required" }\` before route logic runs.
 
 ${sections.join("\n\n")}
 `;

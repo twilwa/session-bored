@@ -3,6 +3,11 @@
 import { useEffect, useState, type CSSProperties, type FormEvent } from "react";
 import { Button, LoadingState, SelectField, TextField, Toast } from "../../components/ui.tsx";
 import { getJson } from "../../lib.tsx";
+import type {
+  AgentCredentialRole,
+  AgentCredentialsResponse,
+  IssuedAgentCredentialResponse,
+} from "../../../shared/api.ts";
 import type { EventBranding, EventSetupRecord } from "./event-setup.ts";
 import "./event-setup.css";
 
@@ -43,6 +48,13 @@ export function EventSetupPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState<"background" | "logo" | null>(null);
+  const [credentials, setCredentials] = useState<AgentCredentialsResponse["items"]>([]);
+  const [issuableRoles, setIssuableRoles] = useState<AgentCredentialRole[]>([]);
+  const [credentialName, setCredentialName] = useState("");
+  const [credentialRole, setCredentialRole] = useState<AgentCredentialRole>("organizer");
+  const [issuedCredential, setIssuedCredential] = useState<{ id: string; token: string } | null>(null);
+  const [credentialBusy, setCredentialBusy] = useState<string | null>(null);
+  const [credentialError, setCredentialError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -57,6 +69,21 @@ export function EventSetupPage() {
         }
       })
       .catch(() => active && setLoadError("Event setup could not be loaded."));
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    getJson<AgentCredentialsResponse>("/api/agent-credentials")
+      .then((response) => {
+        if (!active) return;
+        setCredentials(response.items);
+        setIssuableRoles(response.issuableRoles);
+        setCredentialRole(response.issuableRoles[0] ?? "organizer");
+      })
+      .catch(() => active && setCredentialError("Agent credentials could not be loaded."));
     return () => {
       active = false;
     };
@@ -137,6 +164,63 @@ export function EventSetupPage() {
       setMessage("Brand image could not be uploaded. Check your connection and try again.");
     } finally {
       setUploading(null);
+    }
+  }
+
+  async function issueCredential(formEvent: FormEvent<HTMLFormElement>): Promise<void> {
+    formEvent.preventDefault();
+    setCredentialBusy("issue");
+    setCredentialError(null);
+    setIssuedCredential(null);
+    try {
+      const response = await fetch("/api/agent-credentials", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: credentialName, role: credentialRole }),
+      });
+      const body = await response.json<IssuedAgentCredentialResponse & { error?: string }>();
+      if (!response.ok) {
+        setCredentialError(body.error === "issued_role_not_granted"
+          ? "Your account no longer holds that role. Refresh and choose a live grant."
+          : "The credential could not be issued.");
+        return;
+      }
+      setCredentials((current) => [body.credential, ...current]);
+      setCredentialName("");
+      setIssuedCredential({ id: body.credential.id, token: body.token });
+      setMessage("Agent credential issued. Copy the token now; Greenroom will not show it again.");
+    } catch {
+      setCredentialError("The credential could not be issued. Check your connection and try again.");
+    } finally {
+      setCredentialBusy(null);
+    }
+  }
+
+  async function revokeCredential(credentialId: string): Promise<void> {
+    setCredentialBusy(credentialId);
+    setCredentialError(null);
+    try {
+      const response = await fetch(`/api/agent-credentials/${credentialId}/revoke`, {
+        method: "POST",
+        credentials: "same-origin",
+      });
+      const body = await response.json<{ credential?: AgentCredentialsResponse["items"][number] }>();
+      if (!response.ok || body.credential === undefined) {
+        setCredentialError("The credential could not be revoked.");
+        return;
+      }
+      setCredentials((current) => current.map((credential) => (
+        credential.id === credentialId ? body.credential! : credential
+      )));
+      if (issuedCredential?.id === credentialId) {
+        setIssuedCredential(null);
+      }
+      setMessage("Agent credential revoked.");
+    } catch {
+      setCredentialError("The credential could not be revoked. Check your connection and try again.");
+    } finally {
+      setCredentialBusy(null);
     }
   }
 
@@ -266,6 +350,104 @@ export function EventSetupPage() {
           <p className="event-setup__note">This preview uses the same saved brand values delivered with the event.</p>
         </aside>
       </form>
+
+      <section aria-labelledby="agent-access-heading" className="workspace-section agent-access">
+        <div className="section-heading">
+          <div>
+            <p className="section-label">DELEGATED OPERATIONS</p>
+            <h2 id="agent-access-heading">Agent access</h2>
+          </div>
+          <a href="/llms.txt">Read the agent guide</a>
+        </div>
+        <p>
+          Issue a revocable credential instead of sharing your password. Each credential acts as
+          your account through one live role; publishing, sends, decisions, and deletes still require you here.
+        </p>
+
+        <form className="agent-access__issue" onSubmit={(formEvent) => void issueCredential(formEvent)}>
+          <TextField
+            label="Credential name"
+            name="agent-credential-name"
+            onChange={(input) => setCredentialName(input.target.value)}
+            placeholder="CFP operations"
+            required
+            value={credentialName}
+          />
+          <SelectField
+            label="Issued role"
+            name="agent-credential-role"
+            onChange={(input) => setCredentialRole(input.target.value as AgentCredentialRole)}
+            value={credentialRole}
+          >
+            {issuableRoles.map((role) => (
+              <option key={role} value={role}>{role[0]!.toUpperCase() + role.slice(1)}</option>
+            ))}
+          </SelectField>
+          <Button disabled={credentialBusy !== null || issuableRoles.length === 0} type="submit">
+            {credentialBusy === "issue" ? "Issuing…" : "Issue credential"}
+          </Button>
+        </form>
+
+        {issuedCredential === null ? null : (
+          <div className="agent-access__token">
+            <div>
+              <strong>Copy this token now</strong>
+              <p>It is shown once and cannot be recovered later.</p>
+            </div>
+            <label className="field" htmlFor="issued-agent-token">
+              <span className="field__label">Issued agent token</span>
+              <input
+                className="field__control"
+                id="issued-agent-token"
+                readOnly
+                value={issuedCredential.token}
+              />
+            </label>
+            <Button
+              onClick={() => void navigator.clipboard.writeText(issuedCredential.token).then(
+                () => setMessage("Agent token copied."),
+                () => setMessage("Copy failed. Select the token and copy it manually."),
+              )}
+              tone="quiet"
+              type="button"
+            >
+              Copy token
+            </Button>
+          </div>
+        )}
+
+        {credentialError === null ? null : <p className="agent-access__error" role="alert">{credentialError}</p>}
+        {credentials.length === 0 ? (
+          <p className="event-setup__note">No agent credentials have been issued.</p>
+        ) : (
+          <ul className="agent-access__list">
+            {credentials.map((credential) => (
+              <li key={credential.id}>
+                <div>
+                  <strong>{credential.name}</strong>
+                  <span>{credential.role[0]!.toUpperCase() + credential.role.slice(1)}</span>
+                  <small>
+                    {credential.revokedAt === null
+                      ? credential.lastUsedAt === null ? "Active · never used" : "Active · used"
+                      : "Revoked"}
+                  </small>
+                </div>
+                {credential.revokedAt === null ? (
+                  <Button
+                    aria-label={`Revoke ${credential.name}`}
+                    disabled={credentialBusy !== null}
+                    onClick={() => void revokeCredential(credential.id)}
+                    tone="quiet"
+                    type="button"
+                  >
+                    {credentialBusy === credential.id ? "Revoking…" : "Revoke"}
+                  </Button>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
       <Toast message={message} />
     </section>
   );

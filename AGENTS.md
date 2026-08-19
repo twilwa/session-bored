@@ -374,6 +374,15 @@ because D1 refuses the rebuild that changing it needs (`user` has ten inbound
 foreign keys and does not honour `PRAGMA foreign_keys=OFF`), and Better Auth no
 longer projects it into the session at all.
 
+- Agent credentials are browser-issued, named bearer secrets stored only as a
+  digest in `agent_credential`. `worker/agent-credentials.ts` authenticates one
+  credential only while its exact issued role remains a live grant, and
+  `prepareRequest` places only that role in request context - never the account's
+  broader union or a fallback browser session. Management routes require a real
+  organizer browser session. `worker/agent-access.ts` permits bearer mutations
+  only when they appear in `worker/agent-reference.ts#organizerOperations`; every
+  other mutation is reserved for human confirmation. Keep `llms.txt` auth copy,
+  that generated operation inventory, and the middleware policy together.
 - Sign-up is a public front door at `/signup`, and it writes no grant. That is
   the whole guarantee: no self-service path can yield more than an attendee,
   because no self-service path touches `role_grant`. An attendee lands on

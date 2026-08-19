@@ -30,6 +30,12 @@ import {
 } from "../db/schema.ts";
 import { speakerFacingSubmissionStatus, type ApiAccess, type PortalFileVersion } from "../shared/api.ts";
 import { authorizeAccess } from "./access.ts";
+import { agentOperationIsDescribed } from "./agent-access.ts";
+import {
+  authenticateAgentCredential,
+  presentsBearerCredential,
+  type AgentCredentialIdentity,
+} from "./agent-credentials.ts";
 import { describingRole, resolveGrantedRoles } from "./roles.ts";
 import { accessDeniedDocument, prefersHtmlDocument } from "./access-page.ts";
 import { createAuth, type AuthSession } from "./auth.ts";
@@ -59,6 +65,7 @@ import personalScheduleRoutes from "./routes/personal-schedule.ts";
 import speakerDirectoryRoutes from "./routes/speaker-directory.ts";
 import { protectedPageRoutes } from "./page-routes.ts";
 import { conciseAgentGuide, fullOrganizerReference } from "./agent-reference.ts";
+import agentCredentialRoutes from "./routes/agent-credentials.ts";
 
 type SessionUser = AuthSession["user"];
 type AppEnvironment = {
@@ -66,6 +73,7 @@ type AppEnvironment = {
   Variables: {
     authSession: AuthSession["session"] | null;
     authUser: SessionUser | null;
+    agentCredential: AgentCredentialIdentity["credential"] | null;
     demoAccount: boolean;
     roles: Role[] | null;
   };
@@ -108,6 +116,8 @@ app.use("*", async (context, next) => {
     method: context.req.method,
     path: requestPathForLog(routePath, context.req.url),
     status: context.res.status,
+    actorUserId: context.get("authUser")?.id ?? null,
+    agentCredentialId: context.get("agentCredential")?.id ?? null,
     userAgent: context.req.header("user-agent") ?? null,
     referer: refererOrigin(context.req.header("referer")),
     country: context.req.raw.cf?.country ?? null,
@@ -117,6 +127,17 @@ app.use("*", async (context, next) => {
 
 const prepareRequest = createMiddleware<AppEnvironment>(async (context, next) => {
   await ensureSeeded(context.env);
+  const authorization = context.req.header("authorization");
+  if (presentsBearerCredential(authorization)) {
+    const identity = await authenticateAgentCredential(drizzle(context.env.DB), authorization!);
+    context.set("authSession", null);
+    context.set("authUser", identity?.user ?? null);
+    context.set("agentCredential", identity?.credential ?? null);
+    context.set("demoAccount", false);
+    context.set("roles", identity === null ? null : [identity.credential.role]);
+    await next();
+    return;
+  }
   const demoCookie = await getSignedCookie(context, context.env.BETTER_AUTH_SECRET, demoCookieName);
   if (demoCookie === "reviewer") {
     const [demoUser] = await drizzle(context.env.DB)
@@ -128,6 +149,7 @@ const prepareRequest = createMiddleware<AppEnvironment>(async (context, next) =>
     }
     context.set("authSession", null);
     context.set("authUser", demoUser);
+    context.set("agentCredential", null);
     context.set("demoAccount", true);
     context.set("roles", ["reviewer"]);
     await next();
@@ -136,6 +158,7 @@ const prepareRequest = createMiddleware<AppEnvironment>(async (context, next) =>
   const authSession = await createAuth(context.env).api.getSession({ headers: context.req.raw.headers });
   context.set("authSession", authSession?.session ?? null);
   context.set("authUser", authSession?.user ?? null);
+  context.set("agentCredential", null);
   context.set("demoAccount", false);
   // Roles come from the account's live grants, never from the session or the `user.role`
   // column. Signing up therefore reaches nothing beyond a signed-in attendee until an
@@ -170,6 +193,16 @@ const protectDemoData = createMiddleware<AppEnvironment>(async (context, next) =
     !signsOut
   ) {
     return context.json({ error: "demo_read_only" }, 403);
+  }
+  await next();
+});
+
+const protectHumanConfirmation = createMiddleware<AppEnvironment>(async (context, next) => {
+  if (
+    context.get("agentCredential") !== null
+    && !agentOperationIsDescribed(context.req.method, context.req.path)
+  ) {
+    return context.json({ error: "human_confirmation_required" }, 403);
   }
   await next();
 });
@@ -236,6 +269,7 @@ app.get("/demo", async (context) => {
 
 app.use("/api/*", prepareRequest);
 app.use("/api/*", protectDemoData);
+app.use("/api/*", protectHumanConfirmation);
 app.route("/", dispositionRoutes);
 app.route("/", rosterRoutes);
 app.route("/", participantRoutes);
@@ -247,6 +281,7 @@ app.route("/", embedRoutes);
 app.route("/", eventSettingsRoutes);
 app.route("/", peopleRoutes);
 app.route("/", speakerDirectoryRoutes);
+app.route("/", agentCredentialRoutes);
 app.post("/api/auth/sign-out", async (context) => {
   if (!context.get("demoAccount")) {
     return createAuth(context.env).handler(context.req.raw);

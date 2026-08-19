@@ -18,6 +18,35 @@ async function expandSettingsItem(dialog: Locator, itemName: string): Promise<vo
   await expect(hideDetails).toBeVisible();
 }
 
+test("organizer issues and revokes an agent credential through Event setup", async ({ page }, testInfo) => {
+  const credentialName = `Agenda helper ${testInfo.project.name} ${Date.now().toString(36)}`;
+  await signInAsOrganizer(page);
+  await page.goto("/organizer/event");
+
+  await expect(page.getByRole("heading", { name: "Agent access" })).toBeVisible();
+  await page.getByLabel("Credential name").fill(credentialName);
+  await page.getByLabel("Issued role").selectOption("organizer");
+  await page.getByRole("button", { name: "Issue credential" }).click();
+
+  const tokenField = page.getByLabel("Issued agent token");
+  await expect(tokenField).toHaveValue(/^greenroom_/);
+  const token = await tokenField.inputValue();
+  const agentStatus = await page.evaluate(async (issuedToken) => (
+    await fetch("/api/events", { headers: { authorization: `Bearer ${issuedToken}` } })
+  ).status, token);
+  expect(agentStatus).toBe(200);
+
+  const credential = page.getByRole("listitem").filter({ hasText: credentialName }).first();
+  await expect(credential).toContainText("Organizer");
+  await credential.getByRole("button", { name: `Revoke ${credentialName}` }).click();
+  await expect(credential).toContainText("Revoked");
+
+  const revokedStatus = await page.evaluate(async (issuedToken) => (
+    await fetch("/api/events", { headers: { authorization: `Bearer ${issuedToken}` } })
+  ).status, token);
+  expect(revokedStatus).toBe(401);
+});
+
 test("organizer edits event identity, dates, venue, timezone, and branding", async ({ page }) => {
   await signInAsOrganizer(page);
   const original = await page.evaluate(async () => {

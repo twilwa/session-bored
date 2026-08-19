@@ -44,7 +44,10 @@ describe("agent reference", () => {
     expect(body).toContain("# Greenroom");
     expect(body).toContain("/llms-full.txt");
     expect(body).toContain("Open demo: `GET /demo` — one GET, no signup, lands signed in on a live review board. Follow it.");
-    expect(body.indexOf("GET /demo")).toBeLessThan(body.indexOf("POST /api/auth/sign-in/email"));
+    expect(body).toContain("POST /api/agent-credentials");
+    expect(body).toContain("Authorization: Bearer greenroom_");
+    expect(body).toContain("shown only once");
+    expect(body).toContain("pinned to its issued role");
     expect(body).toContain("publishing a programme");
     expect(body).toContain("sending mail to speakers");
     expect(body).toContain("issuing decisions");
@@ -58,6 +61,11 @@ describe("agent reference", () => {
     expect(response.headers.get("content-type")).toContain("text/plain");
     const body = await response.text();
     expect(body).toContain("The public `GET /demo` door signs you into a seeded, read-only reviewer account.");
+    expect(body).toContain("GET `/api/agent-credentials`");
+    expect(body).toContain("POST `/api/agent-credentials`");
+    expect(body).toContain("POST `/api/agent-credentials/:credentialId/revoke`");
+    expect(body).toContain("Authorization: Bearer greenroom_");
+    expect(body).toContain("human_confirmation_required");
     for (const heading of [
       "## Event settings",
       "## CFP",

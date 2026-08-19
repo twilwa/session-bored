@@ -38,6 +38,8 @@ describe("traffic observability", () => {
       method: "GET",
       path: "/",
       status: 200,
+      actorUserId: null,
+      agentCredentialId: null,
       userAgent: "Python-urllib/3.14",
       referer: "https://judge.example",
       country: null,
@@ -66,6 +68,8 @@ describe("traffic observability", () => {
       method: "GET",
       path: assetPath,
       status: 200,
+      actorUserId: null,
+      agentCredentialId: null,
       userAgent: "GPTBot/1.2",
       referer: null,
       country: null,
@@ -86,6 +90,8 @@ describe("traffic observability", () => {
       method: "GET",
       path: "/robots.txt",
       status: 200,
+      actorUserId: null,
+      agentCredentialId: null,
       userAgent: "ChatGPT-User/1.0",
       referer: null,
       country: null,
@@ -108,6 +114,8 @@ describe("traffic observability", () => {
       method: "GET",
       path: "/api/health",
       status: 200,
+      actorUserId: null,
+      agentCredentialId: null,
       userAgent: "Mozilla/5.0",
       referer: null,
       country: null,
@@ -131,6 +139,8 @@ describe("traffic observability", () => {
       method: "GET",
       path: "/api/reviewer-invites/:inviteId",
       status: 404,
+      actorUserId: null,
+      agentCredentialId: null,
       userAgent: "Mozilla/5.0",
       referer: null,
       country: null,
@@ -156,5 +166,46 @@ describe("traffic observability", () => {
       requests.map(([, routeTemplate]) => routeTemplate),
     );
     expect(requestLogs.join("\n")).not.toContain("private-");
+  });
+
+  it("attributes bearer requests without logging their secret", async () => {
+    await worker.request("http://example.test/api/health", undefined, env);
+    const signIn = await worker.request("http://example.test/api/auth/sign-in/email", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        email: "sbek-organizer@example.com",
+        password: "SbekTest!2027-org",
+      }),
+    }, env);
+    const cookie = signIn.headers.get("set-cookie")?.split(";")[0] ?? "";
+    const session = await worker.request("http://example.test/api/session", {
+      headers: { cookie },
+    }, env);
+    const { user } = await session.json<{ user: { id: string } }>();
+    const issuedResponse = await worker.request("http://example.test/api/agent-credentials", {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ name: "Observable agent", role: "organizer" }),
+    }, env);
+    const issued = await issuedResponse.json<{ credential: { id: string }; token: string }>();
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    const response = await worker.request("http://example.test/api/events", {
+      headers: { authorization: `Bearer ${issued.token}` },
+    }, env);
+
+    expect(response.status).toBe(200);
+    const requestLogs = trafficLogLines(log.mock.calls);
+    expect(requestLogs).toHaveLength(1);
+    expect(JSON.parse(requestLogs[0]!)).toMatchObject({
+      event: "http_request",
+      method: "GET",
+      path: "/api/events",
+      status: 200,
+      actorUserId: user.id,
+      agentCredentialId: issued.credential.id,
+    });
+    expect(requestLogs[0]).not.toContain(issued.token);
   });
 });

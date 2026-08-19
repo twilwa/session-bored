@@ -30,6 +30,24 @@ export interface RouteContract {
 
 export const routeMap = {
   session: { method: "GET", path: "/api/session", module: "auth", access: "authenticated" },
+  agentCredentials: {
+    method: "GET",
+    path: "/api/agent-credentials",
+    module: "auth",
+    access: "organizer",
+  },
+  issueAgentCredential: {
+    method: "POST",
+    path: "/api/agent-credentials",
+    module: "auth",
+    access: "organizer",
+  },
+  revokeAgentCredential: {
+    method: "POST",
+    path: "/api/agent-credentials/:credentialId/revoke",
+    module: "auth",
+    access: "organizer",
+  },
   events: { method: "GET", path: "/api/events", module: "events", access: "organizer" },
   event: { method: "GET", path: "/api/events/:eventId", module: "events", access: "organizer" },
   updateEvent: { method: "PATCH", path: "/api/events/:eventId", module: "events", access: "organizer" },
@@ -373,6 +391,27 @@ export const routeMap = {
     access: "organizer",
   },
 } as const satisfies Record<string, RouteContract>;
+
+export type AgentCredentialRole = Exclude<Role, "attendee">;
+
+export interface AgentCredentialSummary {
+  id: string;
+  name: string;
+  role: AgentCredentialRole;
+  createdAt: string;
+  lastUsedAt: string | null;
+  revokedAt: string | null;
+}
+
+export interface AgentCredentialsResponse {
+  items: AgentCredentialSummary[];
+  issuableRoles: AgentCredentialRole[];
+}
+
+export interface IssuedAgentCredentialResponse {
+  credential: AgentCredentialSummary;
+  token: string;
+}
 
 /**
  * Access is platform-wide today: a grant opens an area everywhere, not on one event. Scoping
