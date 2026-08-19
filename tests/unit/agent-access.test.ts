@@ -23,8 +23,18 @@ describe("agent operation access", () => {
 
   it("keeps reads role-gated and reserves undescribed mutations for a human", () => {
     expect(agentOperationIsDescribed("GET", "/api/events/example")).toBe(true);
+    expect(agentOperationIsDescribed("HEAD", "/api/events/example")).toBe(true);
+    expect(agentOperationIsDescribed("OPTIONS", "/api/cfp-builder/forms/example")).toBe(true);
     expect(agentOperationIsDescribed("POST", "/api/events/example/agenda/publish")).toBe(false);
     expect(agentOperationIsDescribed("POST", "/api/people/example/grants")).toBe(false);
     expect(agentOperationIsDescribed("DELETE", "/api/events/example/tracks/example")).toBe(false);
+  });
+
+  it("requires mutation paths to match the complete documented template", () => {
+    expect(agentOperationIsDescribed("PATCH", "/api/events/example")).toBe(true);
+    expect(agentOperationIsDescribed("PATCH", "/api/events")).toBe(false);
+    expect(agentOperationIsDescribed("PATCH", "/api/events/example/settings")).toBe(false);
+    expect(agentOperationIsDescribed("PATCH", "/api/event/example")).toBe(false);
+    expect(agentOperationIsDescribed("PATCH", "/api/events-settings/example")).toBe(false);
   });
 });
