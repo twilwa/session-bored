@@ -87,7 +87,7 @@ function refererOrigin(referer: string | undefined): string | null {
 app.use("*", async (context, next) => {
   await next();
   const routePath = context.req.routePath;
-  console.log({
+  console.log(JSON.stringify({
     event: "http_request",
     method: context.req.method,
     path: routePath === "*" || routePath === "/*" ? new URL(context.req.url).pathname : routePath,
@@ -96,7 +96,7 @@ app.use("*", async (context, next) => {
     referer: refererOrigin(context.req.header("referer")),
     country: context.req.raw.cf?.country ?? null,
     asn: context.req.raw.cf?.asn ?? null,
-  });
+  }));
 });
 
 const prepareRequest = createMiddleware<AppEnvironment>(async (context, next) => {

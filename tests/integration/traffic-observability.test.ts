@@ -8,6 +8,14 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+function trafficLogLines(calls: unknown[][]): string[] {
+  return calls
+    .map(([entry]) => entry)
+    .filter((entry): entry is string =>
+      typeof entry === "string" && entry.startsWith('{"event":"http_request",')
+    );
+}
+
 describe("traffic observability", () => {
   it("logs the homepage once while preserving the static asset response", async () => {
     const url = "http://example.test/";
@@ -25,8 +33,7 @@ describe("traffic observability", () => {
     expect(new Uint8Array(await response.arrayBuffer())).toEqual(
       new Uint8Array(await expected.arrayBuffer()),
     );
-    expect(log).toHaveBeenCalledTimes(1);
-    expect(log).toHaveBeenCalledWith({
+    expect(trafficLogLines(log.mock.calls)).toEqual([JSON.stringify({
       event: "http_request",
       method: "GET",
       path: "/",
@@ -35,7 +42,7 @@ describe("traffic observability", () => {
       referer: "https://judge.example",
       country: null,
       asn: null,
-    });
+    })]);
   });
 
   it("logs a built asset once while preserving its bytes and content type", async () => {
@@ -54,14 +61,16 @@ describe("traffic observability", () => {
     expect(new Uint8Array(await response.arrayBuffer())).toEqual(
       new Uint8Array(await expected.arrayBuffer()),
     );
-    expect(log).toHaveBeenCalledTimes(1);
-    expect(log).toHaveBeenCalledWith(expect.objectContaining({
+    expect(trafficLogLines(log.mock.calls)).toEqual([JSON.stringify({
       event: "http_request",
       method: "GET",
       path: assetPath,
       status: 200,
       userAgent: "GPTBot/1.2",
-    }));
+      referer: null,
+      country: null,
+      asn: null,
+    })]);
   });
 
   it("logs robots.txt once while preserving the asset-layer response", async () => {
@@ -77,14 +86,16 @@ describe("traffic observability", () => {
     expect(new Uint8Array(await response.arrayBuffer())).toEqual(
       new Uint8Array(await expected.arrayBuffer()),
     );
-    expect(log).toHaveBeenCalledTimes(1);
-    expect(log).toHaveBeenCalledWith(expect.objectContaining({
+    expect(trafficLogLines(log.mock.calls)).toEqual([JSON.stringify({
       event: "http_request",
       method: "GET",
       path: "/robots.txt",
       status: expected.status,
       userAgent: "ChatGPT-User/1.0",
-    }));
+      referer: null,
+      country: null,
+      asn: null,
+    })]);
   });
 
   it("logs an API response once without recording its query string", async () => {
@@ -97,10 +108,7 @@ describe("traffic observability", () => {
     );
 
     expect(response.status).toBe(200);
-    const requestLogs = log.mock.calls
-      .map(([entry]) => entry)
-      .filter((entry) => typeof entry === "object" && entry !== null && entry.event === "http_request");
-    expect(requestLogs).toEqual([{
+    expect(trafficLogLines(log.mock.calls)).toEqual([JSON.stringify({
       event: "http_request",
       method: "GET",
       path: "/api/health",
@@ -109,7 +117,7 @@ describe("traffic observability", () => {
       referer: null,
       country: null,
       asn: null,
-    }]);
+    })]);
   });
 
   it("uses the route template instead of logging a token-bearing path", async () => {
@@ -122,15 +130,18 @@ describe("traffic observability", () => {
     );
 
     expect(response.status).toBe(404);
-    const requestLogs = log.mock.calls
-      .map(([entry]) => entry)
-      .filter((entry) => typeof entry === "object" && entry !== null && entry.event === "http_request");
-    expect(requestLogs).toHaveLength(1);
-    expect(requestLogs[0]).toEqual(expect.objectContaining({
+    const requestLogs = trafficLogLines(log.mock.calls);
+    expect(requestLogs).toEqual([JSON.stringify({
+      event: "http_request",
+      method: "GET",
       path: "/api/reviewer-invites/:inviteId",
       status: 404,
-    }));
-    expect(JSON.stringify(requestLogs[0])).not.toContain("private-token");
-    expect(JSON.stringify(requestLogs[0])).not.toContain("do-not-log");
+      userAgent: "Mozilla/5.0",
+      referer: null,
+      country: null,
+      asn: null,
+    })]);
+    expect(requestLogs[0]).not.toContain("private-token");
+    expect(requestLogs[0]).not.toContain("do-not-log");
   });
 });

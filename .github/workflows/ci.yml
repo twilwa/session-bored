@@ -40,11 +40,11 @@ jobs:
       - name: Run unit tests
         run: npm test
 
-      - name: Run integration tests
-        run: npm run test:integration
-
       - name: Build
         run: npm run build
+
+      - name: Run integration tests
+        run: npm run test:integration
 
   browser:
     name: Browser tests
